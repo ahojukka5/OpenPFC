@@ -196,6 +196,20 @@ public:
     return finish_block_sum() * m_cell;
   }
 
+  [[nodiscard]] double transformation_work() {
+    hip_detail::MESym6Const sig_ro{};
+    for (int c = 0; c < kSymComponents; ++c)
+      sig_ro.c[c] = m_d_stress[static_cast<std::size_t>(c)].data();
+    hip_detail::me_sigma_estar_sum(sig_ro, m_d_amp.data(), m_dp, m_d_block.data(),
+                                    m_n_blocks);
+    return -0.5 * finish_block_sum() * m_cell;
+  }
+
+  [[nodiscard]] ElasticEnergyBalance energy_balance() {
+    return elastic_energy_balance_from_integrals(total_elastic_energy(),
+                                                 transformation_work());
+  }
+
   [[nodiscard]] double finish_block_sum() {
     m_d_block.copy_to_host(m_block_host.data(), m_block_host.size());
     double local = 0.0;

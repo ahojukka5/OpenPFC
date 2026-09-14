@@ -1305,6 +1305,8 @@ TEST_CASE("elastic solve: homogeneous modulus, uniform eigenstrain",
     // f_el = (1/2) eps* : C : eps* = (9/2) K a^2 per unit volume.
     const double vol = 16.0 * 16.0 * 1.0;
     REQUIRE(rep.total_energy == Approx(4.5 * bulk * a * a * vol).epsilon(1e-9));
+    REQUIRE(rep.virial_energy == Approx(rep.total_energy).epsilon(1e-9));
+    REQUIRE(rep.energy_balance_rel < 1.0e-10);
     // The point of reporting both modes: they differ by a finite energy
     // density that an inhomogeneous run would otherwise absorb silently.
     REQUIRE(std::fabs(rep.total_energy) > 1e-6);
@@ -1351,6 +1353,8 @@ TEST_CASE("eps_c = 0 zeroes the isothermal elastic effect", "[unit][elastic]") {
   const auto off = ec0.solve(phi, U, th);
   REQUIRE(off.converged);
   REQUIRE(off.total_energy == Approx(0.0).margin(1e-18));
+  REQUIRE(off.virial_energy == Approx(0.0).margin(1e-18));
+  REQUIRE(off.energy_balance_rel == Approx(0.0).margin(1e-18));
   REQUIRE(off.max_dfel_dphi == Approx(0.0).margin(1e-12));
 
   ep.eps_c = 0.01;
@@ -1358,6 +1362,9 @@ TEST_CASE("eps_c = 0 zeroes the isothermal elastic effect", "[unit][elastic]") {
   const auto on = ec1.solve(phi, U, th);
   REQUIRE(on.converged);
   REQUIRE(std::fabs(on.total_energy) > 1e-8);
+  // Heterogeneous modulus: F=W* holds at equilibrium, so the residual
+  // tracks the Green-solver stop (default tol_el = 1e-6), not round-off.
+  REQUIRE(on.energy_balance_rel < 10.0 * ep.tol_el);
   REQUIRE(std::fabs(on.max_dfel_dphi) > 1e-8);
 }
 

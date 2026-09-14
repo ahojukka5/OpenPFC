@@ -196,6 +196,24 @@
  * \boldsymbol\sigma = 0\f$. `test_microelasticity.cpp` checks that against a
  * finite difference of the fully re-converged energy rather than assuming it.
  *
+ * Because the displacement is periodic and \f$\langle\boldsymbol\varepsilon
+ * \rangle\f$ is the applied strain (zero-mean stress sets it so that
+ * \f$\langle\boldsymbol\sigma\rangle\approx 0\f$), the virtual work identity
+ * \f$\int\boldsymbol\sigma:\boldsymbol\varepsilon\,\mathrm{d}V=0\f$ reduces
+ * the stored energy to the transformation work already in eq. (6):
+ *
+ * \f[
+ *   F=\int f_{\mathrm{el}}\,\mathrm{d}V
+ *     =-\tfrac12\int\boldsymbol\sigma:\boldsymbol\varepsilon^{*}\,\mathrm{d}V
+ *     \equiv W_{*}.
+ * \f]
+ *
+ * That is the energy balance the coupled science campaign reports. The
+ * residual is \f$|F-W_{*}|/\max(|F|,|W_{*}|,\varepsilon)\f$ with floor
+ * \f$\varepsilon=10^{-30}\f$ so a zero-energy run (no eigenstrain) is
+ * identically balanced rather than NaN. It is not an ad-hoc score: it is
+ * the same integral oracle `test_microelasticity.cpp` already uses.
+ *
  * ## Scope — what this deliberately does not do
  *
  * - **Host reference, optional HIP twin.** Every loop here is a plain host
@@ -289,6 +307,36 @@ struct Sym3 {
 [[nodiscard]] inline double ddot(const Sym3 &a, const Sym3 &b) noexcept {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] +
          2.0 * (a[3] * b[3] + a[4] * b[4] + a[5] * b[5]);
+}
+
+/// Floor in the relative energy-balance residual so \f$F=W_{*}=0\f$ is 0,
+/// not NaN.
+inline constexpr double kElasticEnergyBalanceFloor = 1.0e-30;
+
+/**
+ * @brief Snapshot energy balance \f$F=W_{*}\f$ from eq. (6) and periodicity.
+ *
+ * \f$F=\int f_{\mathrm{el}}\,\mathrm{d}V\f$,
+ * \f$W_{*}=-\tfrac12\int\boldsymbol\sigma:\boldsymbol\varepsilon^{*}\,\mathrm{d}V\f$,
+ * \f$r=|F-W_{*}|/\max(|F|,|W_{*}|,\varepsilon)\f$.
+ */
+struct ElasticEnergyBalance {
+  double F{0.0};
+  double W_star{0.0};
+  double residual{0.0};
+  double residual_rel{0.0};
+};
+
+[[nodiscard]] inline ElasticEnergyBalance
+elastic_energy_balance_from_integrals(double F, double W_star) noexcept {
+  ElasticEnergyBalance b;
+  b.F = F;
+  b.W_star = W_star;
+  b.residual = std::abs(F - W_star);
+  const double scale = std::max(std::abs(F), std::abs(W_star));
+  b.residual_rel =
+      b.residual / std::max(scale, kElasticEnergyBalanceFloor);
+  return b;
 }
 
 /**
@@ -774,6 +822,37 @@ public:
     double global = 0.0;
     MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, m_params.comm);
     return global * cell;
+  }
+
+  /**
+   * @brief \f$W_{*}=-\tfrac12\int\boldsymbol\sigma:\boldsymbol\varepsilon^{*}
+   *        \,\mathrm{d}V\f$ from the last solve's stress and @p amp.
+   */
+  [[nodiscard]] double transformation_work(const RealField &amp) const {
+    check_same_size(amp, "amp");
+    const auto &s = m_f_el.spacing();
+    const double cell = s[0] * s[1] * s[2];
+    const Sym3 &pattern = m_params.eigenstrain_pattern;
+    double local = 0.0;
+    for (std::size_t i = 0; i < m_n_local; ++i) {
+      Sym3 estar;
+      Sym3 sg;
+      for (int c = 0; c < kSymComponents; ++c) {
+        const auto ci = static_cast<std::size_t>(c);
+        estar[c] = amp.data()[i] * pattern[c];
+        sg[c] = m_stress[ci].data()[i];
+      }
+      local += ddot(sg, estar);
+    }
+    double global = 0.0;
+    MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, m_params.comm);
+    return -0.5 * global * cell;
+  }
+
+  [[nodiscard]] ElasticEnergyBalance
+  energy_balance(const RealField &amp) const {
+    return elastic_energy_balance_from_integrals(total_elastic_energy(),
+                                                 transformation_work(amp));
   }
 
   /// Local stiffness at cell @p i, i.e. \f$h\mathbf C_s + (1-h)\mathbf C_l\f$.

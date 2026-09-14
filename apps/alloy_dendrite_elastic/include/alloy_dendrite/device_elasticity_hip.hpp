@@ -112,7 +112,12 @@ public:
     out.iterations = rep.iterations;
     out.residual = rep.residual;
     out.converged = rep.converged;
-    out.total_energy = m_solver.total_elastic_energy();
+    {
+      const auto bal = m_solver.energy_balance();
+      out.total_energy = bal.F;
+      out.virial_energy = bal.W_star;
+      out.energy_balance_rel = bal.residual_rel;
+    }
     m_solver.stress_invariants(out.mean_stress_trace, out.max_dfel_dphi,
                                m_max_vm);
     return out;

@@ -353,6 +353,31 @@ __global__ void report_stats_kernel(MESym6Const sig, const double *dfel,
   }
 }
 
+__global__ void sigma_estar_kernel(MESym6Const sig, const double *amp,
+                                    MEParams p, double *partial) {
+  __shared__ double s[kBlock];
+  const int tid = static_cast<int>(threadIdx.x);
+  const long long i =
+      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  double acc = 0.0;
+  if (i < p.n) {
+    double ed[6];
+    double sg[6];
+    for (int c = 0; c < 6; ++c) {
+      ed[c] = amp[i] * p.pattern[c];
+      sg[c] = sig.c[c][i];
+    }
+    acc = ddot6(sg, ed);
+  }
+  s[tid] = acc;
+  __syncthreads();
+  for (int w = blockDim.x / 2; w > 0; w >>= 1) {
+    if (tid < w) s[tid] += s[tid + w];
+    __syncthreads();
+  }
+  if (tid == 0) partial[blockIdx.x] = s[0];
+}
+
 __global__ void copy_owned_kernel(const double *src, double *dst, int nx, int ny,
                                  int nz, int hw, long long sy, long long sz) {
   const long long i =
@@ -450,6 +475,12 @@ void me_report_stats(const MESym6Const &sig, const double *dfel, double *block,
                       long long n, int n_blocks) {
   report_stats_kernel<<<n_blocks, kBlock>>>(sig, dfel, block, n);
   check(hipGetLastError(), "me_report_stats");
+}
+
+void me_sigma_estar_sum(const MESym6Const &sig, const double *amp,
+                         const MEParams &p, double *partial, int n_blocks) {
+  sigma_estar_kernel<<<n_blocks, kBlock>>>(sig, amp, p, partial);
+  check(hipGetLastError(), "me_sigma_estar_sum");
 }
 
 } // namespace pfc::apps::hip_detail

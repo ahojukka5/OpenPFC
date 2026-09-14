@@ -169,8 +169,9 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   if (!cfg.csv.empty()) {
     csv = alloy_dendrite::CsvAppender(
         cfg.csv,
-        "run_id,step,t,t_pf_ms,t_el_ms,el_iters,el_energy,el_residual,"
-        "el_max_dfel,mean_p,sig_vm_max,x_tip,v_tip,rho_tip",
+        "run_id,step,t,t_pf_ms,t_el_ms,el_iters,el_energy,el_wstar,"
+        "el_balance_rel,el_residual,el_max_dfel,mean_p,sig_vm_max,x_tip,v_tip,"
+        "rho_tip",
         rank);
   }
 
@@ -233,9 +234,11 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
       }
       if (csv.active()) {
         csv.row(alloy_dendrite::format(
-            "%s,%d,%.6f,%.6f,%.6f,%d,%.6e,%.3e,%.6e,%.6e,%.6e,%.6f,%.6e,%.6f",
+            "%s,%d,%.6f,%.6f,%.6f,%d,%.6e,%.6e,%.3e,%.3e,%.6e,%.6e,%.6e,%.6f,"
+            "%.6e,%.6f",
             cfg.run_id.c_str(), step, step * dt, 1e3 * tpf, 1e3 * tel,
-            el.iterations, el.total_energy, el.residual, el.max_dfel_dphi,
+            el.iterations, el.total_energy, el.virial_energy,
+            el.energy_balance_rel, el.residual, el.max_dfel_dphi,
             el.mean_stress_trace, elastic ? elastic->max_von_mises() : 0.0,
             x_tip, v_tip, rho));
       }
@@ -252,6 +255,8 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
               << " t_el_mean=" << (n_el > 0 ? 1e3 * t_el_sum / n_el : 0.0)
               << " el_solves=" << n_el << " last_iters=" << el.iterations
               << " last_energy=" << el.total_energy
+              << " last_wstar=" << el.virial_energy
+              << " last_el_balance_rel=" << el.energy_balance_rel
               << " last_mean_p=" << el.mean_stress_trace
               << " last_max_dfel=" << el.max_dfel_dphi << "\n";
   }

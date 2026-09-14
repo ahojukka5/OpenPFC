@@ -1169,6 +1169,8 @@ TEST_CASE("Elastic energy is self-consistent and matches the Eshelby energy",
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     REQUIRE(solver.solve(cs.h, cs.amp).converged);
+    const auto het_bal = solver.energy_balance(cs.amp);
+    REQUIRE(het_bal.residual_rel < 1.0e-10);
 
     double worst = 0.0, scale = 0.0;
     for (std::size_t i = 0; i < cs.amp.size(); ++i) {
@@ -1212,6 +1214,9 @@ TEST_CASE("Elastic energy is self-consistent and matches the Eshelby energy",
     INFO("F = " << got << ", closed form " << want << ", rel "
                 << std::abs(got / want - 1.0));
     REQUIRE_THAT(got, WithinRel(want, 1.0e-11));
+    const auto bal = solver.energy_balance(cs.amp);
+    REQUIRE_THAT(bal.F, WithinRel(got, 1.0e-14));
+    REQUIRE(bal.residual_rel < 1.0e-11);
   }
 
   SECTION(

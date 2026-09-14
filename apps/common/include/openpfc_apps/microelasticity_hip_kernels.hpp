@@ -82,4 +82,8 @@ void me_copy_owned_to_padded(const double *src, double *dst, int nx, int ny,
 void me_report_stats(const MESym6Const &sig, const double *dfel, double *block,
                       long long n, int n_blocks);
 
+/// Per-block sum of \f$\boldsymbol\sigma:\boldsymbol\varepsilon^{*}\f$.
+void me_sigma_estar_sum(const MESym6Const &sig, const double *amp,
+                         const MEParams &p, double *partial, int n_blocks);
+
 } // namespace pfc::apps::hip_detail

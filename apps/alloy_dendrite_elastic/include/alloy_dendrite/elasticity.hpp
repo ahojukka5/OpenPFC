@@ -254,8 +254,13 @@ struct ElasticReport {
   int iterations{0};
   double residual{0.0};
   bool converged{true};
-  /// `int f_el dV` over the whole domain.
+  /// `int f_el dV` over the whole domain (\f$F\f$).
   double total_energy{0.0};
+  /// \f$W_{*}=-\tfrac12\int\sigma:\varepsilon^{*}\,\mathrm{d}V\f$. Equals
+  /// \f$F\f$ when the solve is at equilibrium on a periodic cell.
+  double virial_energy{0.0};
+  /// \f$|F-W_{*}|/\max(|F|,|W_{*}|,10^{-30})\f$.
+  double energy_balance_rel{0.0};
   /// Global max `|d f_el / d phi|`.
   double max_dfel_dphi{0.0};
   /// `<sigma_xx + sigma_yy + sigma_zz> / 3`, the residual mean pressure.
@@ -425,7 +430,12 @@ public:
     out.iterations = rep.iterations;
     out.residual = rep.residual;
     out.converged = rep.converged;
-    out.total_energy = m_solver.total_elastic_energy();
+    {
+      const auto bal = m_solver.energy_balance(m_amp);
+      out.total_energy = bal.F;
+      out.virial_energy = bal.W_star;
+      out.energy_balance_rel = bal.residual_rel;
+    }
     MPI_Allreduce(&local_max, &out.max_dfel_dphi, 1, MPI_DOUBLE, MPI_MAX, m_comm);
     double p_sum = 0.0;
     MPI_Allreduce(&p_local, &p_sum, 1, MPI_DOUBLE, MPI_SUM, m_comm);

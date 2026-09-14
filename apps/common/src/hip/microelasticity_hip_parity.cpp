@@ -146,13 +146,17 @@ int main(int argc, char **argv) {
         field_maxdiff(host.dfel_dphi(), device.dfel_dphi(), MPI_COMM_WORLD);
     const double dE =
         std::abs(host.total_elastic_energy() - device.total_elastic_energy());
+    const auto hb = host.energy_balance(amp);
+    const auto db = device.energy_balance();
     int rc = 0;
     if (rank == 0) {
       std::cout << "ELASTIC_HIP_PARITY case=" << name << " ranks=" << nproc
                 << " N=" << N << " host_iters=" << rh.iterations
                 << " device_iters=" << rd.iterations << " host_res=" << rh.residual
                 << " device_res=" << rd.residual << " max|deps|=" << worst_eps
-                << " max|ddfel|=" << worst_dfel << " |dE|=" << dE << "\n";
+                << " max|ddfel|=" << worst_dfel << " |dE|=" << dE
+                << " host_el_balance_rel=" << hb.residual_rel
+                << " device_el_balance_rel=" << db.residual_rel << "\n";
       if (std::abs(rh.iterations - rd.iterations) > 1) {
         std::cout << "ELASTIC_HIP_PARITY_FAIL " << name << " iteration count\n";
         rc = 1;
@@ -168,6 +172,16 @@ int main(int argc, char **argv) {
       }
       if (worst_dfel > tol_dfel) {
         std::cout << "ELASTIC_HIP_PARITY_FAIL " << name << " dfel\n";
+        rc = 1;
+      }
+      if (hb.residual_rel > 10.0 * p.tol_el ||
+          db.residual_rel > 10.0 * p.tol_el) {
+        std::cout << "ELASTIC_HIP_PARITY_FAIL " << name << " energy balance\n";
+        rc = 1;
+      }
+      if (std::abs(hb.F - db.F) > 1.0e-10 ||
+          std::abs(hb.W_star - db.W_star) > 1.0e-10) {
+        std::cout << "ELASTIC_HIP_PARITY_FAIL " << name << " energy integrals\n";
         rc = 1;
       }
     }
