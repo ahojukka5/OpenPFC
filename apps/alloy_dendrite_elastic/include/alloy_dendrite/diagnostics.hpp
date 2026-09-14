@@ -45,6 +45,12 @@
  * `phi > 0.99` in a band `[x_if - 15 W0, x_if - 5 W0]`. | | `k_eff` | `k (1 + (1-k)
  * U_s) / (1 + (1-k) U_i)`, which is `c_s / c_l^i` exactly. Equals `k` iff `U_s =
  * U_i`. | | `x_tip`, `rho_tip` | 2-D dendrite; see @ref measure_tip. |
+ * | `el_energy`, `el_wstar`, `el_balance_rel` | Coupled GPU science CSV
+ * (`alloy_dendrite_hip_growth`). \(F=\int f_{\mathrm{el}}\,\mathrm{d}V\)
+ * and \(W_{*}=-\tfrac12\int\sigma:\varepsilon^{*}\,\mathrm{d}V\). Relative
+ * residual \(|F-W_{*}|/\max(|F|,|W_{*}|,10^{-30})\). Same identity as
+ * `openpfc_apps/microelasticity.hpp` (eq. (6) plus periodic equilibrium);
+ * not a fitted score. Zero-energy arms (`off`, modulus-only) report 0. |
  *
  * ## Why `k_eff` is defined through `U_i` and not through a nearby cell
  *

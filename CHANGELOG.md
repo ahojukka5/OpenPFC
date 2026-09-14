@@ -35,6 +35,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   cancellation (\(f_{\mathrm{el}}=1.40\times10^{-3}\) vs \(3.27\times10^{-3}\)
   thermal-only). CSV
   `docs/report/data/alloy_dendrite_hip_science_22043824.csv`.
+  Coupled science reports the discrete energy identity \(F=W_{*}\)
+  (`el_energy`, `el_wstar`, `el_balance_rel`). LUMI-G job **22045158**
+  repeats the frozen five-arm campaign: last-sample
+  `el_balance_rel` is 0 (`off`/`on`), \(4.4\times10^{-7}\) (solutal),
+  \(5.4\times10^{-6}\) (thermal), \(7.0\times10^{-7}\) (`both`).
+  Catch2 and `openpfc_microelasticity_hip_parity` check the same
+  integrals. CSV
+  `docs/report/data/alloy_dendrite_hip_science_22045158.csv`.
 - **FTA directional campaign instrumentation** on `alloy_dendrite_growth`
   (issue #155). Time series write `v_tip2`, `y_groove`,
   `v_rel = v_tip-V_p` and the isotherm `x_iso`; `--Mc=0` with
