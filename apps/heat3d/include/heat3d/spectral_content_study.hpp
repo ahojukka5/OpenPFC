@@ -241,9 +241,9 @@ inline constexpr int kMapGrid = pfc::field::spectra::kMapGrid;
       pfc::field::spectra::gaussian(), fd_order, f, N, tau, 3);
 }
 
-[[nodiscard]] inline double content_fraction_at(int fd_order, double eps,
-                                                double tau = kDiffusionTime,
-                                                double f_min = 1.0e-3) {
+[[nodiscard]] inline pfc::field::spectra::ContentFractionMatch
+content_fraction_at(int fd_order, double eps, double tau = kDiffusionTime,
+                    double f_min = 1.0e-3) {
   return pfc::field::spectra::content_fraction_at(
       pfc::field::spectra::gaussian(), fd_order, eps, tau, 3, f_min);
 }

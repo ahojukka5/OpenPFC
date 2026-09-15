@@ -221,10 +221,12 @@ TEST_CASE("heat3d spectral content: FD-12 ties the spectral path near 1e-6",
 
   // And the corollary: at a 1e-4 target FD-12 is still several times
   // cheaper, at 1e-8 it is several times dearer.
-  const double f_loose = sc::content_fraction_at(12, 1e-4);
-  const double f_tight = sc::content_fraction_at(12, 1e-8);
-  CHECK(sc::fd_cheaper_than_spectral(f_loose, 24.69, kSpectral));
-  CHECK_FALSE(sc::fd_cheaper_than_spectral(f_tight, 24.69, kSpectral));
+  const auto loose = sc::content_fraction_at(12, 1e-4);
+  const auto tight = sc::content_fraction_at(12, 1e-8);
+  REQUIRE(loose.attainable);
+  REQUIRE(tight.attainable);
+  CHECK(sc::fd_cheaper_than_spectral(loose.f, 24.69, kSpectral));
+  CHECK_FALSE(sc::fd_cheaper_than_spectral(tight.f, 24.69, kSpectral));
 }
 
 TEST_CASE("heat3d wrappers match the kernel Gaussian family",
