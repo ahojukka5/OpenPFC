@@ -24,11 +24,13 @@
     "nyquist": "even-grid Nyquist modes omitted"
   },
   "execution": {
-    "job": "22047173",
-    "partition": "debug",
+    "job": "22078280",
+    "partition": "standard",
     "build_type": "Release",
     "heffte": false,
-    "command": "heat3d_spectral_content_study --families-only --data-dir docs/report/data"
+    "command": "heat3d_spectral_content_study --families-only --data-dir docs/report/data",
+    "supersedes_job": "22047173",
+    "note": "Regenerated after issue #3 fail-closed unattainable targets. Pre-issue-3 snapshots remain as historical development evidence."
   },
   "artifacts": [
     "docs/report/data/heat3d_spectral_family_definitions.csv",
