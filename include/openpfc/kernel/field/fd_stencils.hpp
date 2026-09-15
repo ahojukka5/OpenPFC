@@ -48,6 +48,8 @@
  *
  * @see fd_apply.hpp for the per-point application primitives that consume
  *      these tables.
+ * @see fd_symbols.hpp for the Fourier symbols and cancellation-free D2
+ *      dispersion defect of the same tables.
  * @see finite_difference.hpp for the brick Laplacian routines that consume
  *      the D2 tables via the runtime view.
  * @see fd_gradient.hpp for the per-point evaluator that uses both tables.
