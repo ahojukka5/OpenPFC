@@ -1,0 +1,46 @@
+{
+  "question": "Is Nyquist occupancy f sufficient to rank FD vs spectral operators across periodic spectral families?",
+  "research_issue": "https://github.com/ahojukka5/research/issues/304",
+  "implementation_issue": "https://github.com/VTT-ProperTune/OpenPFC/issues/177",
+  "executable_owner": "ahojukka5/OpenPFC",
+  "protocol": {
+    "occupancy": "amplitude reaches 1e-3 of peak at k = f * k_Nyquist; top-hat uses the same f as the support cutoff",
+    "tau": 1.0,
+    "dim": 3,
+    "map_grid": 64,
+    "operators": [2, 4, 6, 8, 12, "spectral"],
+    "families": [
+      "gaussian",
+      "isotropic_tophat",
+      "isotropic_exponential",
+      "separable_exponential"
+    ],
+    "targets": [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-8],
+    "cost_tables": {
+      "lumi-g": "docs/report/data/heat3d_method_cost.csv",
+      "lumi-c": "docs/report/data/heat3d_method_cost_lumi_c.csv"
+    },
+    "cost_model": "N^3 at fixed step count; no new hardware timings",
+    "nyquist": "even-grid Nyquist modes omitted"
+  },
+  "execution": {
+    "job": "22047173",
+    "partition": "debug",
+    "build_type": "Release",
+    "heffte": false,
+    "command": "heat3d_spectral_content_study --families-only --data-dir docs/report/data"
+  },
+  "artifacts": [
+    "docs/report/data/heat3d_spectral_family_definitions.csv",
+    "docs/report/data/heat3d_spectral_family_map.csv",
+    "docs/report/data/heat3d_spectral_family_diagnostics.csv",
+    "docs/report/data/heat3d_spectral_family_selection.csv"
+  ],
+  "observed": {
+    "loose_1e-2_fd_still_cheaper_than_spectral": true,
+    "tight_1e-8_spectral_still_cheaper": true,
+    "cheapest_fd_order_stable_across_families_at_1e-2": false,
+    "f_sufficient_for_full_ranking": false,
+    "explanatory_diagnostic": "energy_near_cutoff and weighted_d2_defect at matched f; top-hat has far more cutoff-shell energy than Gaussian"
+  }
+}
