@@ -357,17 +357,23 @@ diagnose_spectrum(const SpectrumFamily &fam, double f, int N, int fd_order = 2,
   return d;
 }
 
-[[nodiscard]] inline double content_fraction_at(const SpectrumFamily &fam,
-                                                int fd_order, double eps,
-                                                double tau = kDiffusionTime,
-                                                int dim = 3,
-                                                double f_min = 1.0e-3) {
+/// Largest admitted content fraction that meets an error target, or an
+/// explicit miss when no admitted fraction attains `eps`.
+struct ContentFractionMatch {
+  bool attainable{false};
+  double f{0.0};
+};
+
+[[nodiscard]] inline ContentFractionMatch
+content_fraction_at(const SpectrumFamily &fam, int fd_order, double eps,
+                    double tau = kDiffusionTime, int dim = 3,
+                    double f_min = 1.0e-3) {
   const auto err = [&](double f) {
     return predict_heat_l2_error(fam, fd_order, f, auto_map_grid(f), tau, dim);
   };
   double lo = f_min, hi = 1.0;
-  if (err(hi) <= eps) return hi;
-  if (err(lo) > eps) return lo;
+  if (err(hi) <= eps) return ContentFractionMatch{true, hi};
+  if (err(lo) > eps) return ContentFractionMatch{false, lo};
   for (int it = 0; it < 40; ++it) {
     const double mid = 0.5 * (lo + hi);
     if (err(mid) <= eps) {
@@ -376,7 +382,8 @@ diagnose_spectrum(const SpectrumFamily &fam, double f, int N, int fd_order = 2,
       hi = mid;
     }
   }
-  return lo;
+  if (err(lo) <= eps) return ContentFractionMatch{true, lo};
+  return ContentFractionMatch{false, f_min};
 }
 
 [[nodiscard]] inline double crossover_fraction(double cost_fd,
@@ -403,13 +410,14 @@ struct EqualAccuracyPick {
   int fd_order{0};
   double relative_cost{1.0};
   double f_star{1.0};
+  bool attainable{true};
 };
 
 /**
  * @brief Cheapest method among spectral and the supplied FD orders.
  *
  * `cost_by_order[i]` pairs FD order with per-step cost; spectral cost is
- * separate. Missing FD timings are skipped.
+ * separate. Missing FD timings and unattainable accuracy targets are skipped.
  */
 [[nodiscard]] inline EqualAccuracyPick
 pick_equal_accuracy(const SpectrumFamily &fam, double eps,
@@ -422,14 +430,18 @@ pick_equal_accuracy(const SpectrumFamily &fam, double eps,
   best.fd_order = 0;
   best.relative_cost = 1.0;
   best.f_star = 1.0;
+  best.attainable = true;
   for (const auto &[order, cost] : cost_by_order) {
     if (!(cost > 0.0)) continue;
-    const double fs = content_fraction_at(fam, order, eps, tau, dim);
-    const double rel = equal_accuracy_cost_ratio(fs, cost, cost_spectral);
+    const auto match = content_fraction_at(fam, order, eps, tau, dim);
+    if (!match.attainable) continue;
+    const double rel =
+        equal_accuracy_cost_ratio(match.f, cost, cost_spectral);
     if (rel < best.relative_cost) {
       best.fd_order = order;
       best.relative_cost = rel;
-      best.f_star = fs;
+      best.f_star = match.f;
+      best.attainable = true;
     }
   }
   return best;

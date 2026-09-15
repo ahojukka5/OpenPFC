@@ -182,3 +182,34 @@ TEST_CASE("crossover arithmetic is independent of the family",
   REQUIRE_THAT(sp::crossover_fraction(6.73, 213.82), WithinRel(0.31573465, 1e-6));
   REQUIRE_THROWS(sp::crossover_fraction(-1.0, 1.0));
 }
+
+TEST_CASE("equal-accuracy search reports unattainable targets instead of f_min",
+          "[field][periodic-spectra][unit]") {
+  const auto &fam = sp::gaussian();
+  const auto interior = sp::content_fraction_at(fam, 12, 1e-4);
+  REQUIRE(interior.attainable);
+  REQUIRE(interior.f > 1.0e-3);
+  REQUIRE(interior.f < 1.0);
+  REQUIRE(sp::predict_heat_l2_error(fam, 12, interior.f,
+                                    sp::auto_map_grid(interior.f),
+                                    sp::kDiffusionTime, 3) <= 1e-4);
+
+  const auto at_nyquist = sp::content_fraction_at(fam, 12, 1e-2);
+  REQUIRE(at_nyquist.attainable);
+  REQUIRE(at_nyquist.f == Catch::Approx(1.0));
+
+  const double f_min = 1.0e-3;
+  const double best_fd2 = sp::predict_heat_l2_error(
+      fam, 2, f_min, sp::auto_map_grid(f_min), sp::kDiffusionTime, 3);
+  const double best_fd12 = sp::predict_heat_l2_error(
+      fam, 12, f_min, sp::auto_map_grid(f_min), sp::kDiffusionTime, 3);
+  const double too_tight = 0.1 * std::min(best_fd2, best_fd12);
+  const auto miss = sp::content_fraction_at(fam, 2, too_tight);
+  REQUIRE_FALSE(miss.attainable);
+
+  const auto pick = sp::pick_equal_accuracy(
+      fam, too_tight, {{2, 6.73}, {12, 24.69}}, 213.82);
+  REQUIRE(pick.fd_order == 0);
+  REQUIRE(pick.f_star == Catch::Approx(1.0));
+  REQUIRE(pick.attainable);
+}

@@ -196,11 +196,13 @@ void write_family_study(const std::string &data_dir,
        << "family_id,content_fraction,N,dim,fd_order,energy_high_k,"
           "energy_near_cutoff,moment2_over_nyquist2,moment4_over_nyquist4,"
           "weighted_d2_defect\n";
-  sel << "# Equal-accuracy ranking using admitted Heat3D per-step costs "
-         "(N^3, fixed step count). row_kind=order is one stencil; "
-         "row_kind=cheapest is the winner (fd_order 0 = spectral).\n"
-      << "row_kind,family_id,hardware,target_l2,fd_order,content_fraction,"
-         "relative_cost,beats_spectral\n";
+      sel << "# Equal-accuracy ranking using admitted Heat3D per-step costs "
+             "(N^3, fixed step count). row_kind=order is one stencil; "
+             "row_kind=cheapest is the winner (fd_order 0 = spectral). "
+             "attainable=no means the FD target is not met on the admitted "
+             "interval; those rows are not ranked.\n"
+          << "row_kind,family_id,hardware,target_l2,fd_order,content_fraction,"
+             "relative_cost,beats_spectral,attainable\n";
   map << std::scientific << std::setprecision(10);
   diag << std::scientific << std::setprecision(10);
   sel << std::scientific << std::setprecision(10);
@@ -236,27 +238,29 @@ void write_family_study(const std::string &data_dir,
         pairs.emplace_back(order, it->second);
       }
       for (double eps : kFamilyTargets) {
-        int best_order = 0;
-        double best_rel = 1.0;
-        double best_fs = 1.0;
+        const auto best =
+            sp::pick_equal_accuracy(fam, eps, pairs, cost_spec, sp::kDiffusionTime,
+                                    kDim);
         for (const auto &[order, c] : pairs) {
-          const double fs =
-              sp::content_fraction_at(fam, order, eps, sp::kDiffusionTime, kDim);
-          const double rel =
-              sp::equal_accuracy_cost_ratio(fs, c, cost_spec);
+          const auto match = sp::content_fraction_at(fam, order, eps,
+                                                     sp::kDiffusionTime, kDim);
           sel << "order," << fam.id << "," << hw << "," << eps << "," << order
-              << "," << fs << "," << rel << ","
-              << (sp::fd_cheaper_than_spectral(fs, c, cost_spec) ? "yes" : "no")
-              << "\n";
-          if (rel < best_rel) {
-            best_rel = rel;
-            best_order = order;
-            best_fs = fs;
+              << ",";
+          if (match.attainable) {
+            const double rel =
+                sp::equal_accuracy_cost_ratio(match.f, c, cost_spec);
+            sel << match.f << "," << rel << ","
+                << (sp::fd_cheaper_than_spectral(match.f, c, cost_spec) ? "yes"
+                                                                        : "no")
+                << ",yes\n";
+          } else {
+            sel << ",,no,no\n";
           }
         }
         sel << "cheapest," << fam.id << "," << hw << "," << eps << ","
-            << best_order << "," << best_fs << "," << best_rel << ","
-            << (best_order != 0 ? "yes" : "no") << "\n";
+            << best.fd_order << "," << best.f_star << "," << best.relative_cost
+            << "," << (best.fd_order != 0 ? "yes" : "no") << ","
+            << (best.attainable ? "yes" : "no") << "\n";
       }
     };
     emit_hw("lumi-g", cost_gpu, cost_gpu_spectral);
@@ -482,6 +486,7 @@ int main(int argc, char **argv) {
     double f_star;
     double relative_cost;
     bool beats_spectral;
+    bool attainable;
   };
   std::vector<CrossoverRow> crossover_rows;
   for (double eps : kTargets) {
@@ -490,14 +495,21 @@ int main(int argc, char **argv) {
     double best_cost = 1.0;
     for (int order : kOrders) {
       if (!cost_fd.count(order)) continue;
-      const double fs = sc::content_fraction_at(order, eps);
-      const double rel =
-          sc::equal_accuracy_cost_ratio(fs, cost_fd[order], cost_spectral);
-      crossover_rows.push_back(
-          {eps, order, fs, rel,
-           sc::fd_cheaper_than_spectral(fs, cost_fd[order], cost_spectral)});
+      const auto match = sc::content_fraction_at(order, eps);
       std::ostringstream cell;
-      cell << std::fixed << std::setprecision(3) << "f*=" << fs << " x"
+      if (!match.attainable) {
+        crossover_rows.push_back({eps, order, 0.0, 0.0, false, false});
+        cell << "unattainable";
+        std::cout << std::setw(22) << cell.str();
+        continue;
+      }
+      const double rel = sc::equal_accuracy_cost_ratio(match.f, cost_fd[order],
+                                                       cost_spectral);
+      crossover_rows.push_back(
+          {eps, order, match.f, rel,
+           sc::fd_cheaper_than_spectral(match.f, cost_fd[order], cost_spectral),
+           true});
+      cell << std::fixed << std::setprecision(3) << "f*=" << match.f << " x"
            << std::scientific << std::setprecision(2) << rel;
       std::cout << std::setw(22) << cell.str();
       if (rel < best_cost) {
@@ -529,17 +541,22 @@ int main(int argc, char **argv) {
            "dt also falls as dx^2.\n"
         << "# The spectral operator is exact, so its content_fraction is 1 "
            "(representation only)\n"
-        << "# and its relative_cost is 1 at every target.\n"
+        << "# and its relative_cost is 1 at every target. attainable=no "
+           "marks FD rows whose target is not met on the admitted interval.\n"
         << "target_l2,method,fd_order,content_fraction,wall_step_ms,relative_cost,"
-           "beats_spectral\n";
+           "beats_spectral,attainable\n";
     csv << std::scientific << std::setprecision(10);
     for (double eps : kTargets) {
-      csv << eps << ",spectral,0,1.0," << cost_spectral << ",1.0,\n";
+      csv << eps << ",spectral,0,1.0," << cost_spectral << ",1.0,,yes\n";
     }
     for (const CrossoverRow &r : crossover_rows) {
-      csv << r.target << ",fd," << r.fd_order << "," << r.f_star << ","
-          << cost_fd[r.fd_order] << "," << r.relative_cost << ","
-          << (r.beats_spectral ? "yes" : "no") << "\n";
+      csv << r.target << ",fd," << r.fd_order << ",";
+      if (r.attainable) {
+        csv << r.f_star << "," << cost_fd[r.fd_order] << "," << r.relative_cost
+            << "," << (r.beats_spectral ? "yes" : "no") << ",yes\n";
+      } else {
+        csv << "," << cost_fd[r.fd_order] << ",,no,no\n";
+      }
     }
   }
 
