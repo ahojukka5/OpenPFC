@@ -43,11 +43,16 @@
  *  - `heat3d_spectral_content_validation.csv` — real RK4 runs of the
  *    shipped FD stack at points on the map, measured against the exact
  *    solution, next to what the map predicted.
+ *  - `heat3d_spectral_family_{definitions,map,diagnostics,selection}.csv`
+ *    — occupancy-matched Gaussian / top-hat / exponential families, using
+ *    the same admitted CPU/GPU cost tables (`--families-only` skips the
+ *    Gaussian RK4 block).
  *
  * ## Usage
  *
  *     heat3d_spectral_content_study [--data-dir DIR] [--no-validate]
  *     heat3d_spectral_content_study [--data-dir DIR] [--held-out-only]
+ *     heat3d_spectral_content_study [--data-dir DIR] [--families-only]
  *
  * `DIR` defaults to `docs/report/data` resolved against the current
  * working directory — run this from the repository root, or pass an
@@ -63,14 +68,17 @@
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <mpi.h>
 
 #include <heat3d/spectral_content_study.hpp>
+#include <openpfc/kernel/field/periodic_spectra.hpp>
 
 namespace sc = heat3d::spectral_content;
+namespace sp = pfc::field::spectra;
 
 namespace {
 
@@ -121,6 +129,10 @@ const std::vector<int> kOrders = {2, 4, 6, 8, 12};
 
 const std::vector<double> kTargets = {1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-10};
 
+/// Family comparison uses the manuscript loose/tight pair plus the interior
+/// ladder, omitting 1e-7 and 1e-10 which do not change the declared rankings.
+const std::vector<double> kFamilyTargets = {1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-8};
+
 /// Validation points. Two per order, one either side of the crossover
 /// fraction for that order, so the check spans the regime where the map
 /// says FD wins and the regime where it says spectral does. `n_steps` is
@@ -150,6 +162,115 @@ const std::vector<ValidationPoint> kHeldOutPoints = {
     {12, 128, 0.60, 800},
 };
 
+void write_family_study(const std::string &data_dir,
+                        const std::map<int, double> &cost_gpu,
+                        double cost_gpu_spectral,
+                        const std::map<int, double> &cost_cpu,
+                        double cost_cpu_spectral) {
+  std::ofstream def(data_dir + "/heat3d_spectral_family_definitions.csv");
+  if (!def) throw std::runtime_error("cannot write family definitions CSV");
+  def << "# Occupancy-matched periodic families. f is the fraction of Nyquist "
+         "at which the amplitude prescription reaches "
+      << sp::kContentThreshold
+      << " of peak (top-hat: support cutoff).\n"
+      << "family_id,name,geometry,amplitude_at_nu_eq_1,occupancy_threshold\n";
+  for (const sp::SpectrumFamily &fam : sp::builtin_families()) {
+    def << fam.id << ",\"" << fam.name << "\","
+        << (fam.geometry == sp::WeightGeometry::IsotropicRadial ? "isotropic"
+                                                                : "separable")
+        << "," << std::scientific << std::setprecision(10) << fam.amplitude(1.0)
+        << "," << sp::kContentThreshold << "\n";
+  }
+  def.flush();
+
+  std::ofstream map(data_dir + "/heat3d_spectral_family_map.csv");
+  std::ofstream diag(data_dir + "/heat3d_spectral_family_diagnostics.csv");
+  std::ofstream sel(data_dir + "/heat3d_spectral_family_selection.csv");
+  if (!map || !diag || !sel)
+    throw std::runtime_error("cannot write family study CSVs");
+  map << "# Parseval spatial L2 error vs occupancy f for each family. "
+         "fd_order 0 is the spectral operator (identically zero).\n"
+      << "family_id,fd_order,content_fraction,N,dim,tau,l2_error\n";
+  diag << "# Explanatory diagnostics at matched f; not a fitted replacement "
+          "for occupancy.\n"
+       << "family_id,content_fraction,N,dim,fd_order,energy_high_k,"
+          "energy_near_cutoff,moment2_over_nyquist2,moment4_over_nyquist4,"
+          "weighted_d2_defect\n";
+  sel << "# Equal-accuracy ranking using admitted Heat3D per-step costs "
+         "(N^3, fixed step count). row_kind=order is one stencil; "
+         "row_kind=cheapest is the winner (fd_order 0 = spectral).\n"
+      << "row_kind,family_id,hardware,target_l2,fd_order,content_fraction,"
+         "relative_cost,beats_spectral\n";
+  map << std::scientific << std::setprecision(10);
+  diag << std::scientific << std::setprecision(10);
+  sel << std::scientific << std::setprecision(10);
+
+  constexpr int kFamilyGrid = 64;
+  constexpr int kDim = 3;
+  std::cout << "\nSpectral-family Parseval maps (N=" << kFamilyGrid
+            << ", dim=" << kDim << ")\n";
+  for (const sp::SpectrumFamily &fam : sp::builtin_families()) {
+    std::cout << "  family " << fam.id << "\n";
+    for (double f : kFractions) {
+      const auto d = sp::diagnose_spectrum(fam, f, kFamilyGrid, 2, kDim);
+      diag << fam.id << "," << f << "," << kFamilyGrid << "," << kDim << ",2,"
+           << d.energy_high_k << "," << d.energy_near_cutoff << ","
+           << d.moment2_over_nyquist2 << "," << d.moment4_over_nyquist4 << ","
+           << d.weighted_d2_defect << "\n";
+      map << fam.id << ",0," << f << "," << kFamilyGrid << "," << kDim << ","
+          << sp::kDiffusionTime << ",0\n";
+      for (int order : kOrders) {
+        const double e = sp::predict_heat_l2_error(fam, order, f, kFamilyGrid,
+                                                   sp::kDiffusionTime, kDim);
+        map << fam.id << "," << order << "," << f << "," << kFamilyGrid << ","
+            << kDim << "," << sp::kDiffusionTime << "," << e << "\n";
+      }
+    }
+    auto emit_hw = [&](const char *hw, const std::map<int, double> &cost,
+                       double cost_spec) {
+      if (!(cost_spec > 0.0)) return;
+      std::vector<std::pair<int, double>> pairs;
+      for (int order : kOrders) {
+        auto it = cost.find(order);
+        if (it == cost.end()) continue;
+        pairs.emplace_back(order, it->second);
+      }
+      for (double eps : kFamilyTargets) {
+        int best_order = 0;
+        double best_rel = 1.0;
+        double best_fs = 1.0;
+        for (const auto &[order, c] : pairs) {
+          const double fs =
+              sp::content_fraction_at(fam, order, eps, sp::kDiffusionTime, kDim);
+          const double rel =
+              sp::equal_accuracy_cost_ratio(fs, c, cost_spec);
+          sel << "order," << fam.id << "," << hw << "," << eps << "," << order
+              << "," << fs << "," << rel << ","
+              << (sp::fd_cheaper_than_spectral(fs, c, cost_spec) ? "yes" : "no")
+              << "\n";
+          if (rel < best_rel) {
+            best_rel = rel;
+            best_order = order;
+            best_fs = fs;
+          }
+        }
+        sel << "cheapest," << fam.id << "," << hw << "," << eps << ","
+            << best_order << "," << best_fs << "," << best_rel << ","
+            << (best_order != 0 ? "yes" : "no") << "\n";
+      }
+    };
+    emit_hw("lumi-g", cost_gpu, cost_gpu_spectral);
+    emit_hw("lumi-c", cost_cpu, cost_cpu_spectral);
+    map.flush();
+    diag.flush();
+    sel.flush();
+  }
+  std::cout << "wrote " << data_dir << "/heat3d_spectral_family_definitions.csv\n"
+            << "wrote " << data_dir << "/heat3d_spectral_family_map.csv\n"
+            << "wrote " << data_dir << "/heat3d_spectral_family_diagnostics.csv\n"
+            << "wrote " << data_dir << "/heat3d_spectral_family_selection.csv\n";
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -169,6 +290,9 @@ int main(int argc, char **argv) {
   std::string data_dir = "docs/report/data";
   bool validate = true;
   bool held_out_only = false;
+  bool run_families = true;
+  bool families_only = false;
+  bool validate_families = false;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--data-dir" && i + 1 < argc) {
@@ -177,9 +301,17 @@ int main(int argc, char **argv) {
       validate = false;
     } else if (arg == "--held-out-only") {
       held_out_only = true;
+    } else if (arg == "--no-families") {
+      run_families = false;
+    } else if (arg == "--families-only") {
+      families_only = true;
+      validate = false;
+    } else if (arg == "--validate-families") {
+      validate_families = true;
     } else {
       std::cerr << "Usage: " << argv[0]
-                << " [--data-dir DIR] [--no-validate|--held-out-only]\n";
+                << " [--data-dir DIR] [--no-validate|--held-out-only]"
+                   " [--no-families|--families-only] [--validate-families]\n";
       MPI_Finalize();
       return 1;
     }
@@ -240,6 +372,33 @@ int main(int argc, char **argv) {
     std::cerr << "heat3d_spectral_content_study: no spectral row in the cost CSV\n";
     MPI_Finalize();
     return 1;
+  }
+
+  double cost_cpu_spectral = 0.0;
+  std::map<int, double> cost_cpu;
+  try {
+    const auto cpu_rows =
+        read_method_cost(data_dir + "/heat3d_method_cost_lumi_c.csv");
+    for (const MethodCost &c : cpu_rows) {
+      if (c.fd_order == 0) cost_cpu_spectral = c.wall_step_ms;
+      else cost_cpu[c.fd_order] = c.wall_step_ms;
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "heat3d_spectral_content_study: CPU cost table skipped ("
+              << e.what() << ")\n";
+  }
+
+  if (families_only) {
+    try {
+      write_family_study(data_dir, cost_fd, cost_spectral, cost_cpu,
+                         cost_cpu_spectral);
+    } catch (const std::exception &e) {
+      std::cerr << e.what() << "\n";
+      MPI_Finalize();
+      return 1;
+    }
+    MPI_Finalize();
+    return 0;
   }
 
   std::cout << std::scientific << std::setprecision(4);
@@ -384,6 +543,17 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (run_families) {
+    try {
+      write_family_study(data_dir, cost_fd, cost_spectral, cost_cpu,
+                         cost_cpu_spectral);
+    } catch (const std::exception &e) {
+      std::cerr << e.what() << "\n";
+      MPI_Finalize();
+      return 1;
+    }
+  }
+
   // ---- 3. validation against real runs ----------------------------------
   if (validate) {
     std::cout << "\nValidation: real RK4 runs of the shipped FD stack "
@@ -439,6 +609,37 @@ int main(int argc, char **argv) {
           << c.n_steps << "," << c.dt << "," << c.t_final << "," << c.predicted_l2
           << "," << c.measured_l2 << "," << c.ratio << "\n";
     }
+  }
+
+  if (validate_families) {
+    std::cout << "\nFamily RK4 checks: N=16, FD-2, f=0.5, 80 steps (and 160)\n";
+    std::ofstream csv(data_dir + "/heat3d_spectral_family_validation.csv");
+    if (!csv) {
+      std::cerr << "cannot write family validation CSV\n";
+      MPI_Finalize();
+      return 1;
+    }
+    csv << "# Held-in RK4 of shipped FD-2 against Parseval for every builtin "
+           "family. Modest N because non-Gaussian ICs are cosine sums.\n"
+        << "family_id,fd_order,N,content_fraction,tau,n_steps,predicted_l2,"
+           "measured_l2,ratio\n";
+    csv << std::scientific << std::setprecision(10);
+    for (const sp::SpectrumFamily &fam : sp::builtin_families()) {
+      const sc::ValidationCase c =
+          sc::run_validation(2, 16, 0.50, sc::kDiffusionTime, 80, fam);
+      const sc::ValidationCase c2 =
+          sc::run_validation(2, 16, 0.50, sc::kDiffusionTime, 160, fam);
+      std::cout << fam.id << " ratio=" << c.ratio
+                << " half-dt ratio=" << c2.ratio << "\n";
+      csv << c.family_id << "," << c.fd_order << "," << c.N << "," << c.f << ","
+          << c.tau << "," << c.n_steps << "," << c.predicted_l2 << ","
+          << c.measured_l2 << "," << c.ratio << "\n";
+      csv << c2.family_id << "," << c2.fd_order << "," << c2.N << "," << c2.f
+          << "," << c2.tau << "," << c2.n_steps << "," << c2.predicted_l2 << ","
+          << c2.measured_l2 << "," << c2.ratio << "\n";
+    }
+    std::cout << "wrote " << data_dir
+              << "/heat3d_spectral_family_validation.csv\n";
   }
 
   std::cout << "\nwrote " << data_dir << "/heat3d_spectral_content_map.csv\n"
