@@ -16,6 +16,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Periodic spectrum families** for spatial-operator analysis
+  (`pfc::field::spectra`, issue
+  [#177](https://github.com/VTT-ProperTune/OpenPFC/issues/177),
+  `ahojukka5/research#304`). Occupancy-matched Gaussian, isotropic
+  top-hat, and exponential (isotropic L2 / separable L1) families share
+  one Parseval heat-error interface with the shipped D2 symbols in
+  `fd_symbols.hpp`. `heat3d_spectral_content_study --families-only`
+  writes family error, diagnostic and equal-accuracy CSVs from the
+  admitted Heat3D CPU/GPU cost tables; it does not retake timings.
 - **FTA directional campaign instrumentation** on `alloy_dendrite_growth`
   (issue #155). Time series write `v_tip2`, `y_groove`,
   `v_rel = v_tip-V_p` and the isotherm `x_iso`; `--Mc=0` with

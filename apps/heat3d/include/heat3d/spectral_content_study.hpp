@@ -157,8 +157,9 @@
  * bound on how often the spectral path wins.
  *
  * @see convergence_study.hpp — the single-mode study this one generalises.
- * @see openpfc/kernel/field/fd_stencils.hpp — the stencil tables whose
- *      symbol is reproduced here.
+ * @see openpfc/kernel/field/fd_symbols.hpp — stencil symbols and defect.
+ * @see openpfc/kernel/field/periodic_spectra.hpp — occupancy-matched
+ *      families and Parseval error used by this study.
  * @see apps/tungsten/include/tungsten/resolution.hpp — the *nonlinear*
  *      half of the same question (aliasing of a cubic term), measured
  *      separately; nothing here says anything about it.
@@ -169,6 +170,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <mpi.h>
@@ -181,7 +183,9 @@
 #include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/field/fd_gradient.hpp>
 #include <openpfc/kernel/field/fd_stencils.hpp>
+#include <openpfc/kernel/field/fd_symbols.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
+#include <openpfc/kernel/field/periodic_spectra.hpp>
 
 #include <heat3d/heat_model.hpp>
 
@@ -191,16 +195,16 @@ namespace heat3d::spectral_content {
 inline constexpr double kDomainLength = 2.0 * M_PI;
 
 /// Amplitude ratio defining the "content edge" \f$k_c\f$ (see file header).
-inline constexpr double kContentThreshold = 1.0e-3;
+inline constexpr double kContentThreshold = pfc::field::spectra::kContentThreshold;
 
 /// Dimensionless diffusion time \f$\tau = D\,t\,k_c^2\f$ used everywhere.
-inline constexpr double kDiffusionTime = 1.0;
+inline constexpr double kDiffusionTime = pfc::field::spectra::kDiffusionTime;
 
 /// Grid used for the reported semi-analytic sweep. The map is
 /// \f$N\f$-independent above ~48 (pinned by the unit test); 128 is chosen
 /// so even the smallest \f$f\f$ in the sweep still has a well-sampled
 /// spectrum.
-inline constexpr int kMapGrid = 128;
+inline constexpr int kMapGrid = pfc::field::spectra::kMapGrid;
 
 /// \f$\sigma^2 k_c^2 = 2\ln(1/\text{threshold})\f$: the one constant tying
 /// the Gaussian width to the content fraction.
@@ -208,244 +212,57 @@ inline constexpr int kMapGrid = 128;
   return 2.0 * std::log(1.0 / kContentThreshold);
 }
 
-/**
- * @brief Coefficient \f$a_m = 2/(m^2\binom{2m}{m})\f$ of
- *        \f$(2\arcsin(\delta/2))^2 = \sum_m a_m \delta^{2m}\f$.
- *
- * Evaluated by the recurrence \f$a_{m+1} = a_m\,m^2/\bigl((m+1)\,2(2m+1)\bigr)\f$
- * from \f$a_1 = 1\f$, because \f$\binom{2m}{m}\f$ overflows a `double`
- * long before the series stops mattering.
- */
 [[nodiscard]] inline double arcsin_series_coefficient(int m) {
-  if (m < 1) throw std::invalid_argument("arcsin_series_coefficient: m >= 1");
-  double a = 1.0;
-  for (int i = 1; i < m; ++i) {
-    a *= static_cast<double>(i) * static_cast<double>(i) /
-         (static_cast<double>(i + 1) * 2.0 * static_cast<double>(2 * i + 1));
-  }
-  return a;
+  return pfc::field::fd::arcsin_series_coefficient(m);
 }
 
-/**
- * @brief Symbol of the tabulated central second-derivative stencil:
- *        \f$\lambda_p(\kappa)\,h^2\f$ at \f$\theta = \kappa h\f$.
- *
- * Reads the *shipped* table via `lookup_even_central_d2`, so this is the
- * symbol of the stencil `pfc::gradient::FDGradient<HeatGrads>` actually
- * applies, not a re-derivation of it.
- *
- * @param order Even FD order with a tabulated D2 stencil (2..20).
- * @param theta \f$\kappa h\f$, normally in \f$[0,\pi]\f$.
- * @throws std::invalid_argument if `order` is not tabulated.
- */
 [[nodiscard]] inline double fd_symbol(int order, double theta) {
-  pfc::field::fd::EvenCentralD2View view{};
-  if (!pfc::field::fd::lookup_even_central_d2(order, &view)) {
-    throw std::invalid_argument("fd_symbol: no tabulated D2 stencil for order " +
-                                std::to_string(order));
-  }
-  double sum = static_cast<double>(view.coeffs[0]);
-  for (int j = 1; j <= view.half_width; ++j) {
-    sum += 2.0 * static_cast<double>(view.coeffs[j]) *
-           std::cos(static_cast<double>(j) * theta);
-  }
-  return sum / static_cast<double>(view.denom);
+  return pfc::field::fd::d2_symbol(order, theta);
 }
 
-/**
- * @brief The stencil's dispersion defect \f$\theta^2 + \lambda_p h^2 \ge 0\f$.
- *
- * This is the whole spatial error of the FD Laplacian for one mode: the
- * stencil always *under*-estimates \f$|\lambda|\f$, so an FD-evolved mode
- * decays too slowly by exactly this amount. Computed from the positive-term
- * arcsin tail (see the file header) wherever that converges, which is what
- * makes the map trustworthy down to \f$10^{-19}\f$ instead of dying in
- * cancellation at \f$10^{-16}\f$.
- *
- * @param order Even FD order 2..20.
- * @param theta \f$\kappa h \in [0,\pi]\f$.
- */
 [[nodiscard]] inline double fd_symbol_defect(int order, double theta) {
-  const double delta_sq = 2.0 - 2.0 * std::cos(theta);
-  // Beyond this the tail converges too slowly to be worth it -- and there
-  // the defect is a large enough fraction of theta^2 that the direct
-  // difference below still keeps ~10 significant digits.
-  constexpr double kSeriesLimit = 2.5;
-  if (delta_sq <= kSeriesLimit) {
-    const int half_width = order / 2;
-    double a = arcsin_series_coefficient(half_width);
-    double power = std::pow(delta_sq, static_cast<double>(half_width));
-    double total = 0.0;
-    for (int m = half_width; m < half_width + 600; ++m) {
-      // Advance to term m+1.
-      a *= static_cast<double>(m) * static_cast<double>(m) /
-           (static_cast<double>(m + 1) * 2.0 * static_cast<double>(2 * m + 1));
-      power *= delta_sq;
-      const double term = a * power;
-      total += term;
-      if (term <= 1.0e-18 * total) return total;
-    }
-    return total;
-  }
-  return theta * theta + fd_symbol(order, theta);
+  return pfc::field::fd::d2_symbol_defect(order, theta);
 }
 
-/**
- * @brief Gaussian width \f$\sigma\f$ (in the \f$L=2\pi\f$ box) whose content
- *        edge sits at fraction `f` of Nyquist on an `N` grid.
- */
 [[nodiscard]] inline double content_sigma(double f, int N) {
   const double k_nyquist = M_PI / (kDomainLength / static_cast<double>(N));
   return std::sqrt(content_shape_constant()) / (f * k_nyquist);
 }
 
-/// Integer mode numbers kept per axis: everything strictly below Nyquist.
 [[nodiscard]] inline int max_mode(int N) noexcept { return N / 2 - 1; }
 
-/**
- * @brief A grid on which the map's mode sum is well sampled for this `f`.
- *
- * The map is \f$N\f$-independent (pinned by the unit test) provided the
- * content edge \f$k_c = fN/2\f$ falls on enough integer modes to resolve
- * the Gaussian spectrum; below \f$k_c\approx5\f$ it does not. This picks
- * \f$N\f$ so that \f$k_c \approx 12\f$ whatever `f` is, which keeps a
- * bisection over `f` both correct at small `f` and cheap at large `f`.
- */
 [[nodiscard]] inline int auto_map_grid(double f) {
-  const int N = 2 * static_cast<int>(std::ceil(12.0 / f));
-  return std::max(N, 16);
+  return pfc::field::spectra::auto_map_grid(f);
 }
 
-/**
- * @brief Semi-analytic \f$L^2\f$ error of the FD path, relative to the
- *        initial RMS, for a field whose content reaches fraction `f` of
- *        Nyquist.
- *
- * Exact for the linear heat equation (see the file header): each mode is
- * evolved by its own operator eigenvalue and the errors are combined by
- * Parseval. The spectral path's value is identically zero and is not
- * computed here.
- *
- * @param fd_order Even FD order 2..20.
- * @param f        Content fraction of Nyquist, \f$0 < f \le 1\f$.
- * @param N        Grid points per axis for the mode cube.
- * @param tau      \f$D\,t\,k_c^2\f$.
- */
 [[nodiscard]] inline double predict_l2_error(int fd_order, double f, int N = kMapGrid,
                                              double tau = kDiffusionTime) {
-  if (!(f > 0.0) || f > 1.0)
-    throw std::invalid_argument("predict_l2_error: need 0 < f <= 1");
-  if (N < 8 || (N % 2) != 0)
-    throw std::invalid_argument("predict_l2_error: need an even N >= 8");
-
-  const double k_c = f * static_cast<double>(N) / 2.0; // k_Nyquist = N/2 at L=2pi
-  const double shape = content_shape_constant();
-  // Two truncations, both harmless: Nyquist (the grid cannot carry more)
-  // and the point where the Gaussian weight has fallen to ~1e-35, which
-  // bounds the neglected tail's contribution to the reported error at
-  // ~1e-17 -- below anything this study quotes.
-  const int m_max = std::min(max_mode(N),
-                             static_cast<int>(std::ceil(2.4 * k_c)) + 1);
-  // Per-axis tables over n = -m_max .. m_max (symmetric, so store n >= 0).
-  std::vector<double> weight(static_cast<std::size_t>(m_max) + 1);
-  std::vector<double> nu_sq(static_cast<std::size_t>(m_max) + 1);
-  std::vector<double> defect(static_cast<std::size_t>(m_max) + 1);
-  for (int n = 0; n <= m_max; ++n) {
-    const double nu = static_cast<double>(n) / k_c;
-    const double theta = M_PI * f * nu; // = 2*pi*n/N, i.e. k*dx
-    weight[static_cast<std::size_t>(n)] = std::exp(-shape * nu * nu);
-    nu_sq[static_cast<std::size_t>(n)] = nu * nu;
-    // Per-axis contribution to Delta = t * (lambda_p - (-k^2)), made
-    // dimensionless: t/dx^2 = tau/(pi^2 f^2).
-    defect[static_cast<std::size_t>(n)] =
-        fd_symbol_defect(fd_order, theta) * tau / (M_PI * M_PI * f * f);
-  }
-
-  double norm = 0.0;
-  double sum_sq = 0.0;
-  for (int i = -m_max; i <= m_max; ++i) {
-    const std::size_t ai = static_cast<std::size_t>(std::abs(i));
-    for (int j = -m_max; j <= m_max; ++j) {
-      const std::size_t aj = static_cast<std::size_t>(std::abs(j));
-      const double w_ij = weight[ai] * weight[aj];
-      for (int k = -m_max; k <= m_max; ++k) {
-        const std::size_t ak = static_cast<std::size_t>(std::abs(k));
-        const double w = w_ij * weight[ak];
-        norm += w;
-        const double decay = std::exp(-tau * (nu_sq[ai] + nu_sq[aj] + nu_sq[ak]));
-        // exp(Delta) - 1 via expm1: Delta is tiny for a high order and a
-        // fine grid, and this is the only place precision could be lost.
-        const double diff =
-            decay * std::expm1(defect[ai] + defect[aj] + defect[ak]);
-        sum_sq += w * diff * diff;
-      }
-    }
-  }
-  return std::sqrt(sum_sq / norm);
+  return pfc::field::spectra::predict_heat_l2_error(
+      pfc::field::spectra::gaussian(), fd_order, f, N, tau, 3);
 }
 
-/**
- * @brief Largest content fraction `f` at which FD order `fd_order` still
- *        meets an \f$L^2\f$ target `eps` — the coarsest grid it may use.
- *
- * Monotone in `f` (a coarser grid is never more accurate), so a bisection
- * is safe. Returns 1.0 when the target is met even with content at Nyquist,
- * and `f_min` when it is unreachable across the bracket.
- */
 [[nodiscard]] inline double content_fraction_at(int fd_order, double eps,
                                                 double tau = kDiffusionTime,
                                                 double f_min = 1.0e-3) {
-  const auto err = [&](double f) {
-    return predict_l2_error(fd_order, f, auto_map_grid(f), tau);
-  };
-  double lo = f_min, hi = 1.0;
-  if (err(hi) <= eps) return hi;
-  if (err(lo) > eps) return lo;
-  for (int it = 0; it < 40; ++it) {
-    const double mid = 0.5 * (lo + hi);
-    if (err(mid) <= eps) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
+  return pfc::field::spectra::content_fraction_at(
+      pfc::field::spectra::gaussian(), fd_order, eps, tau, 3, f_min);
 }
 
-/**
- * @brief Content fraction above which an FD order stops being the cheaper
- *        route to a fixed accuracy: \f$\sqrt[3]{c_\mathrm{fd}/c_\mathrm{spec}}\f$.
- *
- * Pure cost arithmetic under the \f$N^3\f$ assumption stated in the file
- * header — no numerics enter. This is the crossover predicate the report
- * quotes and `tests/test_heat3d_spectral_content.cpp` pins.
- */
 [[nodiscard]] inline double crossover_fraction(double cost_fd,
                                                double cost_spectral) {
-  if (!(cost_fd > 0.0) || !(cost_spectral > 0.0))
-    throw std::invalid_argument("crossover_fraction: costs must be positive");
-  return std::cbrt(cost_fd / cost_spectral);
+  return pfc::field::spectra::crossover_fraction(cost_fd, cost_spectral);
 }
 
-/**
- * @brief Equal-accuracy cost of an FD order relative to the spectral path
- *        (spectral = 1), given the coarsest grid it may use.
- *
- * @param f_star         Output of `content_fraction_at()`.
- * @param cost_fd        Measured FD per-step cost at a reference grid.
- * @param cost_spectral  Measured spectral per-step cost at the same grid.
- */
 [[nodiscard]] inline double equal_accuracy_cost_ratio(double f_star, double cost_fd,
                                                       double cost_spectral) {
-  if (!(f_star > 0.0)) throw std::invalid_argument("equal_accuracy_cost_ratio: f>0");
-  return (cost_fd / (f_star * f_star * f_star)) / cost_spectral;
+  return pfc::field::spectra::equal_accuracy_cost_ratio(f_star, cost_fd,
+                                                        cost_spectral);
 }
 
-/// True when FD order with cost `cost_fd` beats the spectral path at the
-/// accuracy whose tolerated content fraction is `f_star`.
 [[nodiscard]] inline bool fd_cheaper_than_spectral(double f_star, double cost_fd,
                                                    double cost_spectral) {
-  return f_star > crossover_fraction(cost_fd, cost_spectral);
+  return pfc::field::spectra::fd_cheaper_than_spectral(f_star, cost_fd,
+                                                       cost_spectral);
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +294,7 @@ inline constexpr int kMapGrid = 128;
 
 /// One validation point: what the map predicted, and what a run measured.
 struct ValidationCase {
+  const char *family_id{"gaussian"};
   int fd_order{2};
   int N{64};
   double f{0.3};
@@ -484,7 +302,7 @@ struct ValidationCase {
   int n_steps{0};
   double dt{0.0};
   double t_final{0.0};
-  /// `predict_l2_error(fd_order, f, N, tau)`.
+  /// Parseval prediction for this family.
   double predicted_l2{0.0};
   /// RMS of (RK4-stepped FD field - exact solution) over RMS of the IC.
   double measured_l2{0.0};
@@ -493,7 +311,7 @@ struct ValidationCase {
 };
 
 /**
- * @brief Run the real FD stack on the controlled-content field and measure
+ * @brief Run the real FD stack on a periodic spectrum family and measure
  *        its \f$L^2\f$ error against the exact solution.
  *
  * Uses exactly the objects `heat3d_fd` uses — a padded
@@ -501,25 +319,16 @@ struct ValidationCase {
  * `pfc::gradient::FDGradient<HeatGrads>` — so what is validated is the
  * shipped operator, not a reimplementation of its symbol.
  *
- * **Time integration is classical RK4, not the driver's forward Euler.**
- * The quantity under test is a *spatial* error as small as \f$10^{-9}\f$;
- * forward Euler's \f$O(\Delta t)\f$ error would swamp it unless
- * \f$\Delta t\f$ were absurd. RK4's \f$O(\Delta t^4)\f$ falls below the
- * spatial floor at a few hundred steps, and the driver reports a
- * step-halved value so the reader can see that it has.
- *
- * Single rank by construction, like `convergence_study.hpp`.
- *
- * @param fd_order Even FD order 2..20.
- * @param N        Grid points per axis.
- * @param f        Content fraction of Nyquist.
- * @param tau      \f$D\,t\,k_c^2\f$.
- * @param n_steps  RK4 steps to `t_final`.
+ * The Gaussian family uses the separable cosine product (fast). Other
+ * families use `evaluate_periodic_field` and should be run on modest `N`.
  */
-[[nodiscard]] inline ValidationCase run_validation(int fd_order, int N, double f,
-                                                   double tau = kDiffusionTime,
-                                                   int n_steps = 400) {
+[[nodiscard]] inline ValidationCase
+run_validation(int fd_order, int N, double f, double tau = kDiffusionTime,
+               int n_steps = 400,
+               pfc::field::spectra::SpectrumFamily fam =
+                   pfc::field::spectra::gaussian()) {
   ValidationCase result;
+  result.family_id = fam.id;
   result.fd_order = fd_order;
   result.N = N;
   result.f = f;
@@ -534,6 +343,7 @@ struct ValidationCase {
   const double dt = t_final / static_cast<double>(n_steps);
   result.dt = dt;
   result.t_final = t_final;
+  const bool gaussian_fast = std::string_view(fam.id) == "gaussian";
 
   const auto domain =
       pfc::domain::create(pfc::GridSize({N, N, N}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
@@ -556,9 +366,13 @@ struct ValidationCase {
   pfc::gradient::FDGradient<HeatGrads> grad(w, fd_order);
 
   const auto ic = [&](double x, double y, double z) {
-    return gaussian_axis_factor(x, 0.0, sigma, m_max) *
-           gaussian_axis_factor(y, 0.0, sigma, m_max) *
-           gaussian_axis_factor(z, 0.0, sigma, m_max);
+    if (gaussian_fast) {
+      return gaussian_axis_factor(x, 0.0, sigma, m_max) *
+             gaussian_axis_factor(y, 0.0, sigma, m_max) *
+             gaussian_axis_factor(z, 0.0, sigma, m_max);
+    }
+    return pfc::field::spectra::evaluate_periodic_field(fam, x, y, z, 0.0, f, N,
+                                                        3, kD);
   };
   u.apply(ic);
 
@@ -569,7 +383,6 @@ struct ValidationCase {
   });
   const double ic_rms = std::sqrt(ic_sq / cells);
 
-  // Laplacian of `w` into `out`, halo exchanged first.
   const auto laplacian = [&](pfc::data::Field<double, pfc::HostSpace> &out) {
     halo.exchange();
     out.for_each_owned([&](int i, int j, int k) {
@@ -599,23 +412,33 @@ struct ValidationCase {
     });
   }
 
-  // Exact solution of the same sampled field, from the separable series.
-  std::vector<double> axis(static_cast<std::size_t>(N));
-  for (int i = 0; i < N; ++i) {
-    axis[static_cast<std::size_t>(i)] =
-        gaussian_axis_factor(static_cast<double>(i) * dx, t_final, sigma, m_max);
+  std::vector<double> axis;
+  if (gaussian_fast) {
+    axis.resize(static_cast<std::size_t>(N));
+    for (int i = 0; i < N; ++i) {
+      axis[static_cast<std::size_t>(i)] =
+          gaussian_axis_factor(static_cast<double>(i) * dx, t_final, sigma, m_max);
+    }
   }
   double err_sq = 0.0;
   u.for_each_owned([&](int i, int j, int k) {
-    const double exact = axis[static_cast<std::size_t>(i)] *
-                         axis[static_cast<std::size_t>(j)] *
-                         axis[static_cast<std::size_t>(k)];
+    double exact = 0.0;
+    if (gaussian_fast) {
+      exact = axis[static_cast<std::size_t>(i)] *
+              axis[static_cast<std::size_t>(j)] *
+              axis[static_cast<std::size_t>(k)];
+    } else {
+      exact = pfc::field::spectra::evaluate_periodic_field(
+          fam, static_cast<double>(i) * dx, static_cast<double>(j) * dx,
+          static_cast<double>(k) * dx, t_final, f, N, 3, kD);
+    }
     const double d = u(i, j, k) - exact;
     err_sq += d * d;
   });
 
   result.measured_l2 = std::sqrt(err_sq / cells) / ic_rms;
-  result.predicted_l2 = predict_l2_error(fd_order, f, N, tau);
+  result.predicted_l2 =
+      pfc::field::spectra::predict_heat_l2_error(fam, fd_order, f, N, tau, 3);
   result.ratio =
       (result.predicted_l2 > 0.0) ? result.measured_l2 / result.predicted_l2 : 0.0;
   return result;

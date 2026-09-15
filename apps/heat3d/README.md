@@ -74,7 +74,7 @@ Shared physics, IC, propagator, parser, and reporting headers (live in `include/
 - **[`include/heat3d/cli.hpp`](include/heat3d/cli.hpp)** — `RunConfig` plus the slim per-binary parsers `parse_fd` / `parse_spectral` and their `_or_print_usage` wrappers. `D` is *not* a CLI knob (it lives in `heat_model.hpp`). Each binary already knows its own discretisation, so the parsers do **not** consume an `argv[1]` discriminator. Header-only, MPI-free, OpenPFC-free; trivially unit-testable.
 - **[`include/heat3d/reporting.hpp`](include/heat3d/reporting.hpp)** — `analytic_gaussian` (closed-form reference solution on \(\mathbb{R}^3\)), `fd_extra_metadata` (FD/OpenMP info string), and the rank-0 `report` template that prints the canonical `method` / `timing` / `l2_error` triplet, shared by all heat3d binaries.
 - **[`include/heat3d/convergence_study.hpp`](include/heat3d/convergence_study.hpp)** — the [Order of accuracy (FD)](#order-of-accuracy-fd) study's shared `run_case(fd_order, N)`: single-Fourier-mode IC, `pfc::gradient::FDGradient<HeatGrads>` bound the same way `heat3d_fd.cpp` binds it, and an *exact* (not time-marched) closed-form evolution to isolate spatial from temporal error. Used by both `heat3d_fd_convergence_study` and `tests/test_heat3d_fd_convergence.cpp`.
-- **[`include/heat3d/spectral_content_study.hpp`](include/heat3d/spectral_content_study.hpp)** — the [Spectral against finite difference](#spectral-against-finite-difference-where-each-wins) study: the FD Laplacian's symbol and its cancellation-free dispersion defect, the closed-form L2 error map against spectral content, the equal-accuracy crossover predicate, and `run_validation()` (real RK4 runs of the shipped FD stack). Used by both `heat3d_spectral_content_study` and `tests/test_heat3d_spectral_content.cpp`.
+- **[`include/heat3d/spectral_content_study.hpp`](include/heat3d/spectral_content_study.hpp)** — Heat3D driver around [`periodic_spectra.hpp`](../../include/openpfc/kernel/field/periodic_spectra.hpp) and [`fd_symbols.hpp`](../../include/openpfc/kernel/field/fd_symbols.hpp): Gaussian RK4 validation of the shipped FD stack, plus occupancy-matched family maps. Used by `heat3d_spectral_content_study` and `tests/test_heat3d_spectral_content.cpp`.
 
 Per-binary drivers (live in `src/cpu/`):
 
@@ -399,11 +399,17 @@ spatial error is *identically zero*. By Parseval the L2 error of **any**
 initial field is therefore a closed-form sum over that field's spectrum — no
 simulation required to draw the map.
 
-**The parameter.** The initial condition is a separable, Nyquist-truncated
-periodic Gaussian, and `f` is the fraction of Nyquist at which its amplitude
-spectrum has fallen to `1e-3` of its peak. The map turns out to depend on
-`f` alone, not on the grid — which is what makes `f` the right axis, and is
-pinned by `tests/test_heat3d_spectral_content.cpp`.
+**The parameter.** Occupancy `f` is the fraction of Nyquist at which a
+family's amplitude prescription reaches `1e-3` of its peak (a top-hat uses
+the same `f` as its support cutoff). The original map used a periodic
+Gaussian, which is one family in
+[`periodic_spectra.hpp`](../../include/openpfc/kernel/field/periodic_spectra.hpp).
+The Gaussian map depends on `f` alone, not on the grid — pinned by
+`tests/test_heat3d_spectral_content.cpp` and
+`tests/unit/kernel/field/test_periodic_spectra.cpp`. Other families can
+share `f` while placing different energy near high-error stencil modes;
+`heat3d_spectral_content_study` writes that comparison without a new
+timing campaign.
 
 **The result.** Under an `N^3` cost model at a fixed step count, FD order `p`
 is the cheaper route to accuracy `eps` iff the coarsest grid it can use still
@@ -436,7 +442,9 @@ future edit to `fd_stencils.hpp` cannot break it silently.
 Reproduce (single rank, login node, no allocation needed):
 
 ```bash
-./apps/heat3d/heat3d_spectral_content_study            # writes three CSVs
+./apps/heat3d/heat3d_spectral_content_study --no-validate
+./apps/heat3d/heat3d_spectral_content_study --families-only
+./apps/heat3d/heat3d_spectral_content_study --validate-families --no-validate --no-families
 python3 docs/report/figures/make_figures.py            # needs matplotlib
 ```
 

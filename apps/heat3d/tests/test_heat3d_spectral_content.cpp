@@ -227,6 +227,14 @@ TEST_CASE("heat3d spectral content: FD-12 ties the spectral path near 1e-6",
   CHECK_FALSE(sc::fd_cheaper_than_spectral(f_tight, 24.69, kSpectral));
 }
 
+TEST_CASE("heat3d wrappers match the kernel Gaussian family",
+          "[heat3d][spectral-content][unit]") {
+  namespace sp = pfc::field::spectra;
+  REQUIRE_THAT(sc::predict_l2_error(4, 0.3, 64),
+               WithinRel(sp::predict_heat_l2_error(sp::gaussian(), 4, 0.3, 64),
+                         1e-14));
+}
+
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   const int result = Catch::Session().run(argc, argv);
