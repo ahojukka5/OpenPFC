@@ -9,6 +9,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
+- **Heat3D spectral-family equal-accuracy tables** regenerated with
+  the issue #3 fail-closed unattainable state (LUMI-C `standard` job
+  **22078280**). Six FD-2 rows at `1e-8` are now `attainable=no` and
+  are not ranked. Cheapest picks are unchanged: Gaussian FD-2 and
+  top-hat FD-12 at `1e-2`; spectral at `1e-8`. Pre-issue-3 CSV
+  snapshots stay as historical evidence.
 - **Applications catalog moved** to `ahojukka5/research`
   (`articles/openpfc-applications`). `docs/report/` keeps CSV writers
   and figure-regeneration scripts; narrative Quarto chapters are no
@@ -49,9 +55,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `ahojukka5/research#304`). Occupancy-matched Gaussian, isotropic
   top-hat, and exponential (isotropic L2 / separable L1) families share
   one Parseval heat-error interface with the shipped D2 symbols in
-  `fd_symbols.hpp`. `heat3d_spectral_content_study --families-only`
+  `fd_symbols.hpp`.   `heat3d_spectral_content_study --families-only`
   writes family error, diagnostic and equal-accuracy CSVs from the
   admitted Heat3D CPU/GPU cost tables; it does not retake timings.
+  Live `heat3d_spectral_family_selection.csv` was regenerated after the
+  fail-closed unattainable-target fix (LUMI-C job 22078280). Pre-issue-3
+  tables remain as `*.pre-issue-3.csv`. Cheapest-operator claims at
+  \(10^{-2}\) and \(10^{-8}\) are unchanged; FD-2 at \(10^{-8}\) is now
+  `attainable=no` for three families.
 - **FTA directional campaign instrumentation** on `alloy_dendrite_growth`
   (issue #155). Time series write `v_tip2`, `y_groove`,
   `v_rel = v_tip-V_p` and the isotherm `x_iso`; `--Mc=0` with
