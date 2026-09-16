@@ -351,6 +351,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   exact. Minion–Brown shear is the unit-square \(\rho=30\) case, not
   \(\rho=30\) on \([0,2\pi]^2\). Not a shipped `apps/` catalog entry.
   HIP is blocked by pointwise `SpectralETDOps`, not a second FFT stack.
+- **Weibel 8-GCD showcase** (issue #10). `vlasov_run --reduced-dir`
+  writes `f(x,v_x)`, `f(x,v_y)`, `B_z`, `E_y`, `J_y` at sample cadence
+  so a large 1D2V animation does not dump the full phase-space brick.
+  Recipe: `apps/vlasov_maxwell/slurm/showcase_weibel.sbatch`.
+  Render: `apps/vlasov_maxwell/scripts/render_weibel_showcase.py`.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and
