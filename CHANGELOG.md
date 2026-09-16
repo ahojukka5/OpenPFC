@@ -23,7 +23,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ### Added
 
 - **Inverse-homogenization 3-D 8-GCD showcase** (issue #9). HIP inverse
-  accepts `--init=spinodal` and `--target=orthotropic`. Recipe:
+  accepts `--init=spinodal` (Fourier-mode seed, not Cahn–Hilliard) and
+  `--target=orthotropic`. History CSV stores Voigt \(C_H\) and
+  \(\nu_{12},\nu_{13},\nu_{23}\) from \(S=C^{-1}\). Recipe:
   `apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch`. Render:
   `apps/inverse_homogenization/scripts/render_inverse3d_showcase.py`.
 - **Inverse-homogenization 8-GCD showcase** (issue #8).

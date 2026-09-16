@@ -95,8 +95,15 @@ struct InverseStepReport {
   double perimeter{0.0};
   double C11{0.0};
   double C12{0.0};
+  Voigt6 C_H{};
   bool elasticity_converged{false};
 };
+
+inline void record_stiffness(InverseStepReport &out, const Voigt6 &C) {
+  out.C_H = C;
+  out.C11 = C(0, 0);
+  out.C12 = C(0, 1);
+}
 
 /// \(W(h)=h^2(1-h)^2\).
 [[nodiscard]] inline double double_well(double h) noexcept {
@@ -190,8 +197,7 @@ public:
       const auto r = m_hom.compute(*h_el);
       out.elasticity_converged = r.all_converged();
       out.J_tensor = tensor_mismatch(r.stiffness, spec.C_target, spec.W);
-      out.C11 = r.stiffness(0, 0);
-      out.C12 = r.stiffness(0, 1);
+      record_stiffness(out, r.stiffness);
       m_hom.objective_sensitivity(*h_el, spec.C_target, spec.W, m_dJdh);
       if (spec.simp_p != 1.0) {
         const double pexp = spec.simp_p;

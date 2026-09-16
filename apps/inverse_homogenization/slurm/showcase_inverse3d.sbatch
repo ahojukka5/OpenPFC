@@ -14,7 +14,8 @@
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
 #
 # Issue #9: genuine 3-D inverse homogenization on one LUMI-G node.
-# Spinodal seed (varies in x,y,z). Not a 2-D extrusion. Claims use C_H.
+# Fourier-mode spinodal seed (varies in x,y,z), not a Cahn-Hilliard
+# process microstructure and not a 2-D extrusion. Claims use S=C^{-1}.
 #
 #   SHOWCASE_MODE=pilot   64^3 (default)
 #   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
@@ -46,7 +47,7 @@ mkdir -p "${OUT}/fields"
   echo "revision $(git -C "${SRC}" rev-parse HEAD)"
   echo "dirty $(git -C "${SRC}" status --porcelain | wc -l)"
   echo "mode ${MODE}"
-  echo "init spinodal (3-D); not a 2-D extrusion"
+  echo "init spinodal: Fourier-mode seed, not Cahn-Hilliard; not a 2-D extrusion"
   module list
 } | tee "${OUT}/provenance.txt"
 

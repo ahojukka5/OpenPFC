@@ -96,10 +96,10 @@ Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 
 | | |
 |---|---|
-| **Runnable** | `openpfc_inverse_homogenize_hip` — spinodal seed |
+| **Runnable** | `openpfc_inverse_homogenize_hip` — Fourier-mode spinodal seed |
 | **Recipe** | [`showcase_inverse3d.sbatch`](../../apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch) (8 GCDs) |
 | **Render** | [`render_inverse3d_showcase.py`](../../apps/inverse_homogenization/scripts/render_inverse3d_showcase.py) |
-| **Concepts** | genuine 3-D \(C_H\); not an extrusion; tensor from the homogenizer |
+| **Concepts** | genuine 3-D \(C_H\); \(\nu_{ij}\) from \(S=C^{-1}\); voxels + slices |
 
 ## Quick 2D PNG snapshots (Allen–Cahn)
 

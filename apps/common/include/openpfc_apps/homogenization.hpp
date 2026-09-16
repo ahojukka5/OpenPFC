@@ -267,6 +267,32 @@ inline bool invert_voigt(Voigt6 &m) {
 }
 
 /**
+ * Directional Poisson ratios from the compliance \(S=C^{-1}\):
+ * \(\nu_{12}=-S_{12}/S_{11}\), \(\nu_{13}=-S_{13}/S_{11}\),
+ * \(\nu_{23}=-S_{23}/S_{22}\). Not the isotropic shortcut
+ * \(C_{12}/(C_{11}+C_{12})\).
+ */
+struct CompliancePoisson {
+  bool ok{false};
+  double nu12{0.0};
+  double nu13{0.0};
+  double nu23{0.0};
+};
+
+[[nodiscard]] inline CompliancePoisson poisson_from_stiffness(const Voigt6 &C) {
+  Voigt6 S = C.symmetrized();
+  CompliancePoisson o;
+  if (!invert_voigt(S)) return o;
+  o.ok = true;
+  if (std::abs(S(0, 0)) > 1.0e-30) {
+    o.nu12 = -S(0, 1) / S(0, 0);
+    o.nu13 = -S(0, 2) / S(0, 0);
+  }
+  if (std::abs(S(1, 1)) > 1.0e-30) o.nu23 = -S(1, 2) / S(1, 1);
+  return o;
+}
+
+/**
  * @brief Cholesky test that a symmetrized matrix is SPD.
  *
  * Used as a diagnostic on \f$C_H\f$, not as a solver.

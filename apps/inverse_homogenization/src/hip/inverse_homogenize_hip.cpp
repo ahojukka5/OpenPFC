@@ -75,11 +75,30 @@ struct Config {
   pfc::apps::inverse::FieldOutputConfig fields{};
 };
 
+double nu_iso_shortcut(double c11, double c12) {
+  const double den = c11 + c12;
+  return (std::abs(den) > 1.0e-30) ? c12 / den : 0.0;
+}
+
+void write_history_row(std::ostream &csv, int step,
+                        const pfc::apps::inverse::InverseStepReport &last,
+                        const pfc::apps::Voigt6 &C, double ms, bool conv) {
+  const auto po = pfc::apps::poisson_from_stiffness(C);
+  csv << step << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
+      << ',' << last.J_reg << ',' << last.volume_fraction << ','
+      << last.grey_fraction << ',' << C(0, 0) << ',' << C(1, 1) << ','
+      << C(2, 2) << ',' << C(1, 2) << ',' << C(0, 2) << ',' << C(0, 1) << ','
+      << C(3, 3) << ',' << C(4, 4) << ',' << C(5, 5) << ',' << po.nu12 << ','
+      << po.nu13 << ',' << po.nu23 << ',' << nu_iso_shortcut(C(0, 0), C(0, 1))
+      << ',' << ms << ',' << (conv ? 1 : 0) << '\n';
+}
 void usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe << " [--key=value]...\n"
      << "  HIP inverse homogenization (device Green, host Allen-Cahn).\n"
      << "  --nx --ny --nz --dx --target isotropic|auxetic|orthotropic\n"
-     << "  --init rotating-squares|noise|uniform|spinodal --steps --csv --dump-dir\n";
+     << "  --init rotating-squares|noise|uniform|spinodal --steps --csv --dump-dir\n"
+     << "  --init=spinodal is a 3-D Fourier-mode seed (seed_spinodal_noise),\n"
+     << "  not a Cahn-Hilliard-evolved process microstructure.\n";
 }
 
 bool parse_double(std::string_view v, double &out) {
@@ -236,8 +255,7 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   const auto r = hom.compute(h);
   out.elasticity_converged = r.all_converged();
   out.J_tensor = pfc::apps::tensor_mismatch(r.stiffness, spec.C_target, spec.W);
-  out.C11 = r.stiffness(0, 0);
-  out.C12 = r.stiffness(0, 1);
+  pfc::apps::inverse::record_stiffness(out, r.stiffness);
   hom.objective_sensitivity(h, spec.C_target, spec.W, dJdh);
   if (spec.lambda_reg != 0.0)
     spectral_laplacian_hip(domain, fft, h, hat, lap, d_real, d_hat);
@@ -386,20 +404,17 @@ int run(int argc, char **argv, int rank, int nproc) {
   std::ofstream csv;
   if (rank == 0) {
     std::cout << "backend hip ranks " << nproc << " grid " << cfg.nx << 'x'
-              << cfg.ny << 'x' << cfg.nz << " init " << cfg.init << " target "
-              << cfg.target << " steps " << cfg.steps << '\n';
-    std::cout << "step J J_tensor volume grey C11 C12 nu_eff ms conv\n";
+              << cfg.ny << 'x' << cfg.nz << " init " << cfg.init;
+    if (cfg.init == "spinodal")
+      std::cout << " (Fourier-mode seed, not Cahn-Hilliard)";
+    std::cout << " target " << cfg.target << " steps " << cfg.steps << '\n';
+    std::cout << "step J J_tensor volume grey C11 C12 nu12 nu13 ms conv\n";
     if (!cfg.csv.empty()) {
       csv.open(cfg.csv);
-      csv << "step,J,J_tensor,J_volume,J_reg,volume,grey,C11,C12,nu_eff,ms,"
-             "converged\n";
+      csv << "step,J,J_tensor,J_volume,J_reg,volume,grey,C11,C22,C33,C23,C13,"
+             "C12,C44,C55,C66,nu12,nu13,nu23,nu_eff,ms,converged\n";
     }
   }
-
-  auto nu_of = [](double c11, double c12) {
-    const double den = c11 + c12;
-    return (std::abs(den) > 1.0e-30) ? c12 / den : 0.0;
-  };
 
   int n_snap = 0;
   auto dump = [&](int step) {
@@ -418,19 +433,16 @@ int run(int argc, char **argv, int rank, int nproc) {
                    MPI_COMM_WORLD);
     const auto t1 = std::chrono::steady_clock::now();
     const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    const double nu = nu_of(last.C11, last.C12);
+    const auto po = pfc::apps::poisson_from_stiffness(last.C_H);
     if (rank == 0) {
       std::cout << std::setprecision(8) << s << ' ' << last.J << ' '
                 << last.J_tensor << ' ' << last.volume_fraction << ' '
-                << last.grey_fraction << ' ' << last.C11 << ' ' << last.C12 << ' '
-                << nu << ' ' << std::setprecision(3) << ms << ' '
-                << (last.elasticity_converged ? "yes" : "no") << '\n';
+                << last.grey_fraction << ' ' << last.C11 << ' ' << last.C12
+                << ' ' << po.nu12 << ' ' << po.nu13 << ' ' << std::setprecision(3)
+                << ms << ' ' << (last.elasticity_converged ? "yes" : "no")
+                << '\n';
       if (csv.is_open()) {
-        csv << s << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
-            << ',' << last.J_reg << ',' << last.volume_fraction << ','
-            << last.grey_fraction << ',' << last.C11 << ',' << last.C12 << ','
-            << nu << ',' << ms << ',' << (last.elasticity_converged ? 1 : 0)
-            << '\n';
+        write_history_row(csv, s, last, last.C_H, ms, last.elasticity_converged);
         csv.flush();
       }
     }
@@ -445,14 +457,14 @@ int run(int argc, char **argv, int rank, int nproc) {
   const auto final = hom.compute(h);
   if (rank == 0 && csv.is_open()) {
     const auto &C = final.stiffness;
-    const double nu = nu_of(C(0, 0), C(0, 1));
     const double Jt = pfc::apps::tensor_mismatch(C, spec.C_target, spec.W);
     const double dv = last.volume_fraction - spec.volume_target;
     const double Jv = spec.lambda_volume * dv * dv;
-    csv << n_done << ',' << (Jt + Jv + last.J_reg) << ',' << Jt << ',' << Jv
-        << ',' << last.J_reg << ',' << last.volume_fraction << ','
-        << last.grey_fraction << ',' << C(0, 0) << ',' << C(0, 1) << ',' << nu
-        << ',' << 0.0 << ',' << (final.all_converged() ? 1 : 0) << '\n';
+    pfc::apps::inverse::InverseStepReport fin = last;
+    fin.J_tensor = Jt;
+    fin.J_volume = Jv;
+    fin.J = Jt + Jv + last.J_reg;
+    write_history_row(csv, n_done, fin, C, 0.0, final.all_converged());
     csv.flush();
   }
   auto hbin = h;
@@ -463,15 +475,19 @@ int run(int argc, char **argv, int rank, int nproc) {
   snap.write_manifest({"h"});
   if (rank == 0) {
     const auto &C = final.stiffness;
-    const double nu = nu_of(C(0, 0), C(0, 1));
+    const auto po = pfc::apps::poisson_from_stiffness(C);
     const auto &Cb = bin.stiffness;
-    const double nub = nu_of(Cb(0, 0), Cb(0, 1));
+    const auto pob = pfc::apps::poisson_from_stiffness(Cb);
     std::cout << std::setprecision(16) << "INVERSE_CHECKSUM " << last.J << '\n';
     std::cout << std::setprecision(8) << "C11 " << C(0, 0) << " C22 " << C(1, 1)
-              << " C33 " << C(2, 2) << " C12 " << C(0, 1) << " C13 " << C(0, 2)
-              << " nu_eff " << nu << " grey " << last.grey_fraction << '\n';
-    std::cout << "C11_bin " << Cb(0, 0) << " C12_bin " << Cb(0, 1) << " nu_bin "
-              << nub << '\n';
+              << " C33 " << C(2, 2) << " C23 " << C(1, 2) << " C13 " << C(0, 2)
+              << " C12 " << C(0, 1) << " C66 " << C(5, 5) << '\n';
+    std::cout << "nu12 " << po.nu12 << " nu13 " << po.nu13 << " nu23 "
+              << po.nu23 << " (from S=C^{-1}; not C12/(C11+C12))\n";
+    std::cout << "nu_iso_shortcut " << nu_iso_shortcut(C(0, 0), C(0, 1))
+              << " grey " << last.grey_fraction << '\n';
+    std::cout << "C11_bin " << Cb(0, 0) << " C12_bin " << Cb(0, 1) << " nu12_bin "
+              << pob.nu12 << '\n';
     std::cout << "ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
               << cfg.nz << " steps " << cfg.steps << '\n';
     std::ifstream status("/proc/self/status");

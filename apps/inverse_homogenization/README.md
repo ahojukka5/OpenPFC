@@ -158,9 +158,11 @@ negative. The default seed is rotating-squares.
 
 ## Showcase (issue #9)
 
-Genuine 3-D cells (`nz = nx`), spinodal seed, orthotropic target.
+Genuine 3-D cells (`nz = nx`), Fourier-mode `--init=spinodal` seed
+(not a Cahn–Hilliard-evolved process), orthotropic target. Quote
+\(\nu_{12}=-S_{12}/S_{11}\) from the history CSV, not `nu_eff`.
 Not a 2-D extrusion. Recipe:
 [`slurm/showcase_inverse3d.sbatch`](slurm/showcase_inverse3d.sbatch).
-Render orthogonal midplanes with
+Render orthogonal midplanes plus a voxel still with
 [`scripts/render_inverse3d_showcase.py`](scripts/render_inverse3d_showcase.py).
 Prod `SHOWCASE_NX` is a candidate until the 8-GCD pilot.

@@ -173,6 +173,12 @@ TEST_CASE("Engineering Voigt and the binary-laminate closed form",
   REQUIRE(pfc::apps::invert_voigt(round));
   REQUIRE(max_abs_diff(round, C) < 1.0e-12);
 
+  const auto po = pfc::apps::poisson_from_stiffness(C);
+  REQUIRE(po.ok);
+  REQUIRE_THAT(po.nu12, WithinRel(0.3, 1e-12));
+  REQUIRE_THAT(po.nu13, WithinRel(0.3, 1e-12));
+  REQUIRE_THAT(po.nu23, WithinRel(0.3, 1e-12));
+
   const Stiffness a = Stiffness::from_lame(1.0, 1.0); // c11=3, c12=1, c44=1
   const Stiffness b = Stiffness::from_lame(2.0, 2.0); // c11=6, c12=2, c44=2
   const Voigt6 L = exact_binary_laminate(a, b, 0.5, /*axis=*/2);
