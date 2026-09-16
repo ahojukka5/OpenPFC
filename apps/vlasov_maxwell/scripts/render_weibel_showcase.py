@@ -4,8 +4,8 @@
 """Render issue #10 Weibel reduced frames.
 
 Uses solver projections and the ledger CSV. Does not interpolate plasma
-states. Nonlinear saturation is labelled as demonstration unless the
-linear window in the summary matches the oracle.
+states. Quote gamma from the paired linear arm (linear.csv) / frozen
+window, not from a post-saturation auto-window on the movie.
 
     python3 apps/vlasov_maxwell/scripts/render_weibel_showcase.py --run DIR
 """
