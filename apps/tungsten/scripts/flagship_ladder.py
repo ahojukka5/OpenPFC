@@ -60,6 +60,8 @@ CSV_HEADER_COMMENTS = (
     "# Protocol: docs/lumi_slurm/tungsten_hip_scaling.toml (I/O off, dt=1).\n"
     "# Multi-node: OPENPFC_FFT_NODE_GRID=1. Scratch only for bulky logs.\n"
     "# Efficiency is wall_step(1 node) / wall_step(N) (weak; similar cells/GCD).\n"
+    "# rss_per_rank_gib is host RSS from the profiler, not GCD HBM.\n"
+    "# Quote device memory from a HIP_MEM / hipMemGetInfo line, never RSS.\n"
 )
 
 
@@ -174,7 +176,24 @@ def _find_profile(run):
     return None
 
 
+def _parse_int(value):
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def collect_run(run, warmup):
+    try:
+        return _collect_run_unchecked(run, warmup)
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        sys.stderr.write("skip %s: %s\n" % (run, exc))
+        return None
+
+
+def _collect_run_unchecked(run, warmup):
     meta = _meta_map(os.path.join(run, "run_meta.txt"))
     prof_path = _find_profile(run)
     if prof_path is None:
@@ -184,17 +203,19 @@ def collect_run(run, warmup):
     wall = wall_step_median(doc, warmup)
     if wall is None:
         return None
-    n = int(meta.get("Lx") or meta.get("N") or 0)
-    if n <= 0:
+    n = _parse_int(meta.get("N")) or _parse_int(meta.get("Lx"))
+    if not n:
         toml = os.path.join(run, "input.toml")
         if os.path.isfile(toml):
             with open(toml) as f:
                 for line in f:
                     if line.strip().startswith("Lx"):
-                        n = int(line.split("=")[1].strip())
+                        n = _parse_int(line.split("=", 1)[1].strip())
                         break
-    nodes = int(meta.get("nodes") or 0)
-    gcds = int(meta.get("ntasks") or (nodes * 8 if nodes else 0))
+    if not n:
+        return None
+    nodes = _parse_int(meta.get("nodes")) or 0
+    gcds = _parse_int(meta.get("ntasks")) or (nodes * 8 if nodes else 0)
     if nodes <= 0 and gcds:
         nodes = max(1, gcds // 8)
     cells = n ** 3 if n else 0
@@ -228,10 +249,11 @@ def collect(root, out_path, warmup):
         root = os.path.join(root, "runs")
     for name in sorted(os.listdir(root)):
         path = os.path.join(root, name)
-        if os.path.isdir(path):
-            row = collect_run(path, warmup)
-            if row:
-                runs.append(row)
+        if not os.path.isdir(path):
+            continue
+        row = collect_run(path, warmup)
+        if row:
+            runs.append(row)
     runs.sort(key=lambda r: (int(r["nodes"]), int(r["N"])))
     parent = os.path.dirname(out_path)
     if parent:
@@ -284,6 +306,16 @@ def collect_self_test():
         return 1
     if row["N"] != "768" or row["revision"] != "deadbeef":
         print("metadata not copied:", row, file=sys.stderr)
+        return 1
+    junk = os.path.join(tmp, "heat3d-old")
+    os.makedirs(junk)
+    with open(os.path.join(junk, "run_meta.txt"), "w") as f:
+        f.write("job=9\nnodes=1\nLx=12.56\nsteps=100\n")
+    with open(os.path.join(junk, "timing_profile.json"), "w") as f:
+        f.write("{not-json")
+    n = collect(tmp, out, warmup=1)
+    if n != 1:
+        print("mixed root should keep the flagship row, got", n, file=sys.stderr)
         return 1
     print("collect-self-test ok", out)
     return 0
