@@ -47,6 +47,7 @@ these jobs at the 0.1.4 binaries or `project_462001245` scratch used below.
 
 Dendrite 2-D showcase (one node, 8 GCDs, elastic off/on, scratch frames):
 `apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch`.
+3-D spherical-seed path: `apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch`.
 
 ## Layout (legacy 1024³ helpers)
 

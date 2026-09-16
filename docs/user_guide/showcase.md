@@ -92,6 +92,15 @@ This page ties **figures** you may see in the repository or publications to **ru
 
 Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 
+## Alloy dendrite (3-D, LUMI-G)
+
+| | |
+|---|---|
+| **Runnable** | `alloy_dendrite_hip_growth --nz=N` with \(N>1\) |
+| **Recipe** | [`showcase_dendrite3d.sbatch`](../../apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch) (8 GCDs) |
+| **Render** | [`render_dendrite3d_showcase.py`](../../apps/alloy_dendrite_elastic/scripts/render_dendrite3d_showcase.py) |
+| **Concepts** | spherical seed; isothermal; elasticity off until bytes/cell; orthogonal slices plus a last-frame MIP rotation; 2048³ is a later target |
+
 ## Quick 2D PNG snapshots (Allen–Cahn)
 
 The **Allen–Cahn** demo can write **grayscale PNG** snapshots (optional final, or initial + final). No JSON `App` — CLI arguments only.
