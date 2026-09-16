@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -39,6 +40,7 @@
 #include <alloy_dendrite/device_stepper_hip.hpp>
 #include <alloy_dendrite/diagnostics.hpp>
 #include <alloy_dendrite/elasticity.hpp>
+#include <alloy_dendrite/field_output.hpp>
 #include <alloy_dendrite/parameters.hpp>
 
 namespace {
@@ -74,7 +76,24 @@ struct Cfg {
   double lambda_el = 0.0;
   std::string csv;
   std::string run_id = "hip-growth";
+  alloy_dendrite::FieldOutputConfig fields{};
 };
+
+void download_owned(const DevField &src, RealField &dst) {
+  const auto n = dst.local_size();
+  const int hw = src.storage_halo();
+  const std::size_t npx = static_cast<std::size_t>(n[0] + 2 * hw);
+  const std::size_t npy = static_cast<std::size_t>(n[1] + 2 * hw);
+  src.with_host_view([&](const double *data, std::size_t) {
+    for (int k = 0; k < n[2]; ++k)
+      for (int j = 0; j < n[1]; ++j)
+        for (int i = 0; i < n[0]; ++i)
+          dst(i, j, k) = data[(static_cast<std::size_t>(i) + hw) +
+                              (static_cast<std::size_t>(j) + hw) * npx +
+                              (static_cast<std::size_t>(k) + hw) * npx * npy];
+  });
+  dst.note_host_write();
+}
 
 void push_seed(DevField &dst, const RealField &src) {
   const auto n = dst.local_size();
@@ -175,6 +194,23 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
         rank);
   }
 
+  RealField host_phi = pfc::data::field_from_inbox<double>(
+      domain, pfc::decomposition::local_box(decomp, rank));
+  RealField host_U = pfc::data::field_from_inbox<double>(
+      domain, pfc::decomposition::local_box(decomp, rank));
+  const auto nloc = host_phi.local_size();
+  const auto lo = host_phi.lower_global();
+  if (rank == 0 && !cfg.fields.dir.empty())
+    std::filesystem::create_directories(cfg.fields.dir);
+  MPI_Barrier(comm);
+  alloy_dendrite::FieldSnapshotWriter snap(
+      cfg.fields, cfg.run_id, {cfg.nx, cfg.ny, cfg.nz},
+      {nloc[0], nloc[1], nloc[2]}, {lo[0], lo[1], lo[2]}, cfg.dx, rank, comm);
+  std::vector<std::string> snap_fields{"phi", "U"};
+  if (cfg.elastic) snap_fields.insert(snap_fields.end(), {"f_el", "dfel_dphi"});
+  int n_seen = 0;
+  int n_snap = 0;
+
   double t_pf_sum = 0.0, t_el_sum = 0.0;
   int n_el = 0;
   double x_prev = 0.0;
@@ -206,24 +242,11 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
     }
 
     if (step % cfg.sample_every == 0 || step == cfg.steps) {
+      download_owned(phi, host_phi);
+      download_owned(U, host_U);
       double x_tip = 0.0, v_tip = 0.0, rho = 0.0;
-      if (nproc == 1 && cfg.nz == 1) {
-        std::vector<double> plane(static_cast<std::size_t>(cfg.nx) * cfg.ny);
-        phi.with_host_view([&](const double *data, std::size_t) {
-          const int hw = phi.storage_halo();
-          const auto n = phi.local_size();
-          const std::size_t npx = static_cast<std::size_t>(n[0] + 2 * hw);
-          const std::size_t npy = static_cast<std::size_t>(n[1] + 2 * hw);
-          const std::size_t k0 =
-              static_cast<std::size_t>(hw) * npx * npy;
-          for (int j = 0; j < n[1]; ++j)
-            for (int i = 0; i < n[0]; ++i)
-              plane[static_cast<std::size_t>(i) +
-                    static_cast<std::size_t>(j) * cfg.nx] =
-                  data[(static_cast<std::size_t>(i) + hw) +
-                       (static_cast<std::size_t>(j) + hw) * npx + k0];
-        });
-        phi.note_device_write(); // a read, not a hand-over
+      if (cfg.nz == 1) {
+        const auto plane = alloy_dendrite::global_xy_plane(host_phi, 0, comm);
         const auto tip = alloy_dendrite::measure_tip(
             plane, cfg.nx, cfg.ny, cfg.dx, cfg.dx, cfg.nx / 2, cfg.ny / 2, 8);
         x_tip = tip.x_tip;
@@ -242,8 +265,20 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
             el.mean_stress_trace, elastic ? elastic->max_von_mises() : 0.0,
             x_tip, v_tip, rho));
       }
+      if (snap.due(n_seen)) {
+        snap.note_time(step * dt);
+        snap.write("phi", n_snap, host_phi);
+        snap.write("U", n_snap, host_U);
+        if (elastic) {
+          snap.write("f_el", n_snap, elastic->elastic_energy_density());
+          snap.write("dfel_dphi", n_snap, elastic->dfel_host());
+        }
+        ++n_snap;
+      }
+      ++n_seen;
     }
   }
+  snap.write_manifest(snap_fields);
 
   if (rank == 0) {
     std::cout << std::setprecision(6);
@@ -268,7 +303,7 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   if (opt.help()) {
     if (rank == 0) {
       std::cout << "Usage: " << argv[0]
-                << " [--nx= --ny= --nz= --elastic=0|1 --eps-c= --eps-T= ...]\n";
+                << " [--nx= --ny= --nz= --elastic=0|1 --fields-dir=DIR ...]\n";
     }
     return EXIT_SUCCESS;
   }
@@ -307,6 +342,8 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   cfg.model.lambda_el = cfg.lambda_el;
   cfg.csv = opt.text("csv", cfg.csv);
   cfg.run_id = opt.text("run-id", cfg.run_id);
+  cfg.fields.dir = opt.text("fields-dir", "");
+  cfg.fields.every = opt.integer("fields-every", cfg.fields.every);
   opt.require_all_consumed();
   pfc::runtime::gpu::bind_local_device(MPI_COMM_WORLD);
   return run(cfg, rank, nproc, MPI_COMM_WORLD);
