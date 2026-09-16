@@ -22,6 +22,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
+  **22085944**, source `7adbbed0`). Predeclared subset: four builtin
+  families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and
+  \(2n\) steps. Max \(|\mathrm{measured}/\mathrm{predicted}-1|=5.67\times10^{-8}\),
+  inside the frozen \(10^{-6}\) bound. CSV
+  `docs/report/data/heat3d_spectral_family_heldout.csv`. Does not retune
+  rankings or cost tables.
 - **Device Green-operator elasticity** (`DeviceEigenstrainMicroelasticity`,
   issue [#157](https://github.com/VTT-ProperTune/OpenPFC/issues/157)).
   Same Eyre–Milton scheme as the host solver on rocFFT HeFFTe; polarisation,

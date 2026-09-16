@@ -24,7 +24,7 @@
     "nyquist": "even-grid Nyquist modes omitted"
   },
   "held_out_rk4": {
-    "status": "declared",
+    "status": "completed",
     "command": "heat3d_spectral_content_study --held-out-families",
     "recipe": "apps/heat3d/slurm/heldout_families.sbatch",
     "N": 32,
@@ -39,7 +39,16 @@
     "n_and_2n_steps": true,
     "n_steps": {"2": 200, "12": 800},
     "ratio_tolerance": 1e-6,
-    "note": "Same orders, occupancies, n/2n and |ratio-1| bound as the Gaussian N=128 protocol. N=32 is held out from the family Parseval map (N=64) and from the N=16 --validate-families smoke because non-Gaussian ICs are cosine sums. Do not retune after residuals."
+    "note": "Same orders, occupancies, n/2n and |ratio-1| bound as the Gaussian N=128 protocol. N=32 is held out from the family Parseval map (N=64) and from the N=16 --validate-families smoke because non-Gaussian ICs are cosine sums. Do not retune after residuals.",
+    "job": "22085944",
+    "partition": "standard",
+    "build_type": "Release",
+    "heffte": false,
+    "source_revision": "7adbbed03baf496d1374560b14baffd0f5d7816b",
+    "elapsed": "00:16:27",
+    "artifact": "docs/report/data/heat3d_spectral_family_heldout.csv",
+    "max_abs_ratio_minus_one": 5.6672e-08,
+    "pass": true
   },
   "execution": {
     "job": "22078280",
@@ -61,7 +70,8 @@
     "docs/report/data/heat3d_spectral_family_definitions.csv",
     "docs/report/data/heat3d_spectral_family_map.csv",
     "docs/report/data/heat3d_spectral_family_diagnostics.csv",
-    "docs/report/data/heat3d_spectral_family_selection.csv"
+    "docs/report/data/heat3d_spectral_family_selection.csv",
+    "docs/report/data/heat3d_spectral_family_heldout.csv"
   ],
   "observed": {
     "loose_1e-2_fd_still_cheaper_than_spectral": true,
@@ -72,6 +82,7 @@
     "cheapest_rows_unchanged_vs_pre_issue_3": true,
     "unattainable_order_rows": "FD-2 at 1e-8 for gaussian, isotropic_tophat, and isotropic_exponential on both hardware tables. Pre-fix those rows used f_min=1e-3 and were already not cheapest. separable_exponential FD-2 at 1e-8 remains attainable.",
     "f_sufficient_for_full_ranking": false,
+    "held_out_rk4_pass": true,
     "explanatory_diagnostic": "energy_near_cutoff and weighted_d2_defect at matched f; top-hat has far more cutoff-shell energy than Gaussian"
   }
 }
