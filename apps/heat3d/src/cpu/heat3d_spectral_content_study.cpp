@@ -175,7 +175,6 @@ const std::vector<ValidationPoint> kFamilyHeldOutPoints = {
     {12, 32, 0.30, 800},
     {12, 32, 0.60, 800},
 };
-constexpr double kFamilyHeldOutRatioTol = 1.0e-6;
 
 void write_family_study(const std::string &data_dir,
                         const std::map<int, double> &cost_gpu,
@@ -292,7 +291,7 @@ void write_family_study(const std::string &data_dir,
 
 void write_family_heldout(const std::string &data_dir) {
   std::cout << "Held-out family RK4 (N=32, orders 2 and 12, f=0.3 and 0.6)\n"
-            << "relative |ratio-1| bound " << kFamilyHeldOutRatioTol
+            << "relative |ratio-1| bound " << sc::kFamilyHeldOutRatioTol
             << " (frozen; not retuned)\n";
   std::vector<sc::ValidationCase> cases;
   double max_abs_rel = 0.0;
@@ -331,7 +330,8 @@ void write_family_heldout(const std::string &data_dir) {
   std::cout << "wrote " << path << "\n"
             << "max |ratio-1| = " << std::scientific << std::setprecision(4)
             << max_abs_rel
-            << (max_abs_rel < kFamilyHeldOutRatioTol ? " PASS\n" : " FAIL\n");
+            << (sc::family_heldout_passes(max_abs_rel) ? " PASS\n" : " FAIL\n");
+  sc::require_family_heldout_ok(max_abs_rel);
 }
 
 } // namespace

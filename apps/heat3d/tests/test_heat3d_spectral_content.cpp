@@ -32,6 +32,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 #include <mpi.h>
@@ -235,6 +236,17 @@ TEST_CASE("heat3d wrappers match the kernel Gaussian family",
   REQUIRE_THAT(sc::predict_l2_error(4, 0.3, 64),
                WithinRel(sp::predict_heat_l2_error(sp::gaussian(), 4, 0.3, 64),
                          1e-14));
+}
+
+TEST_CASE("heat3d spectral content: family held-out gate fails closed",
+          "[heat3d][spectral-content][unit]") {
+  // The admitted job sat at 5.67e-8. The runner used to print FAIL and
+  // still exit 0; a residual above the frozen bound must throw, after the
+  // CSV has been written by the driver.
+  REQUIRE(sc::family_heldout_passes(5.67e-8));
+  REQUIRE_FALSE(sc::family_heldout_passes(sc::kFamilyHeldOutRatioTol));
+  REQUIRE_NOTHROW(sc::require_family_heldout_ok(5.67e-8));
+  REQUIRE_THROWS_AS(sc::require_family_heldout_ok(1.0e-6), std::runtime_error);
 }
 
 int main(int argc, char *argv[]) {

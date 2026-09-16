@@ -445,7 +445,8 @@ Reproduce (single rank, login node, no allocation needed):
 ./apps/heat3d/heat3d_spectral_content_study --no-validate
 ./apps/heat3d/heat3d_spectral_content_study --families-only
 ./apps/heat3d/heat3d_spectral_content_study --validate-families --no-validate --no-families
-# Held-out family RK4 (compute node; cosine-sum ICs):
+# Held-out family RK4 (compute node; cosine-sum ICs). The driver writes
+# the CSV then exits nonzero if max |ratio-1| is not below the frozen 1e-6:
 #   sbatch apps/heat3d/slurm/heldout_families.sbatch
 python3 docs/report/figures/make_figures.py            # needs matplotlib
 ```

@@ -200,6 +200,28 @@ inline constexpr double kContentThreshold = pfc::field::spectra::kContentThresho
 /// Dimensionless diffusion time \f$\tau = D\,t\,k_c^2\f$ used everywhere.
 inline constexpr double kDiffusionTime = pfc::field::spectra::kDiffusionTime;
 
+/// Frozen `|measured/predicted - 1|` bound for `--held-out-families`.
+/// Do not retune: job 22085944 was admitted against this number.
+inline constexpr double kFamilyHeldOutRatioTol = 1.0e-6;
+
+/// True when the held-out family RK4 residual is inside the frozen bound.
+[[nodiscard]] inline bool family_heldout_passes(double max_abs_rel) noexcept {
+  return max_abs_rel < kFamilyHeldOutRatioTol;
+}
+
+/// Throw after diagnostics have been written if the residual violates
+/// @ref kFamilyHeldOutRatioTol. Printing `FAIL` and exiting 0 is not a
+/// gate.
+inline void require_family_heldout_ok(double max_abs_rel) {
+  if (family_heldout_passes(max_abs_rel)) {
+    return;
+  }
+  throw std::runtime_error(
+      "held-out family RK4 residual exceeds frozen |ratio-1| bound " +
+      std::to_string(kFamilyHeldOutRatioTol) + " (max |ratio-1| = " +
+      std::to_string(max_abs_rel) + ")");
+}
+
 /// Grid used for the reported semi-analytic sweep. The map is
 /// \f$N\f$-independent above ~48 (pinned by the unit test); 128 is chosen
 /// so even the smallest \f$f\f$ in the sweep still has a well-sampled

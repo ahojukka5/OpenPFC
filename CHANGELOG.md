@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
+- **Heat3D family held-out gate fails closed** (issue #7).
+  `heat3d_spectral_content_study --held-out-families` still writes the
+  CSV and prints PASS/FAIL; a residual at or above the frozen \(10^{-6}\)
+  bound now throws after that write. Job **22085944** is unchanged.
 - **Heat3D spectral-family equal-accuracy tables** regenerated with
   the issue #3 fail-closed unattainable state (LUMI-C `standard` job
   **22078280**). Six FD-2 rows at `1e-8` are now `attainable=no` and
