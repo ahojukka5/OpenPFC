@@ -81,6 +81,17 @@ This page ties **figures** you may see in the repository or publications to **ru
 | **VTK** | film height `h` under `results/thin_film/` |
 | **Concepts** | Fourth-order capillary ETD; \(\lambda(k)=M_0 k^2(\Pi'(h_0)-\gamma k^2)\) |
 
+## Alloy dendrite (2-D, LUMI-G)
+
+| | |
+|---|---|
+| **Runnable** | `alloy_dendrite_hip_growth` — [`apps/alloy_dendrite_elastic`](../../apps/alloy_dendrite_elastic/README.md) |
+| **Recipe** | [`showcase_dendrite2d.sbatch`](../../apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch) (8 GCDs) |
+| **Render** | [`render_dendrite_showcase.py`](../../apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py) |
+| **Concepts** | isothermal free growth; device Green; elastic off vs on |
+
+Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
+
 ## Quick 2D PNG snapshots (Allen–Cahn)
 
 The **Allen–Cahn** demo can write **grayscale PNG** snapshots (optional final, or initial + final). No JSON `App` — CLI arguments only.

@@ -22,6 +22,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Alloy-dendrite 8-GCD showcase** (issue #11).
+  `alloy_dendrite_hip_growth` writes MPI-IO `phi`/`U`/`f_el` frames and
+  gathers 2-D tip diagnostics at any rank count. Recipe:
+  `apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch`
+  (isothermal elastic-off vs on, device Green). Render:
+  `apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py`.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and
