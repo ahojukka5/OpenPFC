@@ -47,6 +47,15 @@ export TUNGSTEN_SCALING_TEMPLATE="${TEMPLATE}"
 export OPENPFC_SCALING_ROOT="${OPENPFC_SCALING_ROOT:-/scratch/project_462001519/juaho/openpfc-scaling}"
 export OPENPFC_FFT_NODE_GRID="${OPENPFC_FFT_NODE_GRID:-1}"
 
+# Capture git on the login node. Compute nodes often have no `git` after
+# `module purge`, so revision/dirty must travel in the job environment.
+SRC="${OPENPFC_SRC:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+export OPENPFC_SRC="${SRC}"
+if [[ -d "${SRC}/.git" ]] && command -v git >/dev/null 2>&1; then
+  export OPENPFC_REVISION="$(git -C "${SRC}" rev-parse HEAD)"
+  export OPENPFC_DIRTY="$(git -C "${SRC}" status --porcelain | wc -l | tr -d ' ')"
+fi
+
 # nodes  gcds  N     time
 # 1      8     768   01:00:00
 # 2      16    960

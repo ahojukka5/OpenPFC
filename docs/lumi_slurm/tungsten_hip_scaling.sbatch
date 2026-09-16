@@ -87,9 +87,9 @@ BIN_SHA=""
 if command -v sha256sum >/dev/null 2>&1 && [[ -f "${TUNGSTEN_HIP_BIN}" ]]; then
   BIN_SHA="$(sha256sum "${TUNGSTEN_HIP_BIN}" | awk '{print $1}')"
 fi
-REV=""
-DIRTY=""
-if [[ -d "${SRC}/.git" ]]; then
+REV="${OPENPFC_REVISION:-}"
+DIRTY="${OPENPFC_DIRTY:-}"
+if [[ -z "${REV}" && -d "${SRC}/.git" ]] && command -v git >/dev/null 2>&1; then
   REV="$(git -C "${SRC}" rev-parse HEAD 2>/dev/null || true)"
   DIRTY="$(git -C "${SRC}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
 fi
