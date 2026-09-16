@@ -449,6 +449,12 @@ int run(int argc, char **argv, int rank, int nproc) {
 #ifdef VLASOV_ENABLE_HIP
   if (device == "hip") {
     vlasov::hip::DeviceStepper ds(st, ps, device_x);
+    // DeviceBrick zeros both ping-pong buffers. Without this copy the HIP
+    // loop advances a vacuum: number/kinetic drop to 0 after t=0, Gauss
+    // relative residual overflows (max|rho| ~ 0), and Weibel B_z oscillates
+    // as a light wave instead of growing. Parity/cost already upload; the
+    // production driver did not (LUMI job 22108249).
+    ds.upload_all();
     for (int step = 1; step <= n_steps; ++step) {
       ds.advance(dt);
       t = static_cast<double>(step) * dt;
@@ -459,6 +465,11 @@ int run(int argc, char **argv, int rank, int nproc) {
         // on the GCD for `sample_every` steps at a time.
         ds.download_all();
         record(step, t);
+        if (now.number <= 0.0 && ref.number > 0.0) {
+          throw std::runtime_error(
+              "vlasov_run HIP: particle number vanished after a sample "
+              "(device brick was empty; upload_all never copied f)");
+        }
       }
     }
     ds.download_all();
