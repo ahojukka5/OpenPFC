@@ -703,7 +703,8 @@ public:
 
   /// Push every species' distribution to the device. Call once, after the
   /// initial condition, and again only if the host state was changed behind
-  /// this object's back.
+  /// this object's back. The constructor zeros both ping-pong buffers;
+  /// skipping this copy advances a vacuum (number=0, Gauss residual ~1/kTiny).
   void upload_all() {
     for (std::size_t s = 0; s < m_bricks.size(); ++s) {
       m_bricks[s]->upload(m_ps->f(s));
