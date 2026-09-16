@@ -150,7 +150,7 @@ heat3d_spectral_pointwise  <N> <n_steps> <dt>
 heat3d_spectral            <N> <n_steps> <dt>
 heat3d_spectral_hip        <N> <n_steps> <dt>
 heat3d_fd_convergence_study [output.csv]
-heat3d_spectral_content_study [--data-dir DIR] [--no-validate]
+heat3d_spectral_content_study [--data-dir DIR] [--no-validate|--held-out-only|--held-out-families]
 ```
 
 - `D` is **not** a CLI knob: it is fixed at `heat3d::kD = 1.0` in [`include/heat3d/heat_model.hpp`](include/heat3d/heat_model.hpp). Edit the literal there if you want to experiment.
@@ -445,6 +445,8 @@ Reproduce (single rank, login node, no allocation needed):
 ./apps/heat3d/heat3d_spectral_content_study --no-validate
 ./apps/heat3d/heat3d_spectral_content_study --families-only
 ./apps/heat3d/heat3d_spectral_content_study --validate-families --no-validate --no-families
+# Held-out family RK4 (compute node; cosine-sum ICs):
+#   sbatch apps/heat3d/slurm/heldout_families.sbatch
 python3 docs/report/figures/make_figures.py            # needs matplotlib
 ```
 

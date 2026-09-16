@@ -23,6 +23,24 @@
     "cost_model": "N^3 at fixed step count; no new hardware timings",
     "nyquist": "even-grid Nyquist modes omitted"
   },
+  "held_out_rk4": {
+    "status": "declared",
+    "command": "heat3d_spectral_content_study --held-out-families",
+    "recipe": "apps/heat3d/slurm/heldout_families.sbatch",
+    "N": 32,
+    "orders": [2, 12],
+    "content_fractions": [0.3, 0.6],
+    "families": [
+      "gaussian",
+      "isotropic_tophat",
+      "isotropic_exponential",
+      "separable_exponential"
+    ],
+    "n_and_2n_steps": true,
+    "n_steps": {"2": 200, "12": 800},
+    "ratio_tolerance": 1e-6,
+    "note": "Same orders, occupancies, n/2n and |ratio-1| bound as the Gaussian N=128 protocol. N=32 is held out from the family Parseval map (N=64) and from the N=16 --validate-families smoke because non-Gaussian ICs are cosine sums. Do not retune after residuals."
+  },
   "execution": {
     "job": "22078280",
     "partition": "standard",

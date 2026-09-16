@@ -47,18 +47,21 @@
  *    — occupancy-matched Gaussian / top-hat / exponential families, using
  *    the same admitted CPU/GPU cost tables (`--families-only` skips the
  *    Gaussian RK4 block).
+ *  - `heat3d_spectral_family_heldout.csv` — predeclared held-out RK4 of
+ *    the shipped FD stack on those families (`--held-out-families`).
  *
  * ## Usage
  *
  *     heat3d_spectral_content_study [--data-dir DIR] [--no-validate]
  *     heat3d_spectral_content_study [--data-dir DIR] [--held-out-only]
+ *     heat3d_spectral_content_study [--data-dir DIR] [--held-out-families]
  *     heat3d_spectral_content_study [--data-dir DIR] [--families-only]
  *
  * `DIR` defaults to `docs/report/data` resolved against the current
  * working directory — run this from the repository root, or pass an
  * absolute path. Single MPI rank only (an accuracy measurement, not a
- * scaling benchmark); the whole thing is a couple of minutes on a login
- * node and needs no allocation.
+ * scaling benchmark). The Gaussian map is a couple of minutes; the
+ * family held-out cosine-sum ICs belong on a compute node.
  */
 
 #include <algorithm>
@@ -161,6 +164,18 @@ const std::vector<ValidationPoint> kHeldOutPoints = {
     {12, 128, 0.30, 800},
     {12, 128, 0.60, 800},
 };
+
+/// Predeclared non-Gaussian referee gate (research#304). Same orders,
+/// occupancies, step counts and 1e-6 residual bound as kHeldOutPoints.
+/// N=32 is held out from the family Parseval map (N=64) and from the
+/// N=16 --validate-families smoke; cosine-sum ICs forbid N=128.
+const std::vector<ValidationPoint> kFamilyHeldOutPoints = {
+    {2, 32, 0.30, 200},
+    {2, 32, 0.60, 200},
+    {12, 32, 0.30, 800},
+    {12, 32, 0.60, 800},
+};
+constexpr double kFamilyHeldOutRatioTol = 1.0e-6;
 
 void write_family_study(const std::string &data_dir,
                         const std::map<int, double> &cost_gpu,
@@ -275,6 +290,50 @@ void write_family_study(const std::string &data_dir,
             << "wrote " << data_dir << "/heat3d_spectral_family_selection.csv\n";
 }
 
+void write_family_heldout(const std::string &data_dir) {
+  std::cout << "Held-out family RK4 (N=32, orders 2 and 12, f=0.3 and 0.6)\n"
+            << "relative |ratio-1| bound " << kFamilyHeldOutRatioTol
+            << " (frozen; not retuned)\n";
+  std::vector<sc::ValidationCase> cases;
+  double max_abs_rel = 0.0;
+  for (const sp::SpectrumFamily &fam : sp::builtin_families()) {
+    std::cout << "  family " << fam.id << "\n";
+    for (const ValidationPoint &p : kFamilyHeldOutPoints) {
+      const sc::ValidationCase c = sc::run_validation(
+          p.fd_order, p.N, p.f, sc::kDiffusionTime, p.n_steps, fam);
+      const sc::ValidationCase c2 = sc::run_validation(
+          p.fd_order, p.N, p.f, sc::kDiffusionTime, 2 * p.n_steps, fam);
+      cases.push_back(c);
+      cases.push_back(c2);
+      const double r1 = std::abs(c.ratio - 1.0);
+      const double r2 = std::abs(c2.ratio - 1.0);
+      max_abs_rel = std::max(max_abs_rel, std::max(r1, r2));
+      std::cout << "    order=" << c.fd_order << " f=" << c.f
+                << " ratio=" << c.ratio << " half-dt ratio=" << c2.ratio
+                << "\n";
+    }
+  }
+  const std::string path = data_dir + "/heat3d_spectral_family_heldout.csv";
+  std::ofstream csv(path);
+  if (!csv) throw std::runtime_error("cannot write " + path);
+  csv << "# Predeclared held-out RK4 of the shipped FD stack against Parseval "
+         "for every builtin occupancy-matched family. Same orders, f, n/"
+         "2n steps and 1e-6 |ratio-1| bound as the Gaussian N=128 protocol; "
+         "N=32 because non-Gaussian ICs are cosine sums. Do not retune.\n"
+      << "family_id,fd_order,N,content_fraction,tau,n_steps,dt,t_final,"
+         "predicted_l2,measured_l2,ratio\n";
+  csv << std::scientific << std::setprecision(10);
+  for (const sc::ValidationCase &c : cases) {
+    csv << c.family_id << "," << c.fd_order << "," << c.N << "," << c.f << ","
+        << c.tau << "," << c.n_steps << "," << c.dt << "," << c.t_final << ","
+        << c.predicted_l2 << "," << c.measured_l2 << "," << c.ratio << "\n";
+  }
+  std::cout << "wrote " << path << "\n"
+            << "max |ratio-1| = " << std::scientific << std::setprecision(4)
+            << max_abs_rel
+            << (max_abs_rel < kFamilyHeldOutRatioTol ? " PASS\n" : " FAIL\n");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -294,6 +353,7 @@ int main(int argc, char **argv) {
   std::string data_dir = "docs/report/data";
   bool validate = true;
   bool held_out_only = false;
+  bool held_out_families = false;
   bool run_families = true;
   bool families_only = false;
   bool validate_families = false;
@@ -305,6 +365,8 @@ int main(int argc, char **argv) {
       validate = false;
     } else if (arg == "--held-out-only") {
       held_out_only = true;
+    } else if (arg == "--held-out-families") {
+      held_out_families = true;
     } else if (arg == "--no-families") {
       run_families = false;
     } else if (arg == "--families-only") {
@@ -314,7 +376,8 @@ int main(int argc, char **argv) {
       validate_families = true;
     } else {
       std::cerr << "Usage: " << argv[0]
-                << " [--data-dir DIR] [--no-validate|--held-out-only]"
+                << " [--data-dir DIR] [--no-validate|--held-out-only|"
+                   "--held-out-families]"
                    " [--no-families|--families-only] [--validate-families]\n";
       MPI_Finalize();
       return 1;
@@ -351,6 +414,18 @@ int main(int argc, char **argv) {
           << "," << c.measured_l2 << "," << c.ratio << "\n";
     }
     std::cout << "wrote " << path << "\n";
+    MPI_Finalize();
+    return 0;
+  }
+
+  if (held_out_families) {
+    try {
+      write_family_heldout(data_dir);
+    } catch (const std::exception &e) {
+      std::cerr << e.what() << "\n";
+      MPI_Finalize();
+      return 1;
+    }
     MPI_Finalize();
     return 0;
   }
