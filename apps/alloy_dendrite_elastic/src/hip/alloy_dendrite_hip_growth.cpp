@@ -80,12 +80,12 @@ struct Cfg {
   alloy_dendrite::FieldOutputConfig fields{};
 };
 
-void download_owned(const DevField &src, RealField &dst) {
+void download_owned(DevField &src, RealField &dst) {
   const auto n = dst.local_size();
   const int hw = src.storage_halo();
   const std::size_t npx = static_cast<std::size_t>(n[0] + 2 * hw);
   const std::size_t npy = static_cast<std::size_t>(n[1] + 2 * hw);
-  src.with_host_view([&](const double *data, std::size_t) {
+  src.with_host_view([&](double *data, std::size_t) {
     for (int k = 0; k < n[2]; ++k)
       for (int j = 0; j < n[1]; ++j)
         for (int i = 0; i < n[0]; ++i)
