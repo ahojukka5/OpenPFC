@@ -41,6 +41,7 @@
 #include <alloy_dendrite/diagnostics.hpp>
 #include <alloy_dendrite/elasticity.hpp>
 #include <alloy_dendrite/field_output.hpp>
+#include <alloy_dendrite/material.hpp>
 #include <alloy_dendrite/parameters.hpp>
 
 namespace {
@@ -67,10 +68,10 @@ struct Cfg {
   bool warm_start = true;
   double tol_el = 1.0e-6;
   int n_el_iter = 50;
-  double youngs = 1.0;
-  double poisson = 0.3;
+  Stiffness c_solid{};
   double liquid_shear = pfc::apps::kDefaultLiquidShearFraction;
-  double eps_c = 0.01;
+  double liquid_bulk = 1.0;
+  double eps_c = 0.0;
   double eps_T = 0.0;
   double u_ref = 0.0;
   double lambda_el = 0.0;
@@ -161,8 +162,9 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   else d3->seed_conserved_solute();
 
   alloy_dendrite::ElasticParams ep;
-  ep.c_solid = Stiffness::isotropic(cfg.youngs, cfg.poisson);
+  ep.c_solid = cfg.c_solid;
   ep.mu_liquid_fraction = cfg.liquid_shear;
+  ep.bulk_liquid_fraction = cfg.liquid_bulk;
   ep.eps_c = cfg.eps_c;
   ep.eps_T = cfg.eps_T;
   ep.U_ref = cfg.u_ref;
@@ -284,8 +286,13 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
     std::cout << std::setprecision(6);
     std::cout << "ALLOY_HIP_GROWTH run_id=" << cfg.run_id << " nx=" << cfg.nx
               << " ny=" << cfg.ny << " nz=" << cfg.nz << " steps=" << cfg.steps
-              << " elastic=" << (cfg.elastic ? 1 : 0) << " eps_c=" << cfg.eps_c
-              << " eps_T=" << cfg.eps_T << " ranks=" << nproc << "\n";
+              << " elastic=" << (cfg.elastic ? 1 : 0)
+              << " lambda=" << cfg.model.lambda
+              << " lambda_el=" << cfg.model.lambda_el
+              << " eps_c=" << cfg.eps_c << " eps_T=" << cfg.eps_T
+              << " u_ref=" << cfg.u_ref << " c11=" << cfg.c_solid.c11
+              << " liquid_shear=" << cfg.liquid_shear
+              << " ranks=" << nproc << "\n";
     std::cout << "ALLOY_HIP_GROWTH_MS t_pf_mean=" << 1e3 * t_pf_sum / cfg.steps
               << " t_el_mean=" << (n_el > 0 ? 1e3 * t_el_sum / n_el : 0.0)
               << " el_solves=" << n_el << " last_iters=" << el.iterations
@@ -303,10 +310,15 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   if (opt.help()) {
     if (rank == 0) {
       std::cout << "Usage: " << argv[0]
-                << " [--nx= --ny= --nz= --elastic=0|1 --fields-dir=DIR ...]\n";
+                << " [--nx= --ny= --nz= --elastic=0|1 --fields-dir=DIR ...]\n"
+                << "Defaults match CPU growth: lambda=D_l/a2, Al-4.5wt%Cu\n"
+                << "stiffness/eps_c from material.hpp. With --elastic=1,\n"
+                << "lambda_el defaults to lambda (calibrated in f_ref units).\n"
+                << "Elastic-off comparison: --elastic=1 --lambda-el=0.\n";
     }
     return EXIT_SUCCESS;
   }
+  namespace mat = alloy_dendrite::material;
   Cfg cfg;
   cfg.model.eps4 = 0.05;
   cfg.nx = opt.integer("nx", cfg.nx);
@@ -320,9 +332,10 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   cfg.dt_safety = opt.real("dt-safety", cfg.dt_safety);
   cfg.omega = opt.real("omega", cfg.omega);
   cfg.seed_radius = opt.real("seed-radius", cfg.seed_radius);
-  cfg.model.lambda = opt.real("lambda", cfg.model.lambda);
   cfg.model.k = opt.real("k", cfg.model.k);
   cfg.model.D_l = opt.real("Dl", cfg.model.D_l);
+  cfg.model.lambda =
+      opt.real("lambda", cfg.model.D_l / alloy_dendrite::kA2);
   cfg.model.D_th = opt.real("Dth", cfg.model.D_th);
   cfg.model.M_c = opt.real("Mc", cfg.model.M_c);
   cfg.model.eps4 = opt.real("eps4", cfg.model.eps4);
@@ -332,13 +345,33 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   cfg.warm_start = opt.flag("warm-start", cfg.warm_start);
   cfg.tol_el = opt.real("tol-el", cfg.tol_el);
   cfg.n_el_iter = opt.integer("n-el-iter", cfg.n_el_iter);
-  cfg.youngs = opt.real("youngs", cfg.youngs);
-  cfg.poisson = opt.real("poisson", cfg.poisson);
   cfg.liquid_shear = opt.real("liquid-shear", cfg.liquid_shear);
-  cfg.eps_c = opt.real("eps-c", cfg.eps_c);
+  cfg.liquid_bulk = opt.real("liquid-bulk", cfg.liquid_bulk);
+  cfg.eps_c = opt.real("eps-c", mat::kEpsC);
   cfg.eps_T = opt.real("eps-T", cfg.eps_T);
-  cfg.u_ref = opt.real("u-ref", cfg.u_ref);
-  cfg.lambda_el = opt.real("lambda-el", cfg.lambda_el);
+  cfg.u_ref = opt.real("u-ref", -cfg.omega);
+  if (opt.has("youngs") || opt.has("poisson")) {
+    cfg.c_solid = Stiffness::isotropic(opt.real("youngs", 1.0),
+                                      opt.real("poisson", 0.3));
+  } else {
+    const double soften = opt.real("el-soften", mat::kSofteningAtTm);
+    cfg.c_solid = mat::al_cu_solid_stiffness(soften);
+    cfg.c_solid.c11 = opt.real("el-c11", cfg.c_solid.c11);
+    cfg.c_solid.c12 = opt.real("el-c12", cfg.c_solid.c12);
+    cfg.c_solid.c44 = opt.real("el-c44", cfg.c_solid.c44);
+  }
+  if (cfg.elastic) {
+    cfg.lambda_el = opt.real("lambda-el", cfg.model.lambda);
+  } else if (opt.has("lambda-el") || opt.has("eps-c") || opt.has("eps-T") ||
+             opt.has("u-ref") || opt.has("youngs") || opt.has("poisson") ||
+             opt.has("el-c11") || opt.has("el-c12") || opt.has("el-c44") ||
+             opt.has("el-soften") || opt.has("liquid-shear") ||
+             opt.has("liquid-bulk")) {
+    throw std::invalid_argument(
+        "elastic constants are only read with --elastic=1. For an "
+        "elastic-off reference on the same code path, use "
+        "'--elastic=1 --lambda-el=0'");
+  }
   cfg.model.lambda_el = cfg.lambda_el;
   cfg.csv = opt.text("csv", cfg.csv);
   cfg.run_id = opt.text("run-id", cfg.run_id);

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Split-screen elastic-off vs on dendrite animation (issue #11).
+"""Split-screen dendrite animation (issue #11).
 
+Both arms use the device Green solve and Al-4.5wt%Cu material.
+`off` is lambda_el=0; `on` is calibrated lambda_el=lambda.
 Color scales are fixed across frames. Fields are solver bricks, not
 interpolated. Does not treat historical 16.7% as a target.
 
@@ -71,8 +73,8 @@ def render(run: Path, out: Path, fps: int) -> None:
     for i in range(n):
         fig, axes = plt.subplots(2, 3, figsize=(12.0, 7.5))
         for ax, img, title, vmin, vmax, cmap in (
-            (axes[0, 0], phis_off[i], "phi elastic off", -1, 1, "coolwarm"),
-            (axes[0, 1], phis_on[i], "phi elastic on", -1, 1, "coolwarm"),
+            (axes[0, 0], phis_off[i], r"phi $\lambda_{\mathrm{el}}=0$", -1, 1, "coolwarm"),
+            (axes[0, 1], phis_on[i], r"phi $\lambda_{\mathrm{el}}=\lambda$", -1, 1, "coolwarm"),
             (axes[0, 2], phis_on[i] - phis_off[i], r"$\Delta\phi$", -0.2, 0.2, "coolwarm"),
             (axes[1, 0], us_on[i], "U (on)", vmin_u, vmax_u, "viridis"),
         ):
@@ -103,6 +105,7 @@ def render(run: Path, out: Path, fps: int) -> None:
     (out / "summary.md").write_text(
         f"# Dendrite 2-D showcase\n\n- run `{run}`\n- grid {man['nx']}²\n"
         f"- frames {n}\n- color scales fixed; device Green path\n"
+        f"- same Al-4.5wt%Cu arm; off is lambda_el=0, on is lambda_el=lambda\n"
         f"- not a 16.7% science target\n"
     )
     ffmpeg = shutil.which("ffmpeg")
