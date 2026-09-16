@@ -54,13 +54,21 @@ submitting 60 nodes.
 ## How to submit (LUMI login)
 
 ```bash
+python3 apps/tungsten/scripts/flagship_ladder.py --check   # no binary
 export TUNGSTEN_HIP_BIN=/flash/project_462001519/juaho/build/<tree>/apps/tungsten/tungsten_hip
-python3 apps/tungsten/scripts/flagship_ladder.py --check
-./docs/lumi_slurm/submit_tungsten_hip_flagship.sh pilot   # 1 node
+./docs/lumi_slurm/submit_tungsten_hip_flagship.sh pilot   # 1 node first
+# only after HBM/timing health:
 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh weak     # 1..32, not 60
 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh strong    # optional 768³
 FLAGSHIP_ALLOW_60=1 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh max
+./docs/lumi_slurm/submit_tungsten_hip_flagship.sh collect   # CSV from scratch
 ```
+
+Each run directory records revision, dirty count, `sha256` of
+`tungsten_hip`, `module list`, `OPENPFC_FFT_NODE_GRID`, the intended
+proc grid, and a copy of `input.toml`. Fill
+[`tungsten_lumi_g_flagship.csv`](../report/data/tungsten_lumi_g_flagship.csv)
+with `--collect`; do not transcribe `wall_step` by hand.
 
 Account `project_462001519`, partition `standard-g`. Do not run these
 jobs on the login node.

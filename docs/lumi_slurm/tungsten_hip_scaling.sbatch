@@ -77,17 +77,48 @@ elif (( PER_NODE > 8 )); then
   exit 1
 fi
 
+SRC="${OPENPFC_SRC:-/pfs/lustref1/flash/project_462001519/juaho/dev/openpfc}"
+if (( NTASKS == 8 )); then
+  PROC_GRID="min-surface"
+else
+  PROC_GRID="1x8x${SLURM_NNODES}"
+fi
+BIN_SHA=""
+if command -v sha256sum >/dev/null 2>&1 && [[ -f "${TUNGSTEN_HIP_BIN}" ]]; then
+  BIN_SHA="$(sha256sum "${TUNGSTEN_HIP_BIN}" | awk '{print $1}')"
+fi
+REV=""
+DIRTY=""
+if [[ -d "${SRC}/.git" ]]; then
+  REV="$(git -C "${SRC}" rev-parse HEAD 2>/dev/null || true)"
+  DIRTY="$(git -C "${SRC}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+fi
+
 {
   echo "=== tungsten_hip scaling ==="
-  echo "job=${SLURM_JOB_ID} name=${SLURM_JOB_NAME}"
-  echo "nodes=${SLURM_NNODES} ntasks=${NTASKS} partition=${SLURM_JOB_PARTITION}"
+  echo "job=${SLURM_JOB_ID}"
+  echo "name=${SLURM_JOB_NAME}"
+  echo "nodes=${SLURM_NNODES}"
+  echo "ntasks=${NTASKS}"
+  echo "partition=${SLURM_JOB_PARTITION}"
   echo "bin=${TUNGSTEN_HIP_BIN}"
-  echo "Lx=Ly=Lz=${LX} steps=${STEPS} cwd=${RUNDIR}"
+  echo "bin_sha256=${BIN_SHA}"
+  echo "Lx=${LX}"
+  echo "N=${LX}"
+  echo "steps=${STEPS}"
+  echo "cwd=${RUNDIR}"
+  echo "input=${RUNDIR}/input.toml"
   echo "cpu-bind=${CPU_BIND}"
   echo "MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED}"
   echo "MPICH_OFI_NIC_POLICY=${MPICH_OFI_NIC_POLICY:-unset}"
   echo "ROCR_VISIBLE_DEVICES=${ROCR_VISIBLE_DEVICES:-unset}"
   echo "OPENPFC_FFT_SLAB_AXIS=${OPENPFC_FFT_SLAB_AXIS:-unset}"
+  echo "OPENPFC_FFT_NODE_GRID=${OPENPFC_FFT_NODE_GRID:-unset}"
+  echo "proc_grid=${PROC_GRID}"
+  echo "revision=${REV}"
+  echo "dirty=${DIRTY}"
+  echo "src=${SRC}"
+  module list
 } | tee "${RUNDIR}/run_meta.txt"
 
 srun "${SRUN_BIND[@]}" \

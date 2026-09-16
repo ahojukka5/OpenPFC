@@ -6,7 +6,7 @@
 # Submit from a LUMI login node. Do not run the jobs on the login node.
 #
 # Usage:
-#   TUNGSTEN_HIP_BIN=/path/to/tungsten_hip ./submit_tungsten_hip_flagship.sh check
+#   ./submit_tungsten_hip_flagship.sh check
 #   TUNGSTEN_HIP_BIN=/path/to/tungsten_hip ./submit_tungsten_hip_flagship.sh pilot
 #   TUNGSTEN_HIP_BIN=/path/to/tungsten_hip ./submit_tungsten_hip_flagship.sh weak
 #   TUNGSTEN_HIP_BIN=/path/to/tungsten_hip ./submit_tungsten_hip_flagship.sh strong
@@ -18,17 +18,19 @@
 
 set -euo pipefail
 
-: "${TUNGSTEN_HIP_BIN:?set TUNGSTEN_HIP_BIN to the 0.2 tungsten_hip binary}"
-if [[ ! -x "${TUNGSTEN_HIP_BIN}" ]]; then
-  echo "TUNGSTEN_HIP_BIN is not executable: ${TUNGSTEN_HIP_BIN}" >&2
+MODE="${1:-}"
+if [[ "${MODE}" != "check" && "${MODE}" != "pilot" && "${MODE}" != "weak" &&
+      "${MODE}" != "strong" && "${MODE}" != "max" && "${MODE}" != "collect" ]]; then
+  echo "usage: $0 check|pilot|weak|strong|max|collect" >&2
   exit 1
 fi
 
-MODE="${1:-}"
-if [[ "${MODE}" != "check" && "${MODE}" != "pilot" && "${MODE}" != "weak" &&
-      "${MODE}" != "strong" && "${MODE}" != "max" ]]; then
-  echo "usage: $0 check|pilot|weak|strong|max" >&2
-  exit 1
+if [[ "${MODE}" != "check" && "${MODE}" != "collect" ]]; then
+  : "${TUNGSTEN_HIP_BIN:?set TUNGSTEN_HIP_BIN to the 0.2 tungsten_hip binary}"
+  if [[ ! -x "${TUNGSTEN_HIP_BIN}" ]]; then
+    echo "TUNGSTEN_HIP_BIN is not executable: ${TUNGSTEN_HIP_BIN}" >&2
+    exit 1
+  fi
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,7 +39,9 @@ TEMPLATE="${SCRIPT_DIR}/tungsten_hip_scaling.toml"
 PARTITION="${PARTITION:-standard-g}"
 ACCOUNT="${ACCOUNT:-project_462001519}"
 STEPS="${TUNGSTEN_STEPS:-20}"
-export TUNGSTEN_HIP_BIN
+if [[ -n "${TUNGSTEN_HIP_BIN:-}" ]]; then
+  export TUNGSTEN_HIP_BIN
+fi
 export TUNGSTEN_STEPS="${STEPS}"
 export TUNGSTEN_SCALING_TEMPLATE="${TEMPLATE}"
 export OPENPFC_SCALING_ROOT="${OPENPFC_SCALING_ROOT:-/scratch/project_462001519/juaho/openpfc-scaling}"
@@ -76,6 +80,13 @@ submit_one() {
 case "${MODE}" in
   check)
     python3 "${SCRIPT_DIR}/../../apps/tungsten/scripts/flagship_ladder.py" --check
+    python3 "${SCRIPT_DIR}/../../apps/tungsten/scripts/flagship_ladder.py" \
+      --collect-self-test
+    ;;
+  collect)
+    python3 "${SCRIPT_DIR}/../../apps/tungsten/scripts/flagship_ladder.py" \
+      --collect "${OPENPFC_SCALING_ROOT}" \
+      --out "${SCRIPT_DIR}/../../docs/report/data/tungsten_lumi_g_flagship.csv"
     ;;
   pilot)
     echo "1-node 768^3 pilot (8 GCDs, I/O off, ${STEPS} steps)"
@@ -110,5 +121,5 @@ esac
 
 echo "Logs: /scratch/project_462001519/juaho/logs/"
 echo "Runs: ${OPENPFC_SCALING_ROOT}/runs/"
-echo "Summarise into docs/report/data/tungsten_lumi_g_flagship.csv"
+echo "Collect CSV: $0 collect"
 echo "See docs/hpc/lumi_gpu_flagship.md"

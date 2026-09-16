@@ -25,7 +25,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **LUMI-G tungsten_hip flagship ladder** (issue #13). Weak-scaling
   recipes for 1–32 nodes plus a gated 60-node / 3000³ point.
   `OPENPFC_FFT_NODE_GRID=1` because 1200³ is not a 32-rank 1-D slab.
-  Compact CSV ships header-only until production jobs are admitted.
+  Each scratch run records revision, binary SHA256, modules, and the
+  input copy. `flagship_ladder.py --collect` writes the compact CSV.
+  `--check` is arithmetic-only (no `TUNGSTEN_HIP_BIN`).
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and

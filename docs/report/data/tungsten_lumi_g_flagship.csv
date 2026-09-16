@@ -1,6 +1,7 @@
 # Issue #13 LUMI-G tungsten_hip weak-scaling ladder.
-# Fill from production jobs. Do not interpolate or invent timings.
+# Written by flagship_ladder.py --collect from scratch run dirs.
+# Do not interpolate or invent timings.
 # Protocol: docs/lumi_slurm/tungsten_hip_scaling.toml (I/O off, dt=1).
 # Multi-node: OPENPFC_FFT_NODE_GRID=1. Scratch only for bulky logs.
-# Efficiency is wall_step(1 node) / wall_step(N)  (weak; similar cells/GCD).
-nodes,gcds,N,cells,cells_per_gcd,steps,warmup,job,wall_step_s,rss_per_rank_gib,proc_grid,revision,notes
+# Efficiency is wall_step(1 node) / wall_step(N) (weak; similar cells/GCD).
+nodes,gcds,N,cells,cells_per_gcd,steps,warmup,job,wall_step_s,rss_per_rank_gib,proc_grid,revision,dirty,bin_sha256,fft_node_grid,input,notes
