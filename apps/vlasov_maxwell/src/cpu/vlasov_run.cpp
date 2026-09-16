@@ -76,7 +76,10 @@ void print_usage(std::ostream &os, const char *exe) {
      << ")\n"
      << "  --t-end=X           end time in 1/omega_pe        (case default)\n"
      << "  --samples=N         diagnostic samples            (" << d.n_sample
-     << ")\n\n"
+     << ")\n"
+     << "  --fit-t0=X --fit-t1=X  freeze the exponential-rate window for\n"
+     << "                      weibel/filament. Both or neither. Default is\n"
+     << "                      auto_growth_window on the full series\n\n"
      << "Physics\n"
      << "  --vth=X             thermal velocity / c          (case default)\n"
      << "  --vthy=X            v_th along y (weibel)         (case default)\n"
@@ -207,6 +210,21 @@ int run(int argc, char **argv, int rank, int nproc) {
   p.dt_safety = opt.real("dt-safety", p.dt_safety);
   p.t_end = opt.real("t-end", c.t_end);
   p.n_sample = opt.integer("samples", 100);
+  const bool have_fit0 = opt.has("fit-t0");
+  const bool have_fit1 = opt.has("fit-t1");
+  const double cli_fit_t0 = opt.real("fit-t0", std::nan(""));
+  const double cli_fit_t1 = opt.real("fit-t1", std::nan(""));
+  if (have_fit0 != have_fit1) {
+    throw std::invalid_argument("--fit-t0 and --fit-t1 must be set together");
+  }
+  if (have_fit0 && c.name != "weibel" && c.name != "filament") {
+    throw std::invalid_argument(
+        "--fit-t0/--fit-t1 apply only to --case=weibel or filament");
+  }
+  if (have_fit0 && !(std::isfinite(cli_fit_t0) && std::isfinite(cli_fit_t1) &&
+                     cli_fit_t1 > cli_fit_t0)) {
+    throw std::invalid_argument("--fit-t1 must be greater than --fit-t0");
+  }
   p.electrostatic = opt.flag("electrostatic", c.electrostatic);
   p.self_consistent = opt.flag("self-consistent", c.self_consistent);
   p.b_ext = opt.real("bext", c.name == "gyro" ? 0.5 : 0.0);
@@ -511,11 +529,16 @@ int run(int argc, char **argv, int rank, int nproc) {
                    "--samples.\n";
     }
   } else if (c.name == "weibel" || c.name == "filament") {
-    const auto w = vlasov::auto_growth_window(t_s, m_bz);
-    fit_t0 = w[0];
-    fit_t1 = w[1];
+    if (have_fit0) {
+      fit_t0 = cli_fit_t0;
+      fit_t1 = cli_fit_t1;
+    } else {
+      const auto w = vlasov::auto_growth_window(t_s, m_bz);
+      fit_t0 = w[0];
+      fit_t1 = w[1];
+    }
     vlasov::require_fit_before_recurrence(fit_t1, k, p.dvx());
-    gamma_fit = vlasov::fit_exponential_rate(t_s, m_bz, w[0], w[1]);
+    gamma_fit = vlasov::fit_exponential_rate(t_s, m_bz, fit_t0, fit_t1);
     pd::BiMaxwellian bm;
     bm.v_th_x = vth;
     bm.v_th_y = (c.name == "weibel") ? vthy : std::sqrt(drift * drift + vth * vth);
