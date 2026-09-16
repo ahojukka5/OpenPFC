@@ -18,7 +18,8 @@
 # login node first; this job compiles the HIP inverse binary and runs.
 #
 #   SHOWCASE_MODE=pilot   256^2, few steps (default)
-#   SHOWCASE_MODE=prod    1024^2, longer trajectory
+#   SHOWCASE_MODE=prod    candidate 1024^2 until the 8-GCD pilot reports
+#                         wall time and HBM; override with SHOWCASE_NX
 #
 # Required: HIP build tree already configured (FetchContent needs the network).
 
@@ -68,6 +69,9 @@ if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-1024}"
   STEPS="${SHOWCASE_STEPS:-80}"
   EVERY="${SHOWCASE_DUMP_EVERY:-2}"
+  if [[ -z "${SHOWCASE_NX:-}" ]]; then
+    echo "SHOWCASE_NX unset: candidate ${NX}^2; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
+  fi
 else
   NX="${SHOWCASE_NX:-256}"
   STEPS="${SHOWCASE_STEPS:-20}"

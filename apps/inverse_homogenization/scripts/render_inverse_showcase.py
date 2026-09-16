@@ -54,6 +54,15 @@ def load_h(fields: Path, man: dict, idx: int) -> np.ndarray:
     return cube[g.nz // 2]
 
 
+def nu_at(hist: dict[str, list[float]], step: int, default: float = 0.0) -> float:
+    steps = hist.get("step", [])
+    nus = hist.get("nu_eff", [])
+    by = {int(s): n for s, n in zip(steps, nus)}
+    if step in by:
+        return by[step]
+    return float(nus[-1]) if nus else default
+
+
 def tile3(a: np.ndarray) -> np.ndarray:
     return np.tile(a, (3, 3))
 
@@ -86,7 +95,8 @@ def render(run: Path, out: Path, fps: int) -> None:
     frames_dir.mkdir(parents=True, exist_ok=True)
     last = load_h(fields, man, n - 1)
     vmin, vmax = 0.0, 1.0
-    nu_final = float(hist.get("nu_eff", [0.0])[-1]) if hist else 0.0
+    last_step = int(man["steps"][-1])
+    nu_final = nu_at(hist, last_step)
 
     for i in range(n):
         h = load_h(fields, man, i)
@@ -96,7 +106,7 @@ def render(run: Path, out: Path, fps: int) -> None:
         ax.imshow(h, origin="lower", cmap="cividis", vmin=vmin, vmax=vmax,
                   interpolation="nearest")
         step = man["steps"][i] if i < len(man["steps"]) else i
-        ax.set_title(f"h, step {step}")
+        ax.set_title(f"h, step {step}, $\\nu_{{eff}}$={nu_at(hist, int(step)):.3f}")
         ax.set_xticks([]); ax.set_yticks([])
         ax = axes[1]
         ax.imshow(tile3(h > 0.5), origin="lower", cmap="cividis", vmin=0, vmax=1,
@@ -154,7 +164,7 @@ def render(run: Path, out: Path, fps: int) -> None:
         f"- run: `{run}`\n"
         f"- grid: {man['nx']}×{man['ny']}×{man['nz']}\n"
         f"- frames: {n}\n"
-        f"- final nu_eff (from homogenizer CSV): {nu_final:.6g}\n"
+        f"- final nu_eff (homogenizer at last dumped step {last_step}): {nu_final:.6g}\n"
         f"- color scale: fixed h in [0,1]; morphology is solver output\n"
     )
     print(f"wrote {still}")

@@ -26,7 +26,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `openpfc_inverse_homogenize_hip` takes the CPU inverse CLI subset
   (rotating-square auxetic seed, CSV \(C_H\)/\(\nu_{\mathrm{eff}}\),
   MPI-IO `h` bricks) on `GPUSpectralStack` so one LUMI-G node uses all
-  8 GCDs. Recipe:
+  8 GCDs. History CSV includes a final homogenization row for `h_N`.
+  Prod grid is a candidate until the 8-GCD pilot. Recipe:
   `apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch`.
   Render:
   `apps/inverse_homogenization/scripts/render_inverse_showcase.py`.

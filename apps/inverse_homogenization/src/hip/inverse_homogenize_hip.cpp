@@ -386,6 +386,7 @@ int run(int argc, char **argv, int rank, int nproc) {
   dump(0);
 
   pfc::apps::inverse::InverseStepReport last{};
+  int n_done = 0;
   for (int s = 0; s < cfg.steps; ++s) {
     const auto t0 = std::chrono::steady_clock::now();
     last = ac_step(hom, domain, fft, h, spec, hat, lap, dJdh, g, d_real, d_hat,
@@ -409,6 +410,7 @@ int run(int argc, char **argv, int rank, int nproc) {
       }
     }
     dump(s + 1);
+    n_done = s + 1;
     if (!last.elasticity_converged) {
       rc = 1;
       break;
@@ -416,6 +418,18 @@ int run(int argc, char **argv, int rank, int nproc) {
   }
 
   const auto final = hom.compute(h);
+  if (rank == 0 && csv.is_open()) {
+    const auto &C = final.stiffness;
+    const double nu = nu_of(C(0, 0), C(0, 1));
+    const double Jt = pfc::apps::tensor_mismatch(C, spec.C_target, spec.W);
+    const double dv = last.volume_fraction - spec.volume_target;
+    const double Jv = spec.lambda_volume * dv * dv;
+    csv << n_done << ',' << (Jt + Jv + last.J_reg) << ',' << Jt << ',' << Jv
+        << ',' << last.J_reg << ',' << last.volume_fraction << ','
+        << last.grey_fraction << ',' << C(0, 0) << ',' << C(0, 1) << ',' << nu
+        << ',' << 0.0 << ',' << (final.all_converged() ? 1 : 0) << '\n';
+    csv.flush();
+  }
   auto hbin = h;
   for (std::size_t i = 0; i < h.size(); ++i)
     hbin.data()[i] = (h.data()[i] > 0.5) ? 1.0 : 0.0;
