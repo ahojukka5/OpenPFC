@@ -26,6 +26,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401,E402
 
 from field_io import GridSpec, read_bin  # noqa: E402
 
@@ -77,11 +78,26 @@ def render(run, out, fps):
         threshold_mask=(last[::step, ::step, ::step] > 0).astype(np.uint8),
     )
     write_rotate(last, out, fps)
+    mask = last[:: max(1, int(man["nx"]) // 32),
+                :: max(1, int(man["ny"]) // 32),
+                :: max(1, int(man["nz"]) // 32)] > 0
+    fig = plt.figure(figsize=(5.2, 5.0))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.voxels(mask, facecolors="#b04830", edgecolor="none")
+    ax.set_title("phi>0 surface voxels (downsampled)")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_zticks([])
+    fig.tight_layout()
+    fig.savefig(out / "dendrite3d_voxels.png", dpi=120)
+    plt.close(fig)
     (out / "summary.md").write_text(
         "# Dendrite 3-D showcase\n\n- run `%s`\n- grid %d^3\n- frames %d\n"
         "- z-solid-fraction std: %.6g (0 is an extrusion)\n"
         "- isothermal; elasticity off; cubic <100> along the brick, eps4=0.05\n"
-        "- phi_downsampled.npz is a coarse brick for a rotating volume, not science\n"
+        "- hero still: dendrite3d_voxels.png; slices/MIP are audit panels\n"
+        "- size later grids from HIP_MEM bytes_per_cell, not sacct MaxRSS\n"
+        "- 8 doubles/cell estimates are provisional host-side counting\n"
         % (run, man["nx"], n, zstd)
     )
     ffmpeg = shutil.which("ffmpeg")

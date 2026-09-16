@@ -23,8 +23,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ### Added
 
 - **Alloy-dendrite 3-D 8-GCD showcase** (issue #12). Spherical seed,
-  isothermal, elasticity off. Recipe:
+  isothermal, elasticity off. `alloy_dendrite_hip_growth` prints
+  `HIP_MEM` from `hipMemGetInfo` (not host RSS). Recipe:
   `apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch`. Render:
+  voxels plus slices,
   `apps/alloy_dendrite_elastic/scripts/render_dendrite3d_showcase.py`.
   2048³ is a later node-count target after the one-node bytes/cell pilot.
 - **Alloy-dendrite 8-GCD showcase** (issue #11).
