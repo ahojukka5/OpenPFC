@@ -56,7 +56,11 @@ def render(run: Path, out: Path, fps: int) -> None:
     times = man["times"]
     nx, nvx = man["nx"], man["nvx"]
     ledger = load_csv(run / "ledger.csv") if (run / "ledger.csv").exists() else {}
+    linear = load_csv(run / "linear.csv") if (run / "linear.csv").exists() else {}
     summary = (run / "summary.csv").read_text() if (run / "summary.csv").exists() else ""
+    linear_txt = (run / "linear.csv").read_text() if (run / "linear.csv").exists() else ""
+    fit0 = linear["fit_t0"][-1] if linear.get("fit_t0") else None
+    fit1 = linear["fit_t1"][-1] if linear.get("fit_t1") else None
     frames = out / "frames"
     frames.mkdir(parents=True, exist_ok=True)
     planes = [load_plane(red, man, "f_xvx", i, nx, nvx) for i in range(len(times))]
@@ -82,6 +86,8 @@ def render(run: Path, out: Path, fps: int) -> None:
             em = ledger.get("energy_bz", ledger.get("energy_em", []))
             ax.semilogy(tcol, np.maximum(np.abs(em), 1e-30))
             ax.axvline(t, color="0.4", lw=0.8)
+            if fit0 is not None and fit1 is not None:
+                ax.axvspan(fit0, fit1, color="0.85", zorder=0)
         ax.set_title(r"magnetic energy (solver)")
         ax.set_xlabel("t")
         fig.tight_layout()
@@ -93,8 +99,10 @@ def render(run: Path, out: Path, fps: int) -> None:
     (out / "summary.md").write_text(
         f"# Weibel showcase\n\n- run `{run}`\n- grid {nx}×{nvx}×{man['nvy']}\n"
         f"- frames {len(times)}\n- color scale fixed across frames\n"
-        f"- post-linear interpretation is a demonstration unless the "
-        f"summary linear window matches the oracle\n\n```\n{summary}\n```\n"
+        f"- quote gamma from the paired linear arm / frozen window, not "
+        f"from a post-saturation auto-window on the movie\n\n"
+        f"## linear arm\n\n```\n{linear_txt}\n```\n\n"
+        f"## movie summary (same frozen window)\n\n```\n{summary}\n```\n"
     )
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:

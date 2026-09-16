@@ -50,8 +50,12 @@ entropy, \(\min f\), Gauss residual (absolute and relative), and
 velocity-boundary occupancy.
 
 `--reduced-dir` writes presentation-rate projections (`f(x,v_x)`,
-`f(x,v_y)`, `B_z`, `E_y`, `J_y`) instead of the full 3-D brick. Issue #10
-recipe: [`slurm/showcase_weibel.sbatch`](slurm/showcase_weibel.sbatch).
+`f(x,v_y)`, `B_z`, `E_y`, `J_y`) instead of the full 3-D brick.
+`--fit-t0/--fit-t1` freeze the Weibel/filament exponential-rate window
+so a run that continues into saturation does not quote a
+post-saturation \(\gamma\). Issue #10 recipe:
+[`slurm/showcase_weibel.sbatch`](slurm/showcase_weibel.sbatch) (paired
+linear arm, then reduced movie).
 
 ## What the tests assert
 
