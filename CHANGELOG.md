@@ -22,6 +22,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Inverse-homogenization 3-D 8-GCD showcase** (issue #9). HIP inverse
+  accepts `--init=spinodal` and `--target=orthotropic`. Recipe:
+  `apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch`. Render:
+  `apps/inverse_homogenization/scripts/render_inverse3d_showcase.py`.
 - **Inverse-homogenization 8-GCD showcase** (issue #8).
   `openpfc_inverse_homogenize_hip` takes the CPU inverse CLI subset
   (rotating-square auxetic seed, CSV \(C_H\)/\(\nu_{\mathrm{eff}}\),

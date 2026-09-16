@@ -48,6 +48,7 @@ these jobs at the 0.1.4 binaries or `project_462001245` scratch used below.
 Presentation showcases (one node, 8 GCDs, scratch I/O):
 
 - Inverse 2-D: `apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch`
+- Inverse 3-D: `apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch`
 
 ## Layout (legacy 1024³ helpers)
 

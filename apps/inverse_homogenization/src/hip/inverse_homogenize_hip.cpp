@@ -38,6 +38,7 @@
 #include <inverse_homogenization/auxetic_geometry.hpp>
 #include <inverse_homogenization/field_output.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
+#include <inverse_homogenization/spinodal_generator.hpp>
 
 namespace {
 
@@ -70,6 +71,7 @@ struct Config {
   int project_volume{1};
   double simp{1.0};
   double w12{1.0};
+  double C11{1.2}, C22{0.7}, C12{0.25}, C66{0.3};
   pfc::apps::inverse::FieldOutputConfig fields{};
 };
 
@@ -77,7 +79,7 @@ void usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe << " [--key=value]...\n"
      << "  HIP inverse homogenization (device Green, host Allen-Cahn).\n"
      << "  --nx --ny --nz --dx --target isotropic|auxetic|orthotropic\n"
-     << "  --init rotating-squares|noise|uniform --steps --csv --dump-dir\n";
+     << "  --init rotating-squares|noise|uniform|spinodal --steps --csv --dump-dir\n";
 }
 
 bool parse_double(std::string_view v, double &out) {
@@ -140,23 +142,41 @@ bool parse_args(int argc, char **argv, Config &cfg) {
     else if (key == "project-volume") ok = parse_int(val, cfg.project_volume);
     else if (key == "simp") ok = parse_double(val, cfg.simp) && cfg.simp >= 1.0;
     else if (key == "W-12") ok = parse_double(val, cfg.w12) && cfg.w12 >= 0.0;
+    else if (key == "C11") ok = parse_double(val, cfg.C11);
+    else if (key == "C22") ok = parse_double(val, cfg.C22);
+    else if (key == "C12") ok = parse_double(val, cfg.C12);
+    else if (key == "C66") ok = parse_double(val, cfg.C66);
     else if (key == "dump-dir") cfg.fields.dir = std::string(val);
     else if (key == "dump-every") ok = parse_int(val, cfg.fields.every) && cfg.fields.every > 0;
     else return false;
     if (!ok) return false;
   }
-  if (cfg.target != "isotropic" && cfg.target != "auxetic") return false;
+  if (cfg.target != "isotropic" && cfg.target != "auxetic" &&
+      cfg.target != "orthotropic")
+    return false;
   if (cfg.init != "uniform" && cfg.init != "noise" &&
-      cfg.init != "rotating-squares")
+      cfg.init != "rotating-squares" && cfg.init != "spinodal")
     return false;
   return true;
 }
 
 pfc::apps::Voigt6 make_target(const Config &cfg) {
+  using pfc::apps::Stiffness;
+  using pfc::apps::voigt_from_stiffness;
+  using pfc::apps::Voigt6;
+  if (cfg.target == "orthotropic") {
+    Voigt6 C;
+    C(0, 0) = cfg.C11;
+    C(1, 1) = cfg.C22;
+    C(2, 2) = cfg.C22;
+    C(0, 1) = C(1, 0) = C(0, 2) = C(2, 0) = cfg.C12;
+    C(1, 2) = C(2, 1) = cfg.C12;
+    C(3, 3) = C(4, 4) = C(5, 5) = cfg.C66;
+    return C;
+  }
   const double nu = (cfg.target == "auxetic") ? -std::abs(cfg.nu_target)
                                                 : cfg.nu_target;
-  return pfc::apps::voigt_from_stiffness(
-      pfc::apps::Stiffness::isotropic(cfg.E_target, nu));
+  return voigt_from_stiffness(Stiffness::isotropic(cfg.E_target, nu));
 }
 
 void spectral_laplacian_hip(const pfc::Domain &domain, FFT &fft, const RealField &h,
@@ -310,6 +330,11 @@ int run(int argc, char **argv, int rank, int nproc) {
   if (cfg.init == "rotating-squares") {
     pfc::apps::inverse::fill_rotating_squares(h, cfg.nx, cfg.ny, cfg.init_half,
                                               cfg.init_angle);
+  } else if (cfg.init == "spinodal") {
+    pfc::apps::inverse::SpinodalSpec ch;
+    ch.c0 = cfg.volume;
+    ch.seed = cfg.seed;
+    pfc::apps::inverse::seed_spinodal_noise(h, cfg.nx, cfg.ny, cfg.nz, ch);
   }
   h.note_host_write();
 
@@ -442,7 +467,8 @@ int run(int argc, char **argv, int rank, int nproc) {
     const auto &Cb = bin.stiffness;
     const double nub = nu_of(Cb(0, 0), Cb(0, 1));
     std::cout << std::setprecision(16) << "INVERSE_CHECKSUM " << last.J << '\n';
-    std::cout << std::setprecision(8) << "C11 " << C(0, 0) << " C12 " << C(0, 1)
+    std::cout << std::setprecision(8) << "C11 " << C(0, 0) << " C22 " << C(1, 1)
+              << " C33 " << C(2, 2) << " C12 " << C(0, 1) << " C13 " << C(0, 2)
               << " nu_eff " << nu << " grey " << last.grey_fraction << '\n';
     std::cout << "C11_bin " << Cb(0, 0) << " C12_bin " << Cb(0, 1) << " nu_bin "
               << nub << '\n';

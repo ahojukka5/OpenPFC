@@ -92,6 +92,15 @@ This page ties **figures** you may see in the repository or publications to **ru
 
 Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 
+## Inverse homogenization (3-D, LUMI-G)
+
+| | |
+|---|---|
+| **Runnable** | `openpfc_inverse_homogenize_hip` — spinodal seed |
+| **Recipe** | [`showcase_inverse3d.sbatch`](../../apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch) (8 GCDs) |
+| **Render** | [`render_inverse3d_showcase.py`](../../apps/inverse_homogenization/scripts/render_inverse3d_showcase.py) |
+| **Concepts** | genuine 3-D \(C_H\); not an extrusion; tensor from the homogenizer |
+
 ## Quick 2D PNG snapshots (Allen–Cahn)
 
 The **Allen–Cahn** demo can write **grayscale PNG** snapshots (optional final, or initial + final). No JSON `App` — CLI arguments only.

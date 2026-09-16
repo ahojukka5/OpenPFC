@@ -155,3 +155,12 @@ the last dumped `h`) and MPI-IO `h` bricks. Production `SHOWCASE_NX`
 is a candidate until the 8-GCD pilot reports HBM and wall time.
 Do not call a grey morphology auxetic unless `nu_eff` / `nu_bin` is
 negative. The default seed is rotating-squares.
+
+## Showcase (issue #9)
+
+Genuine 3-D cells (`nz = nx`), spinodal seed, orthotropic target.
+Not a 2-D extrusion. Recipe:
+[`slurm/showcase_inverse3d.sbatch`](slurm/showcase_inverse3d.sbatch).
+Render orthogonal midplanes with
+[`scripts/render_inverse3d_showcase.py`](scripts/render_inverse3d_showcase.py).
+Prod `SHOWCASE_NX` is a candidate until the 8-GCD pilot.
