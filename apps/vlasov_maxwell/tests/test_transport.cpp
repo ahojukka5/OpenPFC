@@ -60,6 +60,7 @@
 #include <vlasov_maxwell/advect.hpp>
 #include <vlasov_maxwell/parameters.hpp>
 #include <vlasov_maxwell/phase_space.hpp>
+#include <vlasov_maxwell/reduced_output.hpp>
 
 using Catch::Approx;
 using vlasov::PhaseField;
@@ -1300,6 +1301,20 @@ TEST_CASE("the two velocity steps carry opposite cross-product signs",
   INFO("v_y peak moved from " << ks << " to " << expect_ky);
   REQUIRE(ps.f(0)(0, js, expect_ky) == Approx(1.0).margin(1e-12));
   REQUIRE(ps.f(0)(0, js, ks) == Approx(0.0).margin(1e-12));
+}
+
+TEST_CASE("reduced f(x,vx) integrates the owned v_y slab", "[unit][reduced]") {
+  SimParams s = dyadic_params(8, 8, 8, 1.0, 3);
+  PhaseSpace ps(s, 2, MPI_COMM_SELF);
+  ps.initialise(0, [](double, double, double) { return 1.0; });
+  std::vector<double> loc;
+  vlasov::accumulate_f_xvx(ps, ps.f(0), loc);
+  REQUIRE(loc.size() == static_cast<std::size_t>(8 * 8));
+  const double expect = static_cast<double>(ps.nvy_local()) * ps.dvy();
+  for (double v : loc) REQUIRE(v == Approx(expect).epsilon(1e-12));
+  vlasov::accumulate_f_xvy(ps, ps.f(0), loc);
+  const double expect_xvy = static_cast<double>(ps.nvx()) * ps.dvx();
+  for (double v : loc) REQUIRE(v == Approx(expect_xvy).epsilon(1e-12));
 }
 
 int main(int argc, char *argv[]) {
