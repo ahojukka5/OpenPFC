@@ -241,7 +241,9 @@ check is not a valid `#87` result.
 2. FD envelope (`kobayashi_fd_hip`) and, when HIP twins exist, the Heat3D
    same-PDE comparison.
 3. A larger spectral grid if the goal is to push past one node with
-   acceptable efficiency (768³ saturates at 8 GCDs).
+   acceptable efficiency (768³ saturates at 8 GCDs). Weak scaling that
+   keeps cells/GCD in the 54–57 M band is issue #13:
+   [lumi_gpu_flagship.md](lumi_gpu_flagship.md).
 
 ## See also
 

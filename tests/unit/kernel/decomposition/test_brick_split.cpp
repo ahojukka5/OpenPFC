@@ -208,3 +208,44 @@ TEST_CASE("slab_proc_grid honors OPENPFC_FFT_SLAB_AXIS", "[brick_split][unit]") 
   REQUIRE(unsetenv("OPENPFC_FFT_SLAB_AXIS") == 0);
   REQUIRE(slab_proc_grid(cube, 16) == Int3{1, 1, 16});
 }
+
+TEST_CASE("issue #13 weak-scaling cubes admit a node-aware FFT grid",
+          "[brick_split][unit][flagship]") {
+  // 1200^3 is not divisible by 32, so a 1D 32-rank slab is illegal.
+  // OPENPFC_FFT_NODE_GRID=1 (1x8xnnodes) is the flagship layout.
+  struct Clear {
+    ~Clear() {
+      unsetenv("OPENPFC_FFT_NODE_GRID");
+      unsetenv("OPENPFC_FFT_PROC_GRID");
+      unsetenv("OPENPFC_FFT_SLAB_AXIS");
+    }
+  } clear;
+  REQUIRE(unsetenv("OPENPFC_FFT_PROC_GRID") == 0);
+  REQUIRE(unsetenv("OPENPFC_FFT_SLAB_AXIS") == 0);
+  REQUIRE(setenv("OPENPFC_FFT_NODE_GRID", "1", 1) == 0);
+
+  const struct {
+    int N;
+    int nproc;
+    int gx, gy, gz;
+  } pts[] = {
+      {768, 8, 0, 0, 0}, // 8 ranks: min-surface, not node-aware
+      {960, 16, 1, 8, 2},
+      {1200, 32, 1, 8, 4},
+      {1536, 64, 1, 8, 8},
+      {1920, 128, 1, 8, 16},
+      {2400, 256, 1, 8, 32},
+      {3000, 480, 1, 8, 60},
+  };
+  for (const auto &p : pts) {
+    const Int3 cube{p.N, p.N, p.N};
+    const Int3 g = spectral_fft_proc_grid(cube, p.nproc);
+    REQUIRE(g[0] * g[1] * g[2] == p.nproc);
+    REQUIRE(p.N % g[0] == 0);
+    REQUIRE(p.N % g[1] == 0);
+    REQUIRE(p.N % g[2] == 0);
+    if (p.nproc >= 9) {
+      REQUIRE(g == Int3{p.gx, p.gy, p.gz});
+    }
+  }
+}

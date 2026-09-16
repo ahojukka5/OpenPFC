@@ -27,7 +27,7 @@ This page ties **figures** you may see in the repository or publications to **ru
 
 | | |
 |---|---|
-| **Context** | HPC campaigns on large grids (e.g. LUMI); see [`performance_profiling.md`](../hpc/performance_profiling.md), [`lumi_slurm/README.md`](../lumi_slurm/README.md) |
+| **Context** | HPC campaigns on large grids (e.g. LUMI); see [`performance_profiling.md`](../hpc/performance_profiling.md), [`lumi_gpu_flagship.md`](../hpc/lumi_gpu_flagship.md) |
 | **Typical app** | Same [`apps/tungsten`](../../apps/tungsten/README.md) family with performance-oriented inputs (e.g. `tungsten_performance.json` — large domain; use for scaling studies, not first debug) |
 
 ## Cahn–Hilliard–style dynamics

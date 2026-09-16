@@ -21,6 +21,10 @@ TUNGSTEN_LX=512 ./docs/lumi_slurm/submit_tungsten_hip_scaling.sh strong
 PARTITION=standard-g TUNGSTEN_LX=768 ./docs/lumi_slurm/submit_tungsten_hip_scaling.sh multinode
 ```
 
+Issue `#13` weak ladder (1–32 nodes, gated 60-node):
+[LUMI GPU flagship](../hpc/lumi_gpu_flagship.md) and
+`submit_tungsten_hip_flagship.sh`.
+
 3D FD HIP twin (`heat3d_fd_hip`, device halo + stencil):
 
 ```bash
