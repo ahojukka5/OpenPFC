@@ -117,6 +117,9 @@ scratch used below.
 Weibel showcase (one node, 8 GCDs, reduced frames on scratch):
 `apps/vlasov_maxwell/slurm/showcase_weibel.sbatch`.
 
+Dendrite 2-D showcase (one node, 8 GCDs, elastic off/on, scratch frames):
+`apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch`.
+
 ## Layout (legacy 1024³ helpers)
 
 - This directory (under the git repo): `*.sbatch`, `submit_tungsten_performance.sh`, `verify_gpu_aware_mpi.sh`, and `tungsten_performance_*.toml`.
