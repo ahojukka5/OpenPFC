@@ -93,8 +93,7 @@ echo | tee -a "${OUT}/provenance.txt"
 srun --ntasks=8 --gpus-per-node=8 --cpu-bind="${CPU_BIND}" "${CMD[@]}" \
   | tee "${OUT}/run.log"
 
-echo "After the job, record MaxRSS with:" | tee -a "${OUT}/provenance.txt"
-echo "  sacct -j ${SLURM_JOB_ID} --format=JobID,MaxRSS,MaxVMSize,Elapsed" \
+echo "HBM is HIP_MEM in ${OUT}/run.log (hipMemGetInfo). sacct MaxRSS is host RSS." \
   | tee -a "${OUT}/provenance.txt"
 
 echo "=== done ${OUT} ==="
