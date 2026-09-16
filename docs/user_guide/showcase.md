@@ -81,6 +81,17 @@ This page ties **figures** you may see in the repository or publications to **ru
 | **VTK** | film height `h` under `results/thin_film/` |
 | **Concepts** | Fourth-order capillary ETD; \(\lambda(k)=M_0 k^2(\Pi'(h_0)-\gamma k^2)\) |
 
+## Inverse homogenization (2-D, LUMI-G)
+
+| | |
+|---|---|
+| **Runnable** | `openpfc_inverse_homogenize_hip` — [`apps/inverse_homogenization`](../../apps/inverse_homogenization/README.md) |
+| **Recipe** | [`showcase_inverse2d.sbatch`](../../apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch) (8 GCDs) |
+| **Render** | [`render_inverse_showcase.py`](../../apps/inverse_homogenization/scripts/render_inverse_showcase.py) |
+| **Concepts** | periodic \(C_H\); auxetic rotating-square seed; \(\nu\) from the homogenizer |
+
+Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
+
 ## Quick 2D PNG snapshots (Allen–Cahn)
 
 The **Allen–Cahn** demo can write **grayscale PNG** snapshots (optional final, or initial + final). No JSON `App` — CLI arguments only.

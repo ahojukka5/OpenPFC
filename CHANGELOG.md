@@ -22,6 +22,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Inverse-homogenization 8-GCD showcase** (issue #8).
+  `openpfc_inverse_homogenize_hip` takes the CPU inverse CLI subset
+  (rotating-square auxetic seed, CSV \(C_H\)/\(\nu_{\mathrm{eff}}\),
+  MPI-IO `h` bricks) on `GPUSpectralStack` so one LUMI-G node uses all
+  8 GCDs. Recipe:
+  `apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch`.
+  Render:
+  `apps/inverse_homogenization/scripts/render_inverse_showcase.py`.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and

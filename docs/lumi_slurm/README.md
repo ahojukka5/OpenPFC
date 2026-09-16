@@ -45,6 +45,10 @@ Files: `tungsten_hip_scaling.sbatch`, `tungsten_hip_scaling.toml`,
 `submit_heat3d_spectral_hip_scaling.sh`. Account `project_462001519`. Do not point
 these jobs at the 0.1.4 binaries or `project_462001245` scratch used below.
 
+Presentation showcases (one node, 8 GCDs, scratch I/O):
+
+- Inverse 2-D: `apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch`
+
 ## Layout (legacy 1024³ helpers)
 
 - This directory (under the git repo): `*.sbatch`, `submit_tungsten_performance.sh`, `verify_gpu_aware_mpi.sh`, and `tungsten_performance_*.toml`.
