@@ -37,6 +37,7 @@
 #include <vlasov_maxwell/diagnostics.hpp>
 #include <vlasov_maxwell/field_output.hpp>
 #include <vlasov_maxwell/ics.hpp>
+#include <vlasov_maxwell/reduced_output.hpp>
 #include <vlasov_maxwell/step.hpp>
 
 #ifdef VLASOV_ENABLE_HIP
@@ -92,6 +93,8 @@ void print_usage(std::ostream &os, const char *exe) {
      << "  --summary=PATH      one row per run\n"
      << "  --fields-dir=DIR    raw-brick phase space + fields + manifest\n"
      << "  --fields-every=N    snapshot every N-th sample            (1)\n"
+     << "  --reduced-dir=DIR   projections f(x,vx), f(x,vy), Bz/Ey/Jy\n"
+     << "  --reduced-every=N   reduced snapshot every N-th sample      (1)\n"
      << "  --run-id=NAME       identifier written into every row  (vlasov)\n"
      << "  --quiet=1           suppress the human-readable report\n\n"
      << "Device\n"
@@ -228,6 +231,9 @@ int run(int argc, char **argv, int rank, int nproc) {
   vlasov::FieldOutputConfig fo;
   fo.dir = opt.text("fields-dir", "");
   fo.every = opt.integer("fields-every", 1);
+  vlasov::ReducedOutputConfig ro;
+  ro.dir = opt.text("reduced-dir", "");
+  ro.every = opt.integer("reduced-every", 1);
   const std::string device = opt.text("device", "host");
   const bool device_x = opt.flag("device-x", true);
   if (device != "host" && device != "hip") {
@@ -386,6 +392,8 @@ int run(int argc, char **argv, int rank, int nproc) {
       {ob.size[0], ob.size[1], ob.size[2]},
       {ob.low[0], ob.low[1], ob.low[2]}, p.dx(), rank, ps.comm());
   std::vector<std::string> snap_fields{"f"};
+  vlasov::ReducedSnapshotWriter reduced(ro, run_id, ps, rank);
+  int n_reduced = 0;
 
   // ---- time loop ---------------------------------------------------------
   std::vector<double> t_s, e_ex, e_bz, e_em, m_ex, m_bz, p_x, p_y;
@@ -410,6 +418,10 @@ int run(int argc, char **argv, int rank, int nproc) {
       snap.note_time(t);
       snap.write("f", n_snap, ps.f(0));
       ++n_snap;
+    }
+    if (reduced.due(n_seen)) {
+      reduced.write(n_reduced, t, ps, st);
+      ++n_reduced;
     }
     ++n_seen;
   };
@@ -442,6 +454,7 @@ int run(int argc, char **argv, int rank, int nproc) {
     }
   }
   snap.write_manifest(snap_fields);
+  reduced.write_manifest();
 
   // ---- rate fits against the oracles -------------------------------------
   // The fit window is the trailing half for a growing mode and the leading
