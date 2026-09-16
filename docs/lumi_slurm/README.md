@@ -119,6 +119,7 @@ Weibel showcase (one node, 8 GCDs, reduced frames on scratch):
 
 Dendrite 2-D showcase (one node, 8 GCDs, elastic off/on, scratch frames):
 `apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch`.
+3-D spherical-seed path: `apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch`.
 
 ## Layout (legacy 1024³ helpers)
 

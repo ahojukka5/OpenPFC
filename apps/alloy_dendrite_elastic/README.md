@@ -574,6 +574,16 @@ and `eps_c` from `material.hpp`, and `lambda_el = lambda` when
 Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
 (`hipMemGetInfo`), not from `sacct` MaxRSS. Default films dump >=600
 `phi`/`U` bricks (10 s at 60 fps) onto scratch.
+
+Issue #12 is the 3-D path: spherical seed, `nz = nx`, isothermal,
+elasticity off until the one-node pilot reports bytes/cell.
+[`slurm/showcase_dendrite3d.sbatch`](slurm/showcase_dendrite3d.sbatch).
+Render orthogonal midplanes with
+[`scripts/render_dendrite3d_showcase.py`](scripts/render_dendrite3d_showcase.py).
+A 2048³ run is a node-count target after that measurement, not a
+one-node default. Rough HBM envelope without Green (order 8 doubles/cell):
+512³ ~ 8 GiB, 1024³ ~ 64 GiB, 1536³ ~ 220 GiB, 2048³ ~ 512 GiB; replace
+these with the pilot RSS before booking nodes.
 `openpfc_microelasticity_hip_parity` subtracts the host solver on a
 homogeneous (Eshelby) inclusion and a heterogeneous-modulus inclusion.
 `alloy_dendrite_hip_parity` remains thermo-solutal only. The host adapter
