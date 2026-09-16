@@ -88,7 +88,7 @@ This page ties **figures** you may see in the repository or publications to **ru
 | **Runnable** | `vlasov_run --case=weibel --device=hip --reduced-dir=DIR` — [`apps/vlasov_maxwell`](../../apps/vlasov_maxwell/README.md) |
 | **Recipe** | [`showcase_weibel.sbatch`](../../apps/vlasov_maxwell/slurm/showcase_weibel.sbatch) (8 GCDs) |
 | **Render** | [`render_weibel_showcase.py`](../../apps/vlasov_maxwell/scripts/render_weibel_showcase.py) |
-| **Concepts** | 1D2V Weibel; linear \(\gamma\) vs in-tree oracle; reduced frames |
+| **Concepts** | 1D2V Weibel; paired linear \(\gamma\) arm; reduced movie frames |
 
 Heavy frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 
