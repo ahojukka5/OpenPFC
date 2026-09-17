@@ -17,10 +17,8 @@
 #include <iomanip>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <mpi.h>
 
@@ -43,6 +41,7 @@ struct Cli {
   double nu{0.1};
   double rho{30.0};
   double eps{0.05};
+  double cfl{-1.0};
   bool verify{false};
   std::string outdir;
 };
@@ -50,14 +49,15 @@ struct Cli {
 void print_usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe
      << " [--case taylor_green|shear|two_mode] [--N N] [--steps N]\n"
-     << "       [--dt DT] [--nu NU] [--rho RHO] [--eps EPS]\n"
+     << "       [--dt DT] [--cfl CFL] [--nu NU] [--rho RHO] [--eps EPS]\n"
      << "       [--dump EVERY] [--outdir DIR] [--verify]\n"
      << "\n"
      << "Periodic 2-D vorticity–streamfunction Navier–Stokes (CPU, #21).\n"
-     << "  taylor_green  quantitative decaying vortex (default)\n"
-     << "  shear         double shear layer / Kelvin–Helmholtz showcase\n"
+     << "  taylor_green  quantitative decaying vortex on [0,2pi]^2\n"
+     << "  shear         Minion-Brown unit-square double shear (rho=30)\n"
      << "  two_mode      nonlinear IC for timestep-refinement tests\n"
-     << "  --verify      Taylor–Green Linf check; ignore --case\n";
+     << "  --cfl         sets dt = CFL * dx (overrides --dt); dx = L/N\n"
+     << "  --verify      Taylor-Green Linf check; ignore --case\n";
 }
 
 std::optional<std::string_view> take_value(int &i, int argc, char **argv) {
@@ -71,9 +71,7 @@ std::optional<Cli> parse_cli(int argc, char **argv) {
     const std::string_view a(argv[i]);
     auto need = [&](const char *flag) -> std::optional<std::string_view> {
       auto v = take_value(i, argc, argv);
-      if (!v) {
-        std::cerr << "missing value for " << flag << "\n";
-      }
+      if (!v) std::cerr << "missing value for " << flag << "\n";
       return v;
     };
     if (a == "-h" || a == "--help") {
@@ -102,6 +100,10 @@ std::optional<Cli> parse_cli(int argc, char **argv) {
       auto v = need("--dt");
       if (!v) return std::nullopt;
       c.dt = std::atof(std::string(*v).c_str());
+    } else if (a == "--cfl") {
+      auto v = need("--cfl");
+      if (!v) return std::nullopt;
+      c.cfl = std::atof(std::string(*v).c_str());
     } else if (a == "--nu") {
       auto v = need("--nu");
       if (!v) return std::nullopt;
@@ -144,9 +146,26 @@ void dump_fields(pfc::VTKWriter &vtk, pfc::BinaryWriter *bin, int increment,
 }
 
 int run(const Cli &cli, int rank, int nproc) {
-  pfc::sim::stacks::SpectralCPUStack stack(ns2d::make_periodic_square(cli.n), rank,
+  const bool unit = (cli.cse == ns2d::Case::shear);
+  const double length = unit ? 1.0 : 2.0 * pfc::pi;
+  double dt = cli.dt;
+  const double dx = length / static_cast<double>(cli.n);
+  if (cli.cfl > 0.0) dt = cli.cfl * dx;
+
+  if (cli.cse == ns2d::Case::shear && rank == 0) {
+    const double cells = ns2d::shear_cells_per_thickness(cli.n, cli.rho);
+    const double cells23 =
+        ns2d::shear_effective_cells_per_thickness(cli.n, cli.rho);
+    std::cout << "Minion-Brown unit-square shear rho=" << cli.rho
+              << " thickness=1/rho=" << ns2d::shear_thickness(cli.rho)
+              << " dx=" << dx << " cells/thickness=" << cells
+              << " 2/3-effective=" << cells23 << "\n";
+    std::cout << "integrator=IFRK4  dt=" << dt << " nu=" << cli.nu << "\n";
+  }
+
+  pfc::sim::stacks::SpectralCPUStack stack(ns2d::make_slab(cli.n, length), rank,
                                            nproc, MPI_COMM_WORLD);
-  ns2d::VorticityStreamCPU solver(stack, ns2d::Params{cli.nu, cli.dt});
+  ns2d::VorticityStreamCPU solver(stack, ns2d::Params{cli.nu, dt});
 
   if (cli.cse == ns2d::Case::taylor_green) {
     solver.initialize_omega([&](double x, double y, double) {
@@ -181,15 +200,16 @@ int run(const Cli &cli, int rank, int nproc) {
       meta << "{\n"
            << "  \"issue\": 21,\n"
            << "  \"case\": \"" << ns2d::case_name(cli.cse) << "\",\n"
+           << "  \"box\": \"" << (unit ? "unit" : "twopi") << "\",\n"
            << "  \"N\": " << cli.n << ",\n"
            << "  \"steps\": " << cli.steps << ",\n"
-           << "  \"dt\": " << cli.dt << ",\n"
+           << "  \"dt\": " << dt << ",\n"
            << "  \"nu\": " << cli.nu << ",\n"
            << "  \"rho\": " << cli.rho << ",\n"
            << "  \"eps\": " << cli.eps << ",\n"
            << "  \"nproc\": " << nproc << ",\n"
-           << "  \"integrator\": \"ETD1 viscous + dealiased Jacobian\",\n"
-           << "  \"dealias\": \"Orszag 2/3 on N_hat\",\n"
+           << "  \"integrator\": \"IFRK4 (exp viscous + RK4 Jacobian)\",\n"
+           << "  \"dealias\": \"Orszag 2/3 on state and N_hat\",\n"
            << "  \"zero_mode\": \"psi_hat(0)=0; N_hat(0)=0; mean omega conserved\"\n"
            << "}\n";
     }
