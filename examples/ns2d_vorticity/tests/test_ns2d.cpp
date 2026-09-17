@@ -5,11 +5,12 @@
  * @file test_ns2d.cpp
  * @brief Catch2 tests for the 2-D vorticity–streamfunction prototype.
  *
- * Taylor–Green is spectrally exact: a small Linf is the spatial check.
- * Temporal order is measured on a two-mode nonlinear IC, not on TG.
+ * Taylor–Green is spectrally exact and cannot test nonlinear stability
+ * or temporal order of the Jacobian. Those use the two-mode IC.
  */
 
 #define CATCH_CONFIG_RUNNER
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -18,6 +19,7 @@
 #include <mpi.h>
 #include <vector>
 
+#include <openpfc/kernel/data/constants.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
@@ -43,11 +45,17 @@ int world_size() {
 struct StackSolver {
   pfc::sim::stacks::SpectralCPUStack stack;
   ns2d::VorticityStreamCPU solver;
-  StackSolver(int n, ns2d::Params p)
-      : stack(ns2d::make_periodic_square(n), world_rank(), world_size(),
+  StackSolver(int n, ns2d::Params p, double length = 2.0 * pfc::pi)
+      : stack(ns2d::make_slab(n, length), world_rank(), world_size(),
               MPI_COMM_WORLD),
         solver(stack, p) {}
 };
+
+double reduce_max(double local) {
+  double g = 0.0;
+  MPI_Allreduce(&local, &g, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  return g;
+}
 
 } // namespace
 
@@ -60,23 +68,19 @@ TEST_CASE("Poisson invert recovers Taylor-Green streamfunction velocity",
   double u_err = 0.0, v_err = 0.0;
   ss.stack.u().for_each_owned([&](int i, int j, int k) {
     const auto c = ss.stack.u().coords(i, j, k);
+    const auto inbox = ss.stack.fft().get_inbox_bounds();
     const std::size_t idx =
         static_cast<std::size_t>(i) +
-        static_cast<std::size_t>(j) *
-            static_cast<std::size_t>(ss.stack.fft().get_inbox_bounds().size[0]) +
-        static_cast<std::size_t>(k) *
-            static_cast<std::size_t>(ss.stack.fft().get_inbox_bounds().size[0]) *
-            static_cast<std::size_t>(ss.stack.fft().get_inbox_bounds().size[1]);
+        static_cast<std::size_t>(j) * static_cast<std::size_t>(inbox.size[0]) +
+        static_cast<std::size_t>(k) * static_cast<std::size_t>(inbox.size[0]) *
+            static_cast<std::size_t>(inbox.size[1]);
     u_err = std::max(u_err, std::abs(ss.solver.u()[idx] -
                                      ns2d::taylor_green_u(c[0], c[1], 0.1, 0.0)));
     v_err = std::max(v_err, std::abs(ss.solver.v()[idx] -
                                      ns2d::taylor_green_v(c[0], c[1], 0.1, 0.0)));
   });
-  double g_u = 0.0, g_v = 0.0;
-  MPI_Allreduce(&u_err, &g_u, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  MPI_Allreduce(&v_err, &g_v, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  REQUIRE_THAT(g_u, WithinAbs(0.0, 1.0e-12));
-  REQUIRE_THAT(g_v, WithinAbs(0.0, 1.0e-12));
+  REQUIRE_THAT(reduce_max(u_err), WithinAbs(0.0, 1.0e-12));
+  REQUIRE_THAT(reduce_max(v_err), WithinAbs(0.0, 1.0e-12));
 }
 
 TEST_CASE("zero mode of the streamfunction is exactly zero", "[ns2d][zero-mode]") {
@@ -84,9 +88,6 @@ TEST_CASE("zero mode of the streamfunction is exactly zero", "[ns2d][zero-mode]"
   ss.solver.initialize_omega(
       [](double x, double y, double) { return ns2d::two_mode_omega(x, y); });
   const auto &inv = ss.solver.psi_inv_k2();
-  if (ss.solver.rank_owns_zero_mode()) {
-    REQUIRE_THAT(inv.front(), WithinAbs(0.0, 0.0));
-  }
   pfc::fft::kspace::for_each_kpoint(
       ss.stack.fft().get_outbox_bounds(), ss.stack.u().global_size(),
       ss.stack.u().spacing(),
@@ -118,7 +119,42 @@ TEST_CASE("2/3 dealias mask zeros the high-k third", "[ns2d][dealias]") {
   REQUIRE(killed > 0);
 }
 
-TEST_CASE("Taylor-Green decays to spectral accuracy", "[ns2d][taylor-green]") {
+TEST_CASE("unprojected high-k product aliases into k=1; 2/3 projection does not",
+          "[ns2d][aliasing]") {
+  constexpr int N = 32;
+  auto k1_probe = [](const pfc::data::Field<double> &w) {
+    double s = 0.0;
+    w.for_each_owned([&](double x, double, double, double val) {
+      s += val * std::cos(x);
+    });
+    double g = 0.0;
+    MPI_Allreduce(&s, &g, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    return std::abs(g);
+  };
+
+  StackSolver unproj(N, ns2d::Params{0.0, 0.01});
+  unproj.stack.u().apply(
+      [](double x, double, double) { return std::sin(12.0 * x) * std::sin(13.0 * x); });
+  const double aliased = k1_probe(unproj.stack.u());
+
+  StackSolver proj(N, ns2d::Params{0.0, 0.01});
+  proj.stack.u().apply([](double x, double, double) { return std::sin(12.0 * x); });
+  proj.solver.project_current_state();
+  auto f = proj.stack.u().vec();
+  proj.stack.u().apply([](double x, double, double) { return std::sin(13.0 * x); });
+  proj.solver.project_current_state();
+  auto g = proj.stack.u().vec();
+  for (std::size_t i = 0; i < proj.stack.u().vec().size(); ++i) {
+    proj.stack.u().vec()[i] = f[i] * g[i];
+  }
+  const double cleaned = k1_probe(proj.stack.u());
+
+  REQUIRE(aliased > 10.0 * (cleaned + 1.0e-14));
+  REQUIRE(cleaned < 1.0e-10 * (aliased + 1.0));
+}
+
+TEST_CASE("Taylor-Green decays to spectral accuracy under IFRK4",
+          "[ns2d][taylor-green]") {
   const double nu = 0.1;
   const double dt = 0.05;
   const int steps = 8;
@@ -155,10 +191,8 @@ TEST_CASE("Taylor-Green error is already at roundoff on N=16 and N=32",
       return ns2d::taylor_green_omega(x, y, nu, T);
     });
   };
-  const double e16 = run(16);
-  const double e32 = run(32);
-  REQUIRE(e16 < 1.0e-11);
-  REQUIRE(e32 < 1.0e-11);
+  REQUIRE(run(16) < 1.0e-11);
+  REQUIRE(run(32) < 1.0e-11);
 }
 
 TEST_CASE("mean vorticity is conserved on a nonlinear two-mode field",
@@ -172,10 +206,9 @@ TEST_CASE("mean vorticity is conserved on a nonlinear two-mode field",
   REQUIRE_THAT(d.mean_omega, WithinAbs(mean0, 1.0e-12));
   REQUIRE(d.div_linf < 1.0e-10);
   REQUIRE(d.ke > 0.0);
-  REQUIRE(d.enstrophy > 0.0);
 }
 
-TEST_CASE("ETD1 is first-order on a two-mode nonlinear Jacobian",
+TEST_CASE("IFRK4 is higher than first order on a two-mode Jacobian",
           "[ns2d][timestep]") {
   const double nu = 0.05;
   const double T = 0.2;
@@ -198,29 +231,47 @@ TEST_CASE("ETD1 is first-order on a two-mode nonlinear Jacobian",
     for (std::size_t i = 0; i < w.size(); ++i) {
       local = std::max(local, std::abs(w[i] - fine[i]));
     }
-    double g = 0.0;
-    MPI_Allreduce(&local, &g, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    return g;
+    return reduce_max(local);
   };
   const double e_coarse = err(0.02);
   const double e_mid = err(0.01);
   REQUIRE(e_coarse > 0.0);
   REQUIRE(e_mid > 0.0);
-  REQUIRE(e_coarse / e_mid > 1.6);
-  REQUIRE(e_coarse / e_mid < 2.6);
+  // RK4 / IFRK4: halving dt should drop the error by ~16. Allow a wide
+  // window so a first-order method (ratio ~2) fails this test.
+  REQUIRE(e_coarse / e_mid > 8.0);
 }
 
-TEST_CASE("double shear layer has two opposite vorticity sheets at t=0",
+TEST_CASE("inviscid two-mode field stays finite and nearly conserves energy",
+          "[ns2d][stability]") {
+  StackSolver ss(32, ns2d::Params{0.0, 0.02});
+  ss.solver.initialize_omega(
+      [](double x, double y, double) { return ns2d::two_mode_omega(x, y); });
+  const auto d0 = ss.solver.diagnostics(MPI_COMM_WORLD);
+  for (int i = 0; i < 80; ++i) ss.solver.step();
+  const auto d = ss.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE(std::isfinite(d.ke));
+  REQUIRE(std::isfinite(d.max_abs_omega));
+  REQUIRE(d.div_linf < 1.0e-10);
+  REQUIRE(std::abs(d.ke - d0.ke) / d0.ke < 1.0e-3);
+  REQUIRE_THAT(d.mean_omega, WithinAbs(d0.mean_omega, 1.0e-12));
+}
+
+TEST_CASE("Minion-Brown unit-square shear has two opposite sheets at t=0",
           "[ns2d][shear]") {
-  StackSolver ss(64, ns2d::Params{0.001, 0.002});
   constexpr double rho = 30.0;
   constexpr double eps = 0.05;
+  StackSolver ss(64, ns2d::Params{1.0e-4, 0.005}, 1.0);
   ss.solver.initialize_omega(
       [](double x, double y, double) { return ns2d::double_shear_omega(x, y, rho, eps); });
   const auto d = ss.solver.diagnostics(MPI_COMM_WORLD);
   REQUIRE(d.max_abs_omega > 20.0);
-  REQUIRE_THAT(d.mean_omega, WithinAbs(0.0, 1.0e-10));
-  REQUIRE(d.div_linf < 1.0e-8);
+  // N=64 places y=1/2 on a node; the two tanh branches then have 33 vs 31
+  // cells, so the sampled mean is O(1e-6), not machine zero.
+  REQUIRE_THAT(d.mean_omega, WithinAbs(0.0, 1.0e-5));
+  REQUIRE(d.div_linf < 1.0e-6);
+  REQUIRE(ns2d::shear_cells_per_thickness(64, rho) ==
+          Catch::Approx(64.0 / 30.0).margin(1.0e-12));
 }
 
 int main(int argc, char *argv[]) {

@@ -35,7 +35,8 @@ These cover decomposition, distributed FFT, the simulator stack, and a richer sp
 
 A **research prototype** (not part of the numbered teaching ladder) is
 `ns2d_vorticity`: 2-D vorticity–streamfunction Navier–Stokes for
-[issue #21](https://github.com/ahojukka5/OpenPFC/issues/21). See
+[issue #21](https://github.com/ahojukka5/OpenPFC/issues/21) (IFRK4,
+unit-square Minion–Brown shear). See
 [`ns2d_vorticity/README.md`](ns2d_vorticity/README.md). It is not a
 shipped `apps/` catalog entry.
 

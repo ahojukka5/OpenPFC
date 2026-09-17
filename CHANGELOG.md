@@ -29,10 +29,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **2-D vorticity–streamfunction Navier–Stokes prototype**
   (`examples/ns2d_vorticity`, issue
   [#21](https://github.com/ahojukka5/OpenPFC/issues/21)). Periodic
-  spectral CPU solver: FFT Poisson for \(\psi\), Orszag 2/3 Jacobian,
-  ETD1 viscous step, Taylor–Green verification, double-shear showcase.
-  Not a shipped `apps/` catalog entry. HIP is documented as blocked by
-  the pointwise `SpectralETDOps` pipeline, not a second FFT stack.
+  spectral CPU solver: FFT Poisson for \(\psi\), Orszag 2/3 projection
+  of the *state* and of \(\hat N\), integrating-factor RK4 (viscous
+  \(e^{L\Delta t}\) plus RK4 Jacobian). Taylor–Green is spectrally
+  exact. Minion–Brown shear is the unit-square \(\rho=30\) case, not
+  \(\rho=30\) on \([0,2\pi]^2\). Not a shipped `apps/` catalog entry.
+  HIP is blocked by pointwise `SpectralETDOps`, not a second FFT stack.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and
