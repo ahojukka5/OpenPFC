@@ -131,4 +131,5 @@ else
 fi
 
 echo "=== done ${OUT} ==="
-echo "Render: python3 ${SRC}/apps/vlasov_maxwell/scripts/render_weibel_showcase.py --run ${OUT}"
+echo "ParaView: File → Open ${OUT}/reduced/weibel_f_xvx.xdmf (also Bz, Ey, Jy, f_xvy)"
+echo "  python3 ${SRC}/scripts/xdmfgen.py --manifest ${OUT}/reduced/weibel_reduced_manifest.json"

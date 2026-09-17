@@ -356,8 +356,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   so a large 1D2V animation does not dump the full phase-space brick.
   `--fit-t0/--fit-t1` freeze the exponential-rate window. Recipe:
   `apps/vlasov_maxwell/slurm/showcase_weibel.sbatch` (linear arm, then
-  movie into saturation with that window). Render:
-  `apps/vlasov_maxwell/scripts/render_weibel_showcase.py`.
+  movie into saturation with that window). Open the reduced
+  `*.xdmf` files in ParaView.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and
