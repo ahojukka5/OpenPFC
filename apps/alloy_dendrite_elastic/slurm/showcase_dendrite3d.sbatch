@@ -19,8 +19,9 @@
 #
 #   SHOWCASE_MODE=pilot   64^3 (default)
 #   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
-# Film is the 64^3 arm (>=600 midplane frames). Skip 256^3 volume dumps:
-# ~180 GiB of phi/U is more demo than a 10 s clip needs. Scratch only.
+# Film grids: 64^3 (pilot) or SHOWCASE_NX=128 / SHOWCASE_NY/NZ for a
+# 256x128x128 slab. 256^3 x 600 phi/U is ~161 GiB; HBM is not the limit
+# (used_max ~0.55 GiB). Scratch only.
 
 set -euo pipefail
 
@@ -80,9 +81,11 @@ else
   DUMP="${SHOWCASE_DUMP_EVERY:-1}"
 fi
 DX="${SHOWCASE_DX:-0.8}"
+NY="${SHOWCASE_NY:-${NX}}"
+NZ="${SHOWCASE_NZ:-${NX}}"
 
 CMD=(
-  "${BIN}" --nx="${NX}" --ny="${NX}" --nz="${NX}" --dx="${DX}"
+  "${BIN}" --nx="${NX}" --ny="${NY}" --nz="${NZ}" --dx="${DX}"
   --steps="${STEPS}" --sample-every="${EVERY}"
   --Dl=2 --k=0.15 --eps4=0.05 --evolve-theta=0 --seed-radius=8
   --elastic=0
