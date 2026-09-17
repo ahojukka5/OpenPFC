@@ -49,6 +49,19 @@ CSV is append-only. Every sample carries particle number, energy parts,
 entropy, \(\min f\), Gauss residual (absolute and relative), and
 velocity-boundary occupancy.
 
+`--reduced-dir` writes presentation-rate projections (`f(x,v_x)`,
+`f(x,v_y)`, `B_z`, `E_y`, `J_y`) instead of the full 3-D brick.
+`--fit-t0/--fit-t1` freeze the Weibel/filament exponential-rate window
+so a run that continues into saturation does not quote a
+post-saturation \(\gamma\). Issue #10 recipe:
+[`slurm/showcase_weibel.sbatch`](slurm/showcase_weibel.sbatch) (paired
+linear arm, then reduced movie). The linear arm defaults to
+`SHOWCASE_LINEAR_TEND=80` so the 5× `mode_bz` auto-window can close;
+the movie is skipped if `fit_t0`/`fit_t1` are not finite. The movie
+defaults to 600 reduced frames (10 s at 60 fps) over the same
+\(t_{\mathrm{end}}\). Do not retune \(k\) or \(v_{\max}\) to force a
+window.
+
 ## What the tests assert
 
 - `test_fields`: vacuum \(\omega = k\) to round-off, charge-conserving Gauss,

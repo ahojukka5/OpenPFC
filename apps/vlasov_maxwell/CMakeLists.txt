@@ -105,5 +105,12 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
   add_test(NAME vlasov-hip-science-rate
            COMMAND vlasov_hip_parity --science=landau --nx=32 --nvx=32 --nvy=32)
   set_tests_properties(vlasov-hip-science-rate PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
+  # The production driver, not the parity binary: DeviceBrick starts zeroed
+  # and vlasov_run must upload before the first HIP step. nv=64 matches the
+  # Weibel tail/spacing gate (nv=16 is refused before any HIP step).
+  add_test(NAME vlasov-hip-run-upload
+           COMMAND vlasov_run --case=weibel --device=hip --nx=32 --nvx=64
+                   --nvy=64 --t-end=0.25 --samples=4 --run-id=upload-gate --quiet=1)
+  set_tests_properties(vlasov-hip-run-upload PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
   message(STATUS "vlasov_maxwell HIP: kernels, parity, cost, and --device=hip")
 endif()
