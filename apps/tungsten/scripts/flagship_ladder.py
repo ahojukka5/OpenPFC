@@ -130,14 +130,24 @@ def print_legal_grids(n, nproc):
     return 0 if grids else 1
 
 
+def default_grid(n, nproc):
+    """Match spectral_fft_proc_grid without OPENPFC_FFT_NODE_GRID."""
+    if nproc < 9:
+        return (2, 2, 2) if nproc == 8 and n % 2 == 0 else (1, 1, 1)
+    if n % nproc == 0:
+        return (1, 1, nproc)
+    return node_aware_grid(n, nproc)
+
+
 def check():
     rc = 0
-    print("nodes  gcds     N   cells/GCD   5-smooth  1x8xN grid")
+    print("nodes  gcds     N   cells/GCD   5-smooth  default     1x8xN")
     for nodes, n in LADDER:
         gcds = nodes * 8
         cells = n ** 3
         per = cells / float(gcds)
-        grid = node_aware_grid(n, gcds) if gcds >= 9 else (1, 1, 1)
+        node = node_aware_grid(n, gcds) if gcds >= 9 else (0, 0, 0)
+        grid = default_grid(n, gcds)
         ok_smooth = is_5_smooth(n)
         if gcds >= 9:
             ok_grid = grid != (0, 0, 0)
@@ -147,8 +157,8 @@ def check():
         if mark != "ok":
             rc = 1
         print(
-            "%5d %5d %5d %10.2e   %-8s %s  %s"
-            % (nodes, gcds, n, per, "yes" if ok_smooth else "no", grid, mark)
+            "%5d %5d %5d %10.2e   %-8s %s  %s  %s"
+            % (nodes, gcds, n, per, "yes" if ok_smooth else "no", grid, node, mark)
         )
     return rc
 

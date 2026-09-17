@@ -14,8 +14,9 @@
 #   FLAGSHIP_ALLOW_60=1 TUNGSTEN_HIP_BIN=... ./submit_tungsten_hip_flagship.sh max
 #
 # Frozen protocol: tungsten_hip_scaling.toml (I/O off, dt=1).
-# Multi-node weak/max uses OPENPFC_FFT_NODE_GRID=1 (1x8xnnodes). The
-# 60-node point is gated until the 32-node ladder is healthy.
+# Default off-node layout is a 1D slab when N divides the rank count;
+# 1x8xN is only the fallback when a slab is illegal (1200^3 / 32 ranks).
+# OPENPFC_FFT_NODE_GRID=1 still forces 1x8xN. The 60-node point is gated.
 # `control` is the issue #13 matched-decomposition / process-grid set.
 
 set -euo pipefail
@@ -116,8 +117,9 @@ case "${MODE}" in
     submit_one 1 768 "01:00:00" "thip-flag-1n-768"
     ;;
   weak)
-    export OPENPFC_FFT_NODE_GRID="${OPENPFC_FFT_NODE_GRID:-1}"
-    echo "Weak ladder 1/2/4/8/16/32 nodes (not 60). NODE_GRID=${OPENPFC_FFT_NODE_GRID} rev=${OPENPFC_REVISION:-empty}"
+    # Do not default NODE_GRID=1: that forced 1x8xN on sizes that admit a
+    # faster 1D slab (2-node 960^3 job 22133084 vs 22133083).
+    echo "Weak ladder 1/2/4/8/16/32 nodes (not 60). NODE_GRID=${OPENPFC_FFT_NODE_GRID:-unset} PROC_GRID=${OPENPFC_FFT_PROC_GRID:-unset} rev=${OPENPFC_REVISION:-empty}"
     submit_one 1 768 "01:00:00" "thip-flag-1n-768"
     submit_one 2 960 "01:00:00" "thip-flag-2n-960"
     submit_one 4 1200 "01:00:00" "thip-flag-4n-1200"

@@ -198,10 +198,21 @@ inline constexpr int kSpectralNodeGcds = 8;
   return Int3{g[0], g[1], g[2]};
 }
 
-/// Brick min-surface on one node; 1D slabs off-node (measured fastest on
-/// LUMI-G). `OPENPFC_FFT_NODE_GRID=1` selects the 1×8×N pencil grid.
-/// `OPENPFC_FFT_PROC_GRID=gx,gy,gz` forces that Cartesian grid when it
-/// factors `num_procs` and divides `size`.
+/// True if @p grid is a 1D slab of @p num_procs ranks.
+[[nodiscard]] inline bool is_1d_proc_grid(const Int3 &grid, int num_procs) {
+  if (num_procs < 1) {
+    return false;
+  }
+  return (grid[0] == num_procs && grid[1] == 1 && grid[2] == 1) ||
+         (grid[1] == num_procs && grid[0] == 1 && grid[2] == 1) ||
+         (grid[2] == num_procs && grid[0] == 1 && grid[1] == 1);
+}
+
+/// Brick min-surface on one node; 1D slabs off-node when an axis divides
+/// (measured fastest on LUMI-G tungsten_hip). 1×8×N is the fallback when a
+/// 1D slab is illegal (e.g. 1200³ / 32 ranks). `OPENPFC_FFT_NODE_GRID=1`
+/// still forces 1×8×N. `OPENPFC_FFT_PROC_GRID=gx,gy,gz` forces that grid
+/// when it factors `num_procs` and divides `size`.
 [[nodiscard]] inline Int3 spectral_fft_proc_grid(const Int3 &size, int num_procs,
                                                  int r2c_direction = 0) {
   const Int3 forced = fft_proc_grid_override();
@@ -217,7 +228,15 @@ inline constexpr int kSpectralNodeGcds = 8;
         return node;
       }
     }
-    return slab_proc_grid(size, num_procs, r2c_direction);
+    const Int3 slab = slab_proc_grid(size, num_procs, r2c_direction);
+    if (is_1d_proc_grid(slab, num_procs)) {
+      return slab;
+    }
+    const Int3 node = node_aware_fft_proc_grid(size, num_procs);
+    if (node[0] * node[1] * node[2] == num_procs) {
+      return node;
+    }
+    return slab;
   }
   return min_surface_proc_grid(size, num_procs);
 }

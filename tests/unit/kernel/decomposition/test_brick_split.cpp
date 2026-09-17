@@ -221,10 +221,11 @@ TEST_CASE("slab_proc_grid honors OPENPFC_FFT_SLAB_AXIS", "[brick_split][unit]") 
   REQUIRE(slab_proc_grid(cube, 16) == Int3{1, 1, 16});
 }
 
-TEST_CASE("issue #13 weak-scaling cubes admit a node-aware FFT grid",
+TEST_CASE("issue #13 prefers 1D slabs and falls back to 1x8xN",
           "[brick_split][unit][flagship]") {
-  // 1200^3 is not divisible by 32, so a 1D 32-rank slab is illegal.
-  // OPENPFC_FFT_NODE_GRID=1 (1x8xnnodes) is the flagship layout.
+  // 2-node 960^3 admits a 16-rank z-slab and that layout was ~2x faster
+  // than forced 1x8x2 (jobs 22133084 vs 22133083). 1200^3 / 32 ranks
+  // cannot slab, so 1x8x4 remains the automatic fallback.
   struct Clear {
     ~Clear() {
       unsetenv("OPENPFC_FFT_NODE_GRID");
@@ -234,30 +235,18 @@ TEST_CASE("issue #13 weak-scaling cubes admit a node-aware FFT grid",
   } clear;
   REQUIRE(unsetenv("OPENPFC_FFT_PROC_GRID") == 0);
   REQUIRE(unsetenv("OPENPFC_FFT_SLAB_AXIS") == 0);
-  REQUIRE(setenv("OPENPFC_FFT_NODE_GRID", "1", 1) == 0);
+  REQUIRE(unsetenv("OPENPFC_FFT_NODE_GRID") == 0);
 
-  const struct {
-    int N;
-    int nproc;
-    int gx, gy, gz;
-  } pts[] = {
-      {768, 8, 0, 0, 0}, // 8 ranks: min-surface, not node-aware
-      {960, 16, 1, 8, 2},
-      {1200, 32, 1, 8, 4},
-      {1536, 64, 1, 8, 8},
-      {1920, 128, 1, 8, 16},
-      {2400, 256, 1, 8, 32},
-      {3000, 480, 1, 8, 60},
-  };
-  for (const auto &p : pts) {
-    const Int3 cube{p.N, p.N, p.N};
-    const Int3 g = spectral_fft_proc_grid(cube, p.nproc);
-    REQUIRE(g[0] * g[1] * g[2] == p.nproc);
-    REQUIRE(p.N % g[0] == 0);
-    REQUIRE(p.N % g[1] == 0);
-    REQUIRE(p.N % g[2] == 0);
-    if (p.nproc >= 9) {
-      REQUIRE(g == Int3{p.gx, p.gy, p.gz});
-    }
-  }
+  const Int3 n768{768, 768, 768};
+  REQUIRE(spectral_fft_proc_grid(n768, 8) == min_surface_proc_grid(n768, 8));
+  REQUIRE(spectral_fft_proc_grid({960, 960, 960}, 16) == Int3{1, 1, 16});
+  REQUIRE(spectral_fft_proc_grid({1200, 1200, 1200}, 32) == Int3{1, 8, 4});
+  REQUIRE(spectral_fft_proc_grid({1536, 1536, 1536}, 64) == Int3{1, 1, 64});
+  REQUIRE(spectral_fft_proc_grid({1920, 1920, 1920}, 128) == Int3{1, 1, 128});
+  REQUIRE(spectral_fft_proc_grid({2400, 2400, 2400}, 256) == Int3{1, 8, 32});
+  REQUIRE(spectral_fft_proc_grid({3000, 3000, 3000}, 480) == Int3{1, 8, 60});
+
+  REQUIRE(setenv("OPENPFC_FFT_NODE_GRID", "1", 1) == 0);
+  REQUIRE(spectral_fft_proc_grid({960, 960, 960}, 16) == Int3{1, 8, 2});
+  REQUIRE(spectral_fft_proc_grid({1200, 1200, 1200}, 32) == Int3{1, 8, 4});
 }

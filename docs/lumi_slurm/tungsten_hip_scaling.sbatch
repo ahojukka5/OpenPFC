@@ -106,6 +106,9 @@ if [[ -z "${PROC_GRID}" ]]; then
   elif (( NTASKS >= 9 && LX % NTASKS == 0 )); then
     PROC_GRID="1x1x${NTASKS}"
     LOCAL_BRICK="${LX}x${LX}x$((LX / NTASKS))"
+  elif (( NTASKS >= 9 && LX % 8 == 0 && LX % SLURM_NNODES == 0 )); then
+    PROC_GRID="1x8x${SLURM_NNODES}"
+    LOCAL_BRICK="${LX}x$((LX / 8))x$((LX / SLURM_NNODES))"
   elif (( NTASKS == 8 )); then
     # Cubes: min_surface_proc_grid is 2x2x2 (pinned in test_brick_split).
     PROC_GRID="min-surface(2x2x2)"

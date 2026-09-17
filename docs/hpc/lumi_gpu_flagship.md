@@ -26,7 +26,7 @@ this table.
 | Timed steps | 20 (10 is allowed at 32/60 nodes if documented) |
 | Warm-up | drop step 1 (FFT plan / first-touch) |
 | Metric | median `wall_step` from schema-v4 `timing_profile.json` |
-| Decomposition | 8 ranks/node; `OPENPFC_FFT_NODE_GRID=1` off-node |
+| Decomposition | 8 ranks/node; 1D slab off-node when it divides; `1×8×N` fallback |
 | Memory | host RSS from `memory_samples`; HBM is a `HIP_MEM` line |
 | Scratch | `/scratch/project_462001519/juaho/openpfc-scaling/` |
 
@@ -35,18 +35,20 @@ Do not change physics parameters per node count.
 ## Candidate ladder
 
 Cells/GCD stay near 54–57 M. Sizes are 5-smooth. **1200³ at 32 GCDs is
-not divisible by 32**, so a 1-D 32-rank slab is illegal; the flagship
-recipe forces the measured 1×8×nnodes layout instead.
+not divisible by 32**, so a 1-D 32-rank slab is illegal and the automatic
+fallback is 1×8×4. Do **not** force `OPENPFC_FFT_NODE_GRID=1` on sizes
+that admit a slab: 2-node 960³ `1×1×16` was 0.168 s/step vs 0.309 s for
+`1×8×2` (jobs `22133084` / `22133083`).
 
-| Nodes | GCDs | N | cells / GCD | 1×8×N grid |
-|------:|-----:|--:|------------:|------------|
-| 1 | 8 | 768 | 56.6 M | min-surface `2×2×2` (8 ranks) |
-| 2 | 16 | 960 | 55.3 M | 1×8×2 |
-| 4 | 32 | 1200 | 54.0 M | 1×8×4 |
-| 8 | 64 | 1536 | 56.6 M | 1×8×8 |
-| 16 | 128 | 1920 | 55.3 M | 1×8×16 |
-| 32 | 256 | 2400 | 54.0 M | 1×8×32 |
-| 60 | 480 | 3000 | 56.3 M | 1×8×60 |
+| Nodes | GCDs | N | cells / GCD | default grid | 1×8×N |
+|------:|-----:|--:|------------:|--------------|--------|
+| 1 | 8 | 768 | 56.6 M | min-surface `2×2×2` | n/a |
+| 2 | 16 | 960 | 55.3 M | `1×1×16` slab | 1×8×2 |
+| 4 | 32 | 1200 | 54.0 M | `1×8×4` (no slab) | 1×8×4 |
+| 8 | 64 | 1536 | 56.6 M | `1×1×64` slab | 1×8×8 |
+| 16 | 128 | 1920 | 55.3 M | `1×1×128` slab | 1×8×16 |
+| 32 | 256 | 2400 | 54.0 M | `1×8×32` (no slab) | 1×8×32 |
+| 60 | 480 | 3000 | 56.3 M | `1×8×60` (no slab) | 1×8×60 |
 
 3000³ is 27 billion cells. Confirm HBM on the 32-node point before
 submitting 60 nodes.

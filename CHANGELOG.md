@@ -17,6 +17,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   2-node process-grid diagnosis set. `flagship_ladder.py --grids N
   nproc` lists legal Cartesian grids. Do not submit 60 nodes from this
   change.
+- **Off-node FFT process grid** (issue #13). `spectral_fft_proc_grid`
+  prefers a 1D slab when an axis divides the rank count and uses
+  1×8×N only when a slab is illegal. Forced `OPENPFC_FFT_NODE_GRID=1`
+  remains available. Measured: 2-node 960³ slab 0.168 s vs 1×8×2
+  0.309 s (jobs `22133084` / `22133083`). One-node 8-rank min-surface
+  is unchanged.
 - **Heat3D spectral-family equal-accuracy tables** regenerated with
   the issue #3 fail-closed unattainable state (LUMI-C `standard` job
   **22078280**). Six FD-2 rows at `1e-8` are now `attainable=no` and
