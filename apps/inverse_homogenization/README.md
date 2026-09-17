@@ -166,3 +166,5 @@ Not a 2-D extrusion. Recipe:
 Render orthogonal midplanes plus a voxel still with
 [`scripts/render_inverse3d_showcase.py`](scripts/render_inverse3d_showcase.py).
 Prod `SHOWCASE_NX` is a candidate until the 8-GCD pilot.
+Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
+(`hipMemGetInfo`), not from `sacct` MaxRSS.
