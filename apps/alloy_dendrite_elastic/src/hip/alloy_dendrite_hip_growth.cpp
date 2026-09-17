@@ -93,6 +93,10 @@ void download_owned(DevField &src, RealField &dst) {
                               (static_cast<std::size_t>(j) + hw) * npx +
                               (static_cast<std::size_t>(k) + hw) * npx * npy];
   });
+  // Dump is a read. with_host_read note_synced() both sides; the next
+  // HaloExchange::sync_to_device() must not H2D the host halo. Same
+  // pattern as alloy_dendrite_coupled_cost::pull_three.
+  src.note_device_write();
   dst.note_host_write();
 }
 

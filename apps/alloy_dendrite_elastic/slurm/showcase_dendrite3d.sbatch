@@ -4,8 +4,8 @@
 #
 #SBATCH --account=project_462001519
 #SBATCH --partition=standard-g
-#SBATCH --nodes=8
-#SBATCH --ntasks=64
+#SBATCH --nodes=16
+#SBATCH --ntasks=128
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
 #SBATCH --time=12:00:00
@@ -13,20 +13,19 @@
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
 #
-# Issue #12: genuine 3-D isothermal dendrite on one LUMI-G node.
-# Spherical seed (nz=nx). No elasticity on this path: measure bytes/cell
-# before coupling Green at this scale. 2048^3 is a later node-count target.
+# Issue #12: 3-D isothermal dendrite for ParaView (.bin + .xdmf).
+# Spherical seed (nz=nx). Elasticity off. HBM is not the limit
+# (64^3 used_max ~0.24 GiB/GCD); unique-frame dumps GPU-faulted under
+# GPU-aware MPI subarrays, so this path forces packed-halo MPI.
 #
-#   SHOWCASE_MODE=pilot   64^3 (default)
-#   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
-# Film grids: 64^3 (pilot) or SHOWCASE_NX=128 / SHOWCASE_NY/NZ for a
-# 256x128x128 slab. 256^3 x 600 phi/U is ~161 GiB; HBM is not the limit
-# (used_max ~0.55 GiB). Scratch only.
+#   SHOWCASE_MODE=pilot   64^3 dump-every-1 (dense-dump smoke)
+#   SHOWCASE_MODE=prod    512^3, 16 nodes, dump every 40 steps (~400 frames)
+# Scratch only.
 
 set -euo pipefail
 
 SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/dev/openpfc}"
-BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-showcase-dend}"
+BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-dend3d-512}"
 OUT="${OUT_DIR:-/scratch/project_462001519/juaho/openpfc-showcase/dendrite3d}"
 MODE="${SHOWCASE_MODE:-pilot}"
 
@@ -39,11 +38,12 @@ module load heffte-rocm || true
 export LD_LIBRARY_PATH="${CRAY_LD_LIBRARY_PATH:-}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export CRAYPE_LINK_TYPE="${CRAYPE_LINK_TYPE:-dynamic}"
 export MPICH_GPU_SUPPORT_ENABLED=1
+export OPENPFC_HIP_FORCE_PACKED_HALO="${OPENPFC_HIP_FORCE_PACKED_HALO:-1}"
 export OPENPFC_FFT_NODE_GRID="${OPENPFC_FFT_NODE_GRID:-1}"
 unset ROCR_VISIBLE_DEVICES HIP_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES || true
 export CC=cc CXX=CC
 
-mkdir -p "${OUT}/fields"
+mkdir -p "${OUT}/fields" "${OUT}/frames"
 {
   echo "job ${SLURM_JOB_ID} partition ${SLURM_JOB_PARTITION} host $(hostname)"
   echo "date $(date -Iseconds)"
@@ -51,6 +51,7 @@ mkdir -p "${OUT}/fields"
   echo "revision $(git -C "${SRC}" rev-parse HEAD)"
   echo "dirty $(git -C "${SRC}" status --porcelain | wc -l)"
   echo "mode ${MODE}"
+  echo "OPENPFC_HIP_FORCE_PACKED_HALO=${OPENPFC_HIP_FORCE_PACKED_HALO}"
   echo "3-D spherical seed; isothermal; elasticity off for the memory path"
   echo "anisotropy: fourfold cubic eps4=0.05; <100> along the brick axes"
   module list
