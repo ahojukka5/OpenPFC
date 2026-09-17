@@ -138,7 +138,8 @@ void report_hbm(int rank, int nproc, MPI_Comm comm, long long n_global,
               << " total_gcd_gib=" << total_gcd / gib
               << " bytes_per_cell=" << used_sum / static_cast<double>(n_global)
               << " known_owned_phi_U_th_bytes=" << known_owned_bytes
-              << " elastic=" << (elastic ? 1 : 0) << '\n';
+              << " elastic=" << (elastic ? 1 : 0) << '\n'
+              << std::flush;
   }
 }
 
