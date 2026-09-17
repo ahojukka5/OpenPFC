@@ -223,38 +223,61 @@ def _write_xdmf(path, nx, ny, nz, origin, spacing, field_names, rels, times):
     ox, oy, oz = origin
     dx, dy, dz = spacing
     n = len(times)
+    two_d = nz == 1
     lines = [
         '<?xml version="1.0" ?>',
         '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>',
         '<Xdmf Version="2.0">',
         "  <Domain>",
-        '    <Grid Name="TimeSeries" GridType="Collection" CollectionType="Temporal">',
     ]
-    for i, t in enumerate(times):
-        lines.append('      <Grid Name="step_%04d" GridType="Uniform">' % i)
-        lines.append("        <Time Value=\"%.17g\"/>" % float(t))
+    if two_d:
         lines.append(
-            '        <Topology TopologyType="3DCORECTMesh" Dimensions="%d %d %d"/>'
+            '    <Topology name="topo" TopologyType="2DCoRectMesh" Dimensions="%d %d"/>'
+            % (ny, nx)
+        )
+        lines.append('    <Geometry name="geo" Type="ORIGIN_DXDY">')
+        lines.append(
+            '      <DataItem Format="XML" Dimensions="2">%.17g %.17g</DataItem>'
+            % (oy, ox)
+        )
+        lines.append(
+            '      <DataItem Format="XML" Dimensions="2">%.17g %.17g</DataItem>'
+            % (dy, dx)
+        )
+        dim_attr = "%d %d" % (ny, nx)
+    else:
+        lines.append(
+            '    <Topology name="topo" TopologyType="3DCoRectMesh" Dimensions="%d %d %d"/>'
             % (nz, ny, nx)
         )
-        lines.append('        <Geometry GeometryType="ORIGIN_DXDYDZ">')
+        lines.append('    <Geometry name="geo" Type="ORIGIN_DXDYDZ">')
         lines.append(
-            '          <DataItem Dimensions="3" NumberType="Float" Precision="8" Format="XML">%.17g %.17g %.17g</DataItem>'
+            '      <DataItem Format="XML" Dimensions="3">%.17g %.17g %.17g</DataItem>'
             % (oz, oy, ox)
         )
         lines.append(
-            '          <DataItem Dimensions="3" NumberType="Float" Precision="8" Format="XML">%.17g %.17g %.17g</DataItem>'
+            '      <DataItem Format="XML" Dimensions="3">%.17g %.17g %.17g</DataItem>'
             % (dz, dy, dx)
         )
-        lines.append("        </Geometry>")
+        dim_attr = "%d %d %d" % (nz, ny, nx)
+    lines.extend(
+        [
+            "    </Geometry>",
+            '    <Grid Name="TimeSeries" GridType="Collection" CollectionType="Temporal">',
+        ]
+    )
+    for i, t in enumerate(times):
+        lines.append('      <Grid Name="step_%04d" GridType="Uniform">' % i)
+        lines.append("        <Time Value=\"%.17g\"/>" % float(t))
+        lines.append('        <Topology Reference="/Xdmf/Domain/Topology[1]"/>')
+        lines.append('        <Geometry Reference="/Xdmf/Domain/Geometry[1]"/>')
         for name in field_names:
             lines.append(
-                '        <Attribute Name="%s" AttributeType="Scalar" Center="Node">'
-                % _xml_escape(name)
+                '        <Attribute Name="%s" Center="Node">' % _xml_escape(name)
             )
             lines.append(
-                '          <DataItem Dimensions="%d %d %d" NumberType="Float" Precision="8" Format="Binary" Endian="Little">%s</DataItem>'
-                % (nz, ny, nx, _xml_escape(rels[name][i]))
+                '          <DataItem Format="Binary" DataType="Float" Precision="8" Endian="Little" Dimensions="%s">%s</DataItem>'
+                % (dim_attr, _xml_escape(rels[name][i]))
             )
             lines.append("        </Attribute>")
         lines.append("      </Grid>")

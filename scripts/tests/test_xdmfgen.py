@@ -39,7 +39,7 @@ def test_manifest_xdmf_points_at_bricks():
     written = xdmfgen.write_manifest_xdmf(man_path)
     assert len(written) == 1
     text = open(written[0]).read()
-    assert "3DCORECTMesh" in text
+    assert "2DCoRectMesh" in text
     assert "run_h_0000.bin" in text
     assert "run_h_0001.bin" in text
     assert 'Name="h"' in text
