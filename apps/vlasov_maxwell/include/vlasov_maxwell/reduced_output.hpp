@@ -24,6 +24,7 @@
 #include <mpi.h>
 
 #include <openpfc/frontend/io/binary_writer.hpp>
+#include <openpfc/frontend/io/xdmf_binary_series.hpp>
 #include <openpfc/kernel/field/state_access.hpp>
 
 #include <vlasov_maxwell/parameters.hpp>
@@ -75,7 +76,9 @@ public:
                         const PhaseSpace &ps, int rank)
       : m_cfg(std::move(cfg)), m_run(std::move(run_id)), m_rank(rank),
         m_comm(ps.comm()), m_nx(ps.nx()), m_nvx(ps.nvx()), m_nvy(ps.nvy_global()),
-        m_nvy_local(ps.nvy_local()), m_vy_off(ps.vy_offset()) {}
+        m_nvy_local(ps.nvy_local()), m_vy_off(ps.vy_offset()),
+        m_dx(ps.params().dx()), m_dvx(ps.params().dvx()),
+        m_dvy(ps.params().dvy()) {}
 
   [[nodiscard]] bool active() const noexcept { return !m_cfg.dir.empty(); }
 
@@ -123,9 +126,34 @@ public:
     std::fprintf(fp, "],\n  \"pattern\": \"%s_{field}_{index:04d}.bin\"\n}\n",
                  m_run.c_str());
     std::fclose(fp);
+    write_xdmf_();
   }
 
 private:
+  void write_xdmf_field_(const std::string &field, int nx, int ny, int nz,
+                         double dx, double dy, double dz) const {
+    if (m_times.empty()) return;
+    std::vector<std::string> rels;
+    rels.reserve(m_times.size());
+    for (std::size_t i = 0; i < m_times.size(); ++i) {
+      char tail[96];
+      std::snprintf(tail, sizeof(tail), "%s_%s_%04zu.bin", m_run.c_str(),
+                    field.c_str(), i);
+      rels.push_back(tail);
+    }
+    pfc::io::write_xdmf_binary_series(
+        m_cfg.dir + "/" + m_run + "_" + field + ".xdmf", nx, ny, nz, dx, dy, dz,
+        {field}, {rels}, m_times);
+  }
+
+  void write_xdmf_() const {
+    write_xdmf_field_("f_xvx", m_nx, m_nvx, 1, m_dx, m_dvx, 1.0);
+    write_xdmf_field_("f_xvy", m_nx, m_nvy, 1, m_dx, m_dvy, 1.0);
+    write_xdmf_field_("Bz", m_nx, 1, 1, m_dx, 1.0, 1.0);
+    write_xdmf_field_("Ey", m_nx, 1, 1, m_dx, 1.0, 1.0);
+    write_xdmf_field_("Jy", m_nx, 1, 1, m_dx, 1.0, 1.0);
+  }
+
   std::string suffix_(const std::string &field, int idx) const {
     char tail[80];
     std::snprintf(tail, sizeof(tail), "_%s_%04d.bin", field.c_str(), idx);
@@ -146,6 +174,7 @@ private:
   int m_rank{0};
   MPI_Comm m_comm{MPI_COMM_WORLD};
   int m_nx{0}, m_nvx{0}, m_nvy{0}, m_nvy_local{0}, m_vy_off{0};
+  double m_dx{1.0}, m_dvx{1.0}, m_dvy{1.0};
   std::vector<double> m_times;
 };
 
