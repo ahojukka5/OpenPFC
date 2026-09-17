@@ -145,17 +145,18 @@ One LUMI-G node (8 GCDs). Heavy frames go to scratch, never flash.
 sbatch apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch
 SHOWCASE_MODE=prod sbatch apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch
 
-python3 apps/inverse_homogenization/scripts/render_inverse_showcase.py \
-  --run /scratch/project_462001519/juaho/openpfc-showcase/inverse2d_<jobid>
+# ParaView: File → Open fields/inverse2d.xdmf
+python3 scripts/xdmfgen.py --manifest \
+  /scratch/project_462001519/juaho/openpfc-showcase/inverse2d_<jobid>/fields/inverse2d_manifest.json
 ```
 
 `openpfc_inverse_homogenize_hip` writes `history.csv` (`C_H` and
 \(\nu_{\mathrm{eff}}\) from the homogenizer, including a final row for
-the last dumped `h`) and MPI-IO `h` bricks. Production `SHOWCASE_NX`
-is a candidate until the 8-GCD pilot reports HBM and wall time.
-Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
-(`hipMemGetInfo`), not from `sacct` MaxRSS. Default dumps are 600
-Allen–Cahn steps (`dump-every=1`) so a 10 s / 60 fps film has unique
-frames; heavy bricks stay on scratch.
+the last dumped `h`) and MPI-IO `h` bricks plus an XDMF sidecar.
+Open the `.xdmf` in ParaView. Production `SHOWCASE_NX` is a candidate
+until the 8-GCD pilot reports HBM and wall time. Size later grids from
+`HIP_MEM bytes_per_cell` in the HIP driver log (`hipMemGetInfo`), not
+from `sacct` MaxRSS. Default dumps are 600 Allen–Cahn steps
+(`dump-every=1`); heavy bricks stay on scratch.
 Do not call a grey morphology auxetic unless `nu_eff` / `nu_bin` is
 negative. The default seed is rotating-squares.

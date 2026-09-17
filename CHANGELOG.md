@@ -29,8 +29,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   8 GCDs. History CSV includes a final homogenization row for `h_N`.
   Prod grid is a candidate until the 8-GCD pilot. Recipe:
   `apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch`.
-  Render:
-  `apps/inverse_homogenization/scripts/render_inverse_showcase.py`.
+  Open `fields/inverse2d.xdmf` in ParaView (no matplotlib renderer).
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and

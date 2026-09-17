@@ -8,8 +8,8 @@
  * @brief MPI-IO bricks of the design field `h` plus a JSON manifest.
  *
  * Text `--dump-h` is single-rank and too large for a 1024² showcase. These
- * bricks are the same Fortran-ordered doubles `docs/report/figures/field_io.py`
- * already reads.
+ * bricks are Fortran-ordered doubles. Rank 0 also writes an XDMF sidecar
+ * so ParaView can File → Open the series (`scripts/xdmfgen.py`).
  */
 
 #include <algorithm>
@@ -21,6 +21,7 @@
 #include <mpi.h>
 
 #include <openpfc/frontend/io/binary_writer.hpp>
+#include <openpfc/frontend/io/xdmf_binary_series.hpp>
 #include <openpfc/kernel/field/state_access.hpp>
 
 namespace pfc::apps::inverse {
@@ -82,9 +83,31 @@ public:
     std::fprintf(fp, "],\n  \"pattern\": \"%s_{field}_{index:04d}.bin\"\n}\n",
                  m_run.c_str());
     std::fclose(fp);
+    write_xdmf_(fields);
   }
 
 private:
+  void write_xdmf_(const std::vector<std::string> &fields) const {
+    if (m_steps.empty() || fields.empty()) return;
+    std::vector<double> times;
+    times.reserve(m_steps.size());
+    for (int s : m_steps) times.push_back(static_cast<double>(s));
+    std::vector<std::vector<std::string>> rels(fields.size());
+    for (std::size_t f = 0; f < fields.size(); ++f) {
+      rels[f].resize(m_steps.size());
+      for (std::size_t i = 0; i < m_steps.size(); ++i) {
+        char tail[96];
+        std::snprintf(tail, sizeof(tail), "%s_%s_%04zu.bin", m_run.c_str(),
+                      fields[f].c_str(), i);
+        rels[f][i] = tail;
+      }
+    }
+    const double dz = m_global[2] > 1 ? m_dx : 1.0;
+    pfc::io::write_xdmf_binary_series(
+        m_cfg.dir + "/" + m_run + ".xdmf", m_global[0], m_global[1], m_global[2],
+        m_dx, m_dx, dz, fields, rels, times);
+  }
+
   void write_buffer_(const std::string &name, int idx) {
     char tail[64];
     std::snprintf(tail, sizeof(tail), "_%s_%04d.bin", name.c_str(), idx);

@@ -87,7 +87,7 @@ This page ties **figures** you may see in the repository or publications to **ru
 |---|---|
 | **Runnable** | `openpfc_inverse_homogenize_hip` — [`apps/inverse_homogenization`](../../apps/inverse_homogenization/README.md) |
 | **Recipe** | [`showcase_inverse2d.sbatch`](../../apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch) (8 GCDs) |
-| **Render** | [`render_inverse_showcase.py`](../../apps/inverse_homogenization/scripts/render_inverse_showcase.py) |
+| **ParaView** | File → Open `fields/inverse2d.xdmf` (XDMF over the MPI-IO `h` bricks) |
 | **Concepts** | periodic \(C_H\); auxetic rotating-square seed; \(\nu\) from the homogenizer |
 
 Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
