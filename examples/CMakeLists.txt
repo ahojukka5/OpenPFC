@@ -141,3 +141,6 @@ if(OpenPFC_BUILD_TESTS AND MPIEXEC_EXECUTABLE)
                        ENVIRONMENT
                        "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
 endif()
+
+# Issue #21 research prototype: not a shipped apps/ catalog entry.
+add_subdirectory(ns2d_vorticity)

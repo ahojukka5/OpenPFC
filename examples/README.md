@@ -33,6 +33,12 @@ mpirun -n 2 ./examples/23_halo_microtiming --nx 16 --iters 4 --output /tmp/halo.
 
 These cover decomposition, distributed FFT, the simulator stack, and a richer spectral model.
 
+A **research prototype** (not part of the numbered teaching ladder) is
+`ns2d_vorticity`: 2-D vorticity–streamfunction Navier–Stokes for
+[issue #21](https://github.com/ahojukka5/OpenPFC/issues/21). See
+[`ns2d_vorticity/README.md`](ns2d_vorticity/README.md). It is not a
+shipped `apps/` catalog entry.
+
 ## Full catalog and curriculum
 
 Every target registered in `CMakeLists.txt` is listed in [`../docs/examples_catalog.md`](../docs/reference/examples_catalog.md), including **Tier 1–3** suggested order and a flowchart. Guided **spectral** sequence (`04_diffusion_model` → `05_simulator` → `12_cahn_hilliard`): [`../docs/tutorials/spectral_examples_sequence.md`](../docs/tutorials/spectral_examples_sequence.md).
