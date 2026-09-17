@@ -71,6 +71,30 @@ TEST_CASE("Residency: alternating writes keep exactly one side authoritative",
   REQUIRE(r.host_needs_refresh());
 }
 
+TEST_CASE("Residency: a host snapshot must not make the device stale",
+          "[residency][unit][dendrite3d]") {
+  // Issue #12: dense HIP dumps used with_host_view, which is a write bracket
+  // (note_host_write). The next halo then H2D stale host halo onto the
+  // device-authoritative field. with_host_read pulls (note_synced) and
+  // leaves the device valid.
+  auto r = Residency::device_backed();
+  r.note_synced();
+  r.note_device_write();
+  REQUIRE(r.device_valid());
+  REQUIRE(r.host_needs_refresh());
+  REQUIRE_FALSE(r.device_needs_refresh());
+
+  r.note_synced(); // host snapshot of the device field
+  REQUIRE(r.host_valid());
+  REQUIRE(r.device_valid());
+  REQUIRE_FALSE(r.device_needs_refresh());
+
+  r.note_host_write(); // what with_host_view does after the same pull
+  REQUIRE(r.host_valid());
+  REQUIRE_FALSE(r.device_valid());
+  REQUIRE(r.device_needs_refresh());
+}
+
 TEST_CASE("Residency: note_synced clears both refresh flags", "[residency][unit]") {
   auto r = Residency::device_backed();
   r.note_device_write();
