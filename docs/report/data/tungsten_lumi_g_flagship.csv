@@ -2,6 +2,15 @@
 # Written by flagship_ladder.py --collect from scratch run dirs.
 # Do not interpolate or invent timings.
 # Protocol: docs/lumi_slurm/tungsten_hip_scaling.toml (I/O off, dt=1).
-# Multi-node: OPENPFC_FFT_NODE_GRID=1. Scratch only for bulky logs.
+# Multi-node default: 1D slab when N divides nproc; 1x8xN if not.
+# Scratch only for bulky logs.
 # Efficiency is wall_step(1 node) / wall_step(N) (weak; similar cells/GCD).
-nodes,gcds,N,cells,cells_per_gcd,steps,warmup,job,wall_step_s,rss_per_rank_gib,proc_grid,revision,dirty,bin_sha256,fft_node_grid,input,notes
+# rss_per_rank_gib is host RSS from the profiler, not GCD HBM.
+# Quote device memory from a HIP_MEM / hipMemGetInfo line, never RSS.
+# local_brick is the owned real-space brick Nx/gx x Ny/gy x Nz/gz.
+nodes,gcds,N,cells,cells_per_gcd,steps,warmup,job,wall_step_s,rss_per_rank_gib,proc_grid,revision,dirty,bin_sha256,fft_node_grid,fft_proc_grid,local_brick,use_pencils,input,notes
+1,8,768,452984832,5.662310e+07,20,1,22133408,0.17644676,0,min-surface(2x2x2),11a40ff144fc860501a5b80e261de86f43043964,0,6b9245f64f70a493d5de7c50bf55831824e00e85cf5cabdee6a418aeada5b67b,unset,unset,384x384x384,false,/scratch/project_462001519/juaho/openpfc-scaling/runs/thip-fix-1n-768_22133408/input.toml,thip-fix-1n-768_22133408
+2,16,960,884736000,5.529600e+07,20,1,22133409,0.16932687,0,1x1x16,11a40ff144fc860501a5b80e261de86f43043964,0,6b9245f64f70a493d5de7c50bf55831824e00e85cf5cabdee6a418aeada5b67b,unset,unset,960x960x60,false,/scratch/project_462001519/juaho/openpfc-scaling/runs/thip-fix-2n-960_22133409/input.toml,thip-fix-2n-960_22133409
+4,32,1200,1728000000,5.400000e+07,20,1,22133410,0.42013369,0,1x8x4,11a40ff144fc860501a5b80e261de86f43043964,0,6b9245f64f70a493d5de7c50bf55831824e00e85cf5cabdee6a418aeada5b67b,unset,unset,1200x150x300,false,/scratch/project_462001519/juaho/openpfc-scaling/runs/thip-fix-4n-1200_22133410/input.toml,thip-fix-4n-1200_22133410
+8,64,1536,3623878656,5.662310e+07,20,1,22133411,0.3144001,0,1x1x64,11a40ff144fc860501a5b80e261de86f43043964,0,6b9245f64f70a493d5de7c50bf55831824e00e85cf5cabdee6a418aeada5b67b,unset,unset,1536x1536x24,false,/scratch/project_462001519/juaho/openpfc-scaling/runs/thip-fix-8n-1536_22133411/input.toml,thip-fix-8n-1536_22133411
+16,128,1920,7077888000,5.529600e+07,20,1,22133756,0.36184373,0,1x1x128,11a40ff144fc860501a5b80e261de86f43043964,0,6b9245f64f70a493d5de7c50bf55831824e00e85cf5cabdee6a418aeada5b67b,unset,unset,1920x1920x15,false,/scratch/project_462001519/juaho/openpfc-scaling/runs/thip-fix-16n-1920_22133756/input.toml,thip-fix-16n-1920_22133756
