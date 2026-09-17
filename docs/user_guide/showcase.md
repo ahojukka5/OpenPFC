@@ -109,7 +109,7 @@ Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 |---|---|
 | **Runnable** | `alloy_dendrite_hip_growth --nz=N` with \(N>1\) |
 | **Recipe** | [`showcase_dendrite3d.sbatch`](../../apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch) (8 GCDs) |
-| **Render** | [`render_dendrite3d_showcase.py`](../../apps/alloy_dendrite_elastic/scripts/render_dendrite3d_showcase.py) |
+| **ParaView** | File → Open `fields/dendrite3d.xdmf` |
 | **Concepts** | spherical seed; isothermal; elasticity off until `HIP_MEM` bytes/cell; voxels + slices; 2048³ later |
 
 ## Quick 2D PNG snapshots (Allen–Cahn)
