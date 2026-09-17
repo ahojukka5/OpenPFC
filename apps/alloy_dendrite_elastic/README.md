@@ -575,8 +575,7 @@ and `eps_c` from `material.hpp`, and `lambda_el = lambda` when
 Issue #12 is the 3-D path: spherical seed, `nz = nx`, isothermal,
 elasticity off until the one-node pilot reports bytes/cell.
 [`slurm/showcase_dendrite3d.sbatch`](slurm/showcase_dendrite3d.sbatch).
-Render orthogonal midplanes with
-[`scripts/render_dendrite3d_showcase.py`](scripts/render_dendrite3d_showcase.py).
+Open `fields/dendrite3d.xdmf` in ParaView.
 A 2048³ run is a node-count target after that measurement, not a
 one-node default. The ~8 doubles/cell envelope (512³ ~ 8 GiB, 1024³ ~
 64 GiB, 1536³ ~ 220 GiB, 2048³ ~ 512 GiB) is **provisional**: it is not

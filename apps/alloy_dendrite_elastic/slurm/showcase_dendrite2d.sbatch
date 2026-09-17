@@ -95,4 +95,4 @@ run_one off --lambda-el=0
 run_one on
 
 echo "=== done ${OUT} ==="
-echo "Render: python3 ${SRC}/apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py --run ${OUT}"
+echo "ParaView: File → Open ${OUT}/fields_off/off.xdmf and ${OUT}/fields_on/on.xdmf"

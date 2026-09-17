@@ -87,7 +87,7 @@ This page ties **figures** you may see in the repository or publications to **ru
 |---|---|
 | **Runnable** | `alloy_dendrite_hip_growth` — [`apps/alloy_dendrite_elastic`](../../apps/alloy_dendrite_elastic/README.md) |
 | **Recipe** | [`showcase_dendrite2d.sbatch`](../../apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch) (8 GCDs) |
-| **Render** | [`render_dendrite_showcase.py`](../../apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py) |
+| **ParaView** | File → Open `fields_off/off.xdmf` and `fields_on/on.xdmf` |
 | **Concepts** | isothermal free growth; device Green; Al-4.5wt%Cu; \(\lambda_{\mathrm{el}}=0\) vs \(\lambda\) |
 
 Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
@@ -98,7 +98,7 @@ Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 |---|---|
 | **Runnable** | `alloy_dendrite_hip_growth --nz=N` with \(N>1\) |
 | **Recipe** | [`showcase_dendrite3d.sbatch`](../../apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch) (8 GCDs) |
-| **Render** | [`render_dendrite3d_showcase.py`](../../apps/alloy_dendrite_elastic/scripts/render_dendrite3d_showcase.py) |
+| **ParaView** | File → Open `fields/dendrite3d.xdmf` |
 | **Concepts** | spherical seed; isothermal; elasticity off until `HIP_MEM` bytes/cell; voxels + slices; 2048³ later |
 
 ## Quick 2D PNG snapshots (Allen–Cahn)

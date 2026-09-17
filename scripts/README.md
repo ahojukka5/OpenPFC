@@ -309,11 +309,23 @@ bash scripts/check_gpu_memcpy_single_source.sh
 
 ### xdmfgen.py
 
-Generate XDMF files for visualization with ParaView.
+Write XDMF so headerless Fortran-ordered `.bin` dumps open in ParaView.
+Showcase manifests:
+
+```bash
+python3 scripts/xdmfgen.py --manifest path/to/fields/*_manifest.json
+```
+
+File → Open the `.xdmf` next to the bricks.
+
+### paraview_xdmf.py
+
+Optional `pvpython` / `pvbatch` wrapper around `paraview.simple` for the
+same XDMF file. The GUI path is File → Open.
 
 ### pvrender.py
 
-Render images from ParaView for batch visualization.
+Render images from a ParaView `.pvsm` state with `pvbatch`.
 
 ---
 

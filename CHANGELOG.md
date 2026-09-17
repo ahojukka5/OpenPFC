@@ -25,9 +25,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Alloy-dendrite 3-D 8-GCD showcase** (issue #12). Spherical seed,
   isothermal, elasticity off. `alloy_dendrite_hip_growth` prints
   `HIP_MEM` from `hipMemGetInfo` (not host RSS). Recipe:
-  `apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch`. Render:
-  voxels plus slices,
-  `apps/alloy_dendrite_elastic/scripts/render_dendrite3d_showcase.py`.
+  `apps/alloy_dendrite_elastic/slurm/showcase_dendrite3d.sbatch`.
+  Open `fields/dendrite3d.xdmf` in ParaView.
   2048³ is a later node-count target after the one-node bytes/cell pilot.
 - **Alloy-dendrite 8-GCD showcase** (issue #11).
   `alloy_dendrite_hip_growth` writes MPI-IO `phi`/`U`/`f_el` frames and
@@ -36,8 +35,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `--elastic=1`). Recipe:
   `apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch`
   (isothermal; same material/Green, \(\lambda_{\mathrm{el}}=0\) vs
-  \(\lambda\)). Render:
-  `apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py`.
+  \(\lambda\)). Open `fields_off/off.xdmf` in ParaView.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and

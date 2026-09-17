@@ -102,4 +102,4 @@ echo "HBM is HIP_MEM in ${OUT}/run.log (hipMemGetInfo). sacct MaxRSS is host RSS
   | tee -a "${OUT}/provenance.txt"
 
 echo "=== done ${OUT} ==="
-echo "Render: python3 ${SRC}/apps/alloy_dendrite_elastic/scripts/render_dendrite3d_showcase.py --run ${OUT}"
+echo "ParaView: File → Open ${OUT}/fields/dendrite3d.xdmf"
