@@ -98,7 +98,7 @@ Heavy frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
 |---|---|
 | **Runnable** | `alloy_dendrite_hip_growth` — [`apps/alloy_dendrite_elastic`](../../apps/alloy_dendrite_elastic/README.md) |
 | **Recipe** | [`showcase_dendrite2d.sbatch`](../../apps/alloy_dendrite_elastic/slurm/showcase_dendrite2d.sbatch) (8 GCDs) |
-| **Render** | [`render_dendrite_showcase.py`](../../apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py) |
+| **ParaView** | File → Open `fields_off/off.xdmf` and `fields_on/on.xdmf` |
 | **Concepts** | isothermal free growth; device Green; Al-4.5wt%Cu; \(\lambda_{\mathrm{el}}=0\) vs \(\lambda\) |
 
 Frames live on `/scratch/project_462001519/juaho/openpfc-showcase/`.
