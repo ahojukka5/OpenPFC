@@ -8,7 +8,7 @@
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=dend3d-show
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
@@ -19,6 +19,8 @@
 #
 #   SHOWCASE_MODE=pilot   64^3 (default)
 #   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
+# Film: >=600 unique snapshots (10 s at 60 fps). Same dt; denser samples.
+# Heavy bricks on scratch.
 
 set -euo pipefail
 
@@ -66,15 +68,15 @@ CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,
 if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-256}"
   STEPS="${SHOWCASE_STEPS:-2000}"
-  EVERY="${SHOWCASE_SAMPLE:-50}"
-  DUMP="${SHOWCASE_DUMP_EVERY:-2}"
+  EVERY="${SHOWCASE_SAMPLE:-3}"
+  DUMP="${SHOWCASE_DUMP_EVERY:-1}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: candidate ${NX}^3; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
   fi
 else
   NX="${SHOWCASE_NX:-64}"
-  STEPS="${SHOWCASE_STEPS:-400}"
-  EVERY="${SHOWCASE_SAMPLE:-20}"
+  STEPS="${SHOWCASE_STEPS:-600}"
+  EVERY="${SHOWCASE_SAMPLE:-1}"
   DUMP="${SHOWCASE_DUMP_EVERY:-1}"
 fi
 DX="${SHOWCASE_DX:-0.8}"
