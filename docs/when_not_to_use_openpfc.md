@@ -25,7 +25,7 @@ Today, **shipped spectral applications** (for example **tungsten**) remain **FFT
 
 | Situation | Consider |
 |-----------|----------|
-| You only need **small 1D/2D toy FFTs** with no MPI | A minimal NumPy / SciPy or FFTW tutorial may be faster to learn. |
+| You only need **small 1D/2D toy FFTs** with no MPI | A minimal NumPy / SciPy or FFTW tutorial may be faster to learn. The issue #21 vorticity prototype (`examples/ns2d_vorticity`) is a decision experiment, not a reason to start here. |
 | You require a **different community model** (e.g. phase-field **without** this PFC formulation) | Compare domain-specific codes in that community; still read our [`science_tungsten_quicklook.md`](science/tungsten_quicklook.md) for what tungsten actually solves. |
 | You cannot use **MPI** or **HeFFTe**-compatible builds | OpenPFC’s value is in the parallel spectral + I/O stack; without that, the install cost may outweigh the benefit. |
 | You need **guaranteed production support** or a **turn-key GUI** | OpenPFC is a research-oriented C++ framework; plan engineering effort for your site. |

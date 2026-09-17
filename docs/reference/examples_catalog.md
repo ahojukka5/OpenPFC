@@ -103,6 +103,16 @@ Narrative companion: [`getting_started/01-basics/README.md`](../getting_started/
 | `22_external_coupling` | `22_external_coupling.cpp` | Mock FEM loop: `FieldHandle` export, `clip_attempt_dt`, FieldModifier-shaped source |
 | `23_halo_microtiming` | `23_halo_microtiming.cpp` | Timed `HaloExchange` loop; schema-v2 JSON (`--cuda` / `--hip` / `--full`) |
 
+## Research prototypes
+
+These targets are built from `examples/` subdirectories. They are **not**
+part of the numbered teaching ladder and are **not** shipped `apps/`
+catalog entries.
+
+| Executable | Source | What it demonstrates |
+|------------|--------|----------------------|
+| `ns2d_vorticity` | `ns2d_vorticity/src/ns2d.cpp` | Issue #21 2-D vorticity–streamfunction Navier–Stokes (CPU). See [`../../examples/ns2d_vorticity/README.md`](../../examples/ns2d_vorticity/README.md). |
+
 ## Sources not built by default
 
 `examples/01_hello_world/world.cpp` is used as a tutorial source; the matching `add_executable` in `examples/CMakeLists.txt` is commented out. Other `.cpp` files may exist under `examples/` without a CMake target—check `examples/CMakeLists.txt` for the authoritative list.
