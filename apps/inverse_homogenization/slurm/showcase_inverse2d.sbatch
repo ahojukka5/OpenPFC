@@ -8,7 +8,7 @@
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --job-name=invhom-show
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
@@ -17,9 +17,11 @@
 # Heavy frames go to scratch, never flash. Configure the HIP tree on the
 # login node first; this job compiles the HIP inverse binary and runs.
 #
-#   SHOWCASE_MODE=pilot   256^2, few steps (default)
+#   SHOWCASE_MODE=pilot   256^2 (default)
 #   SHOWCASE_MODE=prod    candidate 1024^2 until the 8-GCD pilot reports
 #                         wall time and HBM; override with SHOWCASE_NX
+# Film: dump-every=1 and >=600 AC steps (10 s at 60 fps). One dump per
+# step; interpolating 20-80 designs is not a 600-frame source. Scratch.
 #
 # Required: HIP build tree already configured (FetchContent needs the network).
 
@@ -67,14 +69,14 @@ CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,
 
 if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-1024}"
-  STEPS="${SHOWCASE_STEPS:-80}"
-  EVERY="${SHOWCASE_DUMP_EVERY:-2}"
+  STEPS="${SHOWCASE_STEPS:-600}"
+  EVERY="${SHOWCASE_DUMP_EVERY:-1}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: candidate ${NX}^2; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
   fi
 else
   NX="${SHOWCASE_NX:-256}"
-  STEPS="${SHOWCASE_STEPS:-20}"
+  STEPS="${SHOWCASE_STEPS:-600}"
   EVERY="${SHOWCASE_DUMP_EVERY:-1}"
 fi
 
