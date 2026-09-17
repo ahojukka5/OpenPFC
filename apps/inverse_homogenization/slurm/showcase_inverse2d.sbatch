@@ -95,6 +95,9 @@ echo | tee -a "${OUT}/provenance.txt"
 srun --ntasks=8 --gpus-per-node=8 --cpu-bind="${CPU_BIND}" "${CMD[@]}" \
   | tee "${OUT}/run.log"
 
+echo "HBM is HIP_MEM in ${OUT}/run.log (hipMemGetInfo). sacct MaxRSS is host RSS." \
+  | tee -a "${OUT}/provenance.txt"
+
 echo "=== done ${OUT} ==="
 echo "Render with:"
 echo "  python3 ${SRC}/apps/inverse_homogenization/scripts/render_inverse_showcase.py --run ${OUT}"

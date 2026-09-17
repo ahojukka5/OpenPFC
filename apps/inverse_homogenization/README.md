@@ -153,5 +153,7 @@ python3 apps/inverse_homogenization/scripts/render_inverse_showcase.py \
 \(\nu_{\mathrm{eff}}\) from the homogenizer, including a final row for
 the last dumped `h`) and MPI-IO `h` bricks. Production `SHOWCASE_NX`
 is a candidate until the 8-GCD pilot reports HBM and wall time.
+Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
+(`hipMemGetInfo`), not from `sacct` MaxRSS.
 Do not call a grey morphology auxetic unless `nu_eff` / `nu_bin` is
 negative. The default seed is rotating-squares.
