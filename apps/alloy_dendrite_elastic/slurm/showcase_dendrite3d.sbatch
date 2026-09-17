@@ -29,6 +29,17 @@ BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-dend3d-512
 OUT="${OUT_DIR:-/scratch/project_462001519/juaho/openpfc-showcase/dendrite3d}"
 MODE="${SHOWCASE_MODE:-pilot}"
 
+# Bake revision on the login-exported env. Compute nodes often have no git
+# after module purge, and worktrees have .git as a file.
+REV="${OPENPFC_REVISION:-}"
+DIRTY="${OPENPFC_DIRTY:-}"
+if [[ -z "${REV}" ]] && command -v git >/dev/null 2>&1; then
+  if git -C "${SRC}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    REV="$(git -C "${SRC}" rev-parse HEAD 2>/dev/null || true)"
+    DIRTY="$(git -C "${SRC}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  fi
+fi
+
 module purge
 module load LUMI/25.09 partition/G cpeGNU cray-fftw lumi-CrayPath
 if [[ -d "${HOME}/privatemodules" ]]; then
@@ -48,8 +59,8 @@ mkdir -p "${OUT}/fields" "${OUT}/frames"
   echo "job ${SLURM_JOB_ID} partition ${SLURM_JOB_PARTITION} host $(hostname)"
   echo "date $(date -Iseconds)"
   echo "src ${SRC}"
-  echo "revision $(git -C "${SRC}" rev-parse HEAD)"
-  echo "dirty $(git -C "${SRC}" status --porcelain | wc -l)"
+  echo "revision ${REV}"
+  echo "dirty ${DIRTY}"
   echo "mode ${MODE}"
   echo "OPENPFC_HIP_FORCE_PACKED_HALO=${OPENPFC_HIP_FORCE_PACKED_HALO}"
   echo "3-D spherical seed; isothermal; elasticity off for the memory path"
