@@ -4,12 +4,12 @@
 #
 #SBATCH --account=project_462001519
 #SBATCH --partition=standard-g
-#SBATCH --nodes=1
-#SBATCH --ntasks=8
+#SBATCH --nodes=8
+#SBATCH --ntasks=64
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
 #SBATCH --time=12:00:00
-#SBATCH --job-name=dend3d-show
+#SBATCH --job-name=dend3d-512
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
 #
@@ -27,7 +27,7 @@ set -euo pipefail
 
 SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/dev/openpfc}"
 BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-showcase-dend}"
-OUT="${OUT_DIR:-/scratch/project_462001519/juaho/openpfc-showcase/dendrite3d_${SLURM_JOB_ID}}"
+OUT="${OUT_DIR:-/scratch/project_462001519/juaho/openpfc-showcase/dendrite3d}"
 MODE="${SHOWCASE_MODE:-pilot}"
 
 module purge
@@ -39,6 +39,7 @@ module load heffte-rocm || true
 export LD_LIBRARY_PATH="${CRAY_LD_LIBRARY_PATH:-}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export CRAYPE_LINK_TYPE="${CRAYPE_LINK_TYPE:-dynamic}"
 export MPICH_GPU_SUPPORT_ENABLED=1
+export OPENPFC_FFT_NODE_GRID="${OPENPFC_FFT_NODE_GRID:-1}"
 unset ROCR_VISIBLE_DEVICES HIP_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES || true
 export CC=cc CXX=CC
 
@@ -67,16 +68,13 @@ test -x "${BIN}"
 CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,0xfe00,0xfe00000000,0xfe0000000000"
 
 if [[ "${MODE}" == "prod" ]]; then
-  NX="${SHOWCASE_NX:-256}"
-  STEPS="${SHOWCASE_STEPS:-2000}"
-  EVERY="${SHOWCASE_SAMPLE:-50}"
-  DUMP="${SHOWCASE_DUMP_EVERY:-2}"
-  if [[ -z "${SHOWCASE_NX:-}" ]]; then
-    echo "SHOWCASE_NX unset: candidate ${NX}^3; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
-  fi
+  NX="${SHOWCASE_NX:-512}"
+  STEPS="${SHOWCASE_STEPS:-16000}"
+  EVERY="${SHOWCASE_SAMPLE:-40}"
+  DUMP="${SHOWCASE_DUMP_EVERY:-1}"
 else
   NX="${SHOWCASE_NX:-64}"
-  STEPS="${SHOWCASE_STEPS:-600}"
+  STEPS="${SHOWCASE_STEPS:-80}"
   EVERY="${SHOWCASE_SAMPLE:-1}"
   DUMP="${SHOWCASE_DUMP_EVERY:-1}"
 fi
@@ -95,11 +93,18 @@ CMD=(
 printf '%q ' "${CMD[@]}" | tee -a "${OUT}/provenance.txt"
 echo | tee -a "${OUT}/provenance.txt"
 
-srun --ntasks=8 --gpus-per-node=8 --cpu-bind="${CPU_BIND}" "${CMD[@]}" \
+NTASKS="${SLURM_NTASKS:-8}"
+srun --ntasks="${NTASKS}" --gpus-per-node=8 --cpu-bind="${CPU_BIND}" "${CMD[@]}" \
   | tee "${OUT}/run.log"
 
 echo "HBM is HIP_MEM in ${OUT}/run.log (hipMemGetInfo). sacct MaxRSS is host RSS." \
   | tee -a "${OUT}/provenance.txt"
 
+XDMF="${SRC}/scripts/xdmfgen.py"
+if [[ -f "${XDMF}" && -f "${OUT}/fields/dendrite3d_manifest.json" ]]; then
+  python3 "${XDMF}" --manifest "${OUT}/fields/dendrite3d_manifest.json" || true
+fi
+
 echo "=== done ${OUT} ==="
 echo "ParaView: File → Open ${OUT}/fields/dendrite3d.xdmf"
+echo "Frames: pvbatch ${OUT}/paraview_render.py"
