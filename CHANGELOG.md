@@ -26,8 +26,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   accepts `--init=spinodal` (Fourier-mode seed, not Cahn–Hilliard) and
   `--target=orthotropic`. History CSV stores Voigt \(C_H\) and
   \(\nu_{12},\nu_{13},\nu_{23}\) from \(S=C^{-1}\). Recipe:
-  `apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch`. Render:
-  `apps/inverse_homogenization/scripts/render_inverse3d_showcase.py`.
+  `apps/inverse_homogenization/slurm/showcase_inverse3d.sbatch`.
+  Open `fields/inverse3d.xdmf` in ParaView.
 - **Inverse-homogenization 8-GCD showcase** (issue #8).
   `openpfc_inverse_homogenize_hip` takes the CPU inverse CLI subset
   (rotating-square auxetic seed, CSV \(C_H\)/\(\nu_{\mathrm{eff}}\),
@@ -35,8 +35,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   8 GCDs. History CSV includes a final homogenization row for `h_N`.
   Prod grid is a candidate until the 8-GCD pilot. Recipe:
   `apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch`.
-  Render:
-  `apps/inverse_homogenization/scripts/render_inverse_showcase.py`.
+  Open `fields/inverse2d.xdmf` in ParaView.
 - **Heat3D spectral-family held-out RK4** (LUMI-C `standard` job
   **22085944**, source `7adbbed0`). Predeclared subset: four builtin
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and

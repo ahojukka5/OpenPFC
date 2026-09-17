@@ -145,8 +145,9 @@ One LUMI-G node (8 GCDs). Heavy frames go to scratch, never flash.
 sbatch apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch
 SHOWCASE_MODE=prod sbatch apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch
 
-python3 apps/inverse_homogenization/scripts/render_inverse_showcase.py \
-  --run /scratch/project_462001519/juaho/openpfc-showcase/inverse2d_<jobid>
+# ParaView: File → Open fields/inverse2d.xdmf
+python3 scripts/xdmfgen.py --manifest \
+  /scratch/project_462001519/juaho/openpfc-showcase/inverse2d_<jobid>/fields/inverse2d_manifest.json
 ```
 
 `openpfc_inverse_homogenize_hip` writes `history.csv` (`C_H` and
@@ -163,8 +164,7 @@ Genuine 3-D cells (`nz = nx`), Fourier-mode `--init=spinodal` seed
 \(\nu_{12}=-S_{12}/S_{11}\) from the history CSV, not `nu_eff`.
 Not a 2-D extrusion. Recipe:
 [`slurm/showcase_inverse3d.sbatch`](slurm/showcase_inverse3d.sbatch).
-Render orthogonal midplanes plus a voxel still with
-[`scripts/render_inverse3d_showcase.py`](scripts/render_inverse3d_showcase.py).
+Open `fields/inverse3d.xdmf` in ParaView.
 Prod `SHOWCASE_NX` is a candidate until the 8-GCD pilot.
 Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
 (`hipMemGetInfo`), not from `sacct` MaxRSS. Default dumps are 600

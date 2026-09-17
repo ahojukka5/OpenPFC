@@ -96,4 +96,4 @@ echo "HBM is HIP_MEM in ${OUT}/run.log (hipMemGetInfo). sacct MaxRSS is host RSS
   | tee -a "${OUT}/provenance.txt"
 
 echo "=== done ${OUT} ==="
-echo "Render: python3 ${SRC}/apps/inverse_homogenization/scripts/render_inverse3d_showcase.py --run ${OUT}"
+echo "ParaView: File → Open ${OUT}/fields/inverse3d.xdmf"
