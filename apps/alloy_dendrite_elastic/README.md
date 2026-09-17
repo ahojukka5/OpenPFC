@@ -584,7 +584,8 @@ A 2048³ run is a node-count target after that measurement, not a
 one-node default. The ~8 doubles/cell envelope (512³ ~ 8 GiB, 1024³ ~
 64 GiB, 1536³ ~ 220 GiB, 2048³ ~ 512 GiB) is **provisional**: it is not
 HBM. Size later grids from `HIP_MEM bytes_per_cell` in the pilot log
-(`hipMemGetInfo`), not from `sacct` MaxRSS.
+(`hipMemGetInfo`), not from `sacct` MaxRSS. Default films dump >=600
+`phi`/`U` bricks (10 s at 60 fps) onto scratch.
 `openpfc_microelasticity_hip_parity` subtracts the host solver on a
 homogeneous (Eshelby) inclusion and a heterogeneous-modulus inclusion.
 `alloy_dendrite_hip_parity` remains thermo-solutal only. The host adapter
