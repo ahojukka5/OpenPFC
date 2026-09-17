@@ -19,8 +19,8 @@
 #
 #   SHOWCASE_MODE=pilot   64^3 (default)
 #   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
-# Film: >=600 unique snapshots (10 s at 60 fps). Same dt; denser samples.
-# Heavy bricks on scratch.
+# Film is the 64^3 arm (>=600 midplane frames). Skip 256^3 volume dumps:
+# ~180 GiB of phi/U is more demo than a 10 s clip needs. Scratch only.
 
 set -euo pipefail
 
@@ -68,8 +68,8 @@ CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,
 if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-256}"
   STEPS="${SHOWCASE_STEPS:-2000}"
-  EVERY="${SHOWCASE_SAMPLE:-3}"
-  DUMP="${SHOWCASE_DUMP_EVERY:-1}"
+  EVERY="${SHOWCASE_SAMPLE:-50}"
+  DUMP="${SHOWCASE_DUMP_EVERY:-2}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: candidate ${NX}^3; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
   fi
