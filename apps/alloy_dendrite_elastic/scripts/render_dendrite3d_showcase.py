@@ -157,7 +157,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--run", type=Path, required=True)
     p.add_argument("--out", type=Path, default=None)
-    p.add_argument("--fps", type=int, default=8)
+    p.add_argument("--fps", type=int, default=60)
     args = p.parse_args()
     out = args.out or (args.run / "present")
     out.mkdir(parents=True, exist_ok=True)
