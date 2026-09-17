@@ -8,7 +8,7 @@
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --job-name=weibel-show
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
@@ -74,7 +74,9 @@ else
   TEND="${SHOWCASE_TEND:-40}"
   SAMPLES="${SHOWCASE_SAMPLES:-40}"
 fi
-LINEAR_TEND="${SHOWCASE_LINEAR_TEND:-40}"
+# Auto-window needs ~5x mode_bz rise. Job 22111474 at t_end=40 peaked at
+# 4.39x (NaN fit). Same k/vmax; only a longer linear arm.
+LINEAR_TEND="${SHOWCASE_LINEAR_TEND:-80}"
 LINEAR_SAMPLES="${SHOWCASE_LINEAR_SAMPLES:-80}"
 
 COMMON=(
@@ -92,27 +94,42 @@ srun --ntasks=8 --gpus-per-node=8 --cpu-bind="${CPU_BIND}" \
 if [[ -n "${SHOWCASE_FIT_T0:-}" && -n "${SHOWCASE_FIT_T1:-}" ]]; then
   FIT_T0="${SHOWCASE_FIT_T0}"
   FIT_T1="${SHOWCASE_FIT_T1}"
+  FIT_OK=1
 else
-  read -r FIT_T0 FIT_T1 _ <<EOF
-$(python3 -c 'import csv,sys
+  read -r FIT_T0 FIT_T1 _ FIT_OK <<EOF
+$(python3 -c 'import csv,math,sys
 rows=list(csv.DictReader(open(sys.argv[1])))
 if not rows:
     raise SystemExit("linear.csv is empty")
 r=rows[-1]
-print(r["fit_t0"], r["fit_t1"], r["gamma_fit"])
+
+def finite(x):
+    try:
+        return math.isfinite(float(x))
+    except (TypeError, ValueError):
+        return False
+
+ok = int(finite(r["fit_t0"]) and finite(r["fit_t1"]))
+print(r["fit_t0"], r["fit_t1"], r["gamma_fit"], ok)
 ' "${OUT}/linear.csv")
 EOF
 fi
-echo "frozen linear window fit_t0=${FIT_T0} fit_t1=${FIT_T1}" | tee -a "${OUT}/provenance.txt"
+echo "frozen linear window fit_t0=${FIT_T0} fit_t1=${FIT_T1} fit_ok=${FIT_OK}" \
+  | tee -a "${OUT}/provenance.txt"
 
-echo "=== nonlinear movie ===" | tee -a "${OUT}/provenance.txt"
-srun --ntasks=8 --gpus-per-node=8 --cpu-bind="${CPU_BIND}" \
-  "${COMMON[@]}" --t-end="${TEND}" --samples="${SAMPLES}" \
-  --fit-t0="${FIT_T0}" --fit-t1="${FIT_T1}" \
-  --run-id=weibel --summary="${OUT}/summary.csv" \
-  --csv="${OUT}/ledger.csv" \
-  --reduced-dir="${OUT}/reduced" --reduced-every=1 \
-  | tee "${OUT}/run.log"
+if [[ "${FIT_OK}" != "1" ]]; then
+  echo "skip movie: auto-window is not finite; raise SHOWCASE_LINEAR_TEND" \
+    | tee -a "${OUT}/provenance.txt"
+else
+  echo "=== nonlinear movie ===" | tee -a "${OUT}/provenance.txt"
+  srun --ntasks=8 --gpus-per-node=8 --cpu-bind="${CPU_BIND}" \
+    "${COMMON[@]}" --t-end="${TEND}" --samples="${SAMPLES}" \
+    --fit-t0="${FIT_T0}" --fit-t1="${FIT_T1}" \
+    --run-id=weibel --summary="${OUT}/summary.csv" \
+    --csv="${OUT}/ledger.csv" \
+    --reduced-dir="${OUT}/reduced" --reduced-every=1 \
+    | tee "${OUT}/run.log"
+fi
 
 echo "=== done ${OUT} ==="
 echo "Render: python3 ${SRC}/apps/vlasov_maxwell/scripts/render_weibel_showcase.py --run ${OUT}"
