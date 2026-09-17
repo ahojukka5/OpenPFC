@@ -85,7 +85,7 @@ void download_owned(DevField &src, RealField &dst) {
   const int hw = src.storage_halo();
   const std::size_t npx = static_cast<std::size_t>(n[0] + 2 * hw);
   const std::size_t npy = static_cast<std::size_t>(n[1] + 2 * hw);
-  src.with_host_view([&](double *data, std::size_t) {
+  src.with_host_read([&](const double *data, std::size_t) {
     for (int k = 0; k < n[2]; ++k)
       for (int j = 0; j < n[1]; ++j)
         for (int i = 0; i < n[0]; ++i)
@@ -287,6 +287,9 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
     if (step % cfg.sample_every == 0 || step == cfg.steps) {
       download_owned(phi, host_phi);
       download_owned(U, host_U);
+      if (hipDeviceSynchronize() != hipSuccess) {
+        throw std::runtime_error("hipDeviceSynchronize failed after download");
+      }
       double x_tip = 0.0, v_tip = 0.0, rho = 0.0;
       if (cfg.nz == 1) {
         const auto plane = alloy_dendrite::global_xy_plane(host_phi, 0, comm);

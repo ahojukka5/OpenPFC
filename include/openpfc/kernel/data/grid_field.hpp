@@ -354,6 +354,27 @@ public:
     m_residency.note_host_write();
   }
 
+  /**
+   * @brief Pull a current host snapshot without marking the device stale.
+   *
+   * `with_host_view` is a write bracket: after it returns the host mirror is
+   * authoritative and the next device use copies that mirror back, including
+   * halo cells. A read-only download of owned cells must not do that — the
+   * 3-D HIP growth dumper GPU-faulted after a few MPI-IO snapshots for this
+   * reason. 2-D dumps survived because the halo traffic is smaller.
+   */
+  template <typename Fn> void with_host_read(Fn &&fn) {
+    if constexpr (is_host_space) {
+      fn(m_buffer.data(), m_buffer.size());
+      return;
+    }
+    if (m_residency.host_needs_refresh()) {
+      m_buffer.copy_to_host(m_host_mirror.data(), m_host_mirror.size());
+      m_residency.note_synced();
+    }
+    fn(static_cast<const T *>(m_host_mirror.data()), m_host_mirror.size());
+  }
+
 private:
   pfc::Int3 padded_extents_() const noexcept {
     return {m_box.size[0] + 2 * m_halo, m_box.size[1] + 2 * m_halo,
