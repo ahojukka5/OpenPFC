@@ -561,7 +561,19 @@ contraction, local reflection, residual reduction, and `d f_el/d phi`.
 The inner loop does not copy the six tensor fields to the host.
 `alloy_dendrite_coupled_cost --device=1` times that path.
 `alloy_dendrite_hip_growth` is the coupled GPU science driver on the same
-application (not a sixteenth catalog entry).
+application (not a sixteenth catalog entry). It now writes `--fields-dir`
+bricks (`phi`, `U`, and with `--elastic=1` also `f_el` / `dfel_dphi`) and
+measures the tip on gathered 2-D planes at any rank count. HIP defaults
+follow the CPU growth driver: `lambda = D_l/a2`, Al-4.5wt%Cu stiffness
+and `eps_c` from `material.hpp`, and `lambda_el = lambda` when
+`--elastic=1`. Issue #11 recipe:
+[`slurm/showcase_dendrite2d.sbatch`](slurm/showcase_dendrite2d.sbatch)
+(8 GCDs, isothermal; both arms keep the device Green solve; off is
+`--lambda-el=0`, on is calibrated `lambda_el=lambda`). Heavy frames go to
+`/scratch/project_462001519/juaho/openpfc-showcase/`.
+Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
+(`hipMemGetInfo`), not from `sacct` MaxRSS. Default films dump >=600
+`phi`/`U` bricks (10 s at 60 fps) onto scratch.
 `openpfc_microelasticity_hip_parity` subtracts the host solver on a
 homogeneous (Eshelby) inclusion and a heterogeneous-modulus inclusion.
 `alloy_dendrite_hip_parity` remains thermo-solutal only. The host adapter

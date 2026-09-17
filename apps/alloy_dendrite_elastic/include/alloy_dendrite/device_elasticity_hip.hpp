@@ -124,6 +124,12 @@ public:
   }
 
   [[nodiscard]] double max_von_mises() const noexcept { return m_max_vm; }
+  [[nodiscard]] const pfc::data::Field<double> &elastic_energy_density() const {
+    return m_solver.elastic_energy_density();
+  }
+  [[nodiscard]] const pfc::data::Field<double> &dfel_host() const {
+    return m_solver.dfel_dphi();
+  }
 
 private:
   static pfc::apps::MicroelasticityParams
