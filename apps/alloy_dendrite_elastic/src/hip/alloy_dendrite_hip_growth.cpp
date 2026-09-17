@@ -112,6 +112,37 @@ void push_seed(DevField &dst, const RealField &src) {
   dst.sync_to_device();
 }
 
+void report_hbm(int rank, int nproc, MPI_Comm comm, long long n_global,
+                std::size_t known_owned_bytes, bool elastic) {
+  std::size_t free_b = 0, total_b = 0;
+  const hipError_t err = hipMemGetInfo(&free_b, &total_b);
+  if (err != hipSuccess) {
+    if (rank == 0)
+      std::cerr << "hipMemGetInfo failed: " << hipGetErrorString(err) << '\n';
+    return;
+  }
+  const unsigned long long used = static_cast<unsigned long long>(total_b - free_b);
+  const unsigned long long free_ull = static_cast<unsigned long long>(free_b);
+  const unsigned long long total_ull = static_cast<unsigned long long>(total_b);
+  unsigned long long used_sum = 0, used_max = 0, free_min = 0, total_gcd = 0;
+  MPI_Reduce(&used, &used_sum, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, comm);
+  MPI_Reduce(&used, &used_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, comm);
+  MPI_Reduce(&free_ull, &free_min, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, 0, comm);
+  MPI_Reduce(&total_ull, &total_gcd, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, 0, comm);
+  if (rank == 0) {
+    const double gib = 1024.0 * 1024.0 * 1024.0;
+    std::cout << std::setprecision(6) << "HIP_MEM ranks=" << nproc
+              << " used_sum_gib=" << used_sum / gib
+              << " used_max_gib=" << used_max / gib
+              << " free_min_gib=" << free_min / gib
+              << " total_gcd_gib=" << total_gcd / gib
+              << " bytes_per_cell=" << used_sum / static_cast<double>(n_global)
+              << " known_owned_phi_U_th_bytes=" << known_owned_bytes
+              << " elastic=" << (elastic ? 1 : 0) << '\n'
+              << std::flush;
+  }
+}
+
 int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   const auto &p = cfg.model;
   const int dim = (cfg.nz == 1) ? 2 : 3;
@@ -184,6 +215,16 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
     if (hipDeviceSynchronize() != hipSuccess) {
       throw std::runtime_error("hipDeviceSynchronize failed after first solve");
     }
+  }
+
+  {
+    const auto ln = phi.local_size();
+    const std::size_t n_owned = static_cast<std::size_t>(ln[0]) *
+                                 static_cast<std::size_t>(ln[1]) *
+                                 static_cast<std::size_t>(ln[2]);
+    const long long n_global = static_cast<long long>(cfg.nx) * cfg.ny * cfg.nz;
+    report_hbm(rank, nproc, comm, n_global, 3 * n_owned * sizeof(double),
+               static_cast<bool>(elastic));
   }
 
   alloy_dendrite::CsvAppender csv;

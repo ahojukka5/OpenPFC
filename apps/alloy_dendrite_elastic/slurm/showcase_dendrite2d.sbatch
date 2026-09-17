@@ -94,5 +94,8 @@ run_one() {
 run_one off --lambda-el=0
 run_one on
 
+echo "HBM is HIP_MEM in ${OUT}/*.log (hipMemGetInfo). sacct MaxRSS is host RSS." \
+  | tee -a "${OUT}/provenance.txt"
+
 echo "=== done ${OUT} ==="
 echo "Render: python3 ${SRC}/apps/alloy_dendrite_elastic/scripts/render_dendrite_showcase.py --run ${OUT}"
