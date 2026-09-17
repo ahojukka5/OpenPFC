@@ -49,6 +49,9 @@ CSV_FIELDS = (
     "dirty",
     "bin_sha256",
     "fft_node_grid",
+    "fft_proc_grid",
+    "local_brick",
+    "use_pencils",
     "input",
     "notes",
 )
@@ -62,6 +65,7 @@ CSV_HEADER_COMMENTS = (
     "# Efficiency is wall_step(1 node) / wall_step(N) (weak; similar cells/GCD).\n"
     "# rss_per_rank_gib is host RSS from the profiler, not GCD HBM.\n"
     "# Quote device memory from a HIP_MEM / hipMemGetInfo line, never RSS.\n"
+    "# local_brick is the owned real-space brick Nx/gx x Ny/gy x Nz/gz.\n"
 )
 
 
@@ -82,6 +86,48 @@ def node_aware_grid(n, nproc):
     if n % nnodes == 0 and n % 8 == 0:
         return (1, nnodes, 8)
     return (0, 0, 0)
+
+
+def legal_proc_grids(n, nproc):
+    """Cartesian grids that factor nproc and divide a cubic N^3."""
+    grids = []
+    gx = 1
+    while gx <= nproc:
+        if nproc % gx == 0 and n % gx == 0:
+            rest = nproc // gx
+            gy = 1
+            while gy <= rest:
+                if rest % gy == 0 and n % gy == 0:
+                    gz = rest // gy
+                    if gz >= 1 and n % gz == 0 and gx * gy * gz == nproc:
+                        grids.append((gx, gy, gz))
+                gy += 1
+        gx += 1
+    return grids
+
+
+def print_legal_grids(n, nproc):
+    grids = legal_proc_grids(n, nproc)
+    node = node_aware_grid(n, nproc)
+    print("N=%d nproc=%d legal=%d" % (n, nproc, len(grids)))
+    for gx, gy, gz in grids:
+        tags = []
+        if (gx, gy, gz) == node:
+            tags.append("node-aware")
+        if gx == 1 and gy == 1:
+            tags.append("slab-z")
+        if gx == 1 and gz == 1:
+            tags.append("slab-y")
+        if gy == 1 and gz == 1:
+            tags.append("slab-x")
+        if gx == gy == gz:
+            tags.append("cube")
+        tag = (" " + " ".join(tags)) if tags else ""
+        print(
+            "  %dx%dx%d  local=%dx%dx%d%s"
+            % (gx, gy, gz, n // gx, n // gy, n // gz, tag)
+        )
+    return 0 if grids else 1
 
 
 def check():
@@ -237,6 +283,9 @@ def _collect_run_unchecked(run, warmup):
         "dirty": meta.get("dirty", ""),
         "bin_sha256": meta.get("bin_sha256", ""),
         "fft_node_grid": meta.get("OPENPFC_FFT_NODE_GRID", ""),
+        "fft_proc_grid": meta.get("OPENPFC_FFT_PROC_GRID", ""),
+        "local_brick": meta.get("local_brick", ""),
+        "use_pencils": meta.get("use_pencils", ""),
         "input": meta.get("input", os.path.join(run, "input.toml")),
         "notes": meta.get("notes", os.path.basename(run)),
     }
@@ -288,7 +337,9 @@ def collect_self_test():
         f.write(
             "job=1\nnodes=1\nntasks=8\nLx=768\nsteps=20\n"
             "revision=deadbeef\ndirty=0\nbin_sha256=abc\n"
-            "OPENPFC_FFT_NODE_GRID=1\nproc_grid=min-surface\n"
+            "OPENPFC_FFT_NODE_GRID=1\nOPENPFC_FFT_PROC_GRID=unset\n"
+            "proc_grid=min-surface(2x2x2)\nlocal_brick=384x384x384\n"
+            "use_pencils=false\n"
             "input=%s/input.toml\n" % run
         )
     with open(os.path.join(run, "timing_profile.json"), "w") as f:
@@ -306,6 +357,9 @@ def collect_self_test():
         return 1
     if row["N"] != "768" or row["revision"] != "deadbeef":
         print("metadata not copied:", row, file=sys.stderr)
+        return 1
+    if row["local_brick"] != "384x384x384" or row["use_pencils"] != "false":
+        print("layout metadata not copied:", row, file=sys.stderr)
         return 1
     junk = os.path.join(tmp, "heat3d-old")
     os.makedirs(junk)
@@ -331,9 +385,12 @@ def main():
     )
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--collect-self-test", action="store_true")
+    p.add_argument("--grids", nargs=2, type=int, metavar=("N", "NPROC"))
     args = p.parse_args()
     if args.collect_self_test:
         sys.exit(collect_self_test())
+    if args.grids:
+        sys.exit(print_legal_grids(args.grids[0], args.grids[1]))
     if args.collect:
         n = collect(args.collect, args.out, args.warmup)
         print("wrote %d rows to %s" % (n, args.out))

@@ -9,6 +9,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
+- **Flagship provenance and layout recording** (issue #13). Submit
+  helpers capture `revision`/`dirty` with `git -C` so git worktrees
+  (`.git` is a file) still bake a SHA after `module purge`. Run meta
+  now records `OPENPFC_FFT_PROC_GRID`, local brick size, and pencils.
+  `submit_tungsten_hip_flagship.sh control` is the matched 1×8×1 /
+  2-node process-grid diagnosis set. `flagship_ladder.py --grids N
+  nproc` lists legal Cartesian grids. Do not submit 60 nodes from this
+  change.
 - **Heat3D spectral-family equal-accuracy tables** regenerated with
   the issue #3 fail-closed unattainable state (LUMI-C `standard` job
   **22078280**). Six FD-2 rows at `1e-8` are now `attainable=no` and

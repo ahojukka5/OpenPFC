@@ -27,7 +27,7 @@ this table.
 | Warm-up | drop step 1 (FFT plan / first-touch) |
 | Metric | median `wall_step` from schema-v4 `timing_profile.json` |
 | Decomposition | 8 ranks/node; `OPENPFC_FFT_NODE_GRID=1` off-node |
-| Memory | RSS from `memory_samples = true` |
+| Memory | host RSS from `memory_samples`; HBM is a `HIP_MEM` line |
 | Scratch | `/scratch/project_462001519/juaho/openpfc-scaling/` |
 
 Do not change physics parameters per node count.
@@ -40,7 +40,7 @@ recipe forces the measured 1×8×nnodes layout instead.
 
 | Nodes | GCDs | N | cells / GCD | 1×8×N grid |
 |------:|-----:|--:|------------:|------------|
-| 1 | 8 | 768 | 56.6 M | min-surface (8 ranks) |
+| 1 | 8 | 768 | 56.6 M | min-surface `2×2×2` (8 ranks) |
 | 2 | 16 | 960 | 55.3 M | 1×8×2 |
 | 4 | 32 | 1200 | 54.0 M | 1×8×4 |
 | 8 | 64 | 1536 | 56.6 M | 1×8×8 |
@@ -55,18 +55,29 @@ submitting 60 nodes.
 
 ```bash
 python3 apps/tungsten/scripts/flagship_ladder.py --check   # no binary
+python3 apps/tungsten/scripts/flagship_ladder.py --grids 960 16
 export TUNGSTEN_HIP_BIN=/flash/project_462001519/juaho/build/<tree>/apps/tungsten/tungsten_hip
 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh pilot   # 1 node first
-# only after HBM/timing health:
+./docs/lumi_slurm/submit_tungsten_hip_flagship.sh control # matched 1x8x1 + 2-node grids
+# only after HBM/timing health and a justified layout:
 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh weak     # 1..32, not 60
 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh strong    # optional 768³
 FLAGSHIP_ALLOW_60=1 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh max
 ./docs/lumi_slurm/submit_tungsten_hip_flagship.sh collect   # CSV from scratch
 ```
 
+`control` submits the issue #13 diagnosis set (same frozen 768³ / 960³
+physics): one-node min-surface vs explicit `1×8×1` (pencils off and on),
+then two-node `1×8×2`, `1×1×16` slab, `2×2×4`, and `1×4×4`. Do not treat
+the 1–32-node `1×8×N` curve as interpretable until the one-node matched
+control exists.
+
 Each run directory records revision, dirty count, `sha256` of
-`tungsten_hip`, `module list`, `OPENPFC_FFT_NODE_GRID`, the intended
-proc grid, and a copy of `input.toml`. Fill
+`tungsten_hip`, `module list`, `OPENPFC_FFT_NODE_GRID`,
+`OPENPFC_FFT_PROC_GRID`, resolved proc grid, local brick, pencils flag,
+and a copy of `input.toml`. Revision is captured on the login node with
+`git -C` (worktrees included) because compute nodes have no `git` after
+`module purge`. Fill
 [`tungsten_lumi_g_flagship.csv`](../report/data/tungsten_lumi_g_flagship.csv)
 with `--collect`; do not transcribe `wall_step` by hand.
 

@@ -58,8 +58,12 @@ mkdir -p "${RUNDIR}"
 
 sed -e "s/__LX__/${LX}/g" -e "s/__T1__/${STEPS}/g" "${TEMPLATE}" \
   > "${RUNDIR}/input.toml"
+if [[ "${TUNGSTEN_USE_PENCILS:-}" == "1" ]]; then
+  sed -i 's/^use_pencils = false/use_pencils = true/' "${RUNDIR}/input.toml"
+fi
 cp -f "${BASH_SOURCE[0]}" "${RUNDIR}/tungsten_hip_scaling.sbatch"
 cd "${RUNDIR}"
+USE_PENCILS="$(awk '/^use_pencils/{print $3; exit}' "${RUNDIR}/input.toml")"
 
 # Full-node 8-GCD map from LUMI-G docs, applied per node. Partial GCD
 # allocations (dev-g / small-g with 1–4 GPUs) do not own those CPUs;
@@ -78,20 +82,53 @@ elif (( PER_NODE > 8 )); then
 fi
 
 SRC="${OPENPFC_SRC:-/pfs/lustref1/flash/project_462001519/juaho/dev/openpfc}"
-if (( NTASKS == 8 )); then
-  PROC_GRID="min-surface"
-else
-  PROC_GRID="1x8x${SLURM_NNODES}"
+
+# Resolve the layout OpenPFC will actually use (brick_split.hpp). Do not
+# assume 8 ranks are min-surface if OPENPFC_FFT_PROC_GRID is set.
+PROC_GRID=""
+LOCAL_BRICK=""
+forced="${OPENPFC_FFT_PROC_GRID:-}"
+if [[ -n "${forced}" ]]; then
+  forced="${forced//x/,}"
+  forced="${forced//X/,}"
+  IFS=',' read -r gx gy gz <<< "${forced}"
+  if [[ -n "${gx}" && -n "${gy}" && -n "${gz}" ]] &&
+     (( gx * gy * gz == NTASKS && LX % gx == 0 && LX % gy == 0 && LX % gz == 0 )); then
+    PROC_GRID="${gx}x${gy}x${gz}"
+    LOCAL_BRICK="$((LX / gx))x$((LX / gy))x$((LX / gz))"
+  fi
 fi
+if [[ -z "${PROC_GRID}" ]]; then
+  if (( NTASKS >= 9 )) && [[ "${OPENPFC_FFT_NODE_GRID:-}" == "1" ]] &&
+     (( LX % 8 == 0 && LX % SLURM_NNODES == 0 )); then
+    PROC_GRID="1x8x${SLURM_NNODES}"
+    LOCAL_BRICK="${LX}x$((LX / 8))x$((LX / SLURM_NNODES))"
+  elif (( NTASKS >= 9 && LX % NTASKS == 0 )); then
+    PROC_GRID="1x1x${NTASKS}"
+    LOCAL_BRICK="${LX}x${LX}x$((LX / NTASKS))"
+  elif (( NTASKS == 8 )); then
+    # Cubes: min_surface_proc_grid is 2x2x2 (pinned in test_brick_split).
+    PROC_GRID="min-surface(2x2x2)"
+    LOCAL_BRICK="$((LX / 2))x$((LX / 2))x$((LX / 2))"
+  else
+    PROC_GRID="min-surface"
+    LOCAL_BRICK="unknown"
+  fi
+fi
+
 BIN_SHA=""
 if command -v sha256sum >/dev/null 2>&1 && [[ -f "${TUNGSTEN_HIP_BIN}" ]]; then
   BIN_SHA="$(sha256sum "${TUNGSTEN_HIP_BIN}" | awk '{print $1}')"
 fi
+# Revision must be exported at submit time. Compute nodes often have no
+# `git` after `module purge`, and git worktrees have `.git` as a file.
 REV="${OPENPFC_REVISION:-}"
 DIRTY="${OPENPFC_DIRTY:-}"
-if [[ -z "${REV}" && -d "${SRC}/.git" ]] && command -v git >/dev/null 2>&1; then
-  REV="$(git -C "${SRC}" rev-parse HEAD 2>/dev/null || true)"
-  DIRTY="$(git -C "${SRC}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+if [[ -z "${REV}" ]] && command -v git >/dev/null 2>&1; then
+  if git -C "${SRC}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    REV="$(git -C "${SRC}" rev-parse HEAD 2>/dev/null || true)"
+    DIRTY="$(git -C "${SRC}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  fi
 fi
 
 {
@@ -114,7 +151,11 @@ fi
   echo "ROCR_VISIBLE_DEVICES=${ROCR_VISIBLE_DEVICES:-unset}"
   echo "OPENPFC_FFT_SLAB_AXIS=${OPENPFC_FFT_SLAB_AXIS:-unset}"
   echo "OPENPFC_FFT_NODE_GRID=${OPENPFC_FFT_NODE_GRID:-unset}"
+  echo "OPENPFC_FFT_PROC_GRID=${OPENPFC_FFT_PROC_GRID:-unset}"
+  echo "TUNGSTEN_USE_PENCILS=${TUNGSTEN_USE_PENCILS:-unset}"
+  echo "use_pencils=${USE_PENCILS:-unset}"
   echo "proc_grid=${PROC_GRID}"
+  echo "local_brick=${LOCAL_BRICK}"
   echo "revision=${REV}"
   echo "dirty=${DIRTY}"
   echo "src=${SRC}"

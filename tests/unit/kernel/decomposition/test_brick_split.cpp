@@ -173,7 +173,10 @@ TEST_CASE("node_aware_fft_proc_grid is 1x8xnnodes off-node", "[brick_split][unit
 TEST_CASE("spectral_fft_proc_grid honors OPENPFC_FFT_PROC_GRID",
           "[brick_split][unit]") {
   struct Clear {
-    ~Clear() { unsetenv("OPENPFC_FFT_PROC_GRID"); }
+    ~Clear() {
+      unsetenv("OPENPFC_FFT_PROC_GRID");
+      unsetenv("OPENPFC_FFT_NODE_GRID");
+    }
   } clear;
   const Int3 cube{768, 768, 768};
   REQUIRE(unsetenv("OPENPFC_FFT_PROC_GRID") == 0);
@@ -186,7 +189,16 @@ TEST_CASE("spectral_fft_proc_grid honors OPENPFC_FFT_PROC_GRID",
   REQUIRE(spectral_fft_proc_grid(cube, 16) == Int3{2, 8, 1});
   REQUIRE(setenv("OPENPFC_FFT_PROC_GRID", "1,1,15", 1) == 0); // not 16 ranks
   REQUIRE(spectral_fft_proc_grid(cube, 16) == Int3{1, 1, 16});
+  // Issue #13 matched one-node control: 1x8x1 is legal at 8 ranks even
+  // though node_aware_fft_proc_grid stays off-node-only (nproc >= 9).
+  REQUIRE(setenv("OPENPFC_FFT_PROC_GRID", "1,8,1", 1) == 0);
+  REQUIRE(spectral_fft_proc_grid(cube, 8) == Int3{1, 8, 1});
+  REQUIRE(setenv("OPENPFC_FFT_NODE_GRID", "1", 1) == 0);
+  REQUIRE(spectral_fft_proc_grid(cube, 8) == Int3{1, 8, 1});
   REQUIRE(unsetenv("OPENPFC_FFT_PROC_GRID") == 0);
+  REQUIRE(unsetenv("OPENPFC_FFT_NODE_GRID") == 0);
+  REQUIRE(spectral_fft_proc_grid(cube, 8) == min_surface_proc_grid(cube, 8));
+  REQUIRE(min_surface_proc_grid(cube, 8) == Int3{2, 2, 2});
 }
 
 TEST_CASE("slab_proc_grid honors OPENPFC_FFT_SLAB_AXIS", "[brick_split][unit]") {
