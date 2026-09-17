@@ -19,7 +19,7 @@
 #
 #   SHOWCASE_MODE=pilot   64^3 (default)
 #   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
-# Film: dump-every=1 and >=600 AC steps (10 s at 60 fps). Scratch only.
+# Film is 64^3 x 600 AC steps. Skip 256^3 x 600 volume dumps (~80 GiB).
 
 set -euo pipefail
 
@@ -65,8 +65,8 @@ CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,
 
 if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-256}"
-  STEPS="${SHOWCASE_STEPS:-600}"
-  EVERY="${SHOWCASE_DUMP_EVERY:-1}"
+  STEPS="${SHOWCASE_STEPS:-40}"
+  EVERY="${SHOWCASE_DUMP_EVERY:-2}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: candidate ${NX}^3; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
   fi
