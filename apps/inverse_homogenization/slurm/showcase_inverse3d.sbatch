@@ -8,7 +8,7 @@
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=invhom3d-show
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
@@ -19,6 +19,7 @@
 #
 #   SHOWCASE_MODE=pilot   64^3 (default)
 #   SHOWCASE_MODE=prod    candidate 256^3 until the pilot reports HBM/wall
+# Film: dump-every=1 and >=600 AC steps (10 s at 60 fps). Scratch only.
 
 set -euo pipefail
 
@@ -64,14 +65,14 @@ CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,
 
 if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-256}"
-  STEPS="${SHOWCASE_STEPS:-40}"
-  EVERY="${SHOWCASE_DUMP_EVERY:-2}"
+  STEPS="${SHOWCASE_STEPS:-600}"
+  EVERY="${SHOWCASE_DUMP_EVERY:-1}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: candidate ${NX}^3; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
   fi
 else
   NX="${SHOWCASE_NX:-64}"
-  STEPS="${SHOWCASE_STEPS:-16}"
+  STEPS="${SHOWCASE_STEPS:-600}"
   EVERY="${SHOWCASE_DUMP_EVERY:-1}"
 fi
 
