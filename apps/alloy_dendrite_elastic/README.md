@@ -572,7 +572,8 @@ and `eps_c` from `material.hpp`, and `lambda_el = lambda` when
 `--lambda-el=0`, on is calibrated `lambda_el=lambda`). Heavy frames go to
 `/scratch/project_462001519/juaho/openpfc-showcase/`.
 Size later grids from `HIP_MEM bytes_per_cell` in the HIP driver log
-(`hipMemGetInfo`), not from `sacct` MaxRSS.
+(`hipMemGetInfo`), not from `sacct` MaxRSS. Default films dump >=600
+`phi`/`U` bricks (10 s at 60 fps) onto scratch.
 `openpfc_microelasticity_hip_parity` subtracts the host solver on a
 homogeneous (Eshelby) inclusion and a heterogeneous-modulus inclusion.
 `alloy_dendrite_hip_parity` remains thermo-solutal only. The host adapter

@@ -8,7 +8,7 @@
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --job-name=dend2d-show
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
@@ -18,6 +18,8 @@
 # lambda_el is toggled (0 vs calibrated lambda=D_l/a2).
 # SHOWCASE_MODE=pilot (default) or prod. Prod NX is a candidate until the
 # 8-GCD pilot reports wall time and HBM.
+# Film: >=600 diagnostic snapshots (10 s at 60 fps). Same dt/material;
+# sample-every is lowered so dumps are unique frames. Scratch only.
 
 set -euo pipefail
 
@@ -64,14 +66,14 @@ CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,
 if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-2048}"
   STEPS="${SHOWCASE_STEPS:-8000}"
-  EVERY="${SHOWCASE_SAMPLE:-200}"
+  EVERY="${SHOWCASE_SAMPLE:-13}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: using candidate ${NX}; re-choose from pilot HBM/wall" | tee -a "${OUT}/provenance.txt"
   fi
 else
   NX="${SHOWCASE_NX:-256}"
   STEPS="${SHOWCASE_STEPS:-800}"
-  EVERY="${SHOWCASE_SAMPLE:-40}"
+  EVERY="${SHOWCASE_SAMPLE:-1}"
 fi
 DX="${SHOWCASE_DX:-0.8}"
 SHEAR="${SHOWCASE_LIQUID_SHEAR:-0.05}"
