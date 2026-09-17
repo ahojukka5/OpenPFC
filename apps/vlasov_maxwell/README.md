@@ -57,8 +57,10 @@ post-saturation \(\gamma\). Issue #10 recipe:
 [`slurm/showcase_weibel.sbatch`](slurm/showcase_weibel.sbatch) (paired
 linear arm, then reduced movie). The linear arm defaults to
 `SHOWCASE_LINEAR_TEND=80` so the 5× `mode_bz` auto-window can close;
-the movie is skipped if `fit_t0`/`fit_t1` are not finite. Do not retune
-\(k\) or \(v_{\max}\) to force a window.
+the movie is skipped if `fit_t0`/`fit_t1` are not finite. The movie
+defaults to 600 reduced frames (10 s at 60 fps) over the same
+\(t_{\mathrm{end}}\). Do not retune \(k\) or \(v_{\max}\) to force a
+window.
 
 ## What the tests assert
 

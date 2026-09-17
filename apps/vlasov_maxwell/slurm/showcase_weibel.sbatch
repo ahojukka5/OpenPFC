@@ -14,10 +14,9 @@
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
 #
 # Issue #10: 1D2V Weibel on one LUMI-G node. Reduced frames only (no full f).
-# Linear-validation arm (same grid/physics, short t_end) first; the movie
-# may saturate. Quote gamma only from the frozen linear window.
-# SHOWCASE_MODE=pilot (default) or prod. Prod NX is FFT-friendly (power of
-# two); 2048x256x256 is a candidate until the 8-GCD pilot reports HBM/wall.
+# Linear-validation arm (same grid/physics) first; the movie may saturate.
+# Quote gamma only from the frozen linear window. SHOWCASE_MODE=pilot or prod.
+# Movie dumps >=600 reduced frames (10 s at 60 fps); same t_end/k/vmax.
 
 set -euo pipefail
 
@@ -64,15 +63,15 @@ if [[ "${MODE}" == "prod" ]]; then
   NX="${SHOWCASE_NX:-2048}"
   NV="${SHOWCASE_NV:-256}"
   TEND="${SHOWCASE_TEND:-150}"
-  SAMPLES="${SHOWCASE_SAMPLES:-80}"
+  SAMPLES="${SHOWCASE_SAMPLES:-600}"
   if [[ -z "${SHOWCASE_NX:-}" ]]; then
     echo "SHOWCASE_NX unset: candidate ${NX} (FFT-friendly). After the pilot, grow toward 4096x512 if the node is under-filled." | tee -a "${OUT}/provenance.txt"
   fi
 else
   NX="${SHOWCASE_NX:-256}"
   NV="${SHOWCASE_NV:-64}"
-  TEND="${SHOWCASE_TEND:-40}"
-  SAMPLES="${SHOWCASE_SAMPLES:-40}"
+  TEND="${SHOWCASE_TEND:-80}"
+  SAMPLES="${SHOWCASE_SAMPLES:-600}"
 fi
 # Auto-window needs ~5x mode_bz rise. Job 22111474 at t_end=40 peaked at
 # 4.39x (NaN fit). Same k/vmax; only a longer linear arm.
