@@ -26,7 +26,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
-- **Heat3D HIP FD weak scaling** (issue
+- **Inverse-homogenization 8-GCD HIP driver** (issue
+  [#8](https://github.com/ahojukka5/OpenPFC/issues/8), successor to
+  PR #14). `openpfc_inverse_homogenize_hip` matches the CPU inverse
+  CLI subset on `GPUSpectralStack` (rotating-square seed, CSV
+  \(C_H\)/\(\nu_{\mathrm{eff}}\), MPI-IO `h` bricks, HIP_MEM).
+  Does not overwrite CPU compliance diagnostics from #29.
+- **Heat3D HIP FD weak scaling** (issue)
   [#25](https://github.com/ahojukka5/OpenPFC/issues/25)). Rectangular
   `<Nx> <Ny> <Nz>` CLI for `heat3d_fd_hip`, `OPENPFC_FD_PROC_GRID`
   Cartesian override, fail-closed `HEAT3D_REQUIRE_INTERIOR`, and a

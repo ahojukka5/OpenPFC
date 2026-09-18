@@ -152,3 +152,21 @@ Takezawa-style Allen–Cahn; Stage 6 substitutes a Cahn–Hilliard process
 map for the free-topology step. HIP twins
 (`openpfc_homogenize_hip`, `openpfc_inverse_homogenize_hip`) use a
 device Green operator (FFT + Eyre–Milton) on the same loop.
+
+## Showcase (issue #8)
+
+One LUMI-G node (8 GCDs). Heavy frames go to scratch, never flash.
+The production evidence is jobs 22112442 (256²) and 22112443 (1024²).
+
+```bash
+./scripts/build.sh --machine=lumi --partition=standard-g --no-test --no-submit \
+  --build-dir=/flash/project_462001519/juaho/build/openpfc-lumi-showcase-inv
+sbatch apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch
+SHOWCASE_MODE=prod sbatch apps/inverse_homogenization/slurm/showcase_inverse2d.sbatch
+```
+
+`openpfc_inverse_homogenize_hip` writes `history.csv` and MPI-IO `h`
+bricks plus an XDMF sidecar. Size later grids from `HIP_MEM
+bytes_per_cell` in the HIP driver log, not from `sacct` MaxRSS.
+Do not call a grey morphology auxetic unless `nu_eff` / `nu_xy` is
+negative. The default seed is rotating-squares.
