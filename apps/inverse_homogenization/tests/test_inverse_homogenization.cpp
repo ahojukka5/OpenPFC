@@ -414,6 +414,38 @@ TEST_CASE("Rotating-square seed extruded in z is invariant and percolating",
   REQUIRE(m.n_solid_components == 1);
 }
 
+TEST_CASE("3-D re-entrant honeycomb is 3-D, connected, and percolating",
+          "[inverse][auxetic][geometry][reentrant3d]") {
+  if (world_size() != 1) {
+    SKIP("manufacturability helper is dense/single-rank");
+  }
+  constexpr int N = 32;
+  Case cs(N);
+  pfc::apps::inverse::fill_reentrant_3d(cs.h, N, N, N, 0.06, 0.14, 0.10, 0.30,
+                                        0.70, 0.90);
+  const auto loc = cs.h.local_size();
+  double zvar = 0.0, yvar = 0.0, xvar = 0.0;
+  for (int k = 0; k < loc[2]; ++k)
+    for (int j = 0; j < loc[1]; ++j)
+      for (int i = 0; i < loc[0]; ++i) {
+        const double v = cs.h(i, j, k);
+        zvar = std::max(zvar, std::abs(v - cs.h(i, j, 0)));
+        yvar = std::max(yvar, std::abs(v - cs.h(i, 0, k)));
+        xvar = std::max(xvar, std::abs(v - cs.h(0, j, k)));
+      }
+  REQUIRE(zvar > 0.5);
+  REQUIRE(yvar > 0.5);
+  REQUIRE(xvar > 0.5);
+  const auto m = pfc::apps::inverse::measure_manufacturability(cs.h, N, N, N);
+  INFO("solid_frac=" << m.solid_frac << " components=" << m.n_solid_components);
+  REQUIRE(m.n_solid_components == 1);
+  REQUIRE(m.percolate_solid_x);
+  REQUIRE(m.percolate_solid_y);
+  REQUIRE(m.percolate_solid_z);
+  REQUIRE(m.solid_frac > 0.08);
+  REQUIRE(m.solid_frac < 0.40);
+}
+
 TEST_CASE("Rotating-cube seed is 3-D, binary, and periodically connected",
           "[inverse][auxetic][geometry]") {
   if (world_size() != 1) {

@@ -235,4 +235,120 @@ inline void fill_rotating_cubes(RealField &h, int nx, int ny, int nz, double hal
   h.note_host_write();
 }
 
+inline double dist_segment_periodic_3d(double px, double py, double pz, double ax,
+                                       double ay, double az, double bx, double by,
+                                       double bz) noexcept {
+  double best = 1.0e300;
+  for (int ix = -1; ix <= 1; ++ix) {
+    for (int iy = -1; iy <= 1; ++iy) {
+      for (int iz = -1; iz <= 1; ++iz) {
+        const double qx = px + static_cast<double>(ix);
+        const double qy = py + static_cast<double>(iy);
+        const double qz = pz + static_cast<double>(iz);
+        const double vx = bx - ax;
+        const double vy = by - ay;
+        const double vz = bz - az;
+        const double wx = qx - ax;
+        const double wy = qy - ay;
+        const double wz = qz - az;
+        const double vv = vx * vx + vy * vy + vz * vz;
+        const double t =
+            (vv > 0.0) ? std::clamp((vx * wx + vy * wy + vz * wz) / vv, 0.0, 1.0)
+                       : 0.0;
+        const double dx = qx - (ax + t * vx);
+        const double dy = qy - (ay + t * vy);
+        const double dz = qz - (az + t * vz);
+        best = std::min(best, dx * dx + dy * dy + dz * dz);
+      }
+    }
+  }
+  return std::sqrt(best);
+}
+
+struct Seg3 {
+  double ax, ay, az, bx, by, bz;
+};
+
+/// One re-entrant square of side 0.5: four V-pairs + waist verticals, all
+/// pointing inward. 3-D re-entrant honeycomb of Evans / Yang 2015, using
+/// Gibson–Robert four-fold patterning about vertical struts.
+inline void append_reentrant_square(std::vector<Seg3> &segs, double x0, double y0,
+                                    double inset, double zb, double zw0,
+                                    double zw1, double zt) {
+  const double x1 = x0 + 0.5;
+  const double y1 = y0 + 0.5;
+  const double xm = x0 + 0.25;
+  const double ym = y0 + 0.25;
+  auto add = [&](double ax, double ay, double az, double bx, double by,
+                 double bz) {
+    segs.push_back(Seg3{ax, ay, az, bx, by, bz});
+  };
+  // x-edges at y=y0 (inward +y) and y=y1 (inward -y)
+  add(x0, y0, zb, xm, y0 + inset, zw0);
+  add(xm, y0 + inset, zw0, x1, y0, zb);
+  add(x0, y0, zt, xm, y0 + inset, zw1);
+  add(xm, y0 + inset, zw1, x1, y0, zt);
+  add(xm, y0 + inset, zw0, xm, y0 + inset, zw1);
+  add(x0, y1, zb, xm, y1 - inset, zw0);
+  add(xm, y1 - inset, zw0, x1, y1, zb);
+  add(x0, y1, zt, xm, y1 - inset, zw1);
+  add(xm, y1 - inset, zw1, x1, y1, zt);
+  add(xm, y1 - inset, zw0, xm, y1 - inset, zw1);
+  // y-edges at x=x0 (inward +x) and x=x1 (inward -x)
+  add(x0, y0, zb, x0 + inset, ym, zw0);
+  add(x0 + inset, ym, zw0, x0, y1, zb);
+  add(x0, y0, zt, x0 + inset, ym, zw1);
+  add(x0 + inset, ym, zw1, x0, y1, zt);
+  add(x0 + inset, ym, zw0, x0 + inset, ym, zw1);
+  add(x1, y0, zb, x1 - inset, ym, zw0);
+  add(x1 - inset, ym, zw0, x1, y1, zb);
+  add(x1, y0, zt, x1 - inset, ym, zw1);
+  add(x1 - inset, ym, zw1, x1, y1, zt);
+  add(x1 - inset, ym, zw0, x1 - inset, ym, zw1);
+}
+
+/**
+ * @brief 3-D re-entrant honeycomb (forward oracle, OpenPFC #36).
+ *
+ * Vertical pillars on the half-lattice {(0,0),(0.5,0),(0,0.5),(0.5,0.5)}
+ * plus re-entrant V-struts on a checkerboard of 0.5-squares. This is the
+ * Evans inverted honeycomb / Yang et al. (2015) TRH, patterned with
+ * four-fold symmetry about the verticals (Gibson–Robert). Not an
+ * extrusion and not the eight-cube occupancy of #31.
+ *
+ * Frozen defaults: t=0.06, inset=0.14, z joints 0.10/0.30/0.70/0.90.
+ */
+inline void fill_reentrant_3d(RealField &h, int nx, int ny, int nz, double t,
+                              double inset, double zb, double zw0, double zw1,
+                              double zt) {
+  std::vector<Seg3> segs;
+  for (double x : {0.0, 0.5})
+    for (double y : {0.0, 0.5})
+      segs.push_back(Seg3{x, y, 0.0, x, y, 1.0});
+  append_reentrant_square(segs, 0.0, 0.0, inset, zb, zw0, zw1, zt);
+  append_reentrant_square(segs, 0.5, 0.0, inset, zb, zw0, zw1, zt);
+  append_reentrant_square(segs, 0.0, 0.5, inset, zb, zw0, zw1, zt);
+  append_reentrant_square(segs, 0.5, 0.5, inset, zb, zw0, zw1, zt);
+  const auto n = h.local_size();
+  for (int k = 0; k < n[2]; ++k) {
+    for (int j = 0; j < n[1]; ++j) {
+      for (int i = 0; i < n[0]; ++i) {
+        const auto g = h.global(i, j, k);
+        const double x =
+            (static_cast<double>(g[0]) + 0.5) / static_cast<double>(nx);
+        const double y =
+            (static_cast<double>(g[1]) + 0.5) / static_cast<double>(ny);
+        const double z =
+            (static_cast<double>(g[2]) + 0.5) / static_cast<double>(nz);
+        double dmin = 1.0e300;
+        for (const auto &s : segs)
+          dmin = std::min(dmin, dist_segment_periodic_3d(x, y, z, s.ax, s.ay,
+                                                         s.az, s.bx, s.by, s.bz));
+        h(i, j, k) = (dmin <= t) ? 1.0 : 0.0;
+      }
+    }
+  }
+  h.note_host_write();
+}
+
 } // namespace pfc::apps::inverse
