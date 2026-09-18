@@ -13,12 +13,14 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <mpi.h>
 
@@ -65,6 +67,8 @@ struct Config {
   double init_inset{0.30};
   int no_tensor{0};
   std::string dump_h{};
+  std::string dump_dir{};
+  int dump_every{0};
   std::string load_h{};
   double w12{1.0};
   int ch_steps{200};
@@ -94,7 +98,8 @@ void usage(std::ostream &os, const char *exe) {
      << "  --init-half --init-angle      rotating-square size/rotation\n"
      << "  --init-thickness --init-inset re-entrant wall geometry\n"
      << "  --no-tensor=1                 W=0 (binarization-only step)\n"
-     << "  --dump-h=PATH --load-h=PATH   write/read h (single rank)\n"
+     << "  --dump-h=PATH --load-h=PATH   write/read h (rank-0 text)\n"
+     << "  --dump-dir=DIR --dump-every=N gathered Fortran h bricks\n"
      << "  --W-12                        extra weight on C12 (auxetic default 4)\n";
 }
 
@@ -181,6 +186,10 @@ bool parse_args(int argc, char **argv, Config &cfg) {
       ok = parse_int(val, cfg.no_tensor);
     } else if (key == "dump-h") {
       cfg.dump_h = std::string(val);
+    } else if (key == "dump-dir") {
+      cfg.dump_dir = std::string(val);
+    } else if (key == "dump-every") {
+      ok = parse_int(val, cfg.dump_every) && cfg.dump_every >= 0;
     } else if (key == "load-h") {
       cfg.load_h = std::string(val);
     } else if (key == "W-12") {
@@ -206,6 +215,77 @@ bool parse_args(int argc, char **argv, Config &cfg) {
       cfg.init != "spinodal")
     return false;
   return true;
+}
+
+std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx,
+                                 int ny, int nz) {
+  auto local = pfc::apps::inverse::dense_from_field(h, nx, ny, nz);
+  std::vector<double> g(local.size(), 0.0);
+  MPI_Allreduce(local.data(), g.data(), static_cast<int>(local.size()),
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  return g;
+}
+
+void write_raw_bin(const std::string &path, const std::vector<double> &a) {
+  std::ofstream f(path, std::ios::binary);
+  f.write(reinterpret_cast<const char *>(a.data()),
+          static_cast<std::streamsize>(a.size() * sizeof(double)));
+}
+
+void write_xdmf_brick(const std::string &path, const std::string &bin,
+                      int nx, int ny, int nz, double dx, const char *name) {
+  std::ofstream f(path);
+  f << "<?xml version=\"1.0\"?>\n<Xdmf Version=\"2.0\"><Domain>"
+    << "<Grid Name=\"g\" GridType=\"Uniform\">\n"
+    << "<Topology TopologyType=\"3DCoRectMesh\" Dimensions=\"" << nz << ' '
+    << ny << ' ' << nx << "\"/>\n"
+    << "<Geometry Type=\"ORIGIN_DXDYDZ\">\n"
+    << "<DataItem Format=\"XML\" Dimensions=\"3\">0 0 0</DataItem>\n"
+    << "<DataItem Format=\"XML\" Dimensions=\"3\">" << dx << ' ' << dx << ' '
+    << dx << "</DataItem>\n</Geometry>\n"
+    << "<Attribute Name=\"" << name << "\" Center=\"Node\">\n"
+    << "<DataItem Format=\"Binary\" DataType=\"Float\" Precision=\"8\" "
+    << "Endian=\"Little\" Dimensions=\"" << nz << ' ' << ny << ' ' << nx
+    << "\">" << bin << "</DataItem>\n</Attribute>\n</Grid></Domain></Xdmf>\n";
+}
+
+void print_C(const char *label, const pfc::apps::Voigt6 &C) {
+  std::cout << label << '\n';
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      if (j) std::cout << ' ';
+      std::cout << std::setprecision(8) << C(i, j);
+    }
+    std::cout << '\n';
+  }
+}
+
+void print_stiffness_report(const char *label, const pfc::apps::Voigt6 &C,
+                            const pfc::apps::Voigt6 &Ct,
+                            const pfc::apps::HomogenizationResult &hr) {
+  using pfc::apps::diagnose_stiffness;
+  const auto d = diagnose_stiffness(C, &Ct);
+  print_C(label, d.C);
+  std::cout << std::setprecision(8)
+            << "rel_frobenius " << d.rel_frobenius << " spd " << (d.spd ? 1 : 0)
+            << " invertible " << (d.invertible ? 1 : 0) << " min_eig "
+            << d.min_eig << '\n';
+  std::cout << "nu_shortcut " << d.nu_shortcut << " nu_xy " << d.nu_xy
+            << " nu_xz " << d.nu_xz << " nu_yx " << d.nu_yx << " nu_yz "
+            << d.nu_yz << " nu_zx " << d.nu_zx << " nu_zy " << d.nu_zy << '\n';
+  std::cout << "spread_C11 " << d.spread_C11 << " spread_C12 " << d.spread_C12
+            << " spread_C44 " << d.spread_C44 << '\n';
+  int it_max = 0;
+  double res_max = 0.0;
+  bool conv = true;
+  for (const auto &r : hr.reports) {
+    it_max = std::max(it_max, r.iterations);
+    res_max = std::max(res_max, r.residual);
+    conv = conv && r.converged;
+  }
+  std::cout << "elasticity_converged " << (conv ? 1 : 0) << " el_iters_max "
+            << it_max << " el_residual_max " << res_max << " volume "
+            << hr.volume_fraction << '\n';
 }
 
 pfc::apps::Voigt6 make_target(const Config &cfg) {
@@ -338,12 +418,26 @@ int main(int argc, char **argv) {
   }
 
   pfc::apps::inverse::PhaseFieldInverse inv(domain, stack.fft(), p);
-  std::ofstream csv;
+  const auto init_h = inv.homogenizer().compute(h);
   if (rank == 0) {
     std::cout << "target " << cfg.target << " grid " << cfg.nx << 'x' << cfg.ny
-              << 'x' << cfg.nz << " steps " << cfg.steps << '\n';
+              << 'x' << cfg.nz << " steps " << cfg.steps << " seed "
+              << cfg.seed << '\n';
     std::cout << "backend cpu ranks " << nproc << " grid " << cfg.nx << 'x'
               << cfg.ny << 'x' << cfg.nz << " loads 6\n";
+    print_stiffness_report("C_H_initial", init_h.stiffness, spec.C_target,
+                           init_h);
+  }
+  if (!cfg.dump_dir.empty()) {
+    const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+    if (rank == 0) {
+      write_raw_bin(cfg.dump_dir + "/h_init.bin", dense);
+      write_xdmf_brick(cfg.dump_dir + "/h_init.xdmf", "h_init.bin", cfg.nx,
+                       cfg.ny, cfg.nz, cfg.dx, "h");
+    }
+  }
+  std::ofstream csv;
+  if (rank == 0) {
     std::cout << "step J J_tensor J_volume J_reg volume grad_rms step_rms grey perimeter C11 C12 ms\n";
     if (!cfg.csv.empty()) {
       csv.open(cfg.csv);
@@ -385,6 +479,15 @@ int main(int argc, char **argv) {
       rc = 1;
       break;
     }
+    if (!cfg.dump_dir.empty() && cfg.dump_every > 0 &&
+        (s % cfg.dump_every == 0 || s + 1 == cfg.steps)) {
+      const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+      if (rank == 0) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "/h_%04d.bin", s);
+        write_raw_bin(cfg.dump_dir + name, dense);
+      }
+    }
   }
   if (rank == 0 && !cfg.dump_h.empty()) {
     std::ofstream hf(cfg.dump_h);
@@ -408,46 +511,39 @@ int main(int argc, char **argv) {
     hbin.note_host_write();
   }
   const auto bin = inv.homogenizer().compute(hbin);
+  const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+  const auto dense_bin = gather_dense(hbin, cfg.nx, cfg.ny, cfg.nz);
   if (rank == 0) {
     std::cout << std::setprecision(16) << "INVERSE_CHECKSUM " << last.J << '\n';
-    const auto &C = final.stiffness;
-    const auto &Ct = spec.C_target;
-    std::cout << "C_target\n";
-    for (int i = 0; i < 6; ++i) {
-      for (int j = 0; j < 6; ++j) {
-        if (j) std::cout << ' ';
-        std::cout << std::setprecision(8) << Ct(i, j);
-      }
-      std::cout << '\n';
-    }
-    std::cout << "C_H\n";
-    for (int i = 0; i < 6; ++i) {
-      for (int j = 0; j < 6; ++j) {
-        if (j) std::cout << ' ';
-        std::cout << std::setprecision(8) << C(i, j);
-      }
-      std::cout << '\n';
-    }
-    const double rel =
-        (C - Ct).frobenius_norm() / std::max(Ct.frobenius_norm(), 1.0e-30);
-    std::cout << std::setprecision(8) << "rel_frobenius " << rel << '\n';
-    const double den = C(0, 0) + C(0, 1);
-    const double nu = (std::abs(den) > 1.0e-30) ? C(0, 1) / den : 0.0;
-    std::cout << "C11 " << C(0, 0) << " C12 " << C(0, 1) << " nu_eff " << nu
-              << " grey " << last.grey_fraction << '\n';
-    const auto &Cb = bin.stiffness;
-    const double denb = Cb(0, 0) + Cb(0, 1);
-    const double nub = (std::abs(denb) > 1.0e-30) ? Cb(0, 1) / denb : 0.0;
-    std::cout << "C_H_thresholded (h>0.5)\n";
-    for (int i = 0; i < 6; ++i) {
-      for (int j = 0; j < 6; ++j) {
-        if (j) std::cout << ' ';
-        std::cout << std::setprecision(8) << Cb(i, j);
-      }
-      std::cout << '\n';
-    }
-    std::cout << "C11_bin " << Cb(0, 0) << " C12_bin " << Cb(0, 1)
-              << " nu_bin " << nub << '\n';
+    print_C("C_target", spec.C_target);
+    print_stiffness_report("C_H_final", final.stiffness, spec.C_target, final);
+    std::cout << "grey " << last.grey_fraction << '\n';
+    print_stiffness_report("C_H_thresholded (h>0.5)", bin.stiffness,
+                           spec.C_target, bin);
+    const auto man = pfc::apps::inverse::measure_manufacturability(
+        dense, cfg.nx, cfg.ny, cfg.nz);
+    const auto manb = pfc::apps::inverse::measure_manufacturability(
+        dense_bin, cfg.nx, cfg.ny, cfg.nz);
+    std::cout << std::setprecision(6)
+              << "manufacturability_physical solid_comp " << man.n_solid_components
+              << " void_comp " << man.n_void_components << " island_solid "
+              << man.island_solid_frac << " island_void " << man.island_void_frac
+              << " grey " << man.grey_fraction << '\n';
+    std::cout << "percolate_physical_solid x=" << man.percolate_solid_x
+              << " y=" << man.percolate_solid_y << " z=" << man.percolate_solid_z
+              << '\n';
+    std::cout << "manufacturability_thresholded solid_comp "
+              << manb.n_solid_components << " void_comp "
+              << manb.n_void_components << " island_solid "
+              << manb.island_solid_frac << " island_void "
+              << manb.island_void_frac << '\n';
+    std::cout << "percolate_thresholded_solid x=" << manb.percolate_solid_x
+              << " y=" << manb.percolate_solid_y
+              << " z=" << manb.percolate_solid_z << " percolate_void x="
+              << manb.percolate_void_x << " y=" << manb.percolate_void_y
+              << " z=" << manb.percolate_void_z << '\n';
+    std::cout << "opening_loss_r1 " << manb.opening_loss_r1 << " opening_loss_r2 "
+              << manb.opening_loss_r2 << '\n';
     std::cout << "ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
               << cfg.nz << " steps " << cfg.steps << " loads_per_step 6\n";
     std::ifstream status("/proc/self/status");
@@ -456,23 +552,13 @@ int main(int argc, char **argv) {
       if (line.rfind("VmHWM:", 0) == 0 || line.rfind("VmRSS:", 0) == 0)
         std::cout << line << '\n';
     }
-    if (nproc == 1) {
-      const auto man = pfc::apps::inverse::measure_manufacturability(
-          h, cfg.nx, cfg.ny, cfg.nz);
-      const auto manb = pfc::apps::inverse::measure_manufacturability(
-          hbin, cfg.nx, cfg.ny, cfg.nz);
-      std::cout << std::setprecision(6)
-                << "manufacturability solid_comp " << manb.n_solid_components
-                << " void_comp " << manb.n_void_components
-                << " island_solid " << manb.island_solid_frac
-                << " island_void " << manb.island_void_frac << '\n';
-      std::cout << "percolate_solid x=" << manb.percolate_solid_x
-                << " y=" << manb.percolate_solid_y << " z=" << manb.percolate_solid_z
-                << " percolate_void x=" << manb.percolate_void_x
-                << " y=" << manb.percolate_void_y << " z=" << manb.percolate_void_z
-                << '\n';
-      std::cout << "opening_loss_r1 " << manb.opening_loss_r1 << " opening_loss_r2 "
-                << manb.opening_loss_r2 << " grey " << man.grey_fraction << '\n';
+    if (!cfg.dump_dir.empty()) {
+      write_raw_bin(cfg.dump_dir + "/h_final.bin", dense);
+      write_raw_bin(cfg.dump_dir + "/h_thresh.bin", dense_bin);
+      write_xdmf_brick(cfg.dump_dir + "/h_final.xdmf", "h_final.bin", cfg.nx,
+                       cfg.ny, cfg.nz, cfg.dx, "h");
+      write_xdmf_brick(cfg.dump_dir + "/h_thresh.xdmf", "h_thresh.bin", cfg.nx,
+                       cfg.ny, cfg.nz, cfg.dx, "h");
     }
   }
   } // SpectralCPUStack / HeFFTe before MPI_Finalize

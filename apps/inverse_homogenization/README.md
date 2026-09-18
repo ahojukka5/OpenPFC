@@ -74,6 +74,16 @@ mpirun -n 1 ./apps/inverse_homogenization/openpfc_inverse_homogenize \
 Allen–Cahn, not Cahn–Hilliard and not MMA. `INVERSE_CHECKSUM` is the last
 \(J\). Optional `--csv=PATH` writes the per-step history.
 
+Final reports (OpenPFC #28 / research #476) print the full \(6\times 6\)
+\(C_H\) of the **initial**, **final physical**, and **\(h>0.5\)
+thresholded** fields, plus compliance Poisson ratios
+\(\nu_{xy}=-S_{12}/S_{11}\) (and cyclic), SPD / \(\lambda_{\min}\),
+cubic spreads, elasticity residuals, and periodic percolation on any
+rank count. `--dump-dir` writes gathered Fortran `h_init.bin`,
+`h_final.bin`, `h_thresh.bin` and optional `h_%04d.bin` snapshots.
+The shortcut \(C_{12}/(C_{11}+C_{12})\) is still printed as
+`nu_shortcut`; qualification uses the compliance tensor.
+
 ### Stage 5 campaigns (LUMI-C `standard`)
 
 Not paper claims. Grey linear interpolation **cannot** produce \(\nu<0\).
