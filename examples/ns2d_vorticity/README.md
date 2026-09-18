@@ -237,13 +237,17 @@ and \(a\) (second inbox `Field`). Density and \(\mu_0\) are 1.
 | `budget_residual` | \((E_n-E_{n-1})/\Delta t_{\mathrm{diag}}+\frac12(D_n+D_{n-1})\) |
 | `cfl_nominal` | \(\Delta t/\Delta x\) (what `--cfl` sets) |
 | `cfl_ub` | \(\Delta t\,\max_i(|u_i|,|B_i|)/\Delta x\) (deprecated) |
-| `cfl_elsasser` | \(\Delta t\,\max_i|z^\pm_i|/\Delta x\), \(z^\pm=u\pm B\) |
+| `cfl_elsasser` | \(\Delta t\,\max_i|z^\pm_i|/\Delta x\) |
+| `cfl_elsasser_mag` | \(\Delta t\,\max\|z^\pm\|/\Delta x\) (Euclidean) |
+| `cfl_elsasser_sum` | \(\Delta t\,\max(|z_x^\pm|/\Delta x+|z_y^\pm|/\Delta y)\) |
 
 `--cfl` remains a **nominal fixed-\(\Delta t\) selector**:
 \(\Delta t=\mathrm{CFL}_{\mathrm{nom}}\Delta x\) (characteristic speed 1).
-The measured MHD CFL is the Elsasser quantity `cfl_elsasser`. The
-driver aborts if that measured value exceeds 2. There is no adaptive
-timestepping.
+The fail-closed measured CFL is the 2-D Elsasser sum
+`cfl_elsasser_sum`. Component-max and Euclidean values are logged.
+The driver aborts if `cfl_elsasser_sum > 2`. No adaptive timestepping.
+On a square grid a diagonal \(z=(1,1)\) makes the sum bound twice the
+component-max bound.
 
 \(A_2\) is gauge-safe: the DC mode of \(a\) is zeroed after every
 stage, and the reported invariant uses the variance of \(a\).
@@ -295,7 +299,7 @@ python3 examples/ns2d_vorticity/scripts/plot_mhd_diagnostics.py \
   --out /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak/mhd_vs_hydro.png
 ```
 
-### Verification (Catch2 `mhd2d-cpu`, 12 cases)
+### Verification (Catch2 `mhd2d-cpu`, 13 cases)
 
 - \(a=0\) MHD matches NS on two-mode IC (\(L^\infty<10^{-11}\)).
 - Force-free \(a=\sin x\sin y\), \(u=0\): \(a(t)=a(0)e^{-2\eta t}\)
@@ -303,8 +307,9 @@ python3 examples/ns2d_vorticity/scripts/plot_mhd_diagnostics.py \
 - Alfvénic \(u=B\): \(N_\omega\sim 0\) with Lorentz \(+\); \(N_\omega>1\)
   if the sign is flipped.
 - Elsasser: OT at \(t=0\) has \(\max_i|z^\pm_i|=2\), so
-  `cfl_elsasser = 2 cfl_nominal`. Aligned \(u=B=(1,0)\) gives
-  \(\max|z^+|=2\).
+  `cfl_elsasser = 2 cfl_nominal`. A diagonal \(z=(1,1)\) has
+  component-max 1 and L1 sum 2; `cfl_elsasser_sum` is strictly
+  larger. The driver fails closed on the sum.
 - Gauge: \(a+\mathrm{const}\) is projected to \(\langle a\rangle=0\)
   and \(A_2=0.3125\) for the OT flux.
 - Ideal OT, \(N=32\), \(T=0.2\), \(\nu=\eta=0\). Relative drift of
@@ -375,23 +380,104 @@ integer-\(k\) lattice, then relative \(L^2\)):
 | 1.924 | \(5.6\times10^{-7}\) | \(1.0\times10^{-3}\) | \(4.9\times10^{-4}\) | \(4.4\times10^{-9}\) | \(1.3\times10^{-6}\) |
 | 2.238 | \(5.1\times10^{-7}\) | \(8.7\times10^{-4}\) | \(4.3\times10^{-4}\) | \(6.5\times10^{-9}\) | \(9.9\times10^{-7}\) |
 
-At the \(\max\|j\|\) time the operational sheet thickness from
-periodic FWHM of \(|j|\) is 5 cells on 256² (\(\approx 0.12\)).
-256² and 512² frames at \(t=2.24\) are visually the same:
-current sheets, deformed flux contours, no claim of reconnection
-or plasmoids. Rendered:
+At the \(\max\|j\|\) time the operational FWHM of \(|j|\) is
+\(0.123\) (5 cells) on 256² and \(0.135\) (11 cells) on 512²,
+about 10% apart in physical units. Two resolutions do not
+support a formal thickness-order. 256² and 512² frames at
+\(t=2.24\) are visually the same: current sheets, deformed flux
+contours, no claim of reconnection or plasmoids. Rendered:
 `ot256_nu0005_peak/frame_0228.png`,
 `ot512_nu0005_peak/frame_0456.png`.
 
-**Exploratory \(\nu=\eta=0.0025\).** 256² survives to \(t=2.50\)
-with peak \(\max\|j\|=54.97\) at \(t=1.964\). 512² agrees in \(E\)
-but not in the sheet: at \(t=1.885\), common-band
-\(\|j\|_{2,\mathrm{rel}}=1.4\times10^{-2}\),
-\(\max\|j\|\) 54.63 vs 55.6. 512² then **blows up** at
-\(t=2.474\) (`cfl_elsasser` \(1.70\to 54\)). 256² is
-under-resolved; 512² is not a stable late-time solution at this
-dissipation. 1024² was **not** run. Do not go to still lower
-\(\eta\) in this PR.
+**Exploratory \(\nu=\eta=0.0025\).** The previous 512² `--cfl 0.4`
+blow-up at \(t=2.474\) is **timestep-limited**. Repeating 512²
+at `--cfl 0.2` reaches \(t=2.50\) with `cfl_elsasser_sum=0.93`,
+\(E=0.902\), \(\max\|j\|=49.91\). Before the old failure, 512²
+`--cfl 0.4` vs `0.2` agree to \(\|j\|_{2,\mathrm{rel}}=2\times10^{-7}\).
+256² vs 512² at the same smaller dt still differ by
+\(\|j\|_{2,\mathrm{rel}}=1.4\times10^{-2}\) at \(t=1.885\)
+(FWHM \(0.074\) vs \(0.061\)). So: late-time crash was \(\Delta t\);
+256² remains spatially under-resolved. 512²/`cfl 0.2` is a usable
+exploratory run, not a second-resolution gate. 1024² was **not**
+run. Do not go to still lower \(\eta\) in this PR.
+
+### Topology and candidate reconnection observables (analysis only)
+
+Offline scripts, not part of the time stepper:
+
+```bash
+python3 examples/ns2d_vorticity/scripts/find_mhd_critical_points.py --self-test
+python3 examples/ns2d_vorticity/scripts/find_mhd_critical_points.py \
+  --dir .../ot256_nu0005_peak --n 256 --inc 228
+python3 examples/ns2d_vorticity/scripts/mhd_reconnection_observables.py \
+  --dir .../ot256_nu0005_peak --n 256 --eta 0.005
+```
+
+\(B=(\partial_y a,-\partial_x a)\), so magnetic nulls are critical
+points of \(a\). Saddles of \(a\) are candidate X-points; extrema
+are candidate O-points. The finder recovers the four exact X- and
+O-points of \(a=\sin x\sin y\).
+
+On incompressible OT, \(t=0\) has four X and four O as expected.
+Through the peak-current window the flux extrema persist. Hessian
+X/O classification of the high-\(|j|\) structure is **not robust**
+on a 5-cell sheet (256² reports 0 X at \(t=2.24\); 512² reports
+one X at a neighbouring extremum). Do not treat a \(|j|\) peak as
+an X-point.
+
+For this sign convention Faraday is \(E_z=-\partial_t a\). The
+induction equation is \(\partial_t a+u\cdot\nabla a=\eta\nabla^2 a
+=-\eta j\). At a rest null that reduces to \(E_z=\eta j\). On the
+converged \(\nu=\eta=0.005\) 256² dumps, \(E_z\) at the
+instantaneous \(\max|j|\) site tracks \(\eta j\) through the
+current-sheet peak (\(t=2.238\): \(E_z\approx-0.191\),
+\(\eta j\approx-0.191\)). That pair is the mathematically
+meaningful local diagnostic. Competing quantities for a later
+issue, not a rate yet:
+
+* \(E_z=-\partial_t a\) at \(\max|j|\) or at a tracked X-point;
+* \(\eta j\) at the same site;
+* \(a_{\mathrm{O,max}}-a_{\mathrm{O,min}}\) (flux between extrema,
+  independent of X classification);
+* operational FWHM and aspect ratio of \(|j|\).
+
+Global Lundquist \(S=L V_A/\eta\) with \(L=2\pi\), \(V_A\sim 1\)
+is \(\sim 1.3\times10^3\) at \(\eta=0.005\) and \(\sim 2.5\times10^3\)
+at \(\eta=0.0025\). Both sit below the usual \(S_c\sim10^4\)
+plasmoid threshold. This prototype is a moderate-\(S\) current-sheet
+problem, not a plasmoid campaign.
+
+### Literature for the next issue
+
+Primary 2-D incompressible / resistive-MHD reconnection, not a
+general MHD survey:
+
+* Orszag & Tang, JFM 90 (1979) — incompressible OT vortex.
+* Pouquet, JFM 88 (1978) — 2-D MHD invariants.
+* Parker (1957), Sweet (1958) — Sweet–Parker rate
+  \(V_{\mathrm{rec}}/V_A\sim S^{-1/2}\).
+* Biskamp, Phys. Fluids 29 (1986) — Petschek X-point collapses
+  to an SP sheet in uniform-resistivity MHD.
+* Loureiro, Schekochihin & Cowley, Phys. Plasmas 14 (2007) —
+  plasmoid instability of high-\(S\) SP sheets.
+* Huang & Bhattacharjee, Phys. Plasmas 17 (2010) — high-\(S\)
+  plasmoid-mediated scaling.
+* García Morillo & Alexakis, JFM 1007 (2025) R3
+  (arXiv:2406.08951) — OT; under-resolved sheets produce
+  apparent plasmoids; well-resolved runs with \(\delta/h\gtrsim 10\)
+  showed none up to \(S\sim5\times10^5\).
+* Vicentin, Kowal, de Gouveia Dal Pino & Lazarian,
+  arXiv:2510.01060 — \(\delta/h>10\) as a resolution gate;
+  \(V_{\mathrm{rec}}\sim S^{-1/2}\) then \(\sim S^{-1/3}\); still
+  resistivity-dependent.
+* Baty, arXiv:2604.02065 — physical vs spurious plasmoids in
+  OT, using current/enstrophy spectra.
+
+The next research issue should measure moderate-\(S\) resistive
+reconnection on this prototype (robust X/O tracking, \(E_z\) vs
+\(\eta j\), flux difference). It must **not** hunt plasmoids by
+lowering \(\eta\) on 256²/512², and it must keep field/spectral
+convergence as a first-class gate.
 
 ### Decision gate (issue #23)
 
@@ -402,7 +488,8 @@ hydrodynamic control.
 
 That statement is limited to \(P_m=1\), \(\nu=\eta=0.005\),
 \(t\le 2.5\), 256²/512² common-band fields. It does **not**
-cover \(\nu=\eta=0.0025\), \(t>2.5\), reconnection, or plasmoids.
+cover a spatially converged \(\nu=\eta=0.0025\) ladder,
+\(t>2.5\), reconnection, or plasmoids.
 
 A later issue may add quantitative magnetic reconnection /
 topology diagnostics. This PR does not implement that project
