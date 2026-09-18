@@ -45,12 +45,17 @@ converged point from the DFT** (cell-centered phase). Classification
 uses that Fourier Hessian (`eig_ratio`, `hess_cond`). \(j=-\nabla^2 a\)
 at the point is spectral, not bilinear.
 
-X→O pairing launches each of four rays a controlled offset
-(\(1.5\Delta x\), capped at 0.2) along \(\pm\) Hessian eigenvectors,
-then follows \(\pm\nabla a\) according to the sign of \(\lambda\).
-There is **no nearest-O fallback**. A synthetic trap places a decoy
-maximum nearer than the Morse \(\mathrm{O}_{\max}\) at \((\pi,0)\);
-the walk still reaches \((\pi,0)\).
+Magnetic connectivity traces the critical level \(a=a_X\) along
+\(\mathbf B=(\partial_y a,-\partial_x a)\), not \(\pm\nabla a\).
+Four rays come from the Hessian quadratic form
+\(\lambda_1\xi_1^2+\lambda_2\xi_2^2=0\) (generally **not** the
+eigenvectors). \(\Delta a=a_O-a_X\) is stored only if an
+\(a=a_X\) X–X cycle winds around that O.
+
+Morse \(\pm\nabla a\) walks remain a scalar diagnostic. On
+\(a=\sin x\sin y\) they run on the diagonals to O-points; magnetic
+separatrices are the axes and connect X to X. A test requires both
+graphs and fails if they are swapped.
 
 Tracking uses a **physical** gate \(\Delta r \le 2\,\Delta t\)
 (VA~\(O(1)\) bound on \([0,2\pi]^2\)), not \(4\Delta x\). The same
@@ -76,7 +81,9 @@ Synthetic tests (`scripts/test_mhd_topology.py`):
 * fold creation/annihilation: count changes, births and deaths;
 * decaying eigenmode \(e^{-t}\sin x\sin y\): counts fixed, no
   birth/death (false-reconnection control);
-* nearest-O trap: Morse walk reaches the far connected O.
+* nearest-O trap: Morse walk reaches the far connected O;
+* magnetic vs Morse on \(\sin x\sin y\): axes/X–X vs diagonals/X–O,
+  at \(N=32,64,128\).
 
 ## Baseline \(\nu=\eta=0.005\)
 
@@ -104,13 +111,14 @@ surviving labelled X \(\approx 12.68\) on both grids; the tracked
 long-lived X that still has an \(a_X(t)\) has cond \(\sim 700\)).
 This is not a bilinear-interpolation artefact.
 
-**Connectivity graph.** On 512², adjacency of X-tracks to O-tracks
-changes only when the count sentinel changes (six times, all X
-\(\leftrightarrow\) degenerate). There is no extra X–O pair
-creation. 256² agrees on that degeneracy timeline and has two
-extra adjacency flickers at \(t=0.63,0.79\) while \(n_X=4\) (walk
-noise on the coarser grid) plus a late \(n_X=4\) blip at
-\(t=2.47\) that 512² does not show. Force-free: 0 graph changes.
+**Magnetic connectivity.** Separatrices are X–X, not X–O. In the
+well-conditioned window no O is enclosed by an \(a=a_X\) cycle, so
+\(\Delta a\) is undefined (not a reconnection flux). 512² magnetic
+graph labels flicker twice before \(t=0.82\) (which neighbour X a
+branch hits) then follow the same degeneracy sentinel as the
+counts. 256² is noisier after degeneracy. Force-free
+\(a=\sin x\sin y\): 0 magnetic-graph changes. There is no
+resolution-agreed separatrix reconnection event.
 
 **256 vs 512 Ohm check.** \(E_z(t)\) and \(\eta j_X(t)\) on the
 longest X track agree between resolutions to the printed digits.
