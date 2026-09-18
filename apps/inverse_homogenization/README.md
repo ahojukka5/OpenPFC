@@ -109,6 +109,7 @@ Not paper claims. Grey linear interpolation **cannot** produce \(\nu<0\).
 | 21967096 | $128^3$ spinodal $\mathbf{C}_H$, 8 CPU ranks | — | 0.5 | MPI-destructor fix: **finished**. 237 MB/rank, $\nu=0.30$. |
 | 21967095 | HIP Green on 1 GCD | — | — | Homogeneous $C_{11}=1.346153846$ (CPU match). Rotating-square $32^2$: **$\nu=-0.075$**, $C_{12}<0$. $64^3$ homogeneous wall **7.59 s**. Inverse 2 steps converged. |
 | 22151582 / **22151622** | #31 3-D rotating-cube **forward** oracle (not inverse) | — | 0.51 | Eight cubes, Attard–Grima RRU idea. Job 22151582 (`half=0.210`) $\nu=+0.155$ at $32^3$, SPD, perc $xyz$. One hinge correction 22151622 (`half=0.200`, $\angle=0.45$): $32^3$ **$\nu=+0.159$**, $64^3$ **$\nu=+0.158$**, both SPD, 1 solid component, perc $xyz$. **Not auxetic.** Stop; no Allen–Cahn. |
+| **22156718** | #33 extruded rotating-square **consistency** oracle | — | 0.64 | Same seed as 21956076 (`half=0.200`, $\angle=0.45$, $E_{\mathrm{void}}=0.02$). $64\times64\times1$: $\nu_{\mathrm{shortcut}}=-0.123$, $\nu_{xy}=-0.139$. $64\times64\times4$ extrusion: **identical** $C_H$, $\nu_{xy}=-0.139$, perc $xyz$, SPD. Homogeneous $\nu=0.3$. **3-D path preserves in-plane auxeticity.** PR #32 is a geometry failure, not a forward-model failure. |
 
 The double well drives a *uniform* grey field to the wells (Catch2). A
 sharp/tanh interface with large \(\lambda_r/\varepsilon\) inverts bands
