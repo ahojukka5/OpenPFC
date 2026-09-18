@@ -9,6 +9,7 @@
 #
 # Usage:
 #   TUNGSTEN_HIP_BIN=/path/to/tungsten_hip ./submit_tungsten_hip_trace.sh
+#   TUNGSTEN_HIP_BIN=... ./submit_tungsten_hip_trace.sh thip-tr-1152c thip-tr-1216c
 
 set -euo pipefail
 
@@ -72,13 +73,33 @@ submit_one() {
     "${SBATCH}"
 }
 
+CASES=(
+  "thip-tr-1200c:1200:1200:1200:1,8,4"
+  "thip-tr-1200x1152:1200:1200:1152:1,1,32"
+  "thip-tr-1200x1216:1200:1200:1216:1,1,32"
+  "thip-tr-1200x1280:1200:1200:1280:1,1,32"
+  "thip-tr-1152c:1152:1152:1152:1,1,32"
+  "thip-tr-1216c:1216:1216:1216:1,1,32"
+)
+
 echo "heFFTe phase-trace set (4 nodes / 32 GCDs) rev=${OPENPFC_REVISION} dirty=${OPENPFC_DIRTY}"
-submit_one "thip-tr-1200c" 1200 1200 1200 "1,8,4"
-submit_one "thip-tr-1200x1152" 1200 1200 1152 "1,1,32"
-submit_one "thip-tr-1200x1216" 1200 1200 1216 "1,1,32"
-submit_one "thip-tr-1200x1280" 1200 1200 1280 "1,1,32"
-submit_one "thip-tr-1152c" 1152 1152 1152 "1,1,32"
-submit_one "thip-tr-1216c" 1216 1216 1216 "1,1,32"
+want=("$@")
+for spec in "${CASES[@]}"; do
+  IFS=':' read -r name lx ly lz grid <<< "${spec}"
+  if (( ${#want[@]} > 0 )); then
+    keep=0
+    for w in "${want[@]}"; do
+      if [[ "${w}" == "${name}" ]]; then
+        keep=1
+        break
+      fi
+    done
+    if (( keep == 0 )); then
+      continue
+    fi
+  fi
+  submit_one "${name}" "${lx}" "${ly}" "${lz}" "${grid}"
+done
 
 echo "Logs: /scratch/project_462001519/juaho/logs/"
 echo "Runs: ${OPENPFC_SCALING_ROOT}/runs/"
