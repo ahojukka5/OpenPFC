@@ -11,11 +11,14 @@ The solver is unchanged.
 
 ## Decision
 
-**Current sheets but no demonstrated reconnection.**
+**Current sheets but no demonstrated topology-changing
+reconnection.**
 
-Independent diagnostics do **not** jointly support a converged
-connectivity-changing reconnection event in the documented
-\(\nu=\eta=0.005\), \(t\le 2.5\), 256²/512² window.
+The previous “no enclosed O” claim was a simple-graph artefact.
+OT islands exist at \(t=0\) with \(\Delta a=\pm 1\). Their faces
+persist until Hessian degeneracy; the only 256/512-agreed
+\(\Delta a(t)\) is a slow drift at a persistent X, not a new-island
+event. Peak \(|j|\) remains outside the well-conditioned window.
 
 ## Question
 
@@ -83,7 +86,8 @@ Synthetic tests (`scripts/test_mhd_topology.py`):
   birth/death (false-reconnection control);
 * nearest-O trap: Morse walk reaches the far connected O;
 * magnetic vs Morse on \(\sin x\sin y\): axes/X–X vs diagonals/X–O,
-  at \(N=32,64,128\).
+  at \(N=32,64,128\);
+* OT \(t=0\) multigraph: parallel X–X edges and \(\Delta a=\pm 1\).
 
 ## Baseline \(\nu=\eta=0.005\)
 
@@ -111,14 +115,25 @@ surviving labelled X \(\approx 12.68\) on both grids; the tracked
 long-lived X that still has an \(a_X(t)\) has cond \(\sim 700\)).
 This is not a bilinear-interpolation artefact.
 
-**Magnetic connectivity.** Separatrices are X–X, not X–O. In the
-well-conditioned window no O is enclosed by an \(a=a_X\) cycle, so
-\(\Delta a\) is undefined (not a reconnection flux). 512² magnetic
-graph labels flicker twice before \(t=0.82\) (which neighbour X a
-branch hits) then follow the same degeneracy sentinel as the
-counts. 256² is noisier after degeneracy. Force-free
-\(a=\sin x\sin y\): 0 magnetic-graph changes. There is no
-resolution-agreed separatrix reconnection event.
+**Magnetic connectivity is a multigraph.** Distinct \(a=a_X\)
+branches between the same X pair are stored as parallel edges.
+Two-edge faces are the OT islands. A simple neighbour graph
+missed them and falsely reported no enclosed O.
+
+Analytic OT at \(t=0\): 4 X (\(a=\pm 0.5\)) and 4 O
+(\(a=\pm 1.5\)); parallel X–X edges; each \(\mathrm{O}_{\max}\)
+(resp. \(\mathrm{O}_{\min}\)) is enclosed by the \(+0.5\)
+(resp. \(-0.5\)) network with \(\Delta a=\pm 1\). Tests at
+\(N=64,128\) require this.
+
+**Time series \(\nu=\eta=0.005\).** Until \(t\approx 0.82\), both
+256² and 512² keep 4 X, 8 enclosures and 12 extra parallel
+edges. \(\Delta a\) for the tracked \(a=-0.5\) island goes
+\(-1.000\to -0.979\), identical on both grids. That is a slow
+resistive drift of island flux at a *persistent* X, not a new
+X–O pair or a peak-current burst. After \(t=0.82\) X-points
+degenerate; \(\Delta a\) at \(t=2.24\) is not a trusted rate.
+Force-free: 0 graph changes. No \(\eta\) lowering.
 
 **256 vs 512 Ohm check.** \(E_z(t)\) and \(\eta j_X(t)\) on the
 longest X track agree between resolutions to the printed digits.
@@ -165,9 +180,10 @@ rate there would be numerically unresolved.
 * \(E_z\), \(\eta j\), and \(d\Delta a/dt\) agreeing on a
   dt- and N-converged interval.
 
-That package is not available in the present window. The
-scientifically honest result is robust current sheets without a
-demonstrated, converged reconnection event.
+A topology-changing event in the peak-current window is not
+available. Persistent-X island flux now has a valid \(\Delta a\),
+but it is a slow drift, not a reconnection burst, and it ends when
+the X-points become degenerate.
 
 ## Commands
 
