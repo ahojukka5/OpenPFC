@@ -39,14 +39,22 @@ From a GPU partition (not a login node):
 sbatch docs/lumi_slurm/heffte_rocm_trace.sbatch
 ```
 
-Then configure OpenPFC against that module and compile `tungsten_hip`
-in a separate build tree:
+Then compile OpenPFC against that module in a **separate** build tree
+(GPU node, not login):
 
 ```bash
-HEFFTE_MODULE=heffte-rocm-trace \
-BUILD_DIR=/flash/project_462001519/juaho/build/openpfc-lumi-rocm-heffte-trace \
-./scripts/build.sh --machine=lumi --with-rocm --no-test --partition=standard-g
+sbatch docs/lumi_slurm/openpfc_heffte_trace_build.sbatch
 ```
+
+or equivalently:
+
+```bash
+HEFFTE_MODULE=heffte-rocm-trace/2.4.1 \
+BUILD_DIR=/flash/project_462001519/juaho/build/openpfc-lumi-rocm-heffte-trace \
+./scripts/build.sh --machine=lumi --with-rocm --no-test --no-submit
+```
+
+The second form must not be run on a login node.
 
 ## Cases
 
