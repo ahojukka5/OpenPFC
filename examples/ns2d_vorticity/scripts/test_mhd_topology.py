@@ -20,6 +20,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mhd_topology as mt
+import island_flux_budget as ifb
 
 TWOPI = 2.0 * math.pi
 FAILS = []
@@ -325,6 +326,31 @@ def test_ot_t0_multigraph_faces():
                   "N=%d Delta_a for O_min is -1.5-(-0.5)=-1, got %s" % (n, da_min))
 
 
+def test_force_free_budget_is_O_diffusion():
+    print("\n== force-free eigenmode: dF/dt = -Ez_O, Ez_X≈0 ==")
+    eta = 0.05
+    times = [0.0, 0.08, 0.16, 0.24, 0.32, 0.40]
+    frames = []
+    for t in times:
+        a = mt.sample_grid(
+            lambda x, y, tt=t: math.exp(-2.0 * eta * tt) * np.sin(x) * np.sin(y),
+            48)
+        frames.append(mt.locate_critical_points(a))
+    x0 = nearest([p for p in frames[0] if p["kind"] == mt.KIND_X], 0.0, 0.0)
+    o0 = nearest([p for p in frames[0] if p["kind"] == mt.KIND_OMAX],
+                 0.5 * math.pi, 0.5 * math.pi)
+    trx, tro = ifb.track_pair(frames, times, x0, o0)
+    out = ifb.series_from_tracks(trx, tro, times, eta, t_max=1.0)
+    check(out is not None, "force-free island series exists")
+    s = out["summary"]
+    check(s["rel_budget_E"] < 0.05, "dF/dt ≈ Ez_X-Ez_O  rel=%.3e" % s["rel_budget_E"])
+    check(s["rel_budget_j"] < 0.05, "dF/dt ≈ eta(j_X-j_O) rel=%.3e" % s["rel_budget_j"])
+    check(abs(s["mean_Ez_X"]) < 0.2 * abs(s["mean_dFdt"]),
+          "Ez_X is small vs dF/dt (diffusion of O, not X reconnection)")
+    check(s["mean_frac_Ez_O"] > 0.8,
+          "most of dF/dt is -Ez_O, frac=%.3f" % s["mean_frac_Ez_O"])
+
+
 def test_misclassify_fails():
     print("\n== classification must not swap X and O ==")
     a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), 48)
@@ -347,6 +373,7 @@ def main():
     test_fourier_hessian_not_bilinear_artifact()
     test_magnetic_not_morse_sinxsiny()
     test_ot_t0_multigraph_faces()
+    test_force_free_budget_is_O_diffusion()
     test_misclassify_fails()
     print("\n%d failures" % len(FAILS))
     if FAILS:
