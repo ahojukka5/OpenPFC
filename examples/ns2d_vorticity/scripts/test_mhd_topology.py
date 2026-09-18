@@ -85,7 +85,7 @@ def test_moving():
         a = mt.sample_grid(
             lambda x, y, tt=t: np.sin(x - v * tt) * np.sin(y - w * tt), 64)
         frames.append(mt.locate_critical_points(a))
-    tracks, events = mt.track_points(frames, max_speed=0.15)
+    tracks, events = mt.track_points(frames, times=times, max_speed=2.0)
     live = [tr for tr in tracks if len(tr["history"]) == len(times)]
     check(len(live) == 8, "8 tracks survive all frames, got %d" % len(live))
     births = [e for e in events if e["type"] == "birth" and e["t_index"] > 0]
@@ -158,6 +158,77 @@ def test_decaying_eigenmode_keeps_counts():
           "decaying eigenmode has no birth/death")
 
 
+def test_moving_multi_n_and_cadence():
+    print("\n== same moving topology at several N and cadences ==")
+    v, w = 0.4, -0.25
+    for n in (32, 64, 128):
+        for dt in (0.025, 0.05, 0.10):
+            nstep = int(round(0.4 / dt))
+            times = [dt * k for k in range(nstep + 1)]
+            frames = []
+            for t in times:
+                a = mt.sample_grid(
+                    lambda x, y, tt=t: np.sin(x - v * tt) * np.sin(y - w * tt), n)
+                frames.append(mt.locate_critical_points(a))
+            tracks, events = mt.track_points(frames, times=times, max_speed=2.0)
+            live = [tr for tr in tracks if len(tr["history"]) == len(times)]
+            births = [e for e in events if e["type"] == "birth" and e["t_index"] > 0]
+            deaths = [e for e in events if e["type"] == "death"]
+            check(len(live) == 8 and len(births) == 0 and len(deaths) == 0,
+                  "N=%d dt=%.3f: 8 live tracks, no birth/death (live=%d b=%d d=%d)"
+                  % (n, dt, len(live), len(births), len(deaths)))
+
+
+def test_separatrix_not_nearest_o():
+    print("\n== Morse O is not the nearest O ==")
+    # -cos x + cos y: X at (0,0) is Morse-linked to O_max at (π,0).
+    # A compact diagonal bump adds a nearer O_max. A nearest-O fallback
+    # would never report (π,0).
+    def field(x, y):
+        bump = 0.5 * np.exp(12.0 * (np.cos(x - 0.65) + np.cos(y - 0.65) - 2.0))
+        return -np.cos(x) + np.cos(y) + bump
+
+    a = mt.sample_grid(field, 128)
+    pts = mt.locate_critical_points(a)
+    xs = [p for p in pts if p["kind"] == mt.KIND_X]
+    os_ = [p for p in pts if p["kind"] in (mt.KIND_OMAX, mt.KIND_OMIN)]
+    xpt = nearest(xs, 0.0, 0.0)
+    check(mt.periodic_dist(xpt["x"], xpt["y"], 0.0, 0.0) < 0.25,
+          "origin X survives the bump")
+    nearest_o = nearest(os_, xpt["x"], xpt["y"])
+    far = nearest([p for p in os_ if p["kind"] == mt.KIND_OMAX], math.pi, 0.0)
+    check(mt.periodic_dist(nearest_o["x"], nearest_o["y"], xpt["x"], xpt["y"]) + 1.0
+          < mt.periodic_dist(far["x"], far["y"], xpt["x"], xpt["y"]),
+          "decoy O is nearer than Morse O_max at (π,0)")
+    pairs, xs2, os2 = mt.pair_morse(pts, a)
+    xi = None
+    for i, p in enumerate(xs2):
+        if mt.periodic_dist(p["x"], p["y"], xpt["x"], xpt["y"]) < 1.0e-8:
+            xi = i
+            break
+    check(xi is not None, "origin X is in the pairing list")
+    linked = [os2[k] for k in pairs[xi]["o_indices"]] if xi is not None else []
+    has_far = any(
+        mt.periodic_dist(o["x"], o["y"], far["x"], far["y"]) < 0.3 for o in linked)
+    check(has_far, "walk reaches Morse O at (π,0), not only the nearest decoy")
+    print("  nearest O (%.3f,%.3f); Morse far O (%.3f,%.3f); linked %s" % (
+        nearest_o["x"], nearest_o["y"], far["x"], far["y"],
+        [(round(o["x"], 3), round(o["y"], 3), o["kind"]) for o in linked]))
+
+
+def test_fourier_hessian_not_bilinear_artifact():
+    print("\n== Fourier Hessian on sin x sin y is well-conditioned ==")
+    for n in (32, 64, 128):
+        a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), n)
+        pts = mt.locate_critical_points(a)
+        xs = [p for p in pts if p["kind"] == mt.KIND_X]
+        check(len(xs) == 4, "N=%d still 4 X" % n)
+        for p in xs:
+            check(p["eig_ratio"] > 0.2, "N=%d X eig_ratio=%.3f not degenerate" % (
+                n, p["eig_ratio"]))
+            check(p["grad2"] < 1.0e-12, "N=%d Fourier |∇a|²=%.3e at X" % (n, p["grad2"]))
+
+
 def test_misclassify_fails():
     print("\n== classification must not swap X and O ==")
     a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), 48)
@@ -175,6 +246,9 @@ def main():
     test_ot_initial()
     test_creation_annihilation()
     test_decaying_eigenmode_keeps_counts()
+    test_moving_multi_n_and_cadence()
+    test_separatrix_not_nearest_o()
+    test_fourier_hessian_not_bilinear_artifact()
     test_misclassify_fails()
     print("\n%d failures" % len(FAILS))
     if FAILS:
