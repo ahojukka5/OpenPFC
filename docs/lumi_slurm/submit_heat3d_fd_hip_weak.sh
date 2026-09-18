@@ -65,6 +65,10 @@ if [[ -z "${OPENPFC_REVISION:-}" ]]; then
 fi
 export OPENPFC_DIRTY="${OPENPFC_DIRTY:-unknown}"
 export HEAT3D_HIP_BIN
+# Do not inherit packed-halo / FFT campaign leftovers via --export=ALL.
+unset OPENPFC_HIP_FORCE_PACKED_HALO OPENPFC_CUDA_FORCE_PACKED_HALO \
+  OPENPFC_ASSUME_GPU_AWARE_MPI OPENPFC_FFT_PROC_GRID OPENPFC_FFT_NODE_GRID \
+  OPENPFC_FFT_SLAB_AXIS || true
 
 if [[ "${MODE}" == "diag" ]]; then
   export HEAT3D_DIAG_TIMING=1
