@@ -287,33 +287,13 @@ def pair_morse(points, a, length=TWOPI):
 
 
 def connectivity_graph(points, a, length=TWOPI):
-    """Adjacency: each well-conditioned X and the O basins of its 4 rays."""
-    pairs, xs, os_ = pair_morse(points, a, length)
-    graph = []
-    for pr, xpt in zip(pairs, xs):
-        basins = []
-        for b in pr["branches"]:
-            if b["o_index"] is None:
-                basins.append({"branch": b["branch"], "o": None})
-            else:
-                basins.append({
-                    "branch": b["branch"],
-                    "o": {
-                        "kind": b["o_kind"],
-                        "x": b["o_x"],
-                        "y": b["o_y"],
-                        "a": b["o_a"],
-                    },
-                })
-        graph.append({
-            "x": xpt["x"],
-            "y": xpt["y"],
-            "a": xpt["a"],
-            "hess_cond": xpt["hess_cond"],
-            "eig_ratio": xpt["eig_ratio"],
-            "basins": basins,
-        })
-    return graph
+    """Magnetic separatrix graph: a=a_X along B, not Morse ±∇a.
+
+    Returns the `magnetic_connectivity` node list. O-points appear only
+    as enclosed faces of X–X critical-level cycles.
+    """
+    mag, _, _ = magnetic_connectivity(points, a, length)
+    return mag
 
 
 def graph_key(graph, bin_size=0.3, length=TWOPI):

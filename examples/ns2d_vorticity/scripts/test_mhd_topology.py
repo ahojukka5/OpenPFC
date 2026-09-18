@@ -274,6 +274,27 @@ def test_magnetic_not_morse_sinxsiny():
                         e["x"], e["y"], 0.5 * math.pi, 0.5 * math.pi) < 0.4:
                     enclosed_max = True
         check(enclosed_max, "N=%d O_max at (π/2,π/2) enclosed by a=a_X" % n)
+        # Magnetic connectivity is X–X on the axes. Morse is X–O on diagonals.
+        morse_kinds = set()
+        for k in pairs[xi]["o_indices"]:
+            morse_kinds.add(os2[k]["kind"])
+        check(any(k.startswith("O") for k in morse_kinds),
+              "N=%d Morse graph is X–O, so it is not magnetic connectivity" % n)
+
+
+def test_magnetic_graphs_agree_across_n():
+    print("\n== magnetic graphs of sin x sin y agree across N ==")
+    graphs = {}
+    for n in (32, 64, 128):
+        a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), n)
+        pts = mt.locate_critical_points(a)
+        mag, _, _ = mt.magnetic_connectivity(pts, a)
+        graphs[n] = mag
+        check(len(mag) == 4, "N=%d four X nodes" % n)
+    ok, msg = mt.magnetic_graphs_match(graphs[32], graphs[64])
+    check(ok, "magnetic graph 32 vs 64: %s" % msg)
+    ok, msg = mt.magnetic_graphs_match(graphs[64], graphs[128])
+    check(ok, "magnetic graph 64 vs 128: %s" % msg)
 
 
 def test_ot_t0_multigraph_faces():
@@ -372,6 +393,7 @@ def main():
     test_separatrix_not_nearest_o()
     test_fourier_hessian_not_bilinear_artifact()
     test_magnetic_not_morse_sinxsiny()
+    test_magnetic_graphs_agree_across_n()
     test_ot_t0_multigraph_faces()
     test_force_free_budget_is_O_diffusion()
     test_misclassify_fails()
