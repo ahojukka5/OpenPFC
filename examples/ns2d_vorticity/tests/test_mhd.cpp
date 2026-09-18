@@ -182,12 +182,14 @@ TEST_CASE("Elsasser speeds are max components and magnitudes of u±B",
     const auto s = ns2d::elsasser_speeds(u, v, bx, by);
     REQUIRE_THAT(s.max_inf, WithinAbs(2.0, 1.0e-15));
     REQUIRE_THAT(s.max_mag, WithinAbs(2.0, 1.0e-15));
+    REQUIRE_THAT(s.max_l1, WithinAbs(2.0, 1.0e-15));
   }
   {
     std::vector<double> u{1.0}, v{0.0}, bx{0.0}, by{1.0};
     const auto s = ns2d::elsasser_speeds(u, v, bx, by);
     REQUIRE_THAT(s.max_inf, WithinAbs(1.0, 1.0e-15));
     REQUIRE_THAT(s.max_mag, WithinAbs(std::sqrt(2.0), 1.0e-15));
+    REQUIRE_THAT(s.max_l1, WithinAbs(2.0, 1.0e-15));
   }
   MHDStack mhd(32, ns2d::MHDParams{0.02, 0.02, 0.01, +1.0});
   mhd.solver.initialize(
@@ -198,6 +200,24 @@ TEST_CASE("Elsasser speeds are max components and magnitudes of u±B",
   REQUIRE_THAT(d.cfl_ub, WithinAbs(d.cfl_nominal, 1.0e-12));
   REQUIRE_THAT(d.cfl_elsasser, WithinAbs(2.0 * d.cfl_nominal, 1.0e-12));
   REQUIRE(d.cfl_elsasser > d.cfl_ub);
+  REQUIRE(d.cfl_elsasser_sum >= d.cfl_elsasser);
+}
+
+TEST_CASE("diagonal Elsasser propagation makes the 2-D sum CFL larger",
+          "[mhd][elsasser-sum]") {
+  // z+ = (1, 1), z- = (1, 1): component-max is 1, L1 sum is 2.
+  std::vector<double> u{1.0}, v{1.0}, bx{0.0}, by{0.0};
+  const double dx = 0.5, dy = 0.5;
+  const auto s = ns2d::elsasser_speeds(u, v, bx, by, dx, dy);
+  REQUIRE_THAT(s.max_inf, WithinAbs(1.0, 1.0e-15));
+  REQUIRE_THAT(s.max_l1, WithinAbs(2.0, 1.0e-15));
+  REQUIRE(s.max_l1 > s.max_inf);
+  REQUIRE_THAT(s.max_sum_inv, WithinAbs(4.0, 1.0e-15));
+  const double dt = 0.1;
+  const double cfl_comp = dt * s.max_inf / dx;
+  const double cfl_sum = dt * s.max_sum_inv;
+  REQUIRE(cfl_sum > cfl_comp);
+  REQUIRE_THAT(cfl_sum, WithinAbs(2.0 * cfl_comp, 1.0e-15));
 }
 
 TEST_CASE("A2 uses the zero-mean gauge and a_hat(0) is removed",

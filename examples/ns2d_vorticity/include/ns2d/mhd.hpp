@@ -29,8 +29,9 @@
  * invariant is \f$A_2=\frac12\langle(a-\langle a\rangle)^2\rangle\f$.
  *
  * Timestep: fixed \f$\Delta t\f$. `--cfl` only selects
- * \f$\Delta t=\mathrm{CFL}_{\mathrm{nom}}\Delta x\f$. The measured
- * characteristic CFL is \f$\Delta t\,\max|z^\pm_i|/\Delta x\f$ with
+ * \f$\Delta t=\mathrm{CFL}_{\mathrm{nom}}\Delta x\f$. The fail-closed
+ * characteristic CFL is
+ * \f$\Delta t\,\max(|z_x^\pm|/\Delta x+|z_y^\pm|/\Delta y)\f$ with
  * Elsasser fields \f$z^\pm=\mathbf u\pm\mathbf B\f$.
  */
 
@@ -80,12 +81,15 @@ struct MHDDiagnostics {
   double cfl_nominal{0.0};
   /// Deprecated bound: dt * max(|u_i|,|B_i|) / dx.
   double cfl_ub{0.0};
-  /// Measured characteristic CFL: dt * max_inf(|z+|,|z-|) / dx, z±=u±B.
+  /// Component-max Elsasser CFL: dt * max_i |z±_i| / dx.
   double cfl_elsasser{0.0};
-  /// dt * max(|z+|,|z-|) / dx with Euclidean |z|.
+  /// Euclidean Elsasser CFL: dt * max |z±| / dx.
   double cfl_elsasser_mag{0.0};
+  /// Fail-closed 2-D bound: dt * max(|z_x^±|/dx + |z_y^±|/dy).
+  double cfl_elsasser_sum{0.0};
   double max_z_inf{0.0};
   double max_z_mag{0.0};
+  double max_z_l1{0.0};
   double mean_omega{0.0};
   double mean_a{0.0};
 };
@@ -253,7 +257,9 @@ public:
       du = std::max(du, std::abs(m_div_u[c]));
       db = std::max(db, std::abs(m_div_b[c]));
     });
-    const ElsasserSpeeds zs = elsasser_speeds(m_u, m_v, m_bx, m_by);
+    const auto spc_local = m_plane.spacing();
+    const ElsasserSpeeds zs =
+        elsasser_speeds(m_u, m_v, m_bx, m_by, spc_local[0], spc_local[1]);
 
     double g_ke = 0, g_me = 0, g_hc = 0, g_a2 = 0, g_ens = 0, g_j2 = 0;
     double g_w = 0, g_a = 0, g_maxw = 0, g_maxj = 0, g_maxu = 0, g_maxb = 0;
@@ -272,9 +278,11 @@ public:
     MPI_Allreduce(&maxb, &g_maxb, 1, MPI_DOUBLE, MPI_MAX, comm);
     MPI_Allreduce(&du, &g_du, 1, MPI_DOUBLE, MPI_MAX, comm);
     MPI_Allreduce(&db, &g_db, 1, MPI_DOUBLE, MPI_MAX, comm);
-    double g_zinf = 0.0, g_zmag = 0.0;
+    double g_zinf = 0.0, g_zmag = 0.0, g_zl1 = 0.0, g_zsum = 0.0;
     MPI_Allreduce(&zs.max_inf, &g_zinf, 1, MPI_DOUBLE, MPI_MAX, comm);
     MPI_Allreduce(&zs.max_mag, &g_zmag, 1, MPI_DOUBLE, MPI_MAX, comm);
+    MPI_Allreduce(&zs.max_l1, &g_zl1, 1, MPI_DOUBLE, MPI_MAX, comm);
+    MPI_Allreduce(&zs.max_sum_inv, &g_zsum, 1, MPI_DOUBLE, MPI_MAX, comm);
 
     const auto gs = m_plane.gsize();
     const double ncells = static_cast<double>(gs[0]) * gs[1] * gs[2];
@@ -305,8 +313,10 @@ public:
     d.cfl_ub = m_params.dt * std::max(g_maxu, g_maxb) / dx;
     d.max_z_inf = g_zinf;
     d.max_z_mag = g_zmag;
+    d.max_z_l1 = g_zl1;
     d.cfl_elsasser = m_params.dt * g_zinf / dx;
     d.cfl_elsasser_mag = m_params.dt * g_zmag / dx;
+    d.cfl_elsasser_sum = m_params.dt * g_zsum;
     if (m_have_prev_energy && d.time > m_prev_time) {
       const double dedt = (d.energy - m_prev_energy) / (d.time - m_prev_time);
       d.energy_budget_residual =

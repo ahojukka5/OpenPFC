@@ -277,30 +277,38 @@ void ifrk4_pair(SpectralPlane &sp, std::vector<SpectralPlane::Complex> &w_hat,
  * Elsasser speeds z± = u ± B.
  *
  * `max_inf` is the max absolute Cartesian component of either z+ or z-.
- * `max_mag` is the max Euclidean |z±|. The conservative measured CFL is
- * `dt * max_inf / dx`.
+ * `max_mag` is the max Euclidean |z±|.
+ * `max_l1` is max(|z_x^±| + |z_y^±|).
+ * `max_sum_inv` is max(|z_x^±|/dx + |z_y^±|/dy), the inverse-time
+ * multidimensional characteristic bound. The fail-closed CFL is
+ * `dt * max_sum_inv`.
  */
 struct ElsasserSpeeds {
   double max_inf{0.0};
   double max_mag{0.0};
+  double max_l1{0.0};
+  double max_sum_inv{0.0};
 };
 
 [[nodiscard]] inline ElsasserSpeeds
 elsasser_speeds(const std::vector<double> &u, const std::vector<double> &v,
-                const std::vector<double> &bx, const std::vector<double> &by) {
+                const std::vector<double> &bx, const std::vector<double> &by,
+                double dx = 1.0, double dy = 1.0) {
   ElsasserSpeeds s;
   const std::size_t n = u.size();
+  const double inv_dx = 1.0 / dx;
+  const double inv_dy = 1.0 / dy;
+  auto accum = [&](double zx, double zy) {
+    const double ax = std::abs(zx);
+    const double ay = std::abs(zy);
+    s.max_inf = std::max(s.max_inf, std::max(ax, ay));
+    s.max_mag = std::max(s.max_mag, std::hypot(zx, zy));
+    s.max_l1 = std::max(s.max_l1, ax + ay);
+    s.max_sum_inv = std::max(s.max_sum_inv, ax * inv_dx + ay * inv_dy);
+  };
   for (std::size_t i = 0; i < n; ++i) {
-    const double zpx = u[i] + bx[i];
-    const double zpy = v[i] + by[i];
-    const double zmx = u[i] - bx[i];
-    const double zmy = v[i] - by[i];
-    s.max_inf = std::max(s.max_inf, std::abs(zpx));
-    s.max_inf = std::max(s.max_inf, std::abs(zpy));
-    s.max_inf = std::max(s.max_inf, std::abs(zmx));
-    s.max_inf = std::max(s.max_inf, std::abs(zmy));
-    s.max_mag = std::max(s.max_mag, std::hypot(zpx, zpy));
-    s.max_mag = std::max(s.max_mag, std::hypot(zmx, zmy));
+    accum(u[i] + bx[i], v[i] + by[i]);
+    accum(u[i] - bx[i], v[i] - by[i]);
   }
   return s;
 }
