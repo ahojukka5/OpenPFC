@@ -1,0 +1,97 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "research_issue": "ahojukka5/research#476",
+  "openpfc_issue": 36,
+  "openpfc_pr": 37,
+  "question": "Can we prescribe a genuinely 3-D, connected, periodic auxetic cell that the existing OpenPFC 3-D homogenizer evaluates as nu<0?",
+  "stop_rule": "faithful_connected_spd_not_auxetic",
+  "qualified": false,
+  "outcome": "mechanism_preserved_nu_nonnegative",
+  "geometry": {
+    "name": "reentrant-3d",
+    "primary_source": "Yang, L., Harrysson, O., West, H. & Cormier, D., Int. J. Solids Struct. 69-70 (2015) 475-490",
+    "also": "Evans, K. E., Nkansah, M. A. & Hutchinson, I. J., Acta Metall. Mater. 42 (1994) 1289-1294 (inverted honeycomb)",
+    "mechanism": "Re-entrant V-struts in xz and yz with four-fold patterning about vertical pillars (Gibson-Robert). Small-strain bending in the literature, not contact/buckling.",
+    "expected_auxetic_directions": "Yang: NPR in all three principal directions; x and y equivalent; z distinguished",
+    "published_regime": "small-deflection Timoshenko and large-deflection beam models plus AM experiments",
+    "not_an_extrusion": true,
+    "not_rotating_cubes": true
+  },
+  "parameters_frozen_before_poisson": {
+    "thickness": 0.06,
+    "inset": 0.14,
+    "z_joints": [0.10, 0.30, 0.70, 0.90],
+    "pillars": "half-lattice (0,0),(0.5,0),(0,0.5),(0.5,0.5), z=0..1",
+    "squares": "all four 0.5-squares (one representation correction from checkerboard)",
+    "resolutions": ["32^3", "64^3"]
+  },
+  "representation_correction": {
+    "first_occupancy": "checkerboard two squares; connected; perc xyz; all nu>0 (job 22157477)",
+    "correction": "add V-struts on the remaining two 0.5-squares so every bay is re-entrant",
+    "second_occupancy": "job 22157558; still connected, perc xyz, all nu>0"
+  },
+  "material": {
+    "E_solid": 1.0,
+    "nu_solid": 0.3,
+    "E_void": 0.02,
+    "nu_void": 0.3,
+    "note": "Same ersatz as the qualified 2-D rotating-square seed; not tuned to force nu<0."
+  },
+  "source_repo": "ahojukka5/OpenPFC",
+  "source_revision": "ee6836458c675529d004abd5e5732572245fb042",
+  "dirty": 0,
+  "job": "22157558",
+  "host": "nid002276",
+  "command": "srun --ntasks=8 --cpus-per-task=8 openpfc_homogenize --shape=reentrant-3d --nx=N --ny=N --nz=N --E-solid=1 --nu-solid=0.3 --E-void=0.02 --nu-void=0.3 --thickness=0.06 --inset=0.14 --dump-dir=...",
+  "artifacts": {
+    "root": "/scratch/project_462001519/juaho/inverse-homogenization/oracle36_22157558"
+  },
+  "n32": {
+    "volume": 0.28515625,
+    "spd": true,
+    "min_eig": 0.025675532385,
+    "nu_xy": 0.21318572644,
+    "nu_xz": 0.20993317869,
+    "nu_yx": 0.21318572644,
+    "nu_yz": 0.20993317869,
+    "nu_zx": 0.31112918150,
+    "nu_zy": 0.31112918150,
+    "percolate_solid": {"x": true, "y": true, "z": true},
+    "n_solid_components": 1,
+    "elasticity_converged": true,
+    "el_iters_max": 69,
+    "el_residual_max": 8.9793546268e-09
+  },
+  "n64": {
+    "volume": 0.2907714844,
+    "spd": true,
+    "min_eig": 0.026126524741,
+    "nu_xy": 0.21890395415,
+    "nu_xz": 0.20632985251,
+    "nu_yx": 0.21890395415,
+    "nu_yz": 0.20632985251,
+    "nu_zx": 0.31323274973,
+    "nu_zy": 0.31323274973,
+    "C_H_11": 0.10076688004,
+    "C_H_12": 0.030544865239,
+    "C_H_13": 0.041131129396,
+    "C_H_33": 0.15570872897,
+    "C_H_44": 0.026126674065,
+    "C_H_66": 0.032621220327,
+    "percolate_solid": {"x": true, "y": true, "z": true},
+    "n_solid_components": 1,
+    "elasticity_converged": true,
+    "el_iters_max": 68,
+    "el_residual_max": 9.7985426007e-09
+  },
+  "qualification": {
+    "any_negative_compliance_poisson": false,
+    "C_H_spd": true,
+    "connected": true,
+    "perc_xyz": true,
+    "genuinely_3d": true,
+    "sign_stable_two_resolutions": true,
+    "auxetic_forward_oracle": false
+  },
+  "interpretation": "After one representation correction (all four re-entrant bays), the voxel cell is 3-D, one solid component, perc xyz, SPD, and all six compliance Poisson ratios are positive at 32^3 and 64^3 (nu_xy≈+0.22, nu_zx≈+0.31). PR #34 already showed the 3-D homogenizer can produce nu_xy<0, so this is not a Voigt/compliance bug. Remaining caveats vs Yang 2015: through-going half-lattice pillars are not finite-H verticals, and t/L≈0.17 is a stubby continuum strut not a slender Timoshenko beam. One correction used; no further tuning. Do not start inverse design."
+}
