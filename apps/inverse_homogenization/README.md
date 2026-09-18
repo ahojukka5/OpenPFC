@@ -54,10 +54,14 @@ mpirun -n 2 ./apps/inverse_homogenization/openpfc_homogenize \
   --shape=laminate-z --E-solid=1 --E-void=0.25
 ```
 
-`--shape` is `homogeneous`, `laminate-z`, or `sphere`. The printed \(C_H\) is
-the **engineering Voigt** \(6\times 6\) (order \(11,22,33,23,13,12\),
+`--shape` is `homogeneous`, `laminate-z`, `sphere`, or `rotating-cubes`
+(OpenPFC #31 3-D forward oracle: eight cubes on octant centres, Attard
+& Grima rotating-rigid-unit idea). The printed \(C_H\) is the
+**engineering Voigt** \(6\times 6\) (order \(11,22,33,23,13,12\),
 \(\gamma=2\varepsilon\)). A homogeneous isotropic material therefore reports
-\(C_{44}=\mu\), not \(2\mu\).
+\(C_{44}=\mu\), not \(2\mu\). The driver also prints \(S=C_H^{-1}\),
+compliance Poisson ratios, SPD / \(\lambda_{\min}\), cubic spreads, and
+periodic percolation. `--dump-dir` writes gathered `h.bin` / `h.xdmf`.
 
 `HOMOGENIZATION_CHECKSUM` is \(\lVert C_H\rVert_F\); the smoke test greps it.
 
