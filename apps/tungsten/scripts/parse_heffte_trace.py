@@ -233,6 +233,15 @@ def main() -> int:
         nz = int(meta.get("Lz") or 0)
         wall, n_kept = profile_wall(run, skip_frac)
         n_steps = n_kept if n_kept else 0
+        rank0 = run / "heffte_trace_0.log"
+        n_waitany = 0
+        n_irecv = 0
+        if rank0.is_file():
+            for name, _, _ in parse_log(rank0):
+                if name == "waitany":
+                    n_waitany += 1
+                elif name.startswith("irecv "):
+                    n_irecv += 1
         # Per-step phases so they sit next to wall_step. Trace totals span
         # the kept window; do not force leaf_sum == n_steps * wall_step.
         def per_step(total: float) -> float:
@@ -277,6 +286,8 @@ def main() -> int:
                 "pack_frac": f"{pack_ps / denom:.4f}" if denom else "",
                 "mpi_frac": f"{mpi_ps / denom:.4f}" if denom else "",
                 "other_frac": f"{other_ps / denom:.4f}" if denom else "",
+                "n_waitany": n_waitany,
+                "n_irecv": n_irecv,
                 "n_logs": len(logs),
             }
         )
