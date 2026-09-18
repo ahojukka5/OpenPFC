@@ -54,9 +54,10 @@ mpirun -n 2 ./apps/inverse_homogenization/openpfc_homogenize \
   --shape=laminate-z --E-solid=1 --E-void=0.25
 ```
 
-`--shape` is `homogeneous`, `laminate-z`, `sphere`, or `rotating-cubes`
-(OpenPFC #31 3-D forward oracle: eight cubes on octant centres, Attard
-& Grima rotating-rigid-unit idea). The printed \(C_H\) is the
+`--shape` is `homogeneous`, `laminate-z`, `sphere`, `rotating-cubes`
+(OpenPFC #31), or `rotating-squares` (OpenPFC #33: the qualified 2-D
+Grima seed extruded unchanged in \(z\), a 3-D consistency oracle, not a
+3-D metamaterial). The printed \(C_H\) is the
 **engineering Voigt** \(6\times 6\) (order \(11,22,33,23,13,12\),
 \(\gamma=2\varepsilon\)). A homogeneous isotropic material therefore reports
 \(C_{44}=\mu\), not \(2\mu\). The driver also prints \(S=C_H^{-1}\),
