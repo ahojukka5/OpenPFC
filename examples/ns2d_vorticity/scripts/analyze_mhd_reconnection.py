@@ -95,7 +95,7 @@ def pairing_signature(pts):
     return (nX, nO, nD)
 
 
-def analyze_dir(directory, n, eta, stride=1):
+def analyze_dir(directory, n, eta, stride=1, t_max=None):
     incs = dump_increments(directory)
     incs = subsample(incs, stride)
     csv_path = os.path.join(directory, "diagnostics.csv")
@@ -104,12 +104,14 @@ def analyze_dir(directory, n, eta, stride=1):
     frames = []
     fields = []
     for inc in incs:
+        t = float(table[inc]["time"]) if inc in table else float(inc)
+        if t_max is not None and t_max > 0.0 and t > t_max + 1.0e-12:
+            continue
         a = load_brick(os.path.join(directory, "a_%04d.bin" % inc), n)
         jpath = os.path.join(directory, "j_%04d.bin" % inc)
         j = load_brick(jpath, n) if os.path.exists(jpath) else None
         pts = mt.locate_critical_points(a, j)
         frames.append(pts)
-        t = float(table[inc]["time"]) if inc in table else float(inc)
         times.append(t)
         fields.append({"inc": inc, "t": t, "a": a, "j": j, "pts": pts})
     tracks, events = mt.track_points(
@@ -135,13 +137,11 @@ def analyze_dir(directory, n, eta, stride=1):
         adj = []
         for node in mag:
             xid = track_id_at(k, node["x"], node["y"])
-            xhits = []
-            for b in node["branches"]:
-                if b.get("hit_x_pos") is None:
-                    continue
-                xhits.append(track_id_at(k, b["hit_x_pos"][0], b["hit_x_pos"][1]))
+            # Magnetic connectivity of islands: which O-tracks are enclosed
+            # by a=a_X faces. X–X hit labels can swap among equivalent
+            # partners and are not used as the change signal.
             oids = [track_id_at(k, e["x"], e["y"]) for e in node["enclosed_O"]]
-            adj.append((xid, tuple(sorted(set(xhits))), tuple(sorted(set(oids)))))
+            adj.append((xid, tuple(sorted(set(oids)))))
         adj_key = tuple(sorted(adj))
         counts = pairing_signature(pts)
         rec = {
@@ -248,11 +248,13 @@ def main():
     p.add_argument("--eta", type=float, required=True)
     p.add_argument("--stride", type=int, default=1,
                    help="keep every stride-th dump (cadence study)")
+    p.add_argument("--t-max", type=float, default=0.0,
+                   help="stop after this time (0 = all dumps)")
     p.add_argument("--fine-dir", default="")
     p.add_argument("--fine-n", type=int, default=0)
     p.add_argument("--json-out", default="")
     args = p.parse_args()
-    report = analyze_dir(args.dir, args.n, args.eta, args.stride)
+    report = analyze_dir(args.dir, args.n, args.eta, args.stride, args.t_max)
     print("frames=%d tracks=%d events=%d connectivity_changes=%d" % (
         report["n_frames"], report["n_tracks"], report["n_events"],
         report["connectivity_changes"]))
@@ -266,7 +268,8 @@ def main():
             print("  graph change at t=%.4f nX=%d nO=%d degen=%d (count_sentinel=%s)" % (
                 rec["t"], rec["nX"], rec["nO"], rec["n_degen"], rec["count_changed"]))
     if args.fine_dir:
-        fine = analyze_dir(args.fine_dir, args.fine_n, args.eta, args.stride)
+        fine = analyze_dir(args.fine_dir, args.fine_n, args.eta, args.stride,
+                           args.t_max)
         report["fine"] = {k: fine[k] for k in fine if k not in ("series", "graph")}
         toi = [2.238, 1.924, 1.492, 0.0, 0.5, 1.178]
         report["resolution_compare"] = compare_resolutions(report, fine, toi)
