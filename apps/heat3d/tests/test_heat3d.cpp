@@ -839,9 +839,39 @@ TEST_CASE("heat3d::parse_fd: happy path", "[heat3d][cli]") {
   const auto cfg = heat3d::parse_fd(5, argv);
   REQUIRE(cfg.has_value());
   REQUIRE(cfg->N == 64);
+  REQUIRE(cfg->Nx == 64);
+  REQUIRE(cfg->Ny == 64);
+  REQUIRE(cfg->Nz == 64);
   REQUIRE(cfg->n_steps == 200);
   REQUIRE_THAT(cfg->dt, WithinAbs(0.001, 1e-15));
   REQUIRE(cfg->fd_order == 8);
+}
+
+TEST_CASE("heat3d::parse_fd: rectangular Nx Ny Nz keeps cubic CLI",
+          "[heat3d][cli]") {
+  char *argv[] = {const_cast<char *>("heat3d_fd_hip"),
+                  const_cast<char *>("512"),
+                  const_cast<char *>("512"),
+                  const_cast<char *>("1024"),
+                  const_cast<char *>("100"),
+                  const_cast<char *>("0.01"),
+                  const_cast<char *>("2")};
+  const auto cfg = heat3d::parse_fd(7, argv);
+  REQUIRE(cfg.has_value());
+  REQUIRE(cfg->Nx == 512);
+  REQUIRE(cfg->Ny == 512);
+  REQUIRE(cfg->Nz == 1024);
+  REQUIRE(cfg->N == 512);
+  REQUIRE(cfg->n_steps == 100);
+  REQUIRE(cfg->fd_order == 2);
+}
+
+TEST_CASE("heat3d::parse_fd: six args is not cubic or rectangular",
+          "[heat3d][cli]") {
+  char *argv[] = {const_cast<char *>("heat3d_fd"), const_cast<char *>("64"),
+                  const_cast<char *>("64"),        const_cast<char *>("200"),
+                  const_cast<char *>("0.001"),     const_cast<char *>("8")};
+  REQUIRE_FALSE(heat3d::parse_fd(6, argv).has_value());
 }
 
 TEST_CASE("heat3d::parse_fd: missing fd_order returns nullopt", "[heat3d][cli]") {

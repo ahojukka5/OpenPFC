@@ -5,9 +5,14 @@
  * @file heat3d_fd_hip.cpp
  * @brief 3D heat equation on HIP: device halo + stencil, one rank per GCD.
  *
- * Same CLI as `heat3d_fd`: `<N> <n_steps> <dt> <fd_order>`. Optional env:
+ * CLI: `<N> <n_steps> <dt> <fd_order>` or
+ * `<Nx> <Ny> <Nz> <n_steps> <dt> <fd_order>`. Optional env:
  * `HEAT3D_PROFILE_JSON` writes a schema-v4 `wall_step` profile; `HEAT3D_WARMUP`
  * (default 1) drops that many frames from the profile.
+ * `OPENPFC_FD_PROC_GRID=gx,gy,gz` forces the Cartesian split.
+ * `HEAT3D_REQUIRE_INTERIOR=nx,ny,nz` fails closed unless every rank's owned
+ * interior matches. `HEAT3D_DIAG_TIMING=1` adds HIP-event / blocking-halo
+ * attribution and must not replace the clean barriered `wall_step`.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP)
@@ -17,13 +22,19 @@
 #include <hip/hip_runtime.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
+#include <vector>
 
 #include <mpi.h>
 
@@ -35,6 +46,8 @@
 #include <openpfc/domain/create.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/decomposition/decomposition.hpp>
+#include <openpfc/kernel/decomposition/decomposition_neighbors.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/kernel/profiling/profiling.hpp>
 #include <openpfc/runtime/common/mpi_main.hpp>
@@ -80,15 +93,74 @@ int env_int(const char *name, int fallback) {
   return std::atoi(v);
 }
 
+bool env_flag(const char *name) {
+  const char *v = std::getenv(name);
+  return v != nullptr && v[0] == '1' && v[1] == '\0';
+}
+
+std::array<int, 3> parse_int3_env(const char *name) {
+  const char *e = std::getenv(name);
+  if (e == nullptr || e[0] == '\0') {
+    return {0, 0, 0};
+  }
+  std::array<int, 3> g{0, 0, 0};
+  const char *p = e;
+  for (int i = 0; i < 3; ++i) {
+    char *end = nullptr;
+    const long v = std::strtol(p, &end, 10);
+    if (end == p || v < 1) {
+      return {0, 0, 0};
+    }
+    g[static_cast<std::size_t>(i)] = static_cast<int>(v);
+    if (i < 2) {
+      if (*end != ',' && *end != 'x' && *end != 'X') {
+        return {0, 0, 0};
+      }
+      p = end + 1;
+    }
+  }
+  return g;
+}
+
+double median_of(std::vector<double> v) {
+  if (v.empty()) {
+    return 0.0;
+  }
+  std::sort(v.begin(), v.end());
+  const std::size_t n = v.size();
+  if (n % 2 == 1) {
+    return v[n / 2];
+  }
+  return 0.5 * (v[n / 2 - 1] + v[n / 2]);
+}
+
+struct HipEvent {
+  hipEvent_t e{};
+  HipEvent() { hip_check(hipEventCreate(&e), "hipEventCreate"); }
+  ~HipEvent() { hipEventDestroy(e); }
+  HipEvent(const HipEvent &) = delete;
+  HipEvent &operator=(const HipEvent &) = delete;
+};
+
 int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   pfc::runtime::gpu::bind_local_device(MPI_COMM_WORLD);
 
   const int hw = cfg.fd_order / 2;
-  const auto domain = pfc::domain::create(pfc::GridSize({cfg.N, cfg.N, cfg.N}),
+  const auto domain = pfc::domain::create(pfc::GridSize({cfg.Nx, cfg.Ny, cfg.Nz}),
                                           pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
                                           pfc::GridSpacing({1.0, 1.0, 1.0}));
   pfc::sim::stacks::FDGPUStack<pfc::HIPSpace> stack(domain, hw, rank, nproc);
   const auto &decomp = stack.decomposition();
+  const auto grid = pfc::decomposition::get_grid(decomp);
+  const auto owned_box = pfc::decomposition::local_box(decomp, rank);
+  const int lx = owned_box.size[0];
+  const int ly = owned_box.size[1];
+  const int lz = owned_box.size[2];
+
+  int loc_min[3] = {lx, ly, lz};
+  int loc_max[3] = {lx, ly, lz};
+  MPI_Allreduce(MPI_IN_PLACE, loc_min, 3, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, loc_max, 3, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
 
   auto u_h = pfc::data::field_from_subdomain<double>(decomp, rank, hw);
   u_h.apply([](double x, double y, double z) {
@@ -101,21 +173,92 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
 
   auto halo = stack.make_exchange({&u}, {});
   auto grad = stack.gradient<heat3d::HeatGrads>(cfg.fd_order);
-  const auto owned = u.local_size();
-  const int nx = owned[0];
-  const int ny = owned[1];
-  const int nz = owned[2];
+  const auto padded = u.local_size();
+  const int nx = padded[0];
+  const int ny = padded[1];
+  const int nz = padded[2];
+
+  int gpu = -1;
+  hip_check(hipGetDevice(&gpu), "hipGetDevice");
+  char host[256];
+  if (gethostname(host, sizeof(host)) != 0) {
+    std::snprintf(host, sizeof(host), "unknown");
+  }
+  host[sizeof(host) - 1] = '\0';
+
+  const int gx = grid[0];
+  const int gy = grid[1];
+  const int rx = rank % gx;
+  const int ry = (rank / gx) % gy;
+  const int rz = rank / (gx * gy);
+  int offnode = 0;
+  const std::array<std::array<int, 3>, 6> faces = {{{{1, 0, 0}},
+                                                    {{-1, 0, 0}},
+                                                    {{0, 1, 0}},
+                                                    {{0, -1, 0}},
+                                                    {{0, 0, 1}},
+                                                    {{0, 0, -1}}}};
+  for (const auto &dir : faces) {
+    const int peer = pfc::decomposition::get_neighbor_rank(decomp, rank,
+                                                           {dir[0], dir[1], dir[2]});
+    if (peer < 0 || peer == rank) {
+      continue;
+    }
+    char peer_host[256];
+    MPI_Sendrecv(host, 256, MPI_CHAR, peer, 11, peer_host, 256, MPI_CHAR, peer, 11,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if (std::strncmp(host, peer_host, 256) != 0) {
+      ++offnode;
+    }
+  }
+
+  std::vector<char> hosts(static_cast<std::size_t>(nproc) * 256);
+  MPI_Gather(host, 256, MPI_CHAR, hosts.data(), 256, MPI_CHAR, 0, MPI_COMM_WORLD);
+  std::vector<int> gpus(static_cast<std::size_t>(nproc));
+  std::vector<int> coords(static_cast<std::size_t>(nproc) * 4);
+  const int local_meta[4] = {rx, ry, rz, offnode};
+  MPI_Gather(&gpu, 1, MPI_INT, gpus.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Gather(local_meta, 4, MPI_INT, coords.data(), 4, MPI_INT, 0, MPI_COMM_WORLD);
 
   if (rank == 0) {
-    std::cout << "HEAT3D_HIP_HALO_MODE=device"
+    std::cout << "HEAT3D_FD_DECOMP proc_grid=" << gx << "x" << gy << "x" << grid[2]
+              << " global=" << cfg.Nx << "x" << cfg.Ny << "x" << cfg.Nz
+              << " local_min=" << loc_min[0] << "x" << loc_min[1] << "x"
+              << loc_min[2] << " local_max=" << loc_max[0] << "x" << loc_max[1]
+              << "x" << loc_max[2] << " halo=" << hw
               << " gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
               << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
-              << " N=" << cfg.N << " ranks=" << nproc << " fd_order=" << cfg.fd_order
-              << "\n";
+              << " ranks=" << nproc << " fd_order=" << cfg.fd_order << "\n";
+    std::ofstream plc("fd_placement.txt");
+    plc << "rank host gpu rx ry rz offnode_faces\n";
+    for (int r = 0; r < nproc; ++r) {
+      plc << r << " " << &hosts[static_cast<std::size_t>(r) * 256] << " " << gpus[r]
+          << " " << coords[static_cast<std::size_t>(r) * 4] << " "
+          << coords[static_cast<std::size_t>(r) * 4 + 1] << " "
+          << coords[static_cast<std::size_t>(r) * 4 + 2] << " "
+          << coords[static_cast<std::size_t>(r) * 4 + 3] << "\n";
+    }
+  }
+
+  const auto require = parse_int3_env("HEAT3D_REQUIRE_INTERIOR");
+  if (require[0] > 0) {
+    const bool ok = loc_min[0] == require[0] && loc_min[1] == require[1] &&
+                    loc_min[2] == require[2] && loc_max[0] == require[0] &&
+                    loc_max[1] == require[1] && loc_max[2] == require[2];
+    if (!ok) {
+      if (rank == 0) {
+        std::cerr << "heat3d_fd_hip: owned interior " << loc_min[0] << "x"
+                  << loc_min[1] << "x" << loc_min[2] << ".." << loc_max[0] << "x"
+                  << loc_max[1] << "x" << loc_max[2] << " != required " << require[0]
+                  << "x" << require[1] << "x" << require[2] << "\n";
+      }
+      MPI_Abort(MPI_COMM_WORLD, 2);
+    }
   }
 
   const char *profile_path = std::getenv("HEAT3D_PROFILE_JSON");
   const int warmup = env_int("HEAT3D_WARMUP", 1);
+  const bool diag = env_flag("HEAT3D_DIAG_TIMING");
   std::unique_ptr<pfc::profiling::ProfilingSession> prof;
   if (profile_path != nullptr && *profile_path != '\0') {
     using pfc::profiling::ProfilingMetricCatalog;
@@ -125,6 +268,15 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
         ProfilingSession::openpfc_default_frame_metrics());
   }
   pfc::profiling::ProfilingContextScope prof_ctx(prof.get());
+
+  std::unique_ptr<HipEvent> rhs0, rhs1, upd0, upd1;
+  std::vector<double> t_halo, t_rhs, t_upd;
+  if (diag) {
+    rhs0 = std::make_unique<HipEvent>();
+    rhs1 = std::make_unique<HipEvent>();
+    upd0 = std::make_unique<HipEvent>();
+    upd1 = std::make_unique<HipEvent>();
+  }
 
   MPI_Barrier(MPI_COMM_WORLD);
   const double t_start = MPI_Wtime();
@@ -136,12 +288,39 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
       hip_check(hipDeviceSynchronize(), "hipDeviceSynchronize");
     }
     const double wall = pfc::profiling::measure_barriered(MPI_COMM_WORLD, [&] {
-      halo.exchange();
-      heat3d::fd_rhs_hip(grad, du.data(), t, nx, ny, nz);
-      du.note_device_write();
-      heat3d::euler_axpy_hip(u.data(), du.data(), cfg.dt, u.size());
-      u.note_device_write();
-      hip_check(hipDeviceSynchronize(), "heat3d step sync");
+      if (diag) {
+        hip_check(hipDeviceSynchronize(), "diag pre-halo sync");
+        const double h0 = MPI_Wtime();
+        halo.exchange();
+        hip_check(hipDeviceSynchronize(), "diag post-halo sync");
+        const double halo_s = MPI_Wtime() - h0;
+        hip_check(hipEventRecord(rhs0->e, nullptr), "rhs0");
+        heat3d::fd_rhs_hip(grad, du.data(), t, nx, ny, nz);
+        du.note_device_write();
+        hip_check(hipEventRecord(rhs1->e, nullptr), "rhs1");
+        hip_check(hipEventSynchronize(rhs1->e), "rhs sync");
+        float rhs_ms = 0.0f;
+        hip_check(hipEventElapsedTime(&rhs_ms, rhs0->e, rhs1->e), "rhs elapsed");
+        hip_check(hipEventRecord(upd0->e, nullptr), "upd0");
+        heat3d::euler_axpy_hip(u.data(), du.data(), cfg.dt, u.size());
+        u.note_device_write();
+        hip_check(hipEventRecord(upd1->e, nullptr), "upd1");
+        hip_check(hipEventSynchronize(upd1->e), "upd sync");
+        float upd_ms = 0.0f;
+        hip_check(hipEventElapsedTime(&upd_ms, upd0->e, upd1->e), "upd elapsed");
+        if (step >= warmup) {
+          t_halo.push_back(halo_s);
+          t_rhs.push_back(static_cast<double>(rhs_ms) * 1.0e-3);
+          t_upd.push_back(static_cast<double>(upd_ms) * 1.0e-3);
+        }
+      } else {
+        halo.exchange();
+        heat3d::fd_rhs_hip(grad, du.data(), t, nx, ny, nz);
+        du.note_device_write();
+        heat3d::euler_axpy_hip(u.data(), du.data(), cfg.dt, u.size());
+        u.note_device_write();
+        hip_check(hipDeviceSynchronize(), "heat3d step sync");
+      }
     });
     if (record) {
       pfc::profiling::openpfc_end_frame_step_wall_and_memory(*prof, wall, 0, 0, 0);
@@ -153,6 +332,20 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   MPI_Allreduce(&local_elapsed, &max_elapsed, 1, MPI_DOUBLE, MPI_MAX,
                 MPI_COMM_WORLD);
 
+  if (diag) {
+    const double local[3] = {median_of(t_halo), median_of(t_rhs), median_of(t_upd)};
+    double gmax[3] = {0.0, 0.0, 0.0};
+    double gmin[3] = {0.0, 0.0, 0.0};
+    MPI_Allreduce(local, gmax, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(local, gmin, 3, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    if (rank == 0) {
+      std::cout << "HEAT3D_DIAG halo_s=" << local[0] << " rhs_s=" << local[1]
+                << " update_s=" << local[2] << " halo_minmax=" << gmin[0] << ","
+                << gmax[0] << " rhs_minmax=" << gmin[1] << "," << gmax[1]
+                << " update_minmax=" << gmin[2] << "," << gmax[2] << "\n";
+    }
+  }
+
   if (prof) {
     pfc::profiling::ProfilingExportOptions exp;
     exp.write_json = true;
@@ -160,7 +353,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
     prof->finalize_and_export(MPI_COMM_WORLD, exp);
     if (rank == 0) {
       std::cout << "HEAT3D_PROFILE wrote " << profile_path << " warmup=" << warmup
-                << " steps=" << cfg.n_steps << "\n";
+                << " steps=" << cfg.n_steps << " diag=" << (diag ? 1 : 0) << "\n";
     }
   }
 
@@ -187,8 +380,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   }
 
   heat3d::report(rank, nproc, cfg, "fd_hip", heat3d::fd_extra_metadata(cfg),
-                 max_elapsed, "(periodic; interior L2)",
-                 [&u_h, hw](auto &&cb) {
+                 max_elapsed, "(periodic; interior L2)", [&u_h, hw](auto &&cb) {
                    const auto sz = u_h.local_size();
                    for (int k = hw; k < sz[2] - hw; ++k) {
                      for (int j = hw; j < sz[1] - hw; ++j) {
@@ -207,8 +399,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
 int main(int argc, char *argv[]) {
   return pfc::runtime::mpi_main(
       argc, argv, [](int app_argc, char **app_argv, int rank, int nproc) {
-        const auto cfg =
-            heat3d::parse_fd_or_print_usage(app_argc, app_argv, rank);
+        const auto cfg = heat3d::parse_fd_or_print_usage(app_argc, app_argv, rank);
         if (!cfg) {
           return EXIT_FAILURE;
         }
