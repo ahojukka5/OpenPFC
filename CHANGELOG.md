@@ -36,6 +36,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Diagnostic HeFFTe tracing build** (issue #13). Separate
+  `heffte-rocm-trace` install with `Heffte_ENABLE_TRACING=ON` and a
+  GPU-synchronous `add_trace` patch so local rocFFT work is not charged
+  to the next packing wait. Production `heffte-rocm` is unchanged.
+  `OPENPFC_HEFFTE_TRACE` enables per-rank logs from `mpi_main`.
+  `submit_tungsten_hip_trace.sh` runs the six 4-node layouts that
+  separate local-FFT vs transpose after the matched-work slab
+  falsification.
+
 - **LUMI-G tungsten_hip flagship ladder** (issue #13). Weak-scaling
   recipes for 1–32 nodes plus a gated 60-node / 3000³ point.
   `OPENPFC_FFT_NODE_GRID=1` because 1200³ is not a 32-rank 1-D slab.

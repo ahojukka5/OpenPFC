@@ -21,6 +21,7 @@ Start with the [HPC operator guide](operator_guide.md).
 | Profiling output contract | [Profiling export schema](profiling_export_schema.md) |
 | LUMI-G tungsten_hip 1–8 GCD campaign | [LUMI GPU scaling](lumi_gpu_scaling.md) |
 | LUMI-G tungsten_hip weak ladder (issue #13) | [LUMI GPU flagship](lumi_gpu_flagship.md) |
+| LUMI-G heFFTe phase tracing (diagnostic) | [LUMI GPU heFFTe trace](lumi_gpu_heffte_trace.md) |
 | First batch submission | [Slurm day one](../tutorials/hpc_slurm_day_one.md) |
 
 ## Site-specific guidance

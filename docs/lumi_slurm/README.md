@@ -25,6 +25,10 @@ Issue `#13` weak ladder (1–32 nodes, gated 60-node):
 [LUMI GPU flagship](../hpc/lumi_gpu_flagship.md) and
 `submit_tungsten_hip_flagship.sh`.
 
+Diagnostic heFFTe phase tracing for the matched-work 1200-axis cases:
+[LUMI GPU heFFTe trace](../hpc/lumi_gpu_heffte_trace.md) and
+`submit_tungsten_hip_trace.sh`. Do not admit those wall times.
+
 3D FD HIP twin (`heat3d_fd_hip`, device halo + stencil):
 
 ```bash
