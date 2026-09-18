@@ -24,7 +24,9 @@ TEMPLATE="${SCRIPT_DIR}/tungsten_hip_scaling.toml"
 PARTITION="${PARTITION:-standard-g}"
 ACCOUNT="${ACCOUNT:-project_462001519}"
 STEPS="${TUNGSTEN_STEPS:-20}"
-SRC="${OPENPFC_SRC:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+# Ignore a stale OPENPFC_SRC from another worktree in the login environment.
+SRC="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+unset OPENPFC_REVISION OPENPFC_DIRTY
 
 export TUNGSTEN_HIP_BIN
 export TUNGSTEN_STEPS="${STEPS}"

@@ -81,7 +81,9 @@ USE_PENCILS="$(awk '/^use_pencils/{print $3; exit}' "${RUNDIR}/input.toml")"
 PER_NODE="${SLURM_NTASKS_PER_NODE:-${NTASKS}}"
 SRUN_BIND=()
 CPU_BIND="none"
-if (( PER_NODE == 8 )); then
+# Full-node CCD mask is for exclusive standard-g 8-GCD nodes. dev-g
+# allocations do not own those CPU bits (jobs 22157222/22157223).
+if (( PER_NODE == 8 )) && [[ "${SLURM_JOB_PARTITION}" != "dev-g" ]]; then
   # 7 cores per GCD (LUMI CCD mask), not a single map_cpu thread.
   CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,0xfe00,0xfe00000000,0xfe0000000000"
   SRUN_BIND=(--cpu-bind="${CPU_BIND}")
@@ -90,7 +92,7 @@ elif (( PER_NODE > 8 )); then
   exit 1
 fi
 
-SRC="${OPENPFC_SRC:-/pfs/lustref1/flash/project_462001519/juaho/dev/openpfc}"
+SRC="${OPENPFC_SRC:-$(cd "${BASH_SOURCE[0]%/*}/../.." && pwd)}"
 
 # Resolve the layout OpenPFC will actually use (brick_split.hpp). Do not
 # assume 8 ranks are min-surface if OPENPFC_FFT_PROC_GRID is set.
