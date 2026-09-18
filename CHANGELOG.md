@@ -26,6 +26,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Heat3D HIP FD weak scaling** (issue
+  [#25](https://github.com/ahojukka5/OpenPFC/issues/25)). Rectangular
+  `<Nx> <Ny> <Nz>` CLI for `heat3d_fd_hip`, `OPENPFC_FD_PROC_GRID`
+  Cartesian override, fail-closed `HEAT3D_REQUIRE_INTERIOR`, and a
+  LUMI-G 1–16-node recipe at constant 256³ owned cells/GCD. Cubic CLI
+  is unchanged. Diagnostic HIP-event timings are opt-in
+  (`HEAT3D_DIAG_TIMING=1`) and are not the admitted `wall_step`.
 - **2-D incompressible visco-resistive MHD prototype** (`mhd2d` in
   `examples/ns2d_vorticity`, issue
   [#23](https://github.com/ahojukka5/OpenPFC/issues/23)). Coupled
