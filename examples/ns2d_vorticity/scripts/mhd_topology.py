@@ -3,9 +3,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Sub-grid periodic X/O tracker for 2-D magnetic flux a(x,y).
 
-B = (∂y a, −∂x a), so magnetic nulls are ∇a = 0. This module locates those
-nulls by Newton refinement inside cells, classifies them from the Hessian,
-tracks them in time, and pairs X/O points by Morse (eigendirection) walks.
+B = (∂y a, −∂x a), so magnetic nulls are ∇a = 0 and B · ∇a = 0: magnetic
+field lines lie on a = const. This module locates nulls by Newton plus a
+Fourier evaluation of ∇a and the Hessian, tracks them in time, and traces
+the critical level a = a_X along B (magnetic separatrices).
+
+Morse ±∇a walks are kept as a scalar-field diagnostic only. They are not
+magnetic connectivity.
 
 It is analysis-only. Agreement of Ez = −∂t a with η j at an X-point is a
 resistive Ohm diagnostic, not by itself a reconnection claim.
@@ -246,7 +250,7 @@ def _walk_to_extremum(ax, ay, start, vec, lam, extrema, dx, length=TWOPI,
 
 
 def pair_morse(points, a, length=TWOPI):
-    """Pair each well-conditioned X with O basins on its four separatrix rays."""
+    """Scalar Morse pairing (gradient flow of a), not magnetic connectivity."""
     xs = [p for p in points if p["kind"] == KIND_X]
     os_ = [p for p in points if p["kind"] in (KIND_OMAX, KIND_OMIN)]
     n = a.shape[0]
@@ -359,6 +363,250 @@ def graphs_match(g1, g2, dist_tol=0.25, length=TWOPI):
         if o1 != o2:
             return False, "basins differ at X (%.3f,%.3f): %s vs %s" % (
                 n1["x"], n1["y"], o1, o2)
+    return True, "ok"
+
+
+def levelset_rays(xpt):
+    """Four unit directions of the critical level H(v,v)=0 at a saddle.
+
+    In Hessian eigen-coordinates a-a_X ≈ ½(λ1 ξ1² + λ2 ξ2²). The magnetic
+    separatrices satisfy λ1 ξ1² + λ2 ξ2² = 0, so they are not the
+    eigenvectors (those are the Morse ±∇a directions).
+    """
+    l1, l2 = xpt["lam1"], xpt["lam2"]
+    if l1 * l2 >= 0.0:
+        return []
+    v1, v2 = xpt["v1"], xpt["v2"]
+    r = math.sqrt(-l1 / l2)
+    rays = []
+    for s in (+1.0, -1.0):
+        vx = v1[0] + s * r * v2[0]
+        vy = v1[1] + s * r * v2[1]
+        nrm = math.hypot(vx, vy)
+        if nrm < 1.0e-18:
+            continue
+        rays.append((vx / nrm, vy / nrm))
+        rays.append((-vx / nrm, -vy / nrm))
+    return rays
+
+
+def _winding(path, ox, oy, length=TWOPI):
+    """Winding of a possibly wrapped polyline around (ox,oy)."""
+    if len(path) < 3:
+        return 0.0
+    ux = [float(path[0][0])]
+    uy = [float(path[0][1])]
+    for i in range(1, len(path)):
+        ux.append(ux[-1] + float(periodic_delta(path[i][0], path[i - 1][0], length)))
+        uy.append(uy[-1] + float(periodic_delta(path[i][1], path[i - 1][1], length)))
+    ux.append(ux[-1] + float(periodic_delta(path[0][0], path[-1][0], length)))
+    uy.append(uy[-1] + float(periodic_delta(path[0][1], path[-1][1], length)))
+    # Shift O by the lattice vector nearest the path centroid.
+    cx = 0.5 * (min(ux) + max(ux))
+    cy = 0.5 * (min(uy) + max(uy))
+    oxu = ox + round((cx - ox) / length) * length
+    oyu = oy + round((cy - oy) / length) * length
+    ang = 0.0
+    for i in range(len(ux) - 1):
+        x0, y0 = ux[i] - oxu, uy[i] - oyu
+        x1, y1 = ux[i + 1] - oxu, uy[i + 1] - oyu
+        ang += math.atan2(x0 * y1 - y0 * x1, x0 * x1 + y0 * y1)
+    return ang / (2.0 * math.pi)
+
+
+def trace_magnetic_branch(ax, ay, a_grid, xpt, ray, xs, dx, length=TWOPI):
+    """Trace B=(a_y,-a_x) on a=a_X from an offset along a level-set ray."""
+    offset = min(1.5 * dx, 0.2)
+    a_crit = xpt["a"]
+    ux = xpt["x"] + offset * ray[0]
+    uy = xpt["y"] + offset * ray[1]
+    x, y = wrap(ux, length), wrap(uy, length)
+    path = [(x, y)]
+    nstep = int(10.0 * length / dx)
+    orient = None
+    for i in range(nstep):
+        gx = bilinear(ax, x, y, dx)
+        gy = bilinear(ay, x, y, dx)
+        aval = bilinear(a_grid, x, y, dx)
+        gn2 = gx * gx + gy * gy
+        if gn2 > 1.0e-20:
+            corr = (aval - a_crit) / gn2
+            ux -= corr * gx
+            uy -= corr * gy
+            x, y = wrap(ux, length), wrap(uy, length)
+            gx = bilinear(ax, x, y, dx)
+            gy = bilinear(ay, x, y, dx)
+        bx, by = gy, -gx
+        bn = math.hypot(bx, by)
+        if bn < 1.0e-14:
+            break
+        if orient is None:
+            orient = 1.0 if (bx * ray[0] + by * ray[1]) >= 0.0 else -1.0
+        bx *= orient
+        by *= orient
+        step = 0.4 * dx
+        ux += step * bx / bn
+        uy += step * by / bn
+        x, y = wrap(ux, length), wrap(uy, length)
+        path.append((x, y))
+        if i < 5:
+            continue
+        for j, xp in enumerate(xs):
+            if periodic_dist(x, y, xp["x"], xp["y"], length) < 2.2 * dx:
+                return j, path
+    return None, path
+
+
+def magnetic_connectivity(points, a, length=TWOPI):
+    """X–X magnetic separatrix graph and O enclosure by a=a_X contours.
+
+    Traces B, not ±∇a. An O is paired to an X only if a closed (or
+    X-to-X) critical-level path winds around that O.
+    """
+    xs = [p for p in points if p["kind"] == KIND_X]
+    os_ = [p for p in points if p["kind"] in (KIND_OMAX, KIND_OMIN)]
+    n = a.shape[0]
+    dx = length / float(n)
+    ax, ay, _, _, _ = spectral_derivs(a, length)
+    graph = []
+    edge_paths = {}
+    for xi, xpt in enumerate(xs):
+        rays = levelset_rays(xpt)
+        branches = []
+        for ri, ray in enumerate(rays):
+            hit, path = trace_magnetic_branch(
+                ax, ay, a, xpt, ray, xs, dx, length)
+            rec = {
+                "ray": ri,
+                "hit_x": hit,
+                "n_path": len(path),
+            }
+            if hit is not None:
+                rec["hit_x_pos"] = (xs[hit]["x"], xs[hit]["y"])
+                rec["hit_x_a"] = xs[hit]["a"]
+                edge_paths.setdefault((xi, hit), path)
+            branches.append(rec)
+        xx = sorted({b["hit_x"] for b in branches if b["hit_x"] is not None})
+        graph.append({
+            "x_index": xi,
+            "x": xpt["x"],
+            "y": xpt["y"],
+            "a": xpt["a"],
+            "hess_cond": xpt["hess_cond"],
+            "eig_ratio": xpt["eig_ratio"],
+            "branches": branches,
+            "connects_x": xx,
+            "enclosed_O": [],
+        })
+    # Faces: simple cycles of X–X magnetic edges, length 3 or 4.
+    adj = [[] for _ in xs]
+    for (i, j), path in edge_paths.items():
+        if j not in adj[i]:
+            adj[i].append(j)
+        if i not in adj[j]:
+            adj[j].append(i)
+    cycles = []
+
+    def dfs(start, node, trail, seen):
+        if len(trail) > 4:
+            return
+        for nb in adj[node]:
+            if nb == start and len(trail) >= 3:
+                cycles.append(list(trail))
+                continue
+            if nb in seen:
+                continue
+            seen.add(nb)
+            trail.append(nb)
+            dfs(start, nb, trail, seen)
+            trail.pop()
+            seen.remove(nb)
+
+    for i in range(len(xs)):
+        dfs(i, i, [i], set([i]))
+    uniq_cycles = []
+    seen_c = set()
+    for cyc in cycles:
+        key = tuple(sorted(cyc))
+        if key in seen_c:
+            continue
+        seen_c.add(key)
+        uniq_cycles.append(cyc)
+    for cyc in uniq_cycles:
+        loop = []
+        ok = True
+        for u, v in zip(cyc, cyc[1:] + cyc[:1]):
+            path = edge_paths.get((u, v))
+            if path is None:
+                path = edge_paths.get((v, u))
+                if path is not None:
+                    path = list(reversed(path))
+            if path is None:
+                ok = False
+                break
+            loop.extend(path)
+        if not ok or len(loop) < 8:
+            continue
+        for oi, opt in enumerate(os_):
+            w = _winding(loop, opt["x"], opt["y"], length)
+            if abs(w) < 0.4:
+                continue
+            for xi in cyc:
+                already = any(e["o_index"] == oi for e in graph[xi]["enclosed_O"])
+                if already:
+                    continue
+                graph[xi]["enclosed_O"].append({
+                    "o_index": oi,
+                    "kind": opt["kind"],
+                    "x": opt["x"],
+                    "y": opt["y"],
+                    "a": opt["a"],
+                    "winding": float(w),
+                    "delta_a": opt["a"] - graph[xi]["a"],
+                })
+    return graph, xs, os_
+
+
+def magnetic_graphs_match(g1, g2, dist_tol=0.35, length=TWOPI):
+    """Compare X–X magnetic connections after matching X by position."""
+    if len(g1) != len(g2):
+        return False, "nX %d vs %d" % (len(g1), len(g2))
+    used = set()
+    for n1 in g1:
+        best, best_d = None, 1.0e9
+        for i2, n2 in enumerate(g2):
+            if i2 in used:
+                continue
+            d = periodic_dist(n1["x"], n1["y"], n2["x"], n2["y"], length)
+            if d < best_d:
+                best_d, best = d, i2
+        if best is None or best_d > dist_tol:
+            return False, "no matching X for (%.3f,%.3f)" % (n1["x"], n1["y"])
+        used.add(best)
+        n2 = g2[best]
+        def hit_list(node):
+            out = []
+            for b in node["branches"]:
+                if b.get("hit_x_pos") is None:
+                    continue
+                out.append(b["hit_x_pos"])
+            return out
+        h1, h2 = hit_list(n1), hit_list(n2)
+        if len(h1) != len(h2):
+            return False, "n hits %d vs %d at (%.3f,%.3f)" % (
+                len(h1), len(h2), n1["x"], n1["y"])
+        usedh = set()
+        for p1 in h1:
+            best, bd = None, 1.0e9
+            for i2, p2 in enumerate(h2):
+                if i2 in usedh:
+                    continue
+                d = periodic_dist(p1[0], p1[1], p2[0], p2[1], length)
+                if d < bd:
+                    bd, best = d, i2
+            if best is None or bd > dist_tol:
+                return False, "X–X hits differ at (%.3f,%.3f)" % (n1["x"], n1["y"])
+            usedh.add(best)
     return True, "ok"
 
 
