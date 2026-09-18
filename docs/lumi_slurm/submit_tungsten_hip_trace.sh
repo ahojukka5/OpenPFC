@@ -55,11 +55,18 @@ submit_one() {
   local ly="$3"
   local lz="$4"
   local grid="$5"
+  local cgrid="${6:-}"
   export TUNGSTEN_LX="${lx}"
   export TUNGSTEN_LY="${ly}"
   export TUNGSTEN_LZ="${lz}"
   export OPENPFC_FFT_PROC_GRID="${grid}"
-  unset OPENPFC_FFT_NODE_GRID TUNGSTEN_USE_PENCILS || true
+  unset OPENPFC_FFT_NODE_GRID TUNGSTEN_USE_PENCILS \
+        OPENPFC_FFT_COMPLEX_OUTBOX || true
+  if [[ -n "${cgrid}" ]]; then
+    export OPENPFC_FFT_COMPLEX_PROC_GRID="${cgrid}"
+  else
+    unset OPENPFC_FFT_COMPLEX_PROC_GRID || true
+  fi
   sbatch \
     --account="${ACCOUNT}" \
     --partition="${PARTITION}" \
@@ -69,7 +76,7 @@ submit_one() {
     --gpus-per-node=8 \
     --time=01:00:00 \
     --job-name="${name}" \
-    --export=ALL,OPENPFC_REVISION,OPENPFC_DIRTY,OPENPFC_SRC,OPENPFC_FFT_PROC_GRID,TUNGSTEN_LX,TUNGSTEN_LY,TUNGSTEN_LZ \
+    --export=ALL,OPENPFC_REVISION,OPENPFC_DIRTY,OPENPFC_SRC,OPENPFC_FFT_PROC_GRID,OPENPFC_FFT_COMPLEX_PROC_GRID,TUNGSTEN_LX,TUNGSTEN_LY,TUNGSTEN_LZ \
     "${SBATCH}"
 }
 
@@ -80,12 +87,14 @@ CASES=(
   "thip-tr-1200x1280:1200:1200:1280:1,1,32"
   "thip-tr-1152c:1152:1152:1152:1,1,32"
   "thip-tr-1216c:1216:1216:1216:1,1,32"
+  "thip-tr-1200x1152-c2161:1200:1200:1152:1,1,32:2,16,1"
+  "thip-tr-1200x1152-c481:1200:1200:1152:1,1,32:4,8,1"
 )
 
 echo "heFFTe phase-trace set (4 nodes / 32 GCDs) rev=${OPENPFC_REVISION} dirty=${OPENPFC_DIRTY}"
 want=("$@")
 for spec in "${CASES[@]}"; do
-  IFS=':' read -r name lx ly lz grid <<< "${spec}"
+  IFS=':' read -r name lx ly lz grid cgrid <<< "${spec}"
   if (( ${#want[@]} > 0 )); then
     keep=0
     for w in "${want[@]}"; do
@@ -97,8 +106,12 @@ for spec in "${CASES[@]}"; do
     if (( keep == 0 )); then
       continue
     fi
+  elif [[ -n "${cgrid}" ]]; then
+    # Complex-outbox experiments are opt-in; do not resubmit with the
+    # original six-case set.
+    continue
   fi
-  submit_one "${name}" "${lx}" "${ly}" "${lz}" "${grid}"
+  submit_one "${name}" "${lx}" "${ly}" "${lz}" "${grid}" "${cgrid}"
 done
 
 echo "Logs: /scratch/project_462001519/juaho/logs/"

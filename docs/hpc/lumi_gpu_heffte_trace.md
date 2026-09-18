@@ -95,3 +95,19 @@ pencils-back-to-z-slab reshape. `1152` and `1216` take that path
 (4 all-peer rounds per step). `1200 % 32 != 0`, so the outbox stays a
 z-slab and that extra transpose pair remains (8 rounds). The 2× count
 is extra distributed reshape stages, not a logging artifact.
+
+HeFFTe `split_world()` does **not** require `Ny % nproc == 0`. Uneven
+y-slabs (`1×32×1` on `Ny=1200`) and other `gz=1` complex grids
+(`2×16×1`, `4×8×1`, …) still have full z, so the return hop is
+skippable. The production default keeps the even-divisibility
+heuristic. Experimental overrides:
+
+```bash
+export OPENPFC_FFT_COMPLEX_PROC_GRID=2,16,1   # explicit, fail-closed
+export OPENPFC_FFT_COMPLEX_OUTBOX=min_reshape # planner pick
+```
+
+`min_reshape` ranks legal complex grids by distributed reshape count,
+then local-box imbalance. It is not a `N==1200` special case. Do not
+admit wall times from this override as production until the controlled
+1200×1200×1152 comparison is in.

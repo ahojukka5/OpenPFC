@@ -36,6 +36,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Experimental r2c complex-outbox selector** (issue #13). HeFFTe
+  `split_world()` already accepts uneven boxes, so a full y-slab is
+  not required to skip the pencils→z-slab return reshape. Production
+  still y-slabs only when `Ny % nproc == 0`. Set
+  `OPENPFC_FFT_COMPLEX_PROC_GRID=gx,gy,gz` or
+  `OPENPFC_FFT_COMPLEX_OUTBOX=min_reshape` to choose a legal complex
+  grid that minimises distributed reshape count. Illegal grids fail
+  closed. Do not treat this as the production default until the
+  1200-axis experiment lands.
 - **Diagnostic HeFFTe tracing build** (issue #13). Separate
   `heffte-rocm-trace` install with `Heffte_ENABLE_TRACING=ON` and a
   GPU-synchronous `add_trace` patch so local rocFFT work is not charged

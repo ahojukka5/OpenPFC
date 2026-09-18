@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <openpfc/kernel/fft/complex_outbox.hpp>
 #include <openpfc/kernel/fft/fft_fftw.hpp>
 
 #include <array>
@@ -69,26 +70,6 @@ auto get_complex_indices(const Decomposition &decomposition, int r2c_direction) 
   throw std::logic_error("Invalid r2c_direction: " + std::to_string(r2c_direction));
 }
 
-/// When real data is 1D z-slabs and r2c is x, put the complex outbox on
-/// y-slabs (full z) if Ny is divisible by the rank count. HeFFTe's z-FFT
-/// then ends in the outbox layout, so the pencils-back-to-z-slabs reshape
-/// is skipped. That hop dominated 16-GCD LUMI-G wall_step. If Ny % nproc
-/// != 0 the outbox stays a z-slab and that extra transpose pair remains.
-[[nodiscard]] pfc::Int3
-complex_proc_grid_for_r2c(const pfc::Int3 &real_grid,
-                          const heffte::box3d<int> &complex_world,
-                          int r2c_direction) {
-  if (r2c_direction == 0 && real_grid[0] == 1 && real_grid[1] == 1 &&
-      real_grid[2] > 1) {
-    const int n = real_grid[2];
-    const int ny = complex_world.size[1];
-    if (n > 0 && ny % n == 0) {
-      return pfc::Int3{1, n, 1};
-    }
-  }
-  return real_grid;
-}
-
 [[nodiscard]] FFTLayout create(const Decomposition &decomposition,
                                int r2c_direction) {
   auto real_indices = get_real_indices(decomposition);
@@ -96,7 +77,8 @@ complex_proc_grid_for_r2c(const pfc::Int3 &real_grid,
   auto grid = get_grid(decomposition);
   auto real_boxes = boxes_from_heffte(split_world(real_indices, grid));
   const pfc::Int3 cgrid =
-      complex_proc_grid_for_r2c(grid, complex_indices, r2c_direction);
+      complex_proc_grid_for_r2c(grid, real_indices, complex_indices,
+                                r2c_direction, slab_r2c_plan_options());
   auto complex_boxes = boxes_from_heffte(split_world(complex_indices, cgrid));
   return FFTLayout{decomposition, r2c_direction, std::move(real_boxes),
                    std::move(complex_boxes)};
