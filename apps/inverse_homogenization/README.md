@@ -55,9 +55,9 @@ mpirun -n 2 ./apps/inverse_homogenization/openpfc_homogenize \
 ```
 
 `--shape` is `homogeneous`, `laminate-z`, `sphere`, `rotating-cubes`
-(OpenPFC #31), or `rotating-squares` (OpenPFC #33: the qualified 2-D
-Grima seed extruded unchanged in \(z\), a 3-D consistency oracle, not a
-3-D metamaterial). The printed \(C_H\) is the
+(OpenPFC #31), `rotating-squares` (OpenPFC #33 extrusion consistency
+oracle, not a 3-D metamaterial), or `reentrant-3d` (OpenPFC #36 Yang /
+Evans 3-D re-entrant honeycomb). The printed \(C_H\) is the
 **engineering Voigt** \(6\times 6\) (order \(11,22,33,23,13,12\),
 \(\gamma=2\varepsilon\)). A homogeneous isotropic material therefore reports
 \(C_{44}=\mu\), not \(2\mu\). The driver also prints \(S=C_H^{-1}\),
