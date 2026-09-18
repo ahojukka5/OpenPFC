@@ -275,6 +275,56 @@ def test_magnetic_not_morse_sinxsiny():
         check(enclosed_max, "N=%d O_max at (π/2,π/2) enclosed by a=a_X" % n)
 
 
+def test_ot_t0_multigraph_faces():
+    print("\n== OT t=0 a=0.5 cos 2x + cos y is a separatrix multigraph ==")
+    for n in (64, 128):
+        a = mt.sample_grid(
+            lambda x, y: 0.5 * np.cos(2.0 * x) + np.cos(y), n)
+        pts = mt.locate_critical_points(a)
+        xs = [p for p in pts if p["kind"] == mt.KIND_X]
+        omax = [p for p in pts if p["kind"] == mt.KIND_OMAX]
+        omin = [p for p in pts if p["kind"] == mt.KIND_OMIN]
+        check(len(xs) == 4, "N=%d OT has 4 X, got %d" % (n, len(xs)))
+        check(len(omax) == 2 and len(omin) == 2,
+              "N=%d OT has 2 O_max and 2 O_min" % n)
+        for p in omax:
+            check(abs(p["a"] - 1.5) < 0.05, "N=%d O_max a=1.5 got %.4f" % (n, p["a"]))
+        for p in omin:
+            check(abs(p["a"] + 1.5) < 0.05, "N=%d O_min a=-1.5 got %.4f" % (n, p["a"]))
+        avals = sorted(p["a"] for p in xs)
+        check(abs(avals[0] + 0.5) < 0.05 and abs(avals[-1] - 0.5) < 0.05,
+              "N=%d X critical values ±0.5" % n)
+        mag, _, _ = mt.magnetic_connectivity(pts, a)
+        # Parallel branches: some X pair must have n_edges > unique neighbours.
+        parallel = False
+        for g in mag:
+            if g["n_edges"] > len(g["connects_x"]):
+                parallel = True
+        check(parallel,
+              "N=%d OT has parallel X–X separatrix edges (simple graph would drop them)"
+              % n)
+        enclosed_max = 0
+        enclosed_min = 0
+        da_max = []
+        da_min = []
+        for g in mag:
+            for e in g["enclosed_O"]:
+                if e["kind"] == mt.KIND_OMAX:
+                    enclosed_max += 1
+                    da_max.append(e["delta_a"])
+                elif e["kind"] == mt.KIND_OMIN:
+                    enclosed_min += 1
+                    da_min.append(e["delta_a"])
+        check(enclosed_max >= 2, "N=%d O_max regions enclosed, got %d" % (n, enclosed_max))
+        check(enclosed_min >= 2, "N=%d O_min regions enclosed, got %d" % (n, enclosed_min))
+        if da_max:
+            check(all(abs(d - 1.0) < 0.08 for d in da_max),
+                  "N=%d Delta_a for O_max is 1.5-0.5=1, got %s" % (n, da_max))
+        if da_min:
+            check(all(abs(d + 1.0) < 0.08 for d in da_min),
+                  "N=%d Delta_a for O_min is -1.5-(-0.5)=-1, got %s" % (n, da_min))
+
+
 def test_misclassify_fails():
     print("\n== classification must not swap X and O ==")
     a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), 48)
@@ -296,6 +346,7 @@ def main():
     test_separatrix_not_nearest_o()
     test_fourier_hessian_not_bilinear_artifact()
     test_magnetic_not_morse_sinxsiny()
+    test_ot_t0_multigraph_faces()
     test_misclassify_fails()
     print("\n%d failures" % len(FAILS))
     if FAILS:
