@@ -55,6 +55,13 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
     set_tests_properties(inverse-homogenization-hip-homogeneous-smoke PROPERTIES
       PASS_REGULAR_EXPRESSION "HOMOGENIZATION_CHECKSUM"
       TIMEOUT 180)
+    add_test(NAME inverse-homogenization-hip-ac-smoke
+             COMMAND $<TARGET_FILE:openpfc_inverse_homogenize_hip>
+                     --nx=8 --ny=8 --nz=1 --steps=1
+                     --init=rotating-squares --lambda-reg=0 --dt=0.05)
+    set_tests_properties(inverse-homogenization-hip-ac-smoke PROPERTIES
+      PASS_REGULAR_EXPRESSION "INVERSE_CHECKSUM"
+      TIMEOUT 300)
   endif()
 endif()
 
