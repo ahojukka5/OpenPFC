@@ -457,11 +457,51 @@ def trace_magnetic_branch(ax, ay, a_grid, xpt, ray, xs, dx, length=TWOPI):
     return None, path
 
 
-def magnetic_connectivity(points, a, length=TWOPI):
-    """X–X magnetic separatrix graph and O enclosure by a=a_X contours.
+def _loop_from_two_edges(e1, e2):
+    """Concatenate two directed polylines that share the same endpoints."""
+    s1, d1, p1 = e1["src"], e1["dst"], e1["path"]
+    s2, d2, p2 = e2["src"], e2["dst"], e2["path"]
+    if d1 == s2 and s1 == d2:
+        return p1 + p2
+    if d1 == d2 and s1 == s2:
+        return p1 + list(reversed(p2))
+    if d1 == s2:
+        return p1 + p2
+    if s1 == s2:
+        return list(reversed(p1)) + p2
+    if d1 == d2:
+        return p1 + list(reversed(p2))
+    return p1 + list(reversed(p2))
 
-    Traces B, not ±∇a. An O is paired to an X only if a closed (or
-    X-to-X) critical-level path winds around that O.
+
+def _assign_enclosed(graph, xs_idx, loop, os_, length):
+    if loop is None or len(loop) < 8:
+        return
+    for oi, opt in enumerate(os_):
+        w = _winding(loop, opt["x"], opt["y"], length)
+        if abs(w) < 0.4:
+            continue
+        for xi in xs_idx:
+            already = any(e["o_index"] == oi for e in graph[xi]["enclosed_O"])
+            if already:
+                continue
+            graph[xi]["enclosed_O"].append({
+                "o_index": oi,
+                "kind": opt["kind"],
+                "x": opt["x"],
+                "y": opt["y"],
+                "a": opt["a"],
+                "winding": float(w),
+                "delta_a": opt["a"] - graph[xi]["a"],
+            })
+
+
+def magnetic_connectivity(points, a, length=TWOPI):
+    """Embedded magnetic-separatrix *multigraph* and O enclosure.
+
+    Every traced a=a_X branch is a distinct edge, including parallel
+    X–X branches and self-loops. Faces include 2-edge cycles. An O is
+    paired to an X only if such a face winds around that O.
     """
     xs = [p for p in points if p["kind"] == KIND_X]
     os_ = [p for p in points if p["kind"] in (KIND_OMAX, KIND_OMIN)]
@@ -469,7 +509,7 @@ def magnetic_connectivity(points, a, length=TWOPI):
     dx = length / float(n)
     ax, ay, _, _, _ = spectral_derivs(a, length)
     graph = []
-    edge_paths = {}
+    edges = []
     for xi, xpt in enumerate(xs):
         rays = levelset_rays(xpt)
         branches = []
@@ -480,13 +520,21 @@ def magnetic_connectivity(points, a, length=TWOPI):
                 "ray": ri,
                 "hit_x": hit,
                 "n_path": len(path),
+                "edge_id": None,
             }
             if hit is not None:
                 rec["hit_x_pos"] = (xs[hit]["x"], xs[hit]["y"])
                 rec["hit_x_a"] = xs[hit]["a"]
-                edge_paths.setdefault((xi, hit), path)
+                eid = len(edges)
+                rec["edge_id"] = eid
+                edges.append({
+                    "id": eid,
+                    "src": xi,
+                    "dst": hit,
+                    "path": path,
+                })
             branches.append(rec)
-        xx = sorted({b["hit_x"] for b in branches if b["hit_x"] is not None})
+        xx = [b["hit_x"] for b in branches if b["hit_x"] is not None]
         graph.append({
             "x_index": xi,
             "x": xpt["x"],
@@ -495,16 +543,34 @@ def magnetic_connectivity(points, a, length=TWOPI):
             "hess_cond": xpt["hess_cond"],
             "eig_ratio": xpt["eig_ratio"],
             "branches": branches,
-            "connects_x": xx,
+            "connects_x": sorted(set(xx)),
+            "n_edges": len(xx),
             "enclosed_O": [],
         })
-    # Faces: simple cycles of X–X magnetic edges, length 3 or 4.
+    # Self-loops (one branch returns to the same X).
+    for e in edges:
+        if e["src"] == e["dst"]:
+            _assign_enclosed(graph, [e["src"]], e["path"], os_, length)
+    # Parallel-edge 2-cycles: two distinct branches with the same endpoints.
+    by_pair = {}
+    for e in edges:
+        key = tuple(sorted((e["src"], e["dst"])))
+        by_pair.setdefault(key, []).append(e)
+    for key, elist in by_pair.items():
+        for i in range(len(elist)):
+            for j in range(i + 1, len(elist)):
+                loop = _loop_from_two_edges(elist[i], elist[j])
+                _assign_enclosed(graph, list(key), loop, os_, length)
+    # Longer vertex-simple cycles (3–4), using one representative path per
+    # directed pair only as a supplement to the multigraph faces.
     adj = [[] for _ in xs]
-    for (i, j), path in edge_paths.items():
-        if j not in adj[i]:
-            adj[i].append(j)
-        if i not in adj[j]:
-            adj[j].append(i)
+    one_path = {}
+    for e in edges:
+        if e["dst"] not in adj[e["src"]]:
+            adj[e["src"]].append(e["dst"])
+        if e["src"] not in adj[e["dst"]]:
+            adj[e["dst"]].append(e["src"])
+        one_path.setdefault((e["src"], e["dst"]), e["path"])
     cycles = []
 
     def dfs(start, node, trail, seen):
@@ -524,46 +590,26 @@ def magnetic_connectivity(points, a, length=TWOPI):
 
     for i in range(len(xs)):
         dfs(i, i, [i], set([i]))
-    uniq_cycles = []
     seen_c = set()
     for cyc in cycles:
         key = tuple(sorted(cyc))
         if key in seen_c:
             continue
         seen_c.add(key)
-        uniq_cycles.append(cyc)
-    for cyc in uniq_cycles:
         loop = []
         ok = True
         for u, v in zip(cyc, cyc[1:] + cyc[:1]):
-            path = edge_paths.get((u, v))
+            path = one_path.get((u, v))
             if path is None:
-                path = edge_paths.get((v, u))
+                path = one_path.get((v, u))
                 if path is not None:
                     path = list(reversed(path))
             if path is None:
                 ok = False
                 break
             loop.extend(path)
-        if not ok or len(loop) < 8:
-            continue
-        for oi, opt in enumerate(os_):
-            w = _winding(loop, opt["x"], opt["y"], length)
-            if abs(w) < 0.4:
-                continue
-            for xi in cyc:
-                already = any(e["o_index"] == oi for e in graph[xi]["enclosed_O"])
-                if already:
-                    continue
-                graph[xi]["enclosed_O"].append({
-                    "o_index": oi,
-                    "kind": opt["kind"],
-                    "x": opt["x"],
-                    "y": opt["y"],
-                    "a": opt["a"],
-                    "winding": float(w),
-                    "delta_a": opt["a"] - graph[xi]["a"],
-                })
+        if ok:
+            _assign_enclosed(graph, cyc, loop, os_, length)
     return graph, xs, os_
 
 
