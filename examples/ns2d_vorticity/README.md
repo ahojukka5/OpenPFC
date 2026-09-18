@@ -230,12 +230,23 @@ and \(a\) (second inbox `Field`). Density and \(\mu_0\) are 1.
 | `me` | \(\frac12\langle\|B\|^2\rangle\) |
 | `energy` | `ke+me` |
 | `cross_helicity` | \(\langle u\cdot B\rangle\) |
-| `a2` | \(\frac12\langle a^2\rangle\) |
-| `enstrophy` | \(\frac12\langle\omega^2\rangle\) |
+| `a2` | \(\frac12\langle(a-\langle a\rangle)^2\rangle\), with \(\hat a(0)=0\) |
+| `enstrophy` | \(\frac12\langle\omega^2\rangle\) so \(\langle\omega^2\rangle=2Z\) |
 | `mean_sq_j` | \(\langle j^2\rangle\) |
-| `dissipation` | \(\nu\langle\omega^2\rangle+\eta\langle j^2\rangle\) |
-| `budget_residual` | \(\Delta E/\Delta t_{\mathrm{dump}}+\mathrm{dissipation}\) |
-| `cfl` | \(\Delta t\,\max(\|u\|,\|B\|)/\Delta x\) |
+| `dissipation` \(D\) | \(\nu\langle\omega^2\rangle+\eta\langle j^2\rangle\) |
+| `budget_residual` | \((E_n-E_{n-1})/\Delta t_{\mathrm{diag}}+\frac12(D_n+D_{n-1})\) |
+| `cfl_nominal` | \(\Delta t/\Delta x\) (what `--cfl` sets) |
+| `cfl_ub` | \(\Delta t\,\max_i(|u_i|,|B_i|)/\Delta x\) (deprecated) |
+| `cfl_elsasser` | \(\Delta t\,\max_i|z^\pm_i|/\Delta x\), \(z^\pm=u\pm B\) |
+
+`--cfl` remains a **nominal fixed-\(\Delta t\) selector**:
+\(\Delta t=\mathrm{CFL}_{\mathrm{nom}}\Delta x\) (characteristic speed 1).
+The measured MHD CFL is the Elsasser quantity `cfl_elsasser`. The
+driver aborts if that measured value exceeds 2. There is no adaptive
+timestepping.
+
+\(A_2\) is gauge-safe: the DC mode of \(a\) is zeroed after every
+stage, and the reported invariant uses the variance of \(a\).
 
 ### Commands
 
@@ -244,85 +255,157 @@ and \(a\) (second inbox `Field`). Density and \(\mu_0\) are 1.
 ./examples/ns2d_vorticity/mhd2d --verify --N 16 --steps 8 \
   --dt 0.05 --nu 0.1 --eta 0.1
 
-# incompressible Orszag–Tang, Pm=1, enough dissipation for 128=256
+# incompressible Orszag–Tang, Pm=1, peak-current window at nu=eta=0.005
 ./examples/ns2d_vorticity/mhd2d --case orszag_tang --N 256 \
-  --steps 204 --cfl 0.4 --nu 0.02 --eta 0.02 --dump 17 \
-  --outdir /scratch/project_462001519/juaho/mhd2d-23/ot256
+  --steps 255 --cfl 0.4 --nu 0.005 --eta 0.005 --diag 4 --dump 4 \
+  --outdir /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak
 
-# matched hydro control (same u, a=0)
+./examples/ns2d_vorticity/mhd2d --case orszag_tang --N 512 \
+  --steps 509 --cfl 0.4 --nu 0.005 --eta 0.005 --diag 8 --dump 8 \
+  --outdir /scratch/project_462001519/juaho/mhd2d-23/ot512_nu0005_peak
+
+# matched hydro control (same u, a=0, same nu)
 ./examples/ns2d_vorticity/mhd2d --case hydro_control --N 256 \
-  --steps 204 --cfl 0.4 --nu 0.02 --eta 0.02 --dump 17 \
-  --outdir /scratch/project_462001519/juaho/mhd2d-23/hydro256
+  --steps 255 --cfl 0.4 --nu 0.005 --eta 0.005 --diag 4 \
+  --outdir /scratch/project_462001519/juaho/mhd2d-23/hydro256_nu0005_peak
 ```
 
-VTK: `omega_*.vti`, `a_*.vti`, `j_*.vti`. Overlay \(j\) with \(a\)
-contours in ParaView; do **not** call that reconnection.
+`--diag` writes CSV/stdout without requiring a VTK dump. Field dumps
+are Fortran-order `double` bricks (`a_%04d.bin`, `j_%04d.bin`,
+`omega_%04d.bin`) plus VTK. Overlay \(j\) with \(a\) contours; do
+**not** call that reconnection.
 
-### Verification (Catch2 `mhd2d-cpu`, 7 cases)
+Common-band comparison and rendering (cray-python 3.11 + numpy;
+matplotlib for figures):
+
+```bash
+python3 examples/ns2d_vorticity/scripts/compare_mhd_fields.py \
+  --coarse-dir /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak \
+  --fine-dir   /scratch/project_462001519/juaho/mhd2d-23/ot512_nu0005_peak \
+  --coarse-n 256 --fine-n 512 --coarse-inc 228 --fine-inc 456
+
+python3 examples/ns2d_vorticity/scripts/render_mhd_frames.py \
+  --dir /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak \
+  --n 256 --inc 228 \
+  --out /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak/frame_0228.png
+
+python3 examples/ns2d_vorticity/scripts/plot_mhd_diagnostics.py \
+  --mhd /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak/diagnostics.csv \
+  --hydro /scratch/project_462001519/juaho/mhd2d-23/hydro256_nu0005_peak/diagnostics.csv \
+  --out /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak/mhd_vs_hydro.png
+```
+
+### Verification (Catch2 `mhd2d-cpu`, 12 cases)
 
 - \(a=0\) MHD matches NS on two-mode IC (\(L^\infty<10^{-11}\)).
 - Force-free \(a=\sin x\sin y\), \(u=0\): \(a(t)=a(0)e^{-2\eta t}\)
   to \(10^{-11}\); velocity stays 0.
 - Alfvénic \(u=B\): \(N_\omega\sim 0\) with Lorentz \(+\); \(N_\omega>1\)
   if the sign is flipped.
-- Ideal OT, 40 steps, \(\nu=\eta=0\): relative drift of \(E\) and \(A_2\)
-  \(<2\times10^{-3}\).
-- Dissipative budget residual \(<5\times10^{-3}\) when sampled every
-  step.
+- Elsasser: OT at \(t=0\) has \(\max_i|z^\pm_i|=2\), so
+  `cfl_elsasser = 2 cfl_nominal`. Aligned \(u=B=(1,0)\) gives
+  \(\max|z^+|=2\).
+- Gauge: \(a+\mathrm{const}\) is projected to \(\langle a\rangle=0\)
+  and \(A_2=0.3125\) for the OT flux.
+- Ideal OT, \(N=32\), \(T=0.2\), \(\nu=\eta=0\). Relative drift of
+  \(E\), \(H_c\) and \(A_2\) (high-precision CSV):
+
+  | \(\Delta t\) | \(\delta E/E\) | \(\delta H_c/H_c\) | \(\delta A_2/A_2\) |
+  |-------------:|---------------:|-------------------:|-------------------:|
+  | 0.02 | \(1.18\times10^{-9}\) | \(2.44\times10^{-9}\) | \(5.60\times10^{-10}\) |
+  | 0.01 | \(3.54\times10^{-11}\) | \(8.19\times10^{-11}\) | \(2.25\times10^{-11}\) |
+  | 0.005 | \(1.00\times10^{-12}\) | \(2.91\times10^{-12}\) | \(1.02\times10^{-12}\) |
+  | 0.0025 | \(2.15\times10^{-14}\) | \(1.13\times10^{-13}\) | \(4.90\times10^{-14}\) |
+
+  Halving \(\Delta t\) from 0.02 to 0.01 reduces the three drifts by
+  \(\approx 25\)–\(33\). That is clearly higher than first order
+  (ratio 2). The window is too close to roundoff on the last halving
+  to claim a formal RK4/fourth-order rate.
+- Trapezoidal budget residual drops as the diagnostic interval is
+  coarsened in reverse: every-step residual \(<5\times10^{-3}\) and
+  smaller than the 4-step and 8-step residuals.
+- `restrict_hat_by_k` recovers a shared trigonometric polynomial
+  from \(N=32\) onto \(N=16\).
 - \(\nabla\cdot u\) and \(\nabla\cdot B\) at roundoff.
 
 ### Orszag–Tang ladder (incompressible, \([0,2\pi]^2\))
 
 \(\phi=\cos x+\cos y\), \(a=\frac12\cos 2x+\cos y\).
-CPU HeFFTe 2.3.0, 1 rank. Raw:
+CPU HeFFTe 2.3.0 FFTW/Milan, 1 rank. Raw:
 `/scratch/project_462001519/juaho/mhd2d-23/`.
+Nominal `--cfl 0.4` so \(\Delta t=0.4\cdot 2\pi/N\). Measured Elsasser
+CFL starts at 0.8.
 
-**\(P_m=1\), \(\nu=\eta=0.02\), CFL 0.4, \(t=2\):** 128² and 256²
-agree to six digits on \(E\), KE, ME, \(\max\|j\|\). Finite,
-`div` \(\sim10^{-14}\).
+**\(P_m=1\), \(\nu=\eta=0.02\), \(t=2\):** 128² and 256² agree to six
+digits on \(E\), KE, ME, \(\max\|j\|\). Finite, `div` \(\sim10^{-14}\).
 
 | \(N\) | \(E(t=2)\) | KE | ME | \(\max\|j\|\) | \(\max\|\omega\|\) |
 |------:|----------:|---:|---:|-------------:|------------------:|
 | 128 | 0.760592 | 0.219881 | 0.540711 | 15.752 | 4.322 |
 | 256 | 0.760592 | 0.219881 | 0.540711 | 15.752 | 4.322 |
 
-KE falls \(0.50\to 0.22\); ME rises \(0.50\to 0.54\). \(\max\|j\|\)
-grows \(3\to 15.8\) (current-sheet formation). No reconnection
-diagnostic is implemented.
+**Matched hydro control.** The OT velocity has vanishing Jacobian, so
+hydro is an exact decaying eigenmode. At \(\nu=0.005\), \(N=256\),
+\(t=2.50\):
 
-**Matched hydro control** (256², same \(u\), \(a=0\)): the OT
-velocity has vanishing Jacobian, so hydro is an exact decaying
-eigenmode (KE \(0.50\to 0.46\), \(\max\|\omega\|\) \(2\to 1.92\)).
-Magnetic coupling is the entire nonlinear dynamics.
+| | KE | ME | \(E\) | \(\max\|\omega\|\) | \(\max\|j\|\) |
+|---|---:|---:|---:|---:|---:|
+| hydro | 0.4876 | 0 | 0.4876 | 1.975 | 0 |
+| MHD | 0.2299 | 0.6219 | 0.8518 | 13.58 | 31.62 |
 
-**Thinner sheets \(\nu=\eta=0.005\), \(t=1.5\):**
+Hydro KE decays \(0.50\to 0.488\). MHD transfers kinetic to magnetic
+energy and forms current sheets. Figure:
+`ot256_nu0005_peak/mhd_vs_hydro.png`.
 
-| \(N\) | \(E\) | \(\max\|j\|\) | \(\max\|\omega\|\) |
-|------:|------:|-------------:|------------------:|
-| 128 | 0.94775 | 25.73 | 7.70 |
-| 256 | 0.94700 | 26.90 | 8.00 |
-| 512 | 0.94700 | 26.90 | 7.99 |
+**\(\nu=\eta=0.005\), peak current from the time series.** \(t=1.5\)
+is still on the rise. On 256² with `--diag 4` the global
+\(\max\|j\|\) peaks at \(t=2.238\) (\(j=38.237\)), with an earlier
+shoulder at \(t=1.924\) (\(j=35.751\)). 512² agrees in those
+scalars to five digits. Measured Elsasser CFL at the peak is 1.10
+(nominal 0.4). Extending 256² toward \(t=3\) **fails closed** at
+step 312 (\(t=3.063\)): `cfl_elsasser` jumps \(1.28\to 8.71\) after
+\(\max\|j\|\) explodes. The defensible window is \(t\le 2.5\).
 
-256 and 512 agree; 128 under-resolves peak current by \(\sim 4\%\).
-Budget residuals after the dump-interval fix are \(O(10^{-3})\).
+**Field-level 256² vs 512²** (restrict 512 r2c hats onto the 256
+integer-\(k\) lattice, then relative \(L^2\)):
 
-Animation-ready: `ot256` and `ot256_nu0005` (`omega`, `a`, `j` VTK).
-Frames were not rendered here.
+| \(t\) | \(\|a\|_{2,\mathrm{rel}}\) | \(\|j\|_{2,\mathrm{rel}}\) | \(\|\omega\|_{2,\mathrm{rel}}\) | ME-spectrum | \(j\)-spectrum |
+|------:|---------------------------:|---------------------------:|-------------------------------:|------------:|---------------:|
+| 1.492 | \(4.4\times10^{-8}\) | \(9.6\times10^{-5}\) | \(5.2\times10^{-5}\) | \(2.3\times10^{-9}\) | \(6.4\times10^{-8}\) |
+| 1.924 | \(5.6\times10^{-7}\) | \(1.0\times10^{-3}\) | \(4.9\times10^{-4}\) | \(4.4\times10^{-9}\) | \(1.3\times10^{-6}\) |
+| 2.238 | \(5.1\times10^{-7}\) | \(8.7\times10^{-4}\) | \(4.3\times10^{-4}\) | \(6.5\times10^{-9}\) | \(9.9\times10^{-7}\) |
+
+At the \(\max\|j\|\) time the operational sheet thickness from
+periodic FWHM of \(|j|\) is 5 cells on 256² (\(\approx 0.12\)).
+256² and 512² frames at \(t=2.24\) are visually the same:
+current sheets, deformed flux contours, no claim of reconnection
+or plasmoids. Rendered:
+`ot256_nu0005_peak/frame_0228.png`,
+`ot512_nu0005_peak/frame_0456.png`.
+
+**Exploratory \(\nu=\eta=0.0025\).** 256² survives to \(t=2.50\)
+with peak \(\max\|j\|=54.97\) at \(t=1.964\). 512² agrees in \(E\)
+but not in the sheet: at \(t=1.885\), common-band
+\(\|j\|_{2,\mathrm{rel}}=1.4\times10^{-2}\),
+\(\max\|j\|\) 54.63 vs 55.6. 512² then **blows up** at
+\(t=2.474\) (`cfl_elsasser` \(1.70\to 54\)). 256² is
+under-resolved; 512² is not a stable late-time solution at this
+dissipation. 1024² was **not** run. Do not go to still lower
+\(\eta\) in this PR.
 
 ### Decision gate (issue #23)
 
-- Magnetic dynamics are **robust and grid-converged** at \(P_m=1\) for
-  \(\nu=\eta=0.02\) already at 128², and for \(\nu=\eta=0.005\) at
-  256²/512².
-- MHD **does** add scientifically distinct behaviour: the hydro control
-  is a linear eigenmode; MHD transfers kinetic to magnetic energy and
-  forms current sheets.
-- Current-sheet formation is converged. That **justifies a later
-  reconnection / topology issue** with a quantitative X-point or flux
-  diagnostic. This PR does **not** claim reconnection and does **not**
-  start Strauss RMHD.
-- Keep this as an **MHD verification / teaching prototype** until that
-  reconnection issue is posed. Do not pivot to CHNS on this evidence:
-  the magnetic coupling is the interesting part.
+OpenPFC now has a verified and spatially converged 2-D
+incompressible MHD research prototype whose magnetic coupling
+generates robust current-sheet dynamics beyond the matched
+hydrodynamic control.
+
+That statement is limited to \(P_m=1\), \(\nu=\eta=0.005\),
+\(t\le 2.5\), 256²/512² common-band fields. It does **not**
+cover \(\nu=\eta=0.0025\), \(t>2.5\), reconnection, or plasmoids.
+
+A later issue may add quantitative magnetic reconnection /
+topology diagnostics. This PR does not implement that project
+and does not start Strauss reduced MHD.
 
 HIP is still blocked by the same pointwise `SpectralETDOps` pipeline.
