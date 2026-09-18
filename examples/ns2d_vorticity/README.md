@@ -496,4 +496,8 @@ topology experiment on this prototype. It does not change the
 solver. The baseline #26 decision is **current sheets but no
 demonstrated reconnection**.
 
+Issue #38 (`SCALING.md`) is the follow-on resistive scaling and
+local current-sheet geometry experiment. It reuses the #26/#27
+topology machinery and does not change the solver.
+
 HIP is still blocked by the same pointwise `SpectralETDOps` pipeline.
