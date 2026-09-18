@@ -82,6 +82,14 @@ if(INVERSE_HOMOGENIZATION_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
                        PROPERTIES
     PASS_REGULAR_EXPRESSION "HOMOGENIZATION_CHECKSUM"
     TIMEOUT 180)
+  add_test(NAME inverse-homogenization-reentrant-3d-smoke
+           COMMAND $<TARGET_FILE:openpfc_homogenize>
+                   --shape=reentrant-3d --nx=16 --ny=16 --nz=16
+                   --E-solid=1 --nu-solid=0.3 --E-void=0.02 --nu-void=0.3
+                   --thickness=0.06 --inset=0.14)
+  set_tests_properties(inverse-homogenization-reentrant-3d-smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "HOMOGENIZATION_CHECKSUM"
+    TIMEOUT 180)
   add_test(NAME inverse-homogenization-ac-smoke
            COMMAND $<TARGET_FILE:openpfc_inverse_homogenize>
                    --target=isotropic --nx=8 --ny=8 --nz=8 --steps=2

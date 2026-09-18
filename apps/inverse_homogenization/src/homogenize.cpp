@@ -47,6 +47,8 @@ struct Config {
   double volume{1.0};
   double half{0.200};
   double angle{0.45};
+  double thickness{0.06};
+  double inset{0.14};
   std::string dump_dir{};
 };
 
@@ -58,9 +60,10 @@ void usage(std::ostream &os, const char *exe) {
      << "  --dx               spacing (default 1)\n"
      << "  --E-solid --nu-solid --E-void --nu-void\n"
      << "  --shape            homogeneous | laminate-z | sphere |\n"
-     << "                    rotating-cubes | rotating-squares\n"
+     << "                    rotating-cubes | rotating-squares | reentrant-3d\n"
      << "  --volume           h for homogeneous; ignored otherwise\n"
      << "  --half --angle     rotating-square/cube half-side and rotation (rad)\n"
+     << "  --thickness --inset  reentrant-3d strut half-thickness and inset\n"
      << "  --dump-dir         write gathered h.bin + h.xdmf\n";
 }
 
@@ -115,6 +118,10 @@ bool parse(int argc, char **argv, Config &cfg) {
       if (!parse_double(val, cfg.half) || cfg.half <= 0.0) return false;
     } else if (key == "angle") {
       if (!parse_double(val, cfg.angle)) return false;
+    } else if (key == "thickness") {
+      if (!parse_double(val, cfg.thickness) || cfg.thickness <= 0.0) return false;
+    } else if (key == "inset") {
+      if (!parse_double(val, cfg.inset) || cfg.inset <= 0.0) return false;
     } else if (key == "dump-dir") {
       cfg.dump_dir = std::string(val);
     } else {
@@ -123,7 +130,7 @@ bool parse(int argc, char **argv, Config &cfg) {
   }
   return cfg.shape == "homogeneous" || cfg.shape == "laminate-z" ||
          cfg.shape == "sphere" || cfg.shape == "rotating-cubes" ||
-         cfg.shape == "rotating-squares";
+         cfg.shape == "rotating-squares" || cfg.shape == "reentrant-3d";
 }
 
 std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx, int ny,
@@ -233,6 +240,9 @@ int main(int argc, char **argv) {
   } else if (cfg.shape == "rotating-squares") {
     pfc::apps::inverse::fill_rotating_squares(h, cfg.nx, cfg.ny, cfg.half,
                                               cfg.angle);
+  } else if (cfg.shape == "reentrant-3d") {
+    pfc::apps::inverse::fill_reentrant_3d(h, cfg.nx, cfg.ny, cfg.nz, cfg.thickness,
+                                          cfg.inset, 0.10, 0.30, 0.70, 0.90);
   } else {
     const auto n = h.local_size();
     for (int k = 0; k < n[2]; ++k) {
@@ -278,6 +288,10 @@ int main(int argc, char **argv) {
     if (cfg.shape == "rotating-cubes" || cfg.shape == "rotating-squares") {
       std::cout << std::setprecision(8) << " half " << cfg.half << " angle "
                 << cfg.angle;
+    }
+    if (cfg.shape == "reentrant-3d") {
+      std::cout << std::setprecision(8) << " thickness " << cfg.thickness
+                << " inset " << cfg.inset;
     }
     std::cout << '\n';
     std::cout << std::setprecision(10) << "volume_fraction " << r.volume_fraction
