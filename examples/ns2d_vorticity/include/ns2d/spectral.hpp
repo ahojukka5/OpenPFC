@@ -18,10 +18,13 @@
  * \f$\mathbf B=(\partial_y a,-\partial_x a)\f$.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 #include <openpfc/kernel/data/constants.hpp>
@@ -268,6 +271,82 @@ void ifrk4_pair(SpectralPlane &sp, std::vector<SpectralPlane::Complex> &w_hat,
   }
   sp.project_hat(w_hat);
   sp.project_hat(a_hat);
+}
+
+/**
+ * Elsasser speeds z± = u ± B.
+ *
+ * `max_inf` is the max absolute Cartesian component of either z+ or z-.
+ * `max_mag` is the max Euclidean |z±|. The conservative measured CFL is
+ * `dt * max_inf / dx`.
+ */
+struct ElsasserSpeeds {
+  double max_inf{0.0};
+  double max_mag{0.0};
+};
+
+[[nodiscard]] inline ElsasserSpeeds
+elsasser_speeds(const std::vector<double> &u, const std::vector<double> &v,
+                const std::vector<double> &bx, const std::vector<double> &by) {
+  ElsasserSpeeds s;
+  const std::size_t n = u.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    const double zpx = u[i] + bx[i];
+    const double zpy = v[i] + by[i];
+    const double zmx = u[i] - bx[i];
+    const double zmy = v[i] - by[i];
+    s.max_inf = std::max(s.max_inf, std::abs(zpx));
+    s.max_inf = std::max(s.max_inf, std::abs(zpy));
+    s.max_inf = std::max(s.max_inf, std::abs(zmx));
+    s.max_inf = std::max(s.max_inf, std::abs(zmy));
+    s.max_mag = std::max(s.max_mag, std::hypot(zpx, zpy));
+    s.max_mag = std::max(s.max_mag, std::hypot(zmx, zmy));
+  }
+  return s;
+}
+
+/// Signed FFT wave-number index (Nyquist folding), matching `k_component`.
+[[nodiscard]] inline int signed_wave_index(int idx, int n) noexcept {
+  return (idx <= n / 2) ? idx : idx - n;
+}
+
+/**
+ * Copy matching integer wave numbers from a finer r2c hat into a coarser hat.
+ *
+ * HeFFTe/FFTW-style unnormalized forward transforms scale as the number of
+ * real cells, so retained coefficients are multiplied by
+ * \f$N_{\mathrm{coarse}}^2/N_{\mathrm{fine}}^2\f$. Backward on the coarse
+ * grid then recovers the band-limited field. Same-size grids keep scale 1.
+ *
+ * Modes present on the coarse grid but missing on the fine grid stay zero.
+ */
+inline void restrict_hat_by_k(const SpectralPlane &fine,
+                              const std::vector<SpectralPlane::Complex> &fhat,
+                              const SpectralPlane &coarse,
+                              std::vector<SpectralPlane::Complex> &chat) {
+  chat.assign(coarse.out_n(), SpectralPlane::Complex{});
+  const auto fn = fine.gsize();
+  const auto cn = coarse.gsize();
+  const double scale = (static_cast<double>(cn[0]) * cn[1] * cn[2]) /
+                       (static_cast<double>(fn[0]) * fn[1] * fn[2]);
+  auto key = [](int ki, int kj) -> long long {
+    return (static_cast<long long>(static_cast<std::uint32_t>(ki)) << 32) |
+           static_cast<std::uint32_t>(kj);
+  };
+  std::unordered_map<long long, std::size_t> fmap;
+  fmap.reserve(fine.out_n());
+  pfc::fft::kspace::for_each_kpoint(
+      fine.outbox(), fine.gsize(), fine.spacing(),
+      [&](std::size_t fi, double, double, double, int i, int j, int) {
+        fmap[key(signed_wave_index(i, fn[0]), signed_wave_index(j, fn[1]))] = fi;
+      });
+  pfc::fft::kspace::for_each_kpoint(
+      coarse.outbox(), coarse.gsize(), coarse.spacing(),
+      [&](std::size_t ci, double, double, double, int i, int j, int) {
+        const auto it = fmap.find(
+            key(signed_wave_index(i, cn[0]), signed_wave_index(j, cn[1])));
+        if (it != fmap.end()) chat[ci] = fhat[it->second] * scale;
+      });
 }
 
 [[nodiscard]] inline pfc::Domain make_slab(int n, double length) {
