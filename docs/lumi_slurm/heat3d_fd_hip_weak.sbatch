@@ -16,6 +16,8 @@
 #           OPENPFC_FD_PROC_GRID
 # Optional: HEAT3D_STEPS (default 105), HEAT3D_WARMUP (5), HEAT3D_DT (0.01),
 #           HEAT3D_FD_ORDER (2), HEAT3D_DIAG_TIMING (unset = clean timing)
+# Scratch: HEAT3D_WEAK_ROOT / OPENPFC_SCALING_ROOT
+#          (default .../openpfc-scaling/heat3d-fd-weak)
 
 set -euo pipefail
 
