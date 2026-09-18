@@ -35,6 +35,7 @@ path = [
     "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes-32.png",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes-64.png",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle33-rotating-squares-extrusion.json",
+    "apps/inverse_homogenization/evidence/2026-09-19-inverse2d-threshold.json",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle33-rotating-squares-extrusion.png",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d.json",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d-64.png",
