@@ -55,7 +55,7 @@ export HEAT3D_REQUIRE_INTERIOR="${HEAT3D_REQUIRE_INTERIOR:-256x256x256}"
 PER_NODE="${SLURM_NTASKS_PER_NODE:-${NTASKS}}"
 SRUN_BIND=()
 CPU_BIND="none"
-if (( PER_NODE == 8 )); then
+if (( PER_NODE == 8 )) && [[ "${SLURM_JOB_PARTITION}" == "standard-g" ]]; then
   CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,0xfe00,0xfe00000000,0xfe0000000000"
   SRUN_BIND=(--cpu-bind="${CPU_BIND}")
 elif (( PER_NODE > 8 )); then
