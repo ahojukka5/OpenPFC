@@ -54,5 +54,5 @@ if(OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
   target_link_libraries(test_mhd2d PRIVATE OpenPFC Catch2::Catch2
                         ${_ns2d_heffte_tgt})
   add_test(NAME mhd2d-cpu COMMAND test_mhd2d)
-  set_tests_properties(mhd2d-cpu PROPERTIES TIMEOUT 180)
+  set_tests_properties(mhd2d-cpu PROPERTIES TIMEOUT 300)
 endif()

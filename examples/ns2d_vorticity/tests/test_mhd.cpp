@@ -11,8 +11,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <array>
 #include <cmath>
+#include <complex>
 #include <mpi.h>
+#include <vector>
 
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
@@ -170,6 +173,142 @@ TEST_CASE("dissipative energy budget matches nu <w^2> + eta <j^2>",
   const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
   REQUIRE(std::abs(d.energy_budget_residual) < 5.0e-3);
   REQUIRE(d.dissipation > 0.0);
+}
+
+TEST_CASE("Elsasser speeds are max components and magnitudes of u±B",
+          "[mhd][elsasser]") {
+  {
+    std::vector<double> u{1.0}, v{0.0}, bx{1.0}, by{0.0};
+    const auto s = ns2d::elsasser_speeds(u, v, bx, by);
+    REQUIRE_THAT(s.max_inf, WithinAbs(2.0, 1.0e-15));
+    REQUIRE_THAT(s.max_mag, WithinAbs(2.0, 1.0e-15));
+  }
+  {
+    std::vector<double> u{1.0}, v{0.0}, bx{0.0}, by{1.0};
+    const auto s = ns2d::elsasser_speeds(u, v, bx, by);
+    REQUIRE_THAT(s.max_inf, WithinAbs(1.0, 1.0e-15));
+    REQUIRE_THAT(s.max_mag, WithinAbs(std::sqrt(2.0), 1.0e-15));
+  }
+  MHDStack mhd(32, ns2d::MHDParams{0.02, 0.02, 0.01, +1.0});
+  mhd.solver.initialize(
+      [](double x, double y, double) { return ns2d::ot_omega(x, y); },
+      [](double x, double y, double) { return ns2d::ot_a(x, y); });
+  const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE_THAT(d.max_z_inf, WithinAbs(2.0, 1.0e-12));
+  REQUIRE_THAT(d.cfl_ub, WithinAbs(d.cfl_nominal, 1.0e-12));
+  REQUIRE_THAT(d.cfl_elsasser, WithinAbs(2.0 * d.cfl_nominal, 1.0e-12));
+  REQUIRE(d.cfl_elsasser > d.cfl_ub);
+}
+
+TEST_CASE("A2 uses the zero-mean gauge and a_hat(0) is removed",
+          "[mhd][a2-gauge]") {
+  MHDStack mhd(32, ns2d::MHDParams{0.02, 0.02, 0.01, +1.0});
+  mhd.solver.initialize(
+      [](double x, double y, double) { return ns2d::ot_omega(x, y); },
+      [](double x, double y, double) { return ns2d::ot_a(x, y) + 3.0; });
+  const auto d0 = mhd.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE_THAT(d0.mean_a, WithinAbs(0.0, 1.0e-12));
+  REQUIRE_THAT(d0.a2, WithinAbs(0.3125, 1.0e-12));
+  for (int i = 0; i < 10; ++i) mhd.solver.step();
+  const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE_THAT(d.mean_a, WithinAbs(0.0, 1.0e-12));
+  REQUIRE(d.a2 > 0.0);
+}
+
+TEST_CASE("ideal OT invariant drift decreases faster than first order in dt",
+          "[mhd][invariants-refine]") {
+  const double T = 0.2;
+  auto drifts = [&](double dt) {
+    const int steps = static_cast<int>(std::llround(T / dt));
+    MHDStack mhd(32, ns2d::MHDParams{0.0, 0.0, dt, +1.0});
+    mhd.solver.initialize(
+        [](double x, double y, double) { return ns2d::ot_omega(x, y); },
+        [](double x, double y, double) { return ns2d::ot_a(x, y); });
+    const auto d0 = mhd.solver.diagnostics(MPI_COMM_WORLD);
+    for (int i = 0; i < steps; ++i) mhd.solver.step();
+    const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
+    std::array<double, 3> e{};
+    e[0] = std::abs(d.energy - d0.energy) / d0.energy;
+    e[1] = std::abs(d.cross_helicity - d0.cross_helicity) /
+           (std::abs(d0.cross_helicity) + 1.0e-16);
+    e[2] = std::abs(d.a2 - d0.a2) / d0.a2;
+    return e;
+  };
+  const auto e_dt = drifts(0.02);
+  const auto e_h = drifts(0.01);
+  const auto e_q = drifts(0.005);
+  REQUIRE(e_dt[0] > e_h[0]);
+  REQUIRE(e_h[0] > e_q[0]);
+  REQUIRE(e_dt[2] > e_h[2]);
+  REQUIRE(e_h[2] > e_q[2]);
+  REQUIRE(e_dt[1] > e_h[1]);
+  // IFRK4 with L=0 is RK4. Require clearly higher than first order (ratio 2)
+  // before claiming a formal order. Spatial/roundoff error may cap the last
+  // halving.
+  REQUIRE(e_dt[0] / e_h[0] > 4.0);
+  REQUIRE(e_dt[2] / e_h[2] > 4.0);
+  REQUIRE(e_dt[1] / e_h[1] > 4.0);
+}
+
+TEST_CASE("trapezoidal energy-budget residual drops as the diag interval shrinks",
+          "[mhd][budget-refine]") {
+  auto max_residual = [](int stride, int steps) {
+    MHDStack mhd(32, ns2d::MHDParams{0.05, 0.05, 0.005, +1.0});
+    mhd.solver.initialize(
+        [](double x, double y, double) { return ns2d::ot_omega(x, y); },
+        [](double x, double y, double) { return ns2d::ot_a(x, y); });
+    (void)mhd.solver.diagnostics(MPI_COMM_WORLD);
+    double maxr = 0.0;
+    for (int i = 1; i <= steps; ++i) {
+      mhd.solver.step();
+      if (i % stride == 0) {
+        const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
+        maxr = std::max(maxr, std::abs(d.energy_budget_residual));
+      }
+    }
+    return maxr;
+  };
+  const double r1 = max_residual(1, 16);
+  const double r4 = max_residual(4, 16);
+  const double r8 = max_residual(8, 16);
+  REQUIRE(r1 < 5.0e-3);
+  REQUIRE(r1 < r4);
+  REQUIRE(r4 < r8);
+}
+
+TEST_CASE("restrict_hat_by_k maps a shared trigonometric polynomial",
+          "[mhd][restrict]") {
+  pfc::sim::stacks::SpectralCPUStack fine_stack(
+      ns2d::make_twopi_slab(32), world_rank(), world_size(), MPI_COMM_WORLD);
+  pfc::sim::stacks::SpectralCPUStack coarse_stack(
+      ns2d::make_twopi_slab(16), world_rank(), world_size(), MPI_COMM_WORLD);
+  ns2d::SpectralPlane fine(fine_stack.fft(), fine_stack.u());
+  ns2d::SpectralPlane coarse(coarse_stack.fft(), coarse_stack.u());
+  auto trig = [](double x, double y, double) {
+    return std::cos(2.0 * x) + std::cos(y);
+  };
+  fine_stack.u().apply(trig);
+  coarse_stack.u().apply(trig);
+  std::vector<ns2d::SpectralPlane::Complex> fhat(fine.out_n()),
+      chat(coarse.out_n()), rhat;
+  fine.fft().forward(fine_stack.u().vec(), fhat);
+  coarse.fft().forward(coarse_stack.u().vec(), chat);
+  ns2d::restrict_hat_by_k(fine, fhat, coarse, rhat);
+  double err = 0.0, nrm = 0.0;
+  for (std::size_t i = 0; i < chat.size(); ++i) {
+    const auto d = rhat[i] - chat[i];
+    err += d.real() * d.real() + d.imag() * d.imag();
+    nrm += chat[i].real() * chat[i].real() + chat[i].imag() * chat[i].imag();
+  }
+  REQUIRE(std::sqrt(err) / (std::sqrt(nrm) + 1.0e-30) < 1.0e-10);
+  std::vector<double> recovered(coarse.in_n(), 0.0);
+  coarse.fft().backward(rhat, recovered);
+  double rerr = 0.0;
+  coarse_stack.u().for_each_owned([&](int i, int j, int k) {
+    const std::size_t c = coarse.real_idx(i, j, k);
+    rerr = std::max(rerr, std::abs(recovered[c] - coarse_stack.u()(i, j, k)));
+  });
+  REQUIRE(reduce_max(rerr) < 1.0e-10);
 }
 
 TEST_CASE("u and B remain solenoidal to transform roundoff",

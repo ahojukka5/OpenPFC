@@ -24,6 +24,14 @@
  *
  * State-level Orszag 2/3 projection is applied to both spectra and to
  * every nonlinear product, same policy as the #22 NS solver.
+ *
+ * Gauge: \f$\hat a(0)=0\f$ is enforced after every stage. The reported
+ * invariant is \f$A_2=\frac12\langle(a-\langle a\rangle)^2\rangle\f$.
+ *
+ * Timestep: fixed \f$\Delta t\f$. `--cfl` only selects
+ * \f$\Delta t=\mathrm{CFL}_{\mathrm{nom}}\Delta x\f$. The measured
+ * characteristic CFL is \f$\Delta t\,\max|z^\pm_i|/\Delta x\f$ with
+ * Elsasser fields \f$z^\pm=\mathbf u\pm\mathbf B\f$.
  */
 
 #include <algorithm>
@@ -68,7 +76,16 @@ struct MHDDiagnostics {
   double div_b_linf{0.0};
   double dissipation{0.0};
   double energy_budget_residual{0.0};
-  double cfl{0.0};
+  /// Nominal selector: dt/dx (what `--cfl` sets when used).
+  double cfl_nominal{0.0};
+  /// Deprecated bound: dt * max(|u_i|,|B_i|) / dx.
+  double cfl_ub{0.0};
+  /// Measured characteristic CFL: dt * max_inf(|z+|,|z-|) / dx, z±=u±B.
+  double cfl_elsasser{0.0};
+  /// dt * max(|z+|,|z-|) / dx with Euclidean |z|.
+  double cfl_elsasser_mag{0.0};
+  double max_z_inf{0.0};
+  double max_z_mag{0.0};
   double mean_omega{0.0};
   double mean_a{0.0};
 };
@@ -154,6 +171,7 @@ public:
     m_plane.fft().backward(m_w_hat, m_stack->u().vec());
     m_plane.fft().forward(m_a.vec(), m_a_hat);
     m_plane.project_hat(m_a_hat);
+    m_plane.zero_dc(m_a_hat);
     m_plane.fft().backward(m_a_hat, m_a.vec());
   }
 
@@ -162,6 +180,7 @@ public:
     m_plane.project_hat(m_w_hat);
     m_plane.fft().forward(m_a.vec(), m_a_hat);
     m_plane.project_hat(m_a_hat);
+    m_plane.zero_dc(m_a_hat);
     m_plane.poisson(m_w_hat, m_phi_hat);
     m_plane.current_from_flux(m_a_hat, m_j_hat);
     m_plane.curl_from_hat(m_phi_hat, m_u, m_v);
@@ -197,6 +216,7 @@ public:
           nonlinear_from_hat(wh, ah, nw, na);
         },
         m_nw1, m_na1, m_nw2, m_na2, m_nw3, m_na3, m_nw4, m_na4, m_sw, m_sa);
+    m_plane.zero_dc(m_a_hat);
     m_plane.fft().backward(m_w_hat, m_stack->u().vec());
     m_plane.fft().backward(m_a_hat, m_a.vec());
     m_time += m_params.dt;
@@ -221,7 +241,7 @@ public:
       ke += 0.5 * (uu * uu + vv * vv);
       me += 0.5 * (bx * bx + by * by);
       hc += uu * bx + vv * by;
-      a2 += 0.5 * aa * aa;
+      a2 += aa * aa;
       ens += 0.5 * w * w;
       j2 += jj * jj;
       wsum += w;
@@ -233,6 +253,7 @@ public:
       du = std::max(du, std::abs(m_div_u[c]));
       db = std::max(db, std::abs(m_div_b[c]));
     });
+    const ElsasserSpeeds zs = elsasser_speeds(m_u, m_v, m_bx, m_by);
 
     double g_ke = 0, g_me = 0, g_hc = 0, g_a2 = 0, g_ens = 0, g_j2 = 0;
     double g_w = 0, g_a = 0, g_maxw = 0, g_maxj = 0, g_maxu = 0, g_maxb = 0;
@@ -251,6 +272,9 @@ public:
     MPI_Allreduce(&maxb, &g_maxb, 1, MPI_DOUBLE, MPI_MAX, comm);
     MPI_Allreduce(&du, &g_du, 1, MPI_DOUBLE, MPI_MAX, comm);
     MPI_Allreduce(&db, &g_db, 1, MPI_DOUBLE, MPI_MAX, comm);
+    double g_zinf = 0.0, g_zmag = 0.0;
+    MPI_Allreduce(&zs.max_inf, &g_zinf, 1, MPI_DOUBLE, MPI_MAX, comm);
+    MPI_Allreduce(&zs.max_mag, &g_zmag, 1, MPI_DOUBLE, MPI_MAX, comm);
 
     const auto gs = m_plane.gsize();
     const double ncells = static_cast<double>(gs[0]) * gs[1] * gs[2];
@@ -263,7 +287,10 @@ public:
     d.me = g_me / ncells;
     d.energy = d.ke + d.me;
     d.cross_helicity = g_hc / ncells;
-    d.a2 = g_a2 / ncells;
+    d.mean_omega = g_w / ncells;
+    d.mean_a = g_a / ncells;
+    // Gauge-safe: 1/2 <(a-<a>)^2> = 1/2 (<a^2> - <a>^2). DC is also zeroed.
+    d.a2 = 0.5 * (g_a2 / ncells - d.mean_a * d.mean_a);
     d.enstrophy = g_ens / ncells;
     d.mean_sq_j = g_j2 / ncells;
     d.max_abs_omega = g_maxw;
@@ -272,19 +299,23 @@ public:
     d.max_b = g_maxb;
     d.div_u_linf = g_du;
     d.div_b_linf = g_db;
-    // Budget uses ⟨ω²⟩=2 enstrophy and ⟨j²⟩=mean_sq_j.
     d.dissipation =
         m_params.nu * (2.0 * d.enstrophy) + m_params.eta * d.mean_sq_j;
-    d.cfl = m_params.dt * std::max(g_maxu, g_maxb) / dx;
-    d.mean_omega = g_w / ncells;
-    d.mean_a = g_a / ncells;
+    d.cfl_nominal = m_params.dt / dx;
+    d.cfl_ub = m_params.dt * std::max(g_maxu, g_maxb) / dx;
+    d.max_z_inf = g_zinf;
+    d.max_z_mag = g_zmag;
+    d.cfl_elsasser = m_params.dt * g_zinf / dx;
+    d.cfl_elsasser_mag = m_params.dt * g_zmag / dx;
     if (m_have_prev_energy && d.time > m_prev_time) {
       const double dedt = (d.energy - m_prev_energy) / (d.time - m_prev_time);
-      d.energy_budget_residual = dedt + d.dissipation;
+      d.energy_budget_residual =
+          dedt + 0.5 * (d.dissipation + m_prev_dissipation);
     } else {
       d.energy_budget_residual = 0.0;
     }
     m_prev_energy = d.energy;
+    m_prev_dissipation = d.dissipation;
     m_prev_time = d.time;
     m_have_prev_energy = true;
     return d;
@@ -337,7 +368,7 @@ private:
     m_plane.project_hat(nw);
     m_plane.project_hat(na);
     m_plane.zero_dc(nw);
-    // a has no DC evolution from advection of a mean; leave â(0) (gauge).
+    m_plane.zero_dc(na);
   }
 
   pfc::sim::stacks::SpectralCPUStack *m_stack{nullptr};
@@ -345,6 +376,7 @@ private:
   MHDParams m_params{};
   double m_time{0.0};
   double m_prev_energy{0.0};
+  double m_prev_dissipation{0.0};
   double m_prev_time{0.0};
   bool m_have_prev_energy{false};
   pfc::data::Field<double> m_a;

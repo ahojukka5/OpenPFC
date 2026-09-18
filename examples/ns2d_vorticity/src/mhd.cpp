@@ -38,6 +38,7 @@ struct Cli {
   int n{64};
   int steps{100};
   int dump_every{0};
+  int diag_every{0};
   double dt{0.01};
   double nu{0.02};
   double eta{0.02};
@@ -50,15 +51,20 @@ void print_usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe
      << " [--case orszag_tang|hydro_control|force_free|alfven]\n"
      << "       [--N N] [--steps N] [--dt DT] [--cfl CFL]\n"
-     << "       [--nu NU] [--eta ETA] [--dump EVERY] [--outdir DIR]\n"
-     << "       [--verify]\n"
+     << "       [--nu NU] [--eta ETA] [--dump EVERY] [--diag EVERY]\n"
+     << "       [--outdir DIR] [--verify]\n"
      << "\n"
      << "2-D incompressible visco-resistive MHD (CPU, #23).\n"
      << "  orszag_tang    incompressible OT vortex on [0,2pi]^2\n"
      << "  hydro_control  same velocity, a=0\n"
      << "  force_free     magnetic eigenmode, u=0\n"
      << "  alfven         u=B two-mode aligned state\n"
-     << "  --cfl          dt = CFL * dx (overrides --dt)\n"
+     << "  --cfl          nominal selector dt = CFL * dx (overrides --dt).\n"
+     << "                 This is NOT the measured MHD CFL.\n"
+     << "  measured CFL   dt * max_i |zpm_i| / dx, zpm = u +/- B (Elsasser).\n"
+     << "                 The driver aborts if that quantity exceeds 2.\n"
+     << "  --dump EVERY   VTK/binary field dumps\n"
+     << "  --diag EVERY   CSV/stdout diagnostics (default: same as --dump)\n"
      << "  --verify       force-free Linf check\n";
 }
 
@@ -119,6 +125,10 @@ std::optional<Cli> parse_cli(int argc, char **argv) {
       auto v = need("--dump");
       if (!v) return std::nullopt;
       c.dump_every = std::atoi(std::string(*v).c_str());
+    } else if (a == "--diag") {
+      auto v = need("--diag");
+      if (!v) return std::nullopt;
+      c.diag_every = std::atoi(std::string(*v).c_str());
     } else if (a == "--outdir") {
       auto v = need("--outdir");
       if (!v) return std::nullopt;
@@ -137,7 +147,8 @@ std::optional<Cli> parse_cli(int argc, char **argv) {
 void write_csv_header(std::ostream &os) {
   os << "step,time,ke,me,energy,cross_helicity,a2,enstrophy,mean_sq_j,"
         "max_abs_omega,max_abs_j,max_speed,max_b,div_u,div_b,dissipation,"
-        "budget_residual,cfl,mean_omega,mean_a,wall_step_s\n";
+        "budget_residual,cfl_nominal,cfl_ub,cfl_elsasser,cfl_elsasser_mag,"
+        "max_z_inf,max_z_mag,mean_omega,mean_a,wall_step_s\n";
 }
 
 struct Writers {
@@ -164,9 +175,11 @@ int run(const Cli &cli, int rank, int nproc) {
     std::cout << "mhd2d case=" << ns2d::mhd_case_name(cli.cse) << " N=" << cli.n
               << " nu=" << cli.nu << " eta=" << cli.eta << " Pm="
               << (cli.eta > 0.0 ? cli.nu / cli.eta : 0.0) << " dt=" << dt
-              << " integrator=IFRK4\n";
+              << " cfl_nominal=" << (dt / dx) << " integrator=IFRK4\n";
     std::cout << "signs: omega=-lap phi, j=-lap a, Lorentz=+B.grad j "
                  "(not Strauss RMHD)\n";
+    std::cout << "CFL: nominal=dt/dx; measured Elsasser="
+                 "dt*max_inf(|u+/-B|)/dx; abort if measured > 2\n";
   }
 
   pfc::sim::stacks::SpectralCPUStack stack(ns2d::make_twopi_slab(cli.n), rank,
@@ -227,6 +240,15 @@ int run(const Cli &cli, int rank, int nproc) {
            << "  \"nu\": " << cli.nu << ",\n"
            << "  \"eta\": " << cli.eta << ",\n"
            << "  \"nproc\": " << nproc << ",\n"
+           << "  \"cfl_nominal\": " << (dt / dx) << ",\n"
+           << "  \"cfl_nominal_definition\": \"dt/dx; --cfl sets dt=CFL*dx\",\n"
+           << "  \"cfl_elsasser_definition\": "
+              "\"dt * max_i |zpm_i| / dx, zpm = u +/- B\",\n"
+           << "  \"cfl_abort\": \"measured cfl_elsasser > 2\",\n"
+           << "  \"a2_definition\": \"0.5 * <(a-<a>)^2> with a_hat(0)=0\",\n"
+           << "  \"budget_definition\": "
+              "\"(E_n-E_{n-1})/dt_diag + 0.5*(D_n+D_{n-1}), "
+              "D=nu<w^2>+eta<j^2>\",\n"
            << "  \"integrator\": \"IFRK4 pair\",\n"
            << "  \"dealias\": \"Orszag 2/3 on omega, a, and all N_hat\",\n"
            << "  \"lorentz\": \"+B.grad j\",\n"
@@ -242,21 +264,49 @@ int run(const Cli &cli, int rank, int nproc) {
               << " me=" << d.me << " max|j|=" << d.max_abs_j
               << " max|w|=" << d.max_abs_omega << " divu=" << d.div_u_linf
               << " divb=" << d.div_b_linf << " budget=" << d.energy_budget_residual
-              << " cfl=" << d.cfl << " wall_step_s=" << wall << "\n";
+              << " cfl_nom=" << d.cfl_nominal << " cfl_z=" << d.cfl_elsasser
+              << " wall_step_s=" << wall << "\n";
     if (csv) {
-      csv << step << "," << d.time << "," << d.ke << "," << d.me << ","
+      csv << std::setprecision(16) << step << "," << d.time << "," << d.ke << ","
+          << d.me << ","
           << d.energy << "," << d.cross_helicity << "," << d.a2 << ","
           << d.enstrophy << "," << d.mean_sq_j << "," << d.max_abs_omega << ","
           << d.max_abs_j << "," << d.max_speed << "," << d.max_b << ","
           << d.div_u_linf << "," << d.div_b_linf << "," << d.dissipation << ","
-          << d.energy_budget_residual << "," << d.cfl << "," << d.mean_omega
-          << "," << d.mean_a << "," << wall << "\n";
+          << d.energy_budget_residual << "," << d.cfl_nominal << "," << d.cfl_ub
+          << "," << d.cfl_elsasser << "," << d.cfl_elsasser_mag << ","
+          << d.max_z_inf << "," << d.max_z_mag << "," << d.mean_omega << ","
+          << d.mean_a << "," << wall << "\n";
     }
+  };
+
+  auto fail_closed = [&](int step, const ns2d::MHDDiagnostics &d) -> int {
+    if (!std::isfinite(d.energy) || !std::isfinite(d.max_abs_j) ||
+        !std::isfinite(d.cfl_elsasser)) {
+      if (rank == 0) {
+        std::cerr << "mhd2d: non-finite diagnostic at step " << step << "\n";
+      }
+      return EXIT_FAILURE;
+    }
+    if (d.cfl_elsasser > 2.0) {
+      if (rank == 0) {
+        std::cerr << "mhd2d: measured Elsasser CFL=" << d.cfl_elsasser
+                  << " > 2 at step " << step << " (nominal=" << d.cfl_nominal
+                  << ")\n";
+      }
+      return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
   };
 
   auto d0 = solver.diagnostics(MPI_COMM_WORLD);
   emit(0, d0, 0.0);
+  if (fail_closed(0, d0) != EXIT_SUCCESS) return EXIT_FAILURE;
   if (w.omega) dump_all(w, 0, solver);
+
+  const int diag_every =
+      cli.diag_every > 0 ? cli.diag_every
+                         : (cli.dump_every > 0 ? cli.dump_every : cli.steps);
 
   double wall_acc = 0.0;
   int timed = 0;
@@ -268,24 +318,20 @@ int run(const Cli &cli, int rank, int nproc) {
     const double wall = MPI_Wtime() - t0;
     wall_acc += wall;
     ++timed;
-    const bool dump =
-        (cli.dump_every > 0 && step % cli.dump_every == 0) || step == cli.steps;
-    if (dump) {
+    const bool want_diag =
+        (diag_every > 0 && step % diag_every == 0) || step == cli.steps;
+    const bool want_dump =
+        static_cast<bool>(w.omega) &&
+        ((cli.dump_every > 0 && step % cli.dump_every == 0) ||
+         step == cli.steps);
+    if (want_diag) {
       auto d = solver.diagnostics(MPI_COMM_WORLD);
       emit(step, d, wall);
-      if (w.omega) dump_all(w, step, solver);
-      if (!std::isfinite(d.energy) || !std::isfinite(d.max_abs_j)) {
-        if (rank == 0) {
-          std::cerr << "mhd2d: non-finite diagnostic at step " << step << "\n";
-        }
-        return EXIT_FAILURE;
-      }
-      if (d.cfl > 2.0) {
-        if (rank == 0) {
-          std::cerr << "mhd2d: CFL=" << d.cfl << " > 2 at step " << step << "\n";
-        }
-        return EXIT_FAILURE;
-      }
+      if (fail_closed(step, d) != EXIT_SUCCESS) return EXIT_FAILURE;
+    }
+    if (want_dump) {
+      if (!want_diag) solver.recover_fields();
+      dump_all(w, step, solver);
     }
   }
 
