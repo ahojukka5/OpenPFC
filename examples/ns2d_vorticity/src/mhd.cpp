@@ -61,8 +61,9 @@ void print_usage(std::ostream &os, const char *exe) {
      << "  alfven         u=B two-mode aligned state\n"
      << "  --cfl          nominal selector dt = CFL * dx (overrides --dt).\n"
      << "                 This is NOT the measured MHD CFL.\n"
-     << "  measured CFL   dt * max_i |zpm_i| / dx, zpm = u +/- B (Elsasser).\n"
-     << "                 The driver aborts if that quantity exceeds 2.\n"
+     << "  measured CFL   fail-closed: dt * max(|zx|/dx + |zy|/dy) over zpm.\n"
+     << "                 Also logs component-max and Euclidean |zpm| CFL.\n"
+     << "                 The driver aborts if the sum bound exceeds 2.\n"
      << "  --dump EVERY   VTK/binary field dumps\n"
      << "  --diag EVERY   CSV/stdout diagnostics (default: same as --dump)\n"
      << "  --verify       force-free Linf check\n";
@@ -148,7 +149,8 @@ void write_csv_header(std::ostream &os) {
   os << "step,time,ke,me,energy,cross_helicity,a2,enstrophy,mean_sq_j,"
         "max_abs_omega,max_abs_j,max_speed,max_b,div_u,div_b,dissipation,"
         "budget_residual,cfl_nominal,cfl_ub,cfl_elsasser,cfl_elsasser_mag,"
-        "max_z_inf,max_z_mag,mean_omega,mean_a,wall_step_s\n";
+        "cfl_elsasser_sum,max_z_inf,max_z_mag,max_z_l1,mean_omega,mean_a,"
+        "wall_step_s\n";
 }
 
 struct Writers {
@@ -178,8 +180,8 @@ int run(const Cli &cli, int rank, int nproc) {
               << " cfl_nominal=" << (dt / dx) << " integrator=IFRK4\n";
     std::cout << "signs: omega=-lap phi, j=-lap a, Lorentz=+B.grad j "
                  "(not Strauss RMHD)\n";
-    std::cout << "CFL: nominal=dt/dx; measured Elsasser="
-                 "dt*max_inf(|u+/-B|)/dx; abort if measured > 2\n";
+    std::cout << "CFL: nominal=dt/dx; fail-closed Elsasser sum="
+                 "dt*max(|zx|/dx+|zy|/dy); abort if that > 2\n";
   }
 
   pfc::sim::stacks::SpectralCPUStack stack(ns2d::make_twopi_slab(cli.n), rank,
@@ -244,7 +246,9 @@ int run(const Cli &cli, int rank, int nproc) {
            << "  \"cfl_nominal_definition\": \"dt/dx; --cfl sets dt=CFL*dx\",\n"
            << "  \"cfl_elsasser_definition\": "
               "\"dt * max_i |zpm_i| / dx, zpm = u +/- B\",\n"
-           << "  \"cfl_abort\": \"measured cfl_elsasser > 2\",\n"
+           << "  \"cfl_elsasser_sum_definition\": "
+              "\"dt * max(|zx|/dx + |zy|/dy) over z+ and z-\",\n"
+           << "  \"cfl_abort\": \"measured cfl_elsasser_sum > 2\",\n"
            << "  \"a2_definition\": \"0.5 * <(a-<a>)^2> with a_hat(0)=0\",\n"
            << "  \"budget_definition\": "
               "\"(E_n-E_{n-1})/dt_diag + 0.5*(D_n+D_{n-1}), "
@@ -264,7 +268,8 @@ int run(const Cli &cli, int rank, int nproc) {
               << " me=" << d.me << " max|j|=" << d.max_abs_j
               << " max|w|=" << d.max_abs_omega << " divu=" << d.div_u_linf
               << " divb=" << d.div_b_linf << " budget=" << d.energy_budget_residual
-              << " cfl_nom=" << d.cfl_nominal << " cfl_z=" << d.cfl_elsasser
+              << " cfl_nom=" << d.cfl_nominal
+              << " cfl_sum=" << d.cfl_elsasser_sum
               << " wall_step_s=" << wall << "\n";
     if (csv) {
       csv << std::setprecision(16) << step << "," << d.time << "," << d.ke << ","
@@ -275,24 +280,25 @@ int run(const Cli &cli, int rank, int nproc) {
           << d.div_u_linf << "," << d.div_b_linf << "," << d.dissipation << ","
           << d.energy_budget_residual << "," << d.cfl_nominal << "," << d.cfl_ub
           << "," << d.cfl_elsasser << "," << d.cfl_elsasser_mag << ","
-          << d.max_z_inf << "," << d.max_z_mag << "," << d.mean_omega << ","
-          << d.mean_a << "," << wall << "\n";
+          << d.cfl_elsasser_sum << "," << d.max_z_inf << "," << d.max_z_mag
+          << "," << d.max_z_l1 << "," << d.mean_omega << "," << d.mean_a << ","
+          << wall << "\n";
     }
   };
 
   auto fail_closed = [&](int step, const ns2d::MHDDiagnostics &d) -> int {
     if (!std::isfinite(d.energy) || !std::isfinite(d.max_abs_j) ||
-        !std::isfinite(d.cfl_elsasser)) {
+        !std::isfinite(d.cfl_elsasser_sum)) {
       if (rank == 0) {
         std::cerr << "mhd2d: non-finite diagnostic at step " << step << "\n";
       }
       return EXIT_FAILURE;
     }
-    if (d.cfl_elsasser > 2.0) {
+    if (d.cfl_elsasser_sum > 2.0) {
       if (rank == 0) {
-        std::cerr << "mhd2d: measured Elsasser CFL=" << d.cfl_elsasser
+        std::cerr << "mhd2d: measured Elsasser sum CFL=" << d.cfl_elsasser_sum
                   << " > 2 at step " << step << " (nominal=" << d.cfl_nominal
-                  << ")\n";
+                  << ", component=" << d.cfl_elsasser << ")\n";
       }
       return EXIT_FAILURE;
     }
