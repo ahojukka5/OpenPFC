@@ -191,6 +191,11 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   const int rx = rank % gx;
   const int ry = (rank / gx) % gy;
   const int rz = rank / (gx * gy);
+  // Allgather hostnames, then count off-node faces locally. Sequential
+  // MPI_Sendrecv along +z on a 4-wide periodic ring deadlocks (the 1-node
+  // 2x2x2 job is an involution on every axis, so it did not hang).
+  std::vector<char> hosts(static_cast<std::size_t>(nproc) * 256);
+  MPI_Allgather(host, 256, MPI_CHAR, hosts.data(), 256, MPI_CHAR, MPI_COMM_WORLD);
   int offnode = 0;
   const std::array<std::array<int, 3>, 6> faces = {{{{1, 0, 0}},
                                                     {{-1, 0, 0}},
@@ -204,16 +209,10 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
     if (peer < 0 || peer == rank) {
       continue;
     }
-    char peer_host[256];
-    MPI_Sendrecv(host, 256, MPI_CHAR, peer, 11, peer_host, 256, MPI_CHAR, peer, 11,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    if (std::strncmp(host, peer_host, 256) != 0) {
+    if (std::strncmp(host, &hosts[static_cast<std::size_t>(peer) * 256], 256) != 0) {
       ++offnode;
     }
   }
-
-  std::vector<char> hosts(static_cast<std::size_t>(nproc) * 256);
-  MPI_Gather(host, 256, MPI_CHAR, hosts.data(), 256, MPI_CHAR, 0, MPI_COMM_WORLD);
   std::vector<int> gpus(static_cast<std::size_t>(nproc));
   std::vector<int> coords(static_cast<std::size_t>(nproc) * 4);
   const int local_meta[4] = {rx, ry, rz, offnode};
@@ -228,7 +227,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << "x" << loc_max[2] << " halo=" << hw
               << " gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
               << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
-              << " ranks=" << nproc << " fd_order=" << cfg.fd_order << "\n";
+              << " ranks=" << nproc << " fd_order=" << cfg.fd_order << std::endl;
     std::ofstream plc("fd_placement.txt");
     plc << "rank host gpu rx ry rz offnode_faces\n";
     for (int r = 0; r < nproc; ++r) {
