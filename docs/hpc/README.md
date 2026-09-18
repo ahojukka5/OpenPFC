@@ -20,6 +20,7 @@ Start with the [HPC operator guide](operator_guide.md).
 | Runtime instrumentation | [Performance profiling](performance_profiling.md) |
 | Profiling output contract | [Profiling export schema](profiling_export_schema.md) |
 | LUMI-G tungsten_hip 1–8 GCD campaign | [LUMI GPU scaling](lumi_gpu_scaling.md) |
+| LUMI-G Heat3D FD weak scaling | [Heat3D FD weak](lumi_gpu_heat3d_fd_weak.md) |
 | First batch submission | [Slurm day one](../tutorials/hpc_slurm_day_one.md) |
 
 ## Site-specific guidance

@@ -30,6 +30,15 @@ HEAT3D_N=256 ./docs/lumi_slurm/submit_heat3d_fd_hip_scaling.sh strong
 PARTITION=standard-g HEAT3D_N=256 ./docs/lumi_slurm/submit_heat3d_fd_hip_scaling.sh multinode
 ```
 
+Issue `#25` FD-2 **weak** scaling (constant 256³ interior / GCD):
+[LUMI-G Heat3D FD weak](../hpc/lumi_gpu_heat3d_fd_weak.md).
+
+```bash
+export HEAT3D_HIP_BIN=/path/to/heat3d_fd_hip
+./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh check
+./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh clean
+```
+
 3D spectral HIP twin (`heat3d_spectral_hip`, implicit Euler, 2 FFTs/step):
 
 ```bash
