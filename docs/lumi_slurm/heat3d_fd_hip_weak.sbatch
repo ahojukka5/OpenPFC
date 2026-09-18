@@ -33,7 +33,7 @@ NZ="${HEAT3D_NZ}"
 STEPS="${HEAT3D_STEPS:-105}"
 DT="${HEAT3D_DT:-0.01}"
 FD_ORDER="${HEAT3D_FD_ORDER:-2}"
-JOBROOT="${OPENPFC_SCALING_ROOT:-/scratch/project_462001519/juaho/openpfc-scaling/heat3d-fd-weak}"
+JOBROOT="${HEAT3D_WEAK_ROOT:-/scratch/project_462001519/juaho/openpfc-scaling/heat3d-fd-weak}"
 
 module purge
 module load LUMI/25.09 partition/G cpeGNU cray-fftw lumi-CrayPath
