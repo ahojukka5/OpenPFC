@@ -229,6 +229,52 @@ def test_fourier_hessian_not_bilinear_artifact():
             check(p["grad2"] < 1.0e-12, "N=%d Fourier |∇a|²=%.3e at X" % (n, p["grad2"]))
 
 
+def test_magnetic_not_morse_sinxsiny():
+    print("\n== magnetic a=a_X connectivity ≠ Morse ±∇a (sin x sin y) ==")
+    for n in (32, 64, 128):
+        a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), n)
+        pts = mt.locate_critical_points(a)
+        xs = [p for p in pts if p["kind"] == mt.KIND_X]
+        os_ = [p for p in pts if p["kind"] in (mt.KIND_OMAX, mt.KIND_OMIN)]
+        x0 = nearest(xs, 0.0, 0.0)
+        rays = mt.levelset_rays(x0)
+        check(len(rays) == 4, "N=%d four level-set rays, got %d" % (n, len(rays)))
+        # Level-set rays are the axes, Morse eigenvectors the diagonals.
+        axis_like = 0
+        for vx, vy in rays:
+            if abs(vx) < 0.25 or abs(vy) < 0.25:
+                axis_like += 1
+        check(axis_like == 4, "N=%d magnetic rays are axial, not diagonal" % n)
+        mag, _, _ = mt.magnetic_connectivity(pts, a)
+        node = min(mag, key=lambda g: mt.periodic_dist(g["x"], g["y"], 0, 0))
+        hits = []
+        for b in node["branches"]:
+            if b["hit_x"] is None:
+                continue
+            hits.append(b["hit_x_pos"])
+        check(len(hits) >= 2, "N=%d X(0,0) magnetic branches hit other X" % n)
+        hit_o = False
+        for hx, hy in hits:
+            for o in os_:
+                if mt.periodic_dist(hx, hy, o["x"], o["y"]) < 0.4:
+                    hit_o = True
+        check(not hit_o, "N=%d magnetic hits are X-points, not O-points" % n)
+        # Morse goes to O; magnetic does not.
+        pairs, xs2, os2 = mt.pair_morse(pts, a)
+        xi = min(range(len(xs2)),
+                 key=lambda i: mt.periodic_dist(xs2[i]["x"], xs2[i]["y"], 0, 0))
+        morse_o = len(pairs[xi]["o_indices"]) >= 1
+        check(morse_o, "N=%d Morse still reaches an O (graphs differ)" % n)
+        # O_max at (π/2,π/2) enclosed by a=0 separatrix square.
+        enclosed_max = False
+        for g in mag:
+            for e in g["enclosed_O"]:
+                if e["kind"] == mt.KIND_OMAX and mt.periodic_dist(
+                        e["x"], e["y"], 0.5 * math.pi, 0.5 * math.pi) < 0.4:
+                    enclosed_max = True
+        check(enclosed_max, "N=%d O_max at (π/2,π/2) enclosed by a=a_X" % n)
+
+
 def test_misclassify_fails():
     print("\n== classification must not swap X and O ==")
     a = mt.sample_grid(lambda x, y: np.sin(x) * np.sin(y), 48)
@@ -249,6 +295,7 @@ def main():
     test_moving_multi_n_and_cadence()
     test_separatrix_not_nearest_o()
     test_fourier_hessian_not_bilinear_artifact()
+    test_magnetic_not_morse_sinxsiny()
     test_misclassify_fails()
     print("\n%d failures" % len(FAILS))
     if FAILS:
