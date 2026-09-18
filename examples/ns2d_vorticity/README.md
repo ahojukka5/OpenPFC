@@ -491,8 +491,9 @@ That statement is limited to \(P_m=1\), \(\nu=\eta=0.005\),
 cover a spatially converged \(\nu=\eta=0.0025\) ladder,
 \(t>2.5\), reconnection, or plasmoids.
 
-A later issue may add quantitative magnetic reconnection /
-topology diagnostics. This PR does not implement that project
-and does not start Strauss reduced MHD.
+Issue #26 (`RECONNECTION.md`) is the quantitative reconnection /
+topology experiment on this prototype. It does not change the
+solver. The baseline #26 decision is **current sheets but no
+demonstrated reconnection**.
 
 HIP is still blocked by the same pointwise `SpectralETDOps` pipeline.
