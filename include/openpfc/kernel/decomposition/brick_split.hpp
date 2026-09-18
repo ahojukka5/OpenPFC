@@ -251,7 +251,10 @@ inline constexpr int kSpectralNodeGcds = 8;
  *
  * For r2c along x the preferred slab axis is z, so among legal `1×gy×gz`
  * pencils this maximises `gz` (e.g. `1×2×16` over `1×8×4` on 1200³ / 32
- * ranks). Returns `{0,0,0}` when no r2c-preserving 2-D grid exists. Does not
+ * ranks). Measured LUMI-G tungsten_hip 1200³/32: `1×2×16` was not faster
+ * than `1×8×4` (jobs `22136351` / `22133410`), so this helper is for
+ * analysis and `OPENPFC_FFT_PROC_GRID`, not the automatic fallback.
+ * Returns `{0,0,0}` when no r2c-preserving 2-D grid exists. Does not
  * encode measured wall times.
  */
 [[nodiscard]] inline Int3 closest_slab_pencil_grid(const Int3 &size, int num_procs,
