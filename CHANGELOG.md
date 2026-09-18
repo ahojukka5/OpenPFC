@@ -33,6 +33,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   LUMI-G 1–16-node recipe at constant 256³ owned cells/GCD. Cubic CLI
   is unchanged. Diagnostic HIP-event timings are opt-in
   (`HEAT3D_DIAG_TIMING=1`) and are not the admitted `wall_step`.
+- **3-D rotating-cube forward oracle** (`openpfc_homogenize
+  --shape=rotating-cubes`, issue
+  [#31](https://github.com/ahojukka5/OpenPFC/issues/31)). Prescribed
+  periodic eight-cube cell (Attard & Grima rotating-rigid-unit idea),
+  not an extrusion and not an inverse search. The homogenizer prints
+  compliance Poisson ratios, SPD / \(\lambda_{\min}\), and periodic
+  percolation so a known 3-D auxetic mechanism can be qualified before
+  another Allen–Cahn experiment.
 - **2-D incompressible visco-resistive MHD prototype** (`mhd2d` in
   `examples/ns2d_vorticity`, issue
   [#23](https://github.com/ahojukka5/OpenPFC/issues/23)). Coupled
