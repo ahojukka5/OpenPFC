@@ -11,14 +11,14 @@ The solver is unchanged.
 
 ## Decision
 
-**Current sheets but no demonstrated topology-changing
-reconnection.**
+**Slow, converged 2-D resistive reconnection occurs at persistent
+X-points during the early well-conditioned evolution. No converged
+topology bifurcation or plasmoid event is demonstrated in the later
+peak-current regime.**
 
-The previous “no enclosed O” claim was a simple-graph artefact.
-OT islands exist at \(t=0\) with \(\Delta a=\pm 1\). Their faces
-persist until Hessian degeneracy; the only 256/512-agreed
-\(\Delta a(t)\) is a slow drift at a persistent X, not a new-island
-event. Peak \(|j|\) remains outside the well-conditioned window.
+Restricted to \(\nu=\eta=0.005\), \(t\le 0.80\), 256²/512², one
+magnetically enclosed island. Peak \(|j|\) at \(t=2.24\) remains
+outside this window.
 
 ## Question
 
@@ -126,14 +126,30 @@ Analytic OT at \(t=0\): 4 X (\(a=\pm 0.5\)) and 4 O
 (resp. \(-0.5\)) network with \(\Delta a=\pm 1\). Tests at
 \(N=64,128\) require this.
 
-**Time series \(\nu=\eta=0.005\).** Until \(t\approx 0.82\), both
-256² and 512² keep 4 X, 8 enclosures and 12 extra parallel
-edges. \(\Delta a\) for the tracked \(a=-0.5\) island goes
-\(-1.000\to -0.979\), identical on both grids. That is a slow
-resistive drift of island flux at a *persistent* X, not a new
-X–O pair or a peak-current burst. After \(t=0.82\) X-points
-degenerate; \(\Delta a\) at \(t=2.24\) is not a trusted rate.
-Force-free: 0 graph changes. No \(\eta\) lowering.
+**Island flux budget** (one \(a=-0.5\) X with enclosed
+\(\mathrm{O}_{\min}\), \(t\in[0,0.80]\)). Definitions:
+\(F=a_O-a_X\), \(E_z=-\partial_t a\). At a null \(\nabla a=0\),
+so \(\partial_t a=-\eta j\) and \(E_z=\eta j\). Then
+\(dF/dt=E_{z,X}-E_{z,O}=\eta(j_X-j_O)\). The first equality is
+kinematic once \(E_z\) is \(-\mathrm{d}a/\mathrm{d}t\) along the
+track; the independent check is Ohm at both nulls.
+
+| run | \(F(0)\to F(0.785)\) | rel \(\eta(j_X-j_O)\) | \(\langle E_{z,X}\rangle/\langle\dot F\rangle\) |
+|-----|----------------------|------------------------|-----------------------------------------------|
+| 256² `--cfl 0.4` | \(-1.000\to-0.9786\) | \(5.65\times10^{-4}\) | 0.405 |
+| 256² `--cfl 0.2` | same | \(5.65\times10^{-4}\) | 0.405 |
+| 512² `--cfl 0.4` | same | \(5.65\times10^{-4}\) | 0.405 |
+| 256² stride 2 | same \(F\) | \(2.33\times10^{-3}\) | 0.404 |
+| 256² stride 4 | same \(F\) | \(9.87\times10^{-3}\) | 0.406 |
+| force-free | \(1\to e^{-2\eta t}\) | \(10^{-5}\) | 0.000 |
+
+OT: about 40% of \(\dot F\) is \(E_{z,X}\) (X-point transfer), 60%
+is \(-E_{z,O}\) (O evolution). Force-free: \(E_{z,X}=0\), all of
+\(\dot F\) is O-mode decay. Changing \(F\) alone is not
+reconnection; the X-point electric field is.
+
+No new X–O pair before degeneracy. After \(t\approx 0.82\) the
+X-points are Hessian-degenerate; peak current is not used.
 
 **256 vs 512 Ohm check.** \(E_z(t)\) and \(\eta j_X(t)\) on the
 longest X track agree between resolutions to the printed digits.
@@ -180,10 +196,9 @@ rate there would be numerically unresolved.
 * \(E_z\), \(\eta j\), and \(d\Delta a/dt\) agreeing on a
   dt- and N-converged interval.
 
-A topology-changing event in the peak-current window is not
-available. Persistent-X island flux now has a valid \(\Delta a\),
-but it is a slow drift, not a reconnection burst, and it ends when
-the X-points become degenerate.
+A topology-changing / plasmoid event in the peak-current window is
+not demonstrated. Continuous X-point reconnection in \(t\le 0.80\)
+is.
 
 ## Commands
 
@@ -192,6 +207,8 @@ python3 examples/ns2d_vorticity/scripts/test_mhd_topology.py
 python3 examples/ns2d_vorticity/scripts/analyze_mhd_reconnection.py \
   --dir /scratch/.../ot256_nu0005_peak --n 256 --eta 0.005 \
   --fine-dir /scratch/.../ot512_nu0005_peak --fine-n 512
+python3 examples/ns2d_vorticity/scripts/island_flux_budget.py \
+  --dir /scratch/.../ot256_nu0005_peak --n 256 --eta 0.005 --t-max 0.80
 python3 examples/ns2d_vorticity/scripts/plot_mhd_topology.py \
   --dir /scratch/.../ot256_nu0005_peak --n 256 --inc 228 \
   --json /scratch/.../ot256_nu0005_peak/reconn_s1.json \
