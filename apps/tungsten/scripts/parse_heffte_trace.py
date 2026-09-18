@@ -63,6 +63,41 @@ def parse_log(path: Path) -> list[tuple[str, float, float]]:
     return events
 
 
+def count_name(events: list[tuple[str, float, float]], exact: str) -> int:
+    return sum(1 for name, _, _ in events if name == exact)
+
+
+def count_prefix(events: list[tuple[str, float, float]], prefix: str) -> int:
+    return sum(1 for name, _, _ in events if name.startswith(prefix))
+
+
+def reshape_waitany_counts(
+    events: list[tuple[str, float, float]],
+) -> tuple[int, int]:
+    """How many outer reshape wrappers contain waitany (MPI) vs none (local).
+
+    Uses timestamp nesting, not log order: add_trace records on destructor
+    so children appear before the parent line.
+    """
+    reshapes = [
+        (start, start + dur) for name, start, dur in events if name == "reshape"
+    ]
+    waits = [start for name, start, dur in events if name == "waitany"]
+    n_mpi = 0
+    for s, e in reshapes:
+        if any(s - 1e-9 <= w <= e + 1e-9 for w in waits):
+            n_mpi += 1
+    return n_mpi, len(reshapes) - n_mpi
+
+
+def complex_outbox_grid(proc_grid: str, ny: int, nproc: int) -> str:
+    """OpenPFC r2c-x z-slab outbox: y-slab iff Ny % nproc == 0."""
+    g = proc_grid.replace("×", "x").lower()
+    if g.startswith("1x1x") and nproc > 1 and ny > 0 and ny % nproc == 0:
+        return f"1x{nproc}x1"
+    return proc_grid.replace("×", "x")
+
+
 def factorize(n: int) -> str:
     if n <= 1:
         return str(n)
@@ -178,6 +213,7 @@ def main() -> int:
         (tmp / "heffte_trace_0.log").write_text(fake)
         (tmp / "run_meta.txt").write_text(
             "job=0\nLx=8\nLy=8\nLz=8\nproc_grid=1x1x1\nlocal_brick=8x8x8\n"
+            "steps=1\n"
         )
         (tmp / "timing_profile.json").write_text(
             json.dumps(
@@ -232,28 +268,51 @@ def main() -> int:
         ny = int(meta.get("Ly") or 0)
         nz = int(meta.get("Lz") or 0)
         wall, n_kept = profile_wall(run, skip_frac)
-        n_steps = n_kept if n_kept else 0
+        n_steps_kept = n_kept if n_kept else 0
         rank0 = run / "heffte_trace_0.log"
         n_waitany = 0
         n_irecv = 0
+        n_scale = 0
+        n_mpi_reshape = 0
+        n_local_reshape = 0
         if rank0.is_file():
-            for name, _, _ in parse_log(rank0):
-                if name == "waitany":
-                    n_waitany += 1
-                elif name.startswith("irecv "):
-                    n_irecv += 1
+            ev0 = parse_log(rank0)
+            n_waitany = count_name(ev0, "waitany")
+            n_irecv = count_prefix(ev0, "irecv ")
+            n_scale = count_name(ev0, "scale")
+            n_mpi_reshape, n_local_reshape = reshape_waitany_counts(ev0)
+        # Whole-log structure uses the accepted tungsten step count from
+        # run_meta (20), not the 19 frames kept after skip_frac.
+        n_trace_steps = int(meta.get("steps") or 0)
+        nproc = len(logs)
+        peers = max(nproc - 1, 0)
+        waitany_per_step = (
+            n_waitany / n_trace_steps if n_trace_steps else None
+        )
+        irecv_per_step = n_irecv / n_trace_steps if n_trace_steps else None
+        rounds = None
+        if n_trace_steps and peers and n_waitany % (peers * n_trace_steps) == 0:
+            rounds = n_waitany // (peers * n_trace_steps)
+        mpi_reshapes_per_step = (
+            n_mpi_reshape / n_trace_steps if n_trace_steps else None
+        )
         # Per-step phases so they sit next to wall_step. Trace totals span
-        # the kept window; do not force leaf_sum == n_steps * wall_step.
+        # the kept window; do not force leaf_sum == n_steps_kept * wall_step.
         def per_step(total: float) -> float:
-            return total / n_steps if n_steps else total
+            return total / n_steps_kept if n_steps_kept else total
 
         fft_ps = per_step(fft)
         pack_ps = per_step(pack)
         mpi_ps = per_step(mpi)
+        mpi_wait_ps = per_step(mpi_wait)
         other_ps = per_step(other)
         leaves_ps = per_step(leaves)
         denom = wall if wall else leaves_ps
         remainder = None if wall is None else wall - leaves_ps
+        wait_per_round = None
+        if rounds:
+            wait_per_round = mpi_wait_ps / rounds
+        cgrid = complex_outbox_grid(meta.get("proc_grid", ""), ny, nproc)
         rows.append(
             {
                 "run": run.name,
@@ -262,6 +321,7 @@ def main() -> int:
                 "ny": ny,
                 "nz": nz,
                 "proc_grid": meta.get("proc_grid", ""),
+                "complex_outbox_grid": cgrid,
                 "local_brick": meta.get("local_brick", ""),
                 "factors_x": factorize(nx) if nx else "",
                 "factors_y": factorize(ny) if ny else "",
@@ -270,12 +330,14 @@ def main() -> int:
                 "revision": meta.get("revision", ""),
                 "dirty": meta.get("dirty", ""),
                 "heffte_root": meta.get("HEFFTE_ROOT", ""),
-                "n_steps_kept": n_steps,
+                "n_trace_steps": n_trace_steps,
+                "n_steps_kept": n_steps_kept,
+                "n_scale": n_scale,
                 "wall_step_s": "" if wall is None else f"{wall:.6f}",
                 "fft_s": f"{fft_ps:.6f}",
                 "pack_s": f"{pack_ps:.6f}",
                 "mpi_s": f"{mpi_ps:.6f}",
-                "mpi_wait_s": f"{per_step(mpi_wait):.6f}",
+                "mpi_wait_s": f"{mpi_wait_ps:.6f}",
                 "mpi_post_s": f"{per_step(mpi_post):.6f}",
                 "mpi_coll_s": f"{per_step(mpi_coll):.6f}",
                 "other_s": f"{other_ps:.6f}",
@@ -288,6 +350,23 @@ def main() -> int:
                 "other_frac": f"{other_ps / denom:.4f}" if denom else "",
                 "n_waitany": n_waitany,
                 "n_irecv": n_irecv,
+                "waitany_per_step": (
+                    "" if waitany_per_step is None else f"{waitany_per_step:.1f}"
+                ),
+                "irecv_per_step": (
+                    "" if irecv_per_step is None else f"{irecv_per_step:.1f}"
+                ),
+                "peer_wait_rounds_per_step": "" if rounds is None else rounds,
+                "n_mpi_reshape": n_mpi_reshape,
+                "n_local_reshape": n_local_reshape,
+                "mpi_reshapes_per_step": (
+                    ""
+                    if mpi_reshapes_per_step is None
+                    else f"{mpi_reshapes_per_step:.1f}"
+                ),
+                "mpi_wait_per_round_s": (
+                    "" if wait_per_round is None else f"{wait_per_round:.6f}"
+                ),
                 "n_logs": len(logs),
             }
         )

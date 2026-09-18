@@ -43,7 +43,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `OPENPFC_HEFFTE_TRACE` enables per-rank logs from `mpi_main`.
   `submit_tungsten_hip_trace.sh` runs the six 4-node layouts that
   separate local-FFT vs transpose after the matched-work slab
-  falsification.
+  falsification. The parser reports `peer_wait_rounds_per_step` from
+  the raw 20-step log (not the 19 kept timing frames). A z-slab r2c
+  outbox uses y-slabs only when `Ny` divides the rank count.
 
 - **LUMI-G tungsten_hip flagship ladder** (issue #13). Weak-scaling
   recipes for 1–32 nodes plus a gated 60-node / 3000³ point.

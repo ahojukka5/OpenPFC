@@ -37,6 +37,45 @@ TEST_CASE("r2c z-slab real inbox uses y-slab complex outbox",
   REQUIRE(cplx15.low[1] > cplx0.low[1]);
 }
 
+TEST_CASE("r2c y-slab outbox requires Ny divisible by the rank count",
+          "[fft][layout][unit]") {
+  // 1152 % 32 == 0: complex outbox is a y-slab (full z).
+  {
+    auto domain = domain::create(Int3{1152, 1152, 1152});
+    auto decomp = decomposition::create(domain, Int3{1, 1, 32});
+    auto layout = fft::layout::create(decomp, 0);
+    const auto &cplx0 = fft::layout::get_complex_box(layout, 0);
+    REQUIRE(cplx0.size[0] == 577);
+    REQUIRE(cplx0.size[1] == 36);
+    REQUIRE(cplx0.size[2] == 1152);
+  }
+  // 1216 % 32 == 0: same y-slab hop skip as 1152.
+  {
+    auto domain = domain::create(Int3{1216, 1216, 1216});
+    auto decomp = decomposition::create(domain, Int3{1, 1, 32});
+    auto layout = fft::layout::create(decomp, 0);
+    const auto &cplx0 = fft::layout::get_complex_box(layout, 0);
+    REQUIRE(cplx0.size[0] == 609);
+    REQUIRE(cplx0.size[1] == 38);
+    REQUIRE(cplx0.size[2] == 1216);
+  }
+  // 1200 % 32 != 0: keep the real z-slab on the complex outbox, so
+  // HeFFTe still does the pencils-back-to-z-slabs transpose.
+  {
+    auto domain = domain::create(Int3{1200, 1200, 1152});
+    auto decomp = decomposition::create(domain, Int3{1, 1, 32});
+    auto layout = fft::layout::create(decomp, 0);
+    const auto &real0 = fft::layout::get_real_box(layout, 0);
+    const auto &cplx0 = fft::layout::get_complex_box(layout, 0);
+    REQUIRE(real0.size[0] == 1200);
+    REQUIRE(real0.size[1] == 1200);
+    REQUIRE(real0.size[2] == 36);
+    REQUIRE(cplx0.size[0] == 601);
+    REQUIRE(cplx0.size[1] == 1200);
+    REQUIRE(cplx0.size[2] == 36);
+  }
+}
+
 TEST_CASE("FFT - basic functionality", "[fft][unit]") {
   auto domain = domain::create(GridSize({8, 1, 1}), PhysicalOrigin({1.0, 1.0, 1.0}),
                                GridSpacing({1.0, 1.0, 1.0}));

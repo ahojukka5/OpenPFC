@@ -81,3 +81,17 @@ python3 apps/tungsten/scripts/parse_heffte_trace.py \
 Set `OPENPFC_HEFFTE_TRACE` is handled by the sbatch (per-run
 `heffte_trace_<rank>.log`). The extra device synchronizes change host
 overlap; they do not change the numerical algorithm or process grid.
+
+## What the 2× `waitany` count is
+
+Whole-log `n_waitany` is 20 tungsten steps × rounds × 31 peers.
+`n_steps_kept` (19) is only the timing-profile warmup skip. Do not
+divide raw `waitany` by 19.
+
+For `1×1×32` z-slab real inboxes with r2c along x, OpenPFC places the
+complex outbox on **y-slabs** (`1×32×1`) when `Ny % 32 == 0`. HeFFTe
+then finishes the z-FFT already in the outbox layout and skips the
+pencils-back-to-z-slab reshape. `1152` and `1216` take that path
+(4 all-peer rounds per step). `1200 % 32 != 0`, so the outbox stays a
+z-slab and that extra transpose pair remains (8 rounds). The 2× count
+is extra distributed reshape stages, not a logging artifact.

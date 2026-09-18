@@ -70,9 +70,10 @@ auto get_complex_indices(const Decomposition &decomposition, int r2c_direction) 
 }
 
 /// When real data is 1D z-slabs and r2c is x, put the complex outbox on
-/// y-slabs (full z). HeFFTe's z-FFT then ends in the outbox layout, so the
-/// second reshape (pencils back to z-slabs) is skipped. That hop dominated
-/// 16-GCD LUMI-G wall_step.
+/// y-slabs (full z) if Ny is divisible by the rank count. HeFFTe's z-FFT
+/// then ends in the outbox layout, so the pencils-back-to-z-slabs reshape
+/// is skipped. That hop dominated 16-GCD LUMI-G wall_step. If Ny % nproc
+/// != 0 the outbox stays a z-slab and that extra transpose pair remains.
 [[nodiscard]] pfc::Int3
 complex_proc_grid_for_r2c(const pfc::Int3 &real_grid,
                           const heffte::box3d<int> &complex_world,
