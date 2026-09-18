@@ -167,6 +167,27 @@ TEST_CASE("Engineering Voigt and the binary-laminate closed form",
   REQUIRE(C(0, 3) == 0.0);
   REQUIRE(is_spd(C));
 
+  const auto iso_d = pfc::apps::diagnose_stiffness(C);
+  REQUIRE(iso_d.spd);
+  REQUIRE(iso_d.invertible);
+  REQUIRE_THAT(iso_d.nu_xy, WithinAbs(0.3, 1e-12));
+  REQUIRE_THAT(iso_d.nu_xz, WithinAbs(0.3, 1e-12));
+  REQUIRE_THAT(iso_d.nu_yx, WithinAbs(0.3, 1e-12));
+  REQUIRE_THAT(iso_d.nu_yz, WithinAbs(0.3, 1e-12));
+  REQUIRE_THAT(iso_d.nu_zx, WithinAbs(0.3, 1e-12));
+  REQUIRE_THAT(iso_d.nu_zy, WithinAbs(0.3, 1e-12));
+  REQUIRE_THAT(iso_d.spread_C11, WithinAbs(0.0, 1e-12));
+  REQUIRE_THAT(iso_d.spread_C12, WithinAbs(0.0, 1e-12));
+  REQUIRE_THAT(iso_d.spread_C44, WithinAbs(0.0, 1e-12));
+  REQUIRE(iso_d.min_eig > 0.0);
+
+  const Voigt6 aux = voigt_from_stiffness(Stiffness::isotropic(0.4, -0.2));
+  const auto aux_d = pfc::apps::diagnose_stiffness(aux);
+  REQUIRE(aux_d.spd);
+  REQUIRE_THAT(aux_d.nu_xy, WithinAbs(-0.2, 1e-12));
+  REQUIRE_THAT(aux_d.nu_xz, WithinAbs(-0.2, 1e-12));
+  REQUIRE(aux_d.min_eig > 0.0);
+
   Voigt6 back = C;
   REQUIRE(pfc::apps::invert_voigt(back));
   Voigt6 round = back;

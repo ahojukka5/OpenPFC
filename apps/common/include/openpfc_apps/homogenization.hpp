@@ -288,6 +288,103 @@ inline bool invert_voigt(Voigt6 &m) {
   return true;
 }
 
+/// Smallest eigenvalue of a symmetrized 6x6 matrix (Jacobi).
+[[nodiscard]] inline double min_eigenvalue_symmetric(const Voigt6 &in) {
+  Voigt6 a = in.symmetrized();
+  constexpr int n = kVoigtDim;
+  for (int iter = 0; iter < 64; ++iter) {
+    int p = 0, q = 1;
+    double maxv = 0.0;
+    for (int i = 0; i < n; ++i)
+      for (int j = i + 1; j < n; ++j) {
+        const double v = std::abs(a(i, j));
+        if (v > maxv) {
+          maxv = v;
+          p = i;
+          q = j;
+        }
+      }
+    if (maxv < 1.0e-15) break;
+    const double app = a(p, p);
+    const double aqq = a(q, q);
+    const double apq = a(p, q);
+    const double tau = (aqq - app) / (2.0 * apq);
+    const double t =
+        std::copysign(1.0, tau) / (std::abs(tau) + std::sqrt(1.0 + tau * tau));
+    const double c = 1.0 / std::sqrt(1.0 + t * t);
+    const double s = t * c;
+    a(p, p) = app - t * apq;
+    a(q, q) = aqq + t * apq;
+    a(p, q) = a(q, p) = 0.0;
+    for (int k = 0; k < n; ++k) {
+      if (k == p || k == q) continue;
+      const double aik = a(k, p);
+      const double aiq = a(k, q);
+      a(k, p) = a(p, k) = c * aik - s * aiq;
+      a(k, q) = a(q, k) = s * aik + c * aiq;
+    }
+  }
+  double m = a(0, 0);
+  for (int i = 1; i < n; ++i) m = std::min(m, a(i, i));
+  return m;
+}
+
+/// Compliance Poisson ratios and cubic/isotropy spreads of an engineering C.
+struct StiffnessDiagnostics {
+  Voigt6 C{};
+  Voigt6 S{};
+  bool spd{false};
+  bool invertible{false};
+  double min_eig{0.0};
+  double rel_frobenius{0.0};
+  /// Shortcut \f$C_{12}/(C_{11}+C_{12})\f$; not the qualification metric.
+  double nu_shortcut{0.0};
+  double nu_xy{0.0};
+  double nu_xz{0.0};
+  double nu_yx{0.0};
+  double nu_yz{0.0};
+  double nu_zx{0.0};
+  double nu_zy{0.0};
+  double spread_C11{0.0};
+  double spread_C12{0.0};
+  double spread_C44{0.0};
+};
+
+[[nodiscard]] inline StiffnessDiagnostics
+diagnose_stiffness(const Voigt6 &C, const Voigt6 *C_target = nullptr) {
+  StiffnessDiagnostics d;
+  d.C = C.symmetrized();
+  d.spd = is_spd(d.C);
+  d.min_eig = min_eigenvalue_symmetric(d.C);
+  Voigt6 S = d.C;
+  d.invertible = invert_voigt(S);
+  if (d.invertible) {
+    d.S = S;
+    auto ratio = [](double num, double den) {
+      return (std::abs(den) > 1.0e-30) ? num / den : 0.0;
+    };
+    d.nu_xy = ratio(-S(0, 1), S(0, 0));
+    d.nu_xz = ratio(-S(0, 2), S(0, 0));
+    d.nu_yx = ratio(-S(1, 0), S(1, 1));
+    d.nu_yz = ratio(-S(1, 2), S(1, 1));
+    d.nu_zx = ratio(-S(2, 0), S(2, 2));
+    d.nu_zy = ratio(-S(2, 1), S(2, 2));
+  }
+  const double den = d.C(0, 0) + d.C(0, 1);
+  d.nu_shortcut = (std::abs(den) > 1.0e-30) ? d.C(0, 1) / den : 0.0;
+  auto spread = [](double a, double b, double c) {
+    return std::max(a, std::max(b, c)) - std::min(a, std::min(b, c));
+  };
+  d.spread_C11 = spread(d.C(0, 0), d.C(1, 1), d.C(2, 2));
+  d.spread_C12 = spread(d.C(0, 1), d.C(0, 2), d.C(1, 2));
+  d.spread_C44 = spread(d.C(3, 3), d.C(4, 4), d.C(5, 5));
+  if (C_target != nullptr) {
+    d.rel_frobenius = (d.C - *C_target).frobenius_norm() /
+                      std::max(C_target->frobenius_norm(), 1.0e-30);
+  }
+  return d;
+}
+
 /**
  * @brief Engineering unit strain for homogenization load \p alpha.
  *
