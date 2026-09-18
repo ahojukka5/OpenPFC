@@ -207,6 +207,11 @@ A topology-changing / plasmoid event in the peak-current window is
 not demonstrated. Continuous X-point reconnection in \(t\le 0.80\)
 is.
 
+Issue #38 (`SCALING.md`) asks how that rate and the local sheet
+geometry scale with \(\eta\) at \(P_m=1\). It does not rewrite this
+decision. This note still does not report a physical local Lundquist
+number: `halfmax_area_sqrt` is not a sheet-axis length.
+
 ## Commands
 
 ```bash
