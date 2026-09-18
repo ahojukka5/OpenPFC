@@ -34,11 +34,12 @@ mpirun -n 2 ./examples/23_halo_microtiming --nx 16 --iters 4 --output /tmp/halo.
 These cover decomposition, distributed FFT, the simulator stack, and a richer spectral model.
 
 A **research prototype** (not part of the numbered teaching ladder) is
-`ns2d_vorticity`: 2-D vorticity–streamfunction Navier–Stokes for
-[issue #21](https://github.com/ahojukka5/OpenPFC/issues/21) (IFRK4,
-unit-square Minion–Brown shear). See
-[`ns2d_vorticity/README.md`](ns2d_vorticity/README.md). It is not a
-shipped `apps/` catalog entry.
+`ns2d_vorticity`: 2-D vorticity–streamfunction Navier–Stokes
+([#21](https://github.com/ahojukka5/OpenPFC/issues/21)) and
+incompressible MHD (`mhd2d`,
+[#23](https://github.com/ahojukka5/OpenPFC/issues/23)). See
+[`ns2d_vorticity/README.md`](ns2d_vorticity/README.md). Not a shipped
+`apps/` catalog entry.
 
 ## Full catalog and curriculum
 

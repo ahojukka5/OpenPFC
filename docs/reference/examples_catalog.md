@@ -112,6 +112,7 @@ catalog entries.
 | Executable | Source | What it demonstrates |
 |------------|--------|----------------------|
 | `ns2d_vorticity` | `ns2d_vorticity/src/ns2d.cpp` | Issue #21 2-D vorticity–streamfunction Navier–Stokes (CPU). See [`../../examples/ns2d_vorticity/README.md`](../../examples/ns2d_vorticity/README.md). |
+| `mhd2d` | `ns2d_vorticity/src/mhd.cpp` | Issue #23 2-D incompressible visco-resistive MHD (CPU). Same README. |
 
 ## Sources not built by default
 

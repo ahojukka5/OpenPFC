@@ -6,9 +6,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 # 2-D vorticity–streamfunction Navier–Stokes (issue #21)
 
 Research prototype, not a shipped `apps/` catalog entry. It lives under
-`examples/` so the sixteen-application catalog stays closed. The
-incompressible-flow core is `include/ns2d/vorticity_stream.hpp`. This
-directory does **not** implement reduced MHD or Cahn–Hilliard–Navier–Stokes.
+`examples/` so the sixteen-application catalog stays closed. Shared
+spectral pieces are `include/ns2d/spectral.hpp`. Navier–Stokes is
+`vorticity_stream.hpp` (#21/#22). Two-dimensional incompressible
+visco-resistive MHD is `mhd.hpp` (#23). This is **not** Strauss reduced
+MHD and it is **not** Cahn–Hilliard–Navier–Stokes.
 
 ## Equations
 
@@ -183,12 +185,144 @@ one, 2/3 projection passes an aliasing test, and the standard
 Minion–Brown shear is grid-converged at 256²/512² through roll-up
 without blow-up.
 
-That is enough to **keep the prototype and allow a later coupling
-issue** (reduced MHD or CHNS — choose in a new issue, do not start
-either here). It is no longer accurate to park the work solely because
-ETD1 blew up on a mis-scaled layer.
+Issue #23 (below) is the MHD coupling experiment. CHNS is still a
+separate later choice.
 
-Still unverified: HIP; multi-rank; visual inspection of the VTK
-series in ParaView; vortex *merger* as a distinct later-time event
-beyond the \(t=0.8\) roll-up / \(t=1.6\) persistence already
-integrated.
+Still unverified for NS: HIP; multi-rank; ParaView inspection of VTK;
+vortex *merger* as a distinct later-time event beyond the \(t=0.8\)
+roll-up / \(t=1.6\) persistence already integrated.
+
+## 2-D incompressible visco-resistive MHD (issue #23)
+
+Not Strauss (1976) reduced MHD (no guide field, no parallel dynamics).
+Literature for this experiment: Orszag & Tang, JFM 90 (1979);
+Pouquet, JFM 88 (1978).
+
+### Model and signs
+
+\[
+\mathbf u=(\partial_y\phi,-\partial_x\phi),\quad
+\omega=-\nabla^2\phi,\quad
+\mathbf B=(\partial_y a,-\partial_x a),\quad
+j=-\nabla^2 a,
+\]
+
+\[
+\partial_t\omega+\mathbf u\cdot\nabla\omega
+=\mathbf B\cdot\nabla j+\nu\nabla^2\omega,
+\qquad
+\partial_t a+\mathbf u\cdot\nabla a=\eta\nabla^2 a.
+\]
+
+The Lorentz term is **\(+B\cdot\nabla j\)**. A test that flips the sign
+fails on an Alfvénic two-mode state (\(N_\omega\) jumps from
+\(<10^{-10}\) to \(>1\)).
+
+Shared with NS: `SpectralPlane` Poisson, odd-\(k\) derivatives, state
+2/3 projection, IFRK4. Prognostic fields are \(\omega\) (stack field)
+and \(a\) (second inbox `Field`). Density and \(\mu_0\) are 1.
+
+### Diagnostics (2-D means)
+
+| Name | Normalization |
+|------|----------------|
+| `ke` | \(\frac12\langle\|u\|^2\rangle\) |
+| `me` | \(\frac12\langle\|B\|^2\rangle\) |
+| `energy` | `ke+me` |
+| `cross_helicity` | \(\langle u\cdot B\rangle\) |
+| `a2` | \(\frac12\langle a^2\rangle\) |
+| `enstrophy` | \(\frac12\langle\omega^2\rangle\) |
+| `mean_sq_j` | \(\langle j^2\rangle\) |
+| `dissipation` | \(\nu\langle\omega^2\rangle+\eta\langle j^2\rangle\) |
+| `budget_residual` | \(\Delta E/\Delta t_{\mathrm{dump}}+\mathrm{dissipation}\) |
+| `cfl` | \(\Delta t\,\max(\|u\|,\|B\|)/\Delta x\) |
+
+### Commands
+
+```bash
+# force-free magnetic eigenmode (CLI verify)
+./examples/ns2d_vorticity/mhd2d --verify --N 16 --steps 8 \
+  --dt 0.05 --nu 0.1 --eta 0.1
+
+# incompressible Orszag–Tang, Pm=1, enough dissipation for 128=256
+./examples/ns2d_vorticity/mhd2d --case orszag_tang --N 256 \
+  --steps 204 --cfl 0.4 --nu 0.02 --eta 0.02 --dump 17 \
+  --outdir /scratch/project_462001519/juaho/mhd2d-23/ot256
+
+# matched hydro control (same u, a=0)
+./examples/ns2d_vorticity/mhd2d --case hydro_control --N 256 \
+  --steps 204 --cfl 0.4 --nu 0.02 --eta 0.02 --dump 17 \
+  --outdir /scratch/project_462001519/juaho/mhd2d-23/hydro256
+```
+
+VTK: `omega_*.vti`, `a_*.vti`, `j_*.vti`. Overlay \(j\) with \(a\)
+contours in ParaView; do **not** call that reconnection.
+
+### Verification (Catch2 `mhd2d-cpu`, 7 cases)
+
+- \(a=0\) MHD matches NS on two-mode IC (\(L^\infty<10^{-11}\)).
+- Force-free \(a=\sin x\sin y\), \(u=0\): \(a(t)=a(0)e^{-2\eta t}\)
+  to \(10^{-11}\); velocity stays 0.
+- Alfvénic \(u=B\): \(N_\omega\sim 0\) with Lorentz \(+\); \(N_\omega>1\)
+  if the sign is flipped.
+- Ideal OT, 40 steps, \(\nu=\eta=0\): relative drift of \(E\) and \(A_2\)
+  \(<2\times10^{-3}\).
+- Dissipative budget residual \(<5\times10^{-3}\) when sampled every
+  step.
+- \(\nabla\cdot u\) and \(\nabla\cdot B\) at roundoff.
+
+### Orszag–Tang ladder (incompressible, \([0,2\pi]^2\))
+
+\(\phi=\cos x+\cos y\), \(a=\frac12\cos 2x+\cos y\).
+CPU HeFFTe 2.3.0, 1 rank. Raw:
+`/scratch/project_462001519/juaho/mhd2d-23/`.
+
+**\(P_m=1\), \(\nu=\eta=0.02\), CFL 0.4, \(t=2\):** 128² and 256²
+agree to six digits on \(E\), KE, ME, \(\max\|j\|\). Finite,
+`div` \(\sim10^{-14}\).
+
+| \(N\) | \(E(t=2)\) | KE | ME | \(\max\|j\|\) | \(\max\|\omega\|\) |
+|------:|----------:|---:|---:|-------------:|------------------:|
+| 128 | 0.760592 | 0.219881 | 0.540711 | 15.752 | 4.322 |
+| 256 | 0.760592 | 0.219881 | 0.540711 | 15.752 | 4.322 |
+
+KE falls \(0.50\to 0.22\); ME rises \(0.50\to 0.54\). \(\max\|j\|\)
+grows \(3\to 15.8\) (current-sheet formation). No reconnection
+diagnostic is implemented.
+
+**Matched hydro control** (256², same \(u\), \(a=0\)): the OT
+velocity has vanishing Jacobian, so hydro is an exact decaying
+eigenmode (KE \(0.50\to 0.46\), \(\max\|\omega\|\) \(2\to 1.92\)).
+Magnetic coupling is the entire nonlinear dynamics.
+
+**Thinner sheets \(\nu=\eta=0.005\), \(t=1.5\):**
+
+| \(N\) | \(E\) | \(\max\|j\|\) | \(\max\|\omega\|\) |
+|------:|------:|-------------:|------------------:|
+| 128 | 0.94775 | 25.73 | 7.70 |
+| 256 | 0.94700 | 26.90 | 8.00 |
+| 512 | 0.94700 | 26.90 | 7.99 |
+
+256 and 512 agree; 128 under-resolves peak current by \(\sim 4\%\).
+Budget residuals after the dump-interval fix are \(O(10^{-3})\).
+
+Animation-ready: `ot256` and `ot256_nu0005` (`omega`, `a`, `j` VTK).
+Frames were not rendered here.
+
+### Decision gate (issue #23)
+
+- Magnetic dynamics are **robust and grid-converged** at \(P_m=1\) for
+  \(\nu=\eta=0.02\) already at 128², and for \(\nu=\eta=0.005\) at
+  256²/512².
+- MHD **does** add scientifically distinct behaviour: the hydro control
+  is a linear eigenmode; MHD transfers kinetic to magnetic energy and
+  forms current sheets.
+- Current-sheet formation is converged. That **justifies a later
+  reconnection / topology issue** with a quantitative X-point or flux
+  diagnostic. This PR does **not** claim reconnection and does **not**
+  start Strauss RMHD.
+- Keep this as an **MHD verification / teaching prototype** until that
+  reconnection issue is posed. Do not pivot to CHNS on this evidence:
+  the magnetic coupling is the interesting part.
+
+HIP is still blocked by the same pointwise `SpectralETDOps` pipeline.
