@@ -50,6 +50,9 @@ struct Config {
   double thickness{0.06};
   double inset{0.14};
   std::string dump_dir{};
+  std::string load_bin{};
+  double binarize{-1.0};
+  int n_el_iter{80};
 };
 
 void usage(std::ostream &os, const char *exe) {
@@ -64,7 +67,10 @@ void usage(std::ostream &os, const char *exe) {
      << "  --volume           h for homogeneous; ignored otherwise\n"
      << "  --half --angle     rotating-square/cube half-side and rotation (rad)\n"
      << "  --thickness --inset  reentrant-3d strut half-thickness and inset\n"
-     << "  --dump-dir         write gathered h.bin + h.xdmf\n";
+     << "  --dump-dir         write gathered h.bin + h.xdmf\n"
+     << "  --load-bin         Fortran-order float64 brick (i-fastest)\n"
+     << "  --binarize=T       threshold loaded field at T after load\n"
+     << "  --n-el-iter        elasticity iterations (default 80)\n";
 }
 
 bool parse_double(std::string_view v, double &out) {
@@ -124,6 +130,12 @@ bool parse(int argc, char **argv, Config &cfg) {
       if (!parse_double(val, cfg.inset) || cfg.inset <= 0.0) return false;
     } else if (key == "dump-dir") {
       cfg.dump_dir = std::string(val);
+    } else if (key == "load-bin") {
+      cfg.load_bin = std::string(val);
+    } else if (key == "binarize") {
+      if (!parse_double(val, cfg.binarize)) return false;
+    } else if (key == "n-el-iter") {
+      if (!parse_int(val, cfg.n_el_iter) || cfg.n_el_iter <= 0) return false;
     } else {
       return false;
     }
@@ -131,6 +143,40 @@ bool parse(int argc, char **argv, Config &cfg) {
   return cfg.shape == "homogeneous" || cfg.shape == "laminate-z" ||
          cfg.shape == "sphere" || cfg.shape == "rotating-cubes" ||
          cfg.shape == "rotating-squares" || cfg.shape == "reentrant-3d";
+}
+
+bool load_fortran_bin(const std::string &path, int nx, int ny, int nz,
+                      pfc::data::Field<double> &h) {
+  const std::size_t ntot =
+      static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) *
+      static_cast<std::size_t>(nz);
+  std::vector<double> a(ntot, 0.0);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  int ok = 1;
+  if (rank == 0) {
+    std::ifstream f(path, std::ios::binary);
+    f.read(reinterpret_cast<char *>(a.data()),
+           static_cast<std::streamsize>(ntot * sizeof(double)));
+    if (!f || static_cast<std::size_t>(f.gcount()) != ntot * sizeof(double)) ok = 0;
+  }
+  MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if (!ok) return false;
+  MPI_Bcast(a.data(), static_cast<int>(ntot), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  const auto n = h.local_size();
+  for (int k = 0; k < n[2]; ++k)
+    for (int j = 0; j < n[1]; ++j)
+      for (int i = 0; i < n[0]; ++i) {
+        const auto g = h.global(i, j, k);
+        const std::size_t idx =
+            static_cast<std::size_t>(g[0]) +
+            static_cast<std::size_t>(nx) *
+                (static_cast<std::size_t>(g[1]) +
+                 static_cast<std::size_t>(ny) * static_cast<std::size_t>(g[2]));
+        h(i, j, k) = a[idx];
+      }
+  h.note_host_write();
+  return true;
 }
 
 std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx, int ny,
@@ -234,7 +280,22 @@ int main(int argc, char **argv) {
   const double Lx = cfg.nx * cfg.dx;
   const double Ly = cfg.ny * cfg.dx;
   const double Lz = cfg.nz * cfg.dx;
-  if (cfg.shape == "rotating-cubes") {
+  bool proceed = true;
+  if (!cfg.load_bin.empty()) {
+    if (!load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny, cfg.nz, h)) {
+      if (rank == 0)
+        std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin << '\n';
+      rc = 2;
+      proceed = false;
+    } else if (cfg.binarize >= 0.0) {
+      const auto n = h.local_size();
+      for (int k = 0; k < n[2]; ++k)
+        for (int j = 0; j < n[1]; ++j)
+          for (int i = 0; i < n[0]; ++i)
+            h(i, j, k) = (h(i, j, k) > cfg.binarize) ? 1.0 : 0.0;
+      h.note_host_write();
+    }
+  } else if (cfg.shape == "rotating-cubes") {
     pfc::apps::inverse::fill_rotating_cubes(h, cfg.nx, cfg.ny, cfg.nz, cfg.half,
                                             cfg.angle);
   } else if (cfg.shape == "rotating-squares") {
@@ -268,11 +329,13 @@ int main(int argc, char **argv) {
     h.note_host_write();
   }
 
+  if (!proceed) {
+  } else {
   pfc::apps::MicroelasticityParams p;
   p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
   p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
   p.tol_el = 1.0e-8;
-  p.n_el_iter = 80;
+  p.n_el_iter = cfg.n_el_iter;
   p.warm_start = false;
   p.comm = MPI_COMM_WORLD;
 
@@ -283,8 +346,11 @@ int main(int argc, char **argv) {
       dense, cfg.nx, cfg.ny, cfg.nz, 0.5);
 
   if (rank == 0) {
-    std::cout << "shape " << cfg.shape << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
-              << cfg.nz << " ranks " << nproc;
+    std::cout << "shape " << (cfg.load_bin.empty() ? cfg.shape : std::string("load-bin"))
+              << " grid " << cfg.nx << 'x' << cfg.ny << 'x' << cfg.nz << " ranks "
+              << nproc;
+    if (!cfg.load_bin.empty())
+      std::cout << " load-bin " << cfg.load_bin << " binarize " << cfg.binarize;
     if (cfg.shape == "rotating-cubes" || cfg.shape == "rotating-squares") {
       std::cout << std::setprecision(8) << " half " << cfg.half << " angle "
                 << cfg.angle;
@@ -298,6 +364,9 @@ int main(int argc, char **argv) {
               << " spd " << (pfc::apps::is_spd(r.stiffness) ? "yes" : "no")
               << " converged " << (r.all_converged() ? "yes" : "no") << '\n';
     print_qualification(std::cout, r, man);
+    std::cout << std::setprecision(10) << "opening_loss_r1 " << man.opening_loss_r1
+              << " opening_loss_r2 " << man.opening_loss_r2 << " grey "
+              << man.grey_fraction << '\n';
     std::cout << std::setprecision(16) << "HOMOGENIZATION_CHECKSUM "
               << r.stiffness.frobenius_norm() << '\n';
     if (!cfg.dump_dir.empty()) {
@@ -310,6 +379,7 @@ int main(int argc, char **argv) {
   }
 
   rc = r.all_converged() ? 0 : 1;
+  }
   }
   MPI_Finalize();
   return rc;
