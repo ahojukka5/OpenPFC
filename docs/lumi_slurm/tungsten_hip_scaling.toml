@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Template for the LUMI-G tungsten_hip 1–8 GCD scaling slice (#87).
-# The sbatch wrapper substitutes __LX__ (cubic grid) and __T1__ (t0=0, dt=1
-# so this is the measured step count). Do not commit substituted copies.
+# The sbatch wrapper substitutes __LX__/__LY__/__LZ__ (Ly/Lz default to Lx)
+# and __T1__ (t0=0, dt=1 so this is the measured step count). Do not commit
+# substituted copies.
 #
 # I/O is off: saveat = -1 and no [[fields]]. Profiling writes a schema-v4
 # JSON summary next to the job working directory. HIP FFTs use rocFFT
@@ -37,8 +38,8 @@ q40 = 45.0
 
 [domain]
 Lx = __LX__
-Ly = __LX__
-Lz = __LX__
+Ly = __LY__
+Lz = __LZ__
 dx = 1.1107207345395915
 dy = 1.1107207345395915
 dz = 1.1107207345395915
