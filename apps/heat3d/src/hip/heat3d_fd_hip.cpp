@@ -338,10 +338,13 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
     MPI_Allreduce(local, gmax, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     MPI_Allreduce(local, gmin, 3, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
     if (rank == 0) {
-      std::cout << "HEAT3D_DIAG halo_s=" << local[0] << " rhs_s=" << local[1]
-                << " update_s=" << local[2] << " halo_minmax=" << gmin[0] << ","
-                << gmax[0] << " rhs_minmax=" << gmin[1] << "," << gmax[1]
-                << " update_minmax=" << gmin[2] << "," << gmax[2] << "\n";
+      // Headline is the max across rank-local medians so it is comparable
+      // to the barriered clean wall_step (slowest rank). min/max is spread.
+      std::cout << "HEAT3D_DIAG reduce=max_rank_median halo_s=" << gmax[0]
+                << " rhs_s=" << gmax[1] << " update_s=" << gmax[2]
+                << " halo_minmax=" << gmin[0] << "," << gmax[0]
+                << " rhs_minmax=" << gmin[1] << "," << gmax[1]
+                << " update_minmax=" << gmin[2] << "," << gmax[2] << std::endl;
     }
   }
 
