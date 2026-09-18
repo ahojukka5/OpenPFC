@@ -43,6 +43,10 @@ R_ST = 0.5
 N_LINE = 401
 S_MAX_N = 0.5 * math.pi
 S_MAX_T = math.pi
+B_UP_MIN = 1.0e-3
+# FWHM saturates at the search-window length 2*S_MAX_*.
+DELTA_CAP = 2.0 * S_MAX_N
+L_CAP = 2.0 * S_MAX_T
 
 
 def _unit(vx, vy):
@@ -134,13 +138,19 @@ def _sample_line(field, x0, y0, ux, uy, s_max, n_samp, dx, length,
 
 
 def _width_at_level(s, f, level):
-    """Extent of {s : |f| >= level}, with linear edge interpolation."""
+    """Extent of {s : |f| >= level}, with linear edge interpolation.
+
+    Returns (width, capped). capped is True if the superlevel set
+    reaches a search-window endpoint, so the width is not a physical
+    FWHM / half-max length.
+    """
     g = np.abs(f)
     above = np.where(g >= level)[0]
     if above.size == 0:
-        return 0.0
+        return 0.0, False
     i0 = int(above[0])
     i1 = int(above[-1])
+    capped = bool(i0 == 0 or i1 + 1 >= g.size)
     if i0 > 0 and g[i0] != g[i0 - 1]:
         t = (level - g[i0 - 1]) / (g[i0] - g[i0 - 1])
         sL = s[i0 - 1] + t * (s[i0] - s[i0 - 1])
@@ -151,14 +161,15 @@ def _width_at_level(s, f, level):
         sR = s[i1] + t * (s[i1 + 1] - s[i1])
     else:
         sR = s[i1]
-    return float(max(0.0, sR - sL))
+    return float(max(0.0, sR - sL)), capped
 
 
 def fwhm_line(s, f):
     peak = float(np.max(np.abs(f)))
     if peak <= 0.0:
         return 0.0
-    return _width_at_level(s, f, 0.5 * peak)
+    width, _ = _width_at_level(s, f, 0.5 * peak)
+    return width
 
 
 def measure_sheet(a, x, y, eta, ez_x=None, length=mt.TWOPI):
@@ -181,9 +192,13 @@ def measure_sheet(a, x, y, eta, ez_x=None, length=mt.TWOPI):
     s_t, j_t = _sample_line(
         j, x, y, t_hat[0], t_hat[1], S_MAX_T, N_LINE, dx, length,
         hat=jhat, kx=kx)
-    delta = fwhm_line(s_n, j_n)
-    jref = abs(j_x) if abs(j_x) > 1.0e-30 else float(np.max(np.abs(j_n)))
-    L = _width_at_level(s_t, j_t, ALPHA_J * jref)
+    peak_n = float(np.max(np.abs(j_n)))
+    if peak_n <= 0.0:
+        delta, delta_capped = 0.0, False
+    else:
+        delta, delta_capped = _width_at_level(s_n, j_n, 0.5 * peak_n)
+    jref = abs(j_x) if abs(j_x) > 1.0e-30 else peak_n
+    L, L_capped = _width_at_level(s_t, j_t, ALPHA_J * jref)
     # B_up at ± KAPPA * delta along n_hat.
     d_up = KAPPA_UP * max(delta, dx)
     sides = []
@@ -202,6 +217,7 @@ def measure_sheet(a, x, y, eta, ez_x=None, length=mt.TWOPI):
         r = abs(float(ez_x)) / (b_up * v_a)
     else:
         r = None
+    sheet_ok = (not delta_capped) and (not L_capped) and (b_up > B_UP_MIN)
     return {
         "n_hat": n_hat,
         "t_hat": t_hat,
@@ -216,6 +232,9 @@ def measure_sheet(a, x, y, eta, ez_x=None, length=mt.TWOPI):
         "V_A": v_a,
         "S_local": s_local,
         "R": r,
+        "delta_capped": delta_capped,
+        "L_capped": L_capped,
+        "sheet_ok": sheet_ok,
         "ALPHA_J": ALPHA_J,
         "KAPPA_UP": KAPPA_UP,
     }
