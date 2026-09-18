@@ -208,6 +208,76 @@ inline constexpr int kSpectralNodeGcds = 8;
          (grid[2] == num_procs && grid[0] == 1 && grid[1] == 1);
 }
 
+/// Cartesian grids that factor @p num_procs and divide a box @p size.
+[[nodiscard]] inline std::vector<Int3> legal_proc_grids(const Int3 &size,
+                                                        int num_procs) {
+  std::vector<Int3> out;
+  if (num_procs < 1) {
+    return out;
+  }
+  for (int i = 1; i <= num_procs; ++i) {
+    if (num_procs % i != 0 || size[0] % i != 0) {
+      continue;
+    }
+    const int rest = num_procs / i;
+    for (int j = 1; j <= rest; ++j) {
+      if (rest % j != 0 || size[1] % j != 0) {
+        continue;
+      }
+      const int k = rest / j;
+      if (k < 1 || size[2] % k != 0 || i * j * k != num_procs) {
+        continue;
+      }
+      out.push_back(Int3{i, j, k});
+    }
+  }
+  return out;
+}
+
+/// How many process-grid axes are greater than one (1 = slab, 2 = pencil, 3 = brick).
+[[nodiscard]] inline int proc_grid_split_axes(const Int3 &grid) {
+  int n = 0;
+  for (int d = 0; d < 3; ++d) {
+    if (grid[d] > 1) {
+      ++n;
+    }
+  }
+  return n;
+}
+
+/**
+ * @brief 2-D process grid that keeps @p r2c_direction unsplit and is as close
+ *        as possible to a 1-D slab on the preferred remaining axis.
+ *
+ * For r2c along x the preferred slab axis is z, so among legal `1×gy×gz`
+ * pencils this maximises `gz` (e.g. `1×2×16` over `1×8×4` on 1200³ / 32
+ * ranks). Returns `{0,0,0}` when no r2c-preserving 2-D grid exists. Does not
+ * encode measured wall times.
+ */
+[[nodiscard]] inline Int3 closest_slab_pencil_grid(const Int3 &size, int num_procs,
+                                                   int r2c_direction = 0) {
+  if (num_procs < 2) {
+    return Int3{0, 0, 0};
+  }
+  if (r2c_direction < 0 || r2c_direction > 2) {
+    r2c_direction = 0;
+  }
+  static constexpr int kPref[3][3] = {{2, 1, 0}, {2, 0, 1}, {1, 0, 2}};
+  const int preferred = kPref[r2c_direction][0];
+  Int3 best{0, 0, 0};
+  int best_pref = -1;
+  for (const Int3 &g : legal_proc_grids(size, num_procs)) {
+    if (g[r2c_direction] != 1 || proc_grid_split_axes(g) != 2) {
+      continue;
+    }
+    if (g[preferred] > best_pref) {
+      best_pref = g[preferred];
+      best = g;
+    }
+  }
+  return best;
+}
+
 /// Brick min-surface on one node; 1D slabs off-node when an axis divides
 /// (measured fastest on LUMI-G tungsten_hip). 1×8×N is the fallback when a
 /// 1D slab is illegal (e.g. 1200³ / 32 ranks). `OPENPFC_FFT_NODE_GRID=1`

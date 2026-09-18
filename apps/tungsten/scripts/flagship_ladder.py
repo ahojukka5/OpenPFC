@@ -110,7 +110,9 @@ def legal_proc_grids(n, nproc):
 def print_legal_grids(n, nproc):
     grids = legal_proc_grids(n, nproc)
     node = node_aware_grid(n, nproc)
-    print("N=%d nproc=%d legal=%d" % (n, nproc, len(grids)))
+    print("N=%d nproc=%d legal=%d 5-smooth=%s slab=%s cells/GCD=%.3e" % (
+        n, nproc, len(grids), "yes" if is_5_smooth(n) else "no",
+        "yes" if n % nproc == 0 else "no", n ** 3 / float(nproc)))
     for gx, gy, gz in grids:
         tags = []
         if (gx, gy, gz) == node:
@@ -121,14 +123,72 @@ def print_legal_grids(n, nproc):
             tags.append("slab-y")
         if gy == 1 and gz == 1:
             tags.append("slab-x")
+        if gx == 1 and gy > 1 and gz > 1:
+            tags.append("r2c-pencil")
         if gx == gy == gz:
             tags.append("cube")
+        split = sum(1 for v in (gx, gy, gz) if v > 1)
+        if split == 3:
+            tags.append("brick-3d")
         tag = (" " + " ".join(tags)) if tags else ""
         print(
             "  %dx%dx%d  local=%dx%dx%d%s"
             % (gx, gy, gz, n // gx, n // gy, n // gz, tag)
         )
     return 0 if grids else 1
+
+
+def factor_list(n):
+    x = n
+    out = []
+    p = 2
+    while p * p <= x:
+        while x % p == 0:
+            out.append(p)
+            x //= p
+        p = 3 if p == 2 else p + 2
+    if x > 1:
+        out.append(x)
+    return out
+
+
+def print_candidates(nodes, lo_rel=0.84, hi_rel=1.16, window=160):
+    """Nearby 5-smooth / slab-legal N for a weak-scaling point."""
+    nproc = nodes * 8
+    # Frozen 1-node 768^3 / 8 GCD band.
+    ref = (768 ** 3) / 8.0
+    target = int(round(ref * nproc) ** (1.0 / 3.0))
+    print(
+        "nodes=%d nproc=%d target~%d ref_cells/GCD=%.3e band=[%.0f%%, %.0f%%]"
+        % (nodes, nproc, target, ref, 100 * lo_rel, 100 * hi_rel)
+    )
+    print(
+        "%5s %3s %5s %10s %7s  %s"
+        % ("N", "5s", "slab", "cells/GCD", "rel", "factors")
+    )
+    n0 = max(32, target - window)
+    n1 = target + window
+    n = n0 if n0 % 2 == 0 else n0 + 1
+    while n <= n1:
+        per = (n ** 3) / float(nproc)
+        rel = per / ref
+        slab = n % nproc == 0
+        smooth = is_5_smooth(n)
+        in_band = lo_rel <= rel <= hi_rel
+        if in_band and (slab or smooth):
+            print(
+                "%5d %3s %5s %10.2e %+6.1f%%  %s"
+                % (
+                    n,
+                    "yes" if smooth else "no",
+                    "yes" if slab else "no",
+                    per,
+                    100.0 * (rel - 1.0),
+                    "x".join(str(p) for p in factor_list(n)),
+                )
+            )
+        n += 2
+    return 0
 
 
 def default_grid(n, nproc):
@@ -397,11 +457,19 @@ def main():
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--collect-self-test", action="store_true")
     p.add_argument("--grids", nargs=2, type=int, metavar=("N", "NPROC"))
+    p.add_argument(
+        "--candidates",
+        type=int,
+        metavar="NODES",
+        help="list nearby 5-smooth / slab-legal N for that node count",
+    )
     args = p.parse_args()
     if args.collect_self_test:
         sys.exit(collect_self_test())
     if args.grids:
         sys.exit(print_legal_grids(args.grids[0], args.grids[1]))
+    if args.candidates is not None:
+        sys.exit(print_candidates(args.candidates))
     if args.collect:
         n = collect(args.collect, args.out, args.warmup)
         print("wrote %d rows to %s" % (n, args.out))

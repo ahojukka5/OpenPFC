@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <heffte.h>
@@ -13,8 +14,11 @@
 #include <openpfc/kernel/decomposition/brick_split.hpp>
 
 using namespace pfc;
+using pfc::decomposition::closest_slab_pencil_grid;
+using pfc::decomposition::legal_proc_grids;
 using pfc::decomposition::min_surface_proc_grid;
 using pfc::decomposition::node_aware_fft_proc_grid;
+using pfc::decomposition::proc_grid_split_axes;
 using pfc::decomposition::slab_proc_grid;
 using pfc::decomposition::spectral_fft_proc_grid;
 using pfc::decomposition::split_box;
@@ -249,4 +253,33 @@ TEST_CASE("issue #13 prefers 1D slabs and falls back to 1x8xN",
   REQUIRE(setenv("OPENPFC_FFT_NODE_GRID", "1", 1) == 0);
   REQUIRE(spectral_fft_proc_grid({960, 960, 960}, 16) == Int3{1, 8, 2});
   REQUIRE(spectral_fft_proc_grid({1200, 1200, 1200}, 32) == Int3{1, 8, 4});
+}
+
+TEST_CASE("legal_proc_grids lists every Cartesian factor that divides N",
+          "[brick_split][unit][flagship]") {
+  const auto g1200 = legal_proc_grids({1200, 1200, 1200}, 32);
+  REQUIRE(g1200.size() == 18);
+  REQUIRE(std::find(g1200.begin(), g1200.end(), Int3{1, 2, 16}) != g1200.end());
+  REQUIRE(std::find(g1200.begin(), g1200.end(), Int3{1, 16, 2}) != g1200.end());
+  REQUIRE(std::find(g1200.begin(), g1200.end(), Int3{1, 1, 32}) == g1200.end());
+  REQUIRE(std::find(g1200.begin(), g1200.end(), Int3{1, 8, 4}) != g1200.end());
+
+  const auto g1216 = legal_proc_grids({1216, 1216, 1216}, 32);
+  REQUIRE(std::find(g1216.begin(), g1216.end(), Int3{1, 1, 32}) != g1216.end());
+  REQUIRE(proc_grid_split_axes(Int3{1, 1, 32}) == 1);
+  REQUIRE(proc_grid_split_axes(Int3{1, 2, 16}) == 2);
+  REQUIRE(proc_grid_split_axes(Int3{2, 2, 8}) == 3);
+}
+
+TEST_CASE("closest_slab_pencil_grid keeps r2c unsplit and maximises z",
+          "[brick_split][unit][flagship]") {
+  // 16 divides 1200, 32 does not. 1x2x16 is the 2-D pencil closest to a
+  // 1-D z-slab. 2400^3 / 256 cannot slab; the closest r2c-preserving
+  // pencil is the existing 1x8x32.
+  REQUIRE(closest_slab_pencil_grid({1200, 1200, 1200}, 32) == Int3{1, 2, 16});
+  REQUIRE(closest_slab_pencil_grid({1216, 1216, 1216}, 32) == Int3{1, 2, 16});
+  REQUIRE(closest_slab_pencil_grid({2400, 2400, 2400}, 256) == Int3{1, 8, 32});
+  REQUIRE(closest_slab_pencil_grid({2304, 2304, 2304}, 256) == Int3{1, 2, 128});
+  REQUIRE(closest_slab_pencil_grid({960, 960, 960}, 16) == Int3{1, 2, 8});
+  REQUIRE(closest_slab_pencil_grid({768, 768, 768}, 8) == Int3{1, 2, 4});
 }
