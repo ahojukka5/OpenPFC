@@ -54,6 +54,7 @@ def attach_geometry(directory, n, eta, flux_rep):
             "delta_capped": geo["delta_capped"],
             "L_capped": geo["L_capped"],
             "sheet_ok": geo["sheet_ok"],
+            "orientation_ok": geo.get("orientation_ok", False),
         })
     interior = [r for r in flux_rep["rows"]
                 if T_AVG_LO - 1e-12 <= r["t"] <= T_AVG_HI + 1e-12]

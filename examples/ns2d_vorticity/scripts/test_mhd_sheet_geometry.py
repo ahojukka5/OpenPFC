@@ -127,12 +127,101 @@ def test_wide_sheet_is_capped():
               geo2["delta"], geo2["L"]))
 
 
+def test_disconnected_lobe_is_ignored():
+    print("\n== connected s=0 superlevel ignores a remote ridge ==")
+    sig, j_c, j_r = 0.08, 1.0, 3.0
+    s_off = 1.50
+    s = np.linspace(-sg.S_MAX_N, sg.S_MAX_N, sg.N_LINE)
+    f = (j_c * np.exp(-0.5 * (s / sig) ** 2)
+         + j_r * np.exp(-0.5 * ((s - s_off) / sig) ** 2))
+    level = sg.ALPHA_J * j_c
+    width, capped = sg._width_at_level(s, f, level)
+    true_w = FWHM_FACT * sig
+    check(abs(width - true_w) / true_w < 0.12,
+          "1-D central FWHM=%.4f true=%.4f (remote ignored)" % (width, true_w))
+    check(not capped,
+          "remote lobe at window edge does not cap the local sheet")
+    # First-to-last union (the bug) would span the remote endpoint.
+    g = np.abs(f)
+    above = np.where(g >= level)[0]
+    union = float(s[int(above[-1])] - s[int(above[0])])
+    check(union > 2.0 * width,
+          "union width=%.3f > 2*local (test would fail on first-to-last)" % union)
+    check(int(above[-1]) + 1 >= g.size,
+          "remote component reaches the search-window endpoint")
+
+    cx = cy = math.pi
+    n_grid = 128
+    # Remote along +n (y) so it sits on the delta line, near S_MAX_N.
+    j = mt.sample_grid(
+        lambda x, y: (
+            sg.gaussian_j(x - cx, y - cy, 0.0, sig, 0.40, j_c)
+            + sg.gaussian_j(x - cx, y - (cy + s_off), 0.0, sig, 0.40, j_r)),
+        n_grid)
+    nh, th = sg.sheet_frame(j, cx, cy)
+    dx = 2.0 * math.pi / n_grid
+    s_n, j_n = sg._sample_line(
+        j, cx, cy, nh[0], nh[1], sg.S_MAX_N, sg.N_LINE, dx, mt.TWOPI)
+    j_x = float(j_n[int(np.argmin(np.abs(s_n)))])
+    dlt, cap = sg._width_at_level(s_n, j_n, sg.ALPHA_J * abs(j_x))
+    check(abs(dlt - true_w) / true_w < 0.15,
+          "2-D delta=%.4f true=%.4f with remote n-ridge" % (dlt, true_w))
+    check(not cap, "2-D local delta not capped by remote n-ridge")
+
+    # Remote along +t (x) on the L line.
+    j2 = mt.sample_grid(
+        lambda x, y: (
+            sg.gaussian_j(x - cx, y - cy, 0.0, sig, 0.40, j_c)
+            + sg.gaussian_j(x - (cx + 2.2), y - cy, 0.0, sig, 0.40, j_r)),
+        n_grid)
+    nh2, th2 = sg.sheet_frame(j2, cx, cy)
+    s_t, j_t = sg._sample_line(
+        j2, cx, cy, th2[0], th2[1], sg.S_MAX_T, sg.N_LINE, dx, mt.TWOPI)
+    j_x2 = float(j_t[int(np.argmin(np.abs(s_t)))])
+    L, Lcap = sg._width_at_level(s_t, j_t, sg.ALPHA_J * abs(j_x2))
+    L_true = FWHM_FACT * 0.40
+    check(abs(L - L_true) / L_true < 0.15,
+          "2-D L=%.4f true=%.4f with remote t-ridge" % (L, L_true))
+    check(not Lcap, "2-D local L not capped by remote t-ridge")
+
+
+def test_sign_invariance():
+    print("\n== j and -j give the same local sheet (up to eigenvector sign) ==")
+    cx = cy = math.pi
+    for theta in (0.0, 0.7):
+        for n in (64, 128, 256):
+            a = mt.sample_grid(
+                lambda x, y, th=theta: sg.harris_a(
+                    x - cx, y - cy, th, 0.10, 1.3), n)
+            gp = sg.measure_sheet(a, cx, cy, eta=0.01)
+            gm = sg.measure_sheet(-a, cx, cy, eta=0.01)
+            check(gp["orientation_ok"] and gm["orientation_ok"],
+                  "Harris theta=%.2f N=%d both orientations ok" % (theta, n))
+            align_n = abs(gp["n_hat"][0] * gm["n_hat"][0]
+                          + gp["n_hat"][1] * gm["n_hat"][1])
+            align_t = abs(gp["t_hat"][0] * gm["t_hat"][0]
+                          + gp["t_hat"][1] * gm["t_hat"][1])
+            check(align_n > 0.97,
+                  "theta=%.2f N=%d n_hat align=%.4f under j -> -j" % (
+                      theta, n, align_n))
+            check(align_t > 0.97,
+                  "theta=%.2f N=%d t_hat align=%.4f under j -> -j" % (
+                      theta, n, align_t))
+            check(abs(gp["delta"] - gm["delta"]) / max(gp["delta"], 1e-12) < 0.02,
+                  "theta=%.2f N=%d delta +j=%.4f -j=%.4f" % (
+                      theta, n, gp["delta"], gm["delta"]))
+            check(abs(gp["L"] - gm["L"]) / max(gp["L"], 1e-12) < 0.02,
+                  "theta=%.2f N=%d L +j=%.4f -j=%.4f" % (
+                      theta, n, gp["L"], gm["L"]))
+
+
 def test_constants_frozen():
     print("\n== frozen constants ==")
     check(abs(sg.ALPHA_J - 0.5) < 1e-15, "ALPHA_J=0.5")
     check(abs(sg.KAPPA_UP - 2.0) < 1e-15, "KAPPA_UP=2")
     check(abs(sg.R_ST - 0.5) < 1e-15, "R_ST=0.5")
     check(abs(sg.B_UP_MIN - 1.0e-3) < 1e-15, "B_UP_MIN=1e-3")
+    check(abs(sg.J_X_MIN - 1.0e-12) < 1e-20, "J_X_MIN=1e-12")
 
 
 def main():
@@ -140,6 +229,8 @@ def main():
     test_rotated_gaussian_orientation_and_sizes()
     test_harris_b_up()
     test_wide_sheet_is_capped()
+    test_disconnected_lobe_is_ignored()
+    test_sign_invariance()
     print("\n%d failures" % len(FAILS))
     if FAILS:
         for f in FAILS:
