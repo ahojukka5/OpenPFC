@@ -19,7 +19,8 @@
 set -euo pipefail
 export PATH="${HOME}/.local/bin:${PATH}"
 SRC="${OPENPFC_SRC:-/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/openpfc-heffte-trace}"
-BUILD_DIR="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-rocm-heffte-trace}"
+# Do not inherit BUILD_DIR from a login environment (it may point at another tree).
+BUILD_DIR=/flash/project_462001519/juaho/build/openpfc-lumi-rocm-heffte-trace
 cd "${SRC}"
 export HEFFTE_MODULE=heffte-rocm-trace/2.4.1
 export BUILD_DIR
