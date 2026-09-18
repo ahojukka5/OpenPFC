@@ -131,17 +131,17 @@ def analyze_dir(directory, n, eta, stride=1):
     prev_adj = None
     for k, fld in enumerate(fields):
         pts = fld["pts"]
-        pairs, xs, os_ = mt.pair_morse(pts, fld["a"])
-        graph = mt.connectivity_graph(pts, fld["a"])
+        mag, xs, os_ = mt.magnetic_connectivity(pts, fld["a"])
         adj = []
-        for node in graph:
+        for node in mag:
             xid = track_id_at(k, node["x"], node["y"])
-            oids = []
-            for b in node["basins"]:
-                if b["o"] is None:
+            xhits = []
+            for b in node["branches"]:
+                if b.get("hit_x_pos") is None:
                     continue
-                oids.append(track_id_at(k, b["o"]["x"], b["o"]["y"]))
-            adj.append((xid, tuple(sorted(set(oids)))))
+                xhits.append(track_id_at(k, b["hit_x_pos"][0], b["hit_x_pos"][1]))
+            oids = [track_id_at(k, e["x"], e["y"]) for e in node["enclosed_O"]]
+            adj.append((xid, tuple(sorted(set(xhits))), tuple(sorted(set(oids)))))
         adj_key = tuple(sorted(adj))
         counts = pairing_signature(pts)
         rec = {
@@ -152,7 +152,7 @@ def analyze_dir(directory, n, eta, stride=1):
             "n_degen": counts[2],
             "count_sentinel": counts,
             "count_changed": prev_counts is not None and counts != prev_counts,
-            "graph": graph,
+            "graph": mag,
             "adjacency": adj_key,
             "graph_changed": prev_adj is not None and adj_key != prev_adj,
         }
@@ -163,16 +163,11 @@ def analyze_dir(directory, n, eta, stride=1):
             xpt = max(xs, key=lambda p: abs(p["j"] or 0.0))
             rec["X"] = {kk: xpt[kk] for kk in ("x", "y", "a", "j", "hess_cond", "eig_ratio", "kind")}
             rec["eta_j_X"] = eta * (xpt["j"] or 0.0)
-            if os_ and pairs:
-                xi = xs.index(xpt) if xpt in xs else 0
-                links = []
-                for pr in pairs:
-                    if pr["x_index"] == xi:
-                        links = pr["o_indices"]
-                if links:
-                    o = max((os_[i] for i in links), key=lambda p: abs(p["a"]))
-                    rec["O"] = {kk: o[kk] for kk in ("x", "y", "a", "j", "kind")}
-                    rec["Delta_a"] = o["a"] - xpt["a"]
+            node = min(mag, key=lambda g: mt.periodic_dist(g["x"], g["y"], xpt["x"], xpt["y"]))
+            if node["enclosed_O"]:
+                enc = max(node["enclosed_O"], key=lambda e: abs(e["delta_a"]))
+                rec["O"] = {kk: enc[kk] for kk in ("x", "y", "a", "kind")}
+                rec["Delta_a"] = enc["delta_a"]
             if fld["j"] is not None:
                 rec["sheet"] = sheet_metrics(fld["j"], xpt["x"], xpt["y"])
         series.append(rec)
@@ -279,7 +274,7 @@ def main():
         for t0 in toi:
             rc = min(report["series"], key=lambda r: abs(r["t"] - t0))
             rf = min(fine["series"], key=lambda r: abs(r["t"] - t0))
-            ok, msg = mt.graphs_match(rc["graph"], rf["graph"])
+            ok, msg = mt.magnetic_graphs_match(rc["graph"], rf["graph"])
             report["graph_compare"].append({
                 "t": t0, "match": ok, "msg": msg,
                 "cond_c": [n["hess_cond"] for n in rc["graph"]],
