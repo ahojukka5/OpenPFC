@@ -769,6 +769,22 @@ def sample_grid(func, n, length=TWOPI):
     return func(x, y)
 
 
+def central_diff(t, y):
+    """Central difference; one-sided at the endpoints."""
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    d = np.zeros_like(y)
+    if y.size == 0:
+        return d
+    if y.size == 1:
+        return d
+    d[0] = (y[1] - y[0]) / max(t[1] - t[0], 1.0e-30)
+    d[-1] = (y[-1] - y[-2]) / max(t[-1] - t[-2], 1.0e-30)
+    for k in range(1, y.size - 1):
+        d[k] = (y[k + 1] - y[k - 1]) / max(t[k + 1] - t[k - 1], 1.0e-30)
+    return d
+
+
 def da_dt_from_track(history, times):
     """Central difference of a along a track; one-sided at endpoints."""
     a = np.array([h[1]["a"] for h in history], dtype=float)
