@@ -8,23 +8,25 @@
 # Usage:
 #   HEAT3D_HIP_BIN=/path/to/heat3d_fd_hip ./submit_heat3d_fd_hip_weak.sh check
 #   HEAT3D_HIP_BIN=/path/to/heat3d_fd_hip ./submit_heat3d_fd_hip_weak.sh clean
-#   HEAT3D_HIP_BIN=/path/to/heat3d_fd_hip ./submit_heat3d_fd_hip_weak.sh diag
+#   HEAT3D_HALO_BIN=/path/to/23_halo_microtiming ./submit_heat3d_fd_hip_weak.sh halo
 #   ./submit_heat3d_fd_hip_weak.sh collect
 #
 # `clean` is the admitted FD-2 series (no HEAT3D_DIAG_TIMING).
 # `diag` repeats the same grids with attribution timers.
+# `halo` is the 23_halo_microtiming --hip control on the same bricks.
 
 set -euo pipefail
 
 MODE="${1:-}"
 if [[ "${MODE}" != "check" && "${MODE}" != "clean" && "${MODE}" != "diag" &&
-      "${MODE}" != "collect" ]]; then
-  echo "usage: $0 check|clean|diag|collect" >&2
+      "${MODE}" != "halo" && "${MODE}" != "collect" ]]; then
+  echo "usage: $0 check|clean|diag|halo|collect" >&2
   exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SBATCH="${SCRIPT_DIR}/heat3d_fd_hip_weak.sbatch"
+FD_SBATCH="${SCRIPT_DIR}/heat3d_fd_hip_weak.sbatch"
+HALO_SBATCH="${SCRIPT_DIR}/heat3d_fd_halo_micro.sbatch"
 ACCOUNT="${ACCOUNT:-project_462001519}"
 PARTITION="${PARTITION:-standard-g}"
 # Do not inherit a leftover OPENPFC_SCALING_ROOT from another campaign.
@@ -54,27 +56,44 @@ if [[ "${MODE}" == "collect" ]]; then
   exit 0
 fi
 
-: "${HEAT3D_HIP_BIN:?set HEAT3D_HIP_BIN to heat3d_fd_hip}"
-if [[ ! -x "${HEAT3D_HIP_BIN}" ]]; then
-  echo "HEAT3D_HIP_BIN is not executable: ${HEAT3D_HIP_BIN}" >&2
-  exit 1
+if [[ "${MODE}" == "halo" ]]; then
+  : "${HEAT3D_HALO_BIN:?set HEAT3D_HALO_BIN to 23_halo_microtiming}"
+  if [[ ! -x "${HEAT3D_HALO_BIN}" ]]; then
+    echo "HEAT3D_HALO_BIN is not executable: ${HEAT3D_HALO_BIN}" >&2
+    exit 1
+  fi
+else
+  : "${HEAT3D_HIP_BIN:?set HEAT3D_HIP_BIN to heat3d_fd_hip}"
+  if [[ ! -x "${HEAT3D_HIP_BIN}" ]]; then
+    echo "HEAT3D_HIP_BIN is not executable: ${HEAT3D_HIP_BIN}" >&2
+    exit 1
+  fi
 fi
 if [[ -z "${OPENPFC_REVISION:-}" ]]; then
   echo "OPENPFC_REVISION is empty; set OPENPFC_SRC" >&2
   exit 2
 fi
 export OPENPFC_DIRTY="${OPENPFC_DIRTY:-unknown}"
-export HEAT3D_HIP_BIN
 # Do not inherit packed-halo / FFT campaign leftovers via --export=ALL.
 unset OPENPFC_HIP_FORCE_PACKED_HALO OPENPFC_CUDA_FORCE_PACKED_HALO \
   OPENPFC_ASSUME_GPU_AWARE_MPI OPENPFC_FFT_PROC_GRID OPENPFC_FFT_NODE_GRID \
   OPENPFC_FFT_SLAB_AXIS || true
 
+SBATCH="${FD_SBATCH}"
+EXPORT_EXTRA="HEAT3D_HIP_BIN,HEAT3D_STEPS,HEAT3D_WARMUP,HEAT3D_DT,HEAT3D_FD_ORDER,HEAT3D_REQUIRE_INTERIOR"
 if [[ "${MODE}" == "diag" ]]; then
   export HEAT3D_DIAG_TIMING=1
+  export HEAT3D_HIP_BIN
   PREFIX="h3dfd-d"
+elif [[ "${MODE}" == "halo" ]]; then
+  unset HEAT3D_DIAG_TIMING || true
+  export HEAT3D_HALO_BIN
+  SBATCH="${HALO_SBATCH}"
+  EXPORT_EXTRA="HEAT3D_HALO_BIN,HEAT3D_WARMUP,HEAT3D_HALO_ITERS"
+  PREFIX="h3dfd-h"
 else
   unset HEAT3D_DIAG_TIMING || true
+  export HEAT3D_HIP_BIN
   PREFIX="h3dfd-w"
 fi
 
@@ -99,7 +118,7 @@ submit_one() {
     --gpus-per-node=8 \
     --time=01:00:00 \
     --job-name="${job_name}" \
-    --export=ALL,OPENPFC_REVISION,OPENPFC_DIRTY,OPENPFC_SRC,HEAT3D_HIP_BIN,HEAT3D_NX,HEAT3D_NY,HEAT3D_NZ,OPENPFC_FD_PROC_GRID,HEAT3D_STEPS,HEAT3D_WARMUP,HEAT3D_DT,HEAT3D_FD_ORDER,HEAT3D_REQUIRE_INTERIOR,OPENPFC_SCALING_ROOT \
+    --export=ALL,OPENPFC_REVISION,OPENPFC_DIRTY,OPENPFC_SRC,HEAT3D_NX,HEAT3D_NY,HEAT3D_NZ,OPENPFC_FD_PROC_GRID,OPENPFC_SCALING_ROOT,${EXPORT_EXTRA} \
     "${SBATCH}"
 }
 

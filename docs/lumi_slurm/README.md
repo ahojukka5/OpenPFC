@@ -37,6 +37,9 @@ Issue `#25` FD-2 **weak** scaling (constant 256³ interior / GCD):
 export HEAT3D_HIP_BIN=/path/to/heat3d_fd_hip
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh check
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh clean
+./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh diag
+export HEAT3D_HALO_BIN=/path/to/23_halo_microtiming
+./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh halo
 ```
 
 3D spectral HIP twin (`heat3d_spectral_hip`, implicit Euler, 2 FFTs/step):

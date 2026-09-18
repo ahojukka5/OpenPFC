@@ -39,15 +39,11 @@ Do not set `HEAT3D_DIAG_TIMING` on admitted clean runs.
 python3 apps/heat3d/scripts/fd_weak_ladder.py --check
 export HEAT3D_HIP_BIN=/flash/project_462001519/juaho/build/<tree>/apps/heat3d/heat3d_fd_hip
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh clean
-# after the clean series, optional attribution:
+# after the clean series, attribution (max rank-local median):
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh diag
+export HEAT3D_HALO_BIN=/flash/project_462001519/juaho/build/<tree>/examples/23_halo_microtiming
+./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh halo
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh collect
 ```
 
-Halo-only control (same grids, `OPENPFC_FD_PROC_GRID` set):
-
-```bash
-srun ... ./examples/23_halo_microtiming --hip \
-  --nx 512 --ny 512 --nz 1024 --halo 1 --iters 50 \
-  --output /scratch/project_462001519/juaho/openpfc-scaling/heat3d-fd-weak/halo.json
-```
+`HEAT3D_DIAG` headline times are the **max across rank-local medians**, matching the barriered clean `wall_step`. `halo_minmax` / `rhs_minmax` / `update_minmax` are the spread.
