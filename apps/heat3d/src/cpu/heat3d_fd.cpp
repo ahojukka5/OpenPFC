@@ -229,7 +229,8 @@ void run_fd(const RunConfig &cfg, int rank, int nproc) {
   (void)t; // autonomous heat equation; the running clock is reported by t_final
 
   // 7. L2-vs-analytic report via shared reporting infrastructure.
-  heat3d::RunConfig heat_cfg{cfg.N, cfg.n_steps, cfg.dt, cfg.fd_order};
+  heat3d::RunConfig heat_cfg =
+      heat3d::make_cubic_config(cfg.N, cfg.n_steps, cfg.dt, cfg.fd_order);
   heat3d::print_median_wall_step_ms(rank, step_s);
   heat3d::report(rank, nproc, heat_cfg, "fd",
                  heat3d::fd_extra_metadata(heat_cfg), max_elapsed,

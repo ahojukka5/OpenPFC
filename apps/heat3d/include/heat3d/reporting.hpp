@@ -131,14 +131,19 @@ void report(int rank, int nproc, const RunConfig &cfg, const char *method_tag,
   const double g_err2 = pfc::apps::reduce_sum(sum_err2, MPI_COMM_WORLD);
 
   if (rank == 0) {
-    std::cout << "heat3d method=" << method_tag << " N=" << cfg.N
-              << " n_steps=" << cfg.n_steps << " dt=" << cfg.dt << " D=" << kD
+    std::cout << "heat3d method=" << method_tag;
+    if (cfg.Nx == cfg.Ny && cfg.Ny == cfg.Nz) {
+      std::cout << " N=" << cfg.N;
+    } else {
+      std::cout << " N=" << cfg.Nx << "x" << cfg.Ny << "x" << cfg.Nz;
+    }
+    std::cout << " n_steps=" << cfg.n_steps << " dt=" << cfg.dt << " D=" << kD
               << " mpi_ranks=" << nproc;
     if (!extra_metadata.empty()) std::cout << " " << extra_metadata;
     std::cout << "\n";
     pfc::apps::print_timing_line(std::cout, max_elapsed, cfg.n_steps);
-    const double rms =
-        std::sqrt(g_err2 / (static_cast<double>(cfg.N) * cfg.N * cfg.N));
+    const double ncells = static_cast<double>(cfg.Nx) * cfg.Ny * cfg.Nz;
+    const double rms = std::sqrt(g_err2 / ncells);
     std::cout << "l2_error_vs_R3_analytic_rms=" << rms << " " << l2_note << "\n";
   }
 }
