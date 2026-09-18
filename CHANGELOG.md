@@ -26,6 +26,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+<<<<<<< HEAD
 - **Heat3D HIP FD weak scaling** (issue
   [#25](https://github.com/ahojukka5/OpenPFC/issues/25)). Rectangular
   `<Nx> <Ny> <Nz>` CLI for `heat3d_fd_hip`, `OPENPFC_FD_PROC_GRID`
@@ -33,6 +34,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   LUMI-G 1–16-node recipe at constant 256³ owned cells/GCD. Cubic CLI
   is unchanged. Diagnostic HIP-event timings are opt-in
   (`HEAT3D_DIAG_TIMING=1`) and are not the admitted `wall_step`.
+=======
+- **Extruded rotating-square 3-D consistency oracle**
+  (`openpfc_homogenize --shape=rotating-squares`, issue
+  [#33](https://github.com/ahojukka5/OpenPFC/issues/33)). The qualified
+  2-D Grima seed (\(h_{3\mathrm{D}}(x,y,z)=h_{2\mathrm{D}}(x,y)\)) is
+  evaluated by the 3-D homogenizer to test whether \(\nu_{xy}<0\)
+  survives the 3-D compliance path. Not a 3-D metamaterial and not an
+  inverse search.
+>>>>>>> 622c8120 (docs(apps): add 2-D vs 3-D rotating-square consistency runner)
 - **3-D rotating-cube forward oracle** (`openpfc_homogenize
   --shape=rotating-cubes`, issue
   [#31](https://github.com/ahojukka5/OpenPFC/issues/31)). Prescribed
