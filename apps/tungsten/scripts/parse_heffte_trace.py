@@ -24,12 +24,10 @@ PACK = (
     "copy",
     "reshape/copy",
 )
-MPI = (
-    "all2all",
-    "all2allv",
-    "waitany",
-)
+MPI_WAIT = ("waitany",)
+MPI_COLLECTIVE = ("all2all", "all2allv")
 MPI_PREFIX = ("irecv ", "isend ", "send ")
+PACK_PREFIX = ("unpacking from ",)
 OUTER = ("reshape",)
 
 
@@ -37,10 +35,14 @@ def classify(name: str) -> str:
     n = name.strip()
     if n in FFT:
         return "fft"
-    if n in PACK:
+    if n in PACK or n.startswith(PACK_PREFIX):
         return "pack"
-    if n in MPI or n.startswith(MPI_PREFIX):
-        return "mpi"
+    if n in MPI_WAIT:
+        return "mpi_wait"
+    if n in MPI_COLLECTIVE:
+        return "mpi_coll"
+    if n.startswith(MPI_PREFIX):
+        return "mpi_post"
     if n in OUTER:
         return "reshape_outer"
     return "other"
@@ -92,31 +94,59 @@ def read_meta(run: Path) -> dict[str, str]:
     return meta
 
 
-def profile_wall(run: Path) -> float | None:
-    # schema-v4 JSON next to the rundir, name timing_profile*.json
-    cands = list(run.glob("timing_profile*.json")) + list(run.glob("*.json"))
+def profile_wall(run: Path, skip_frac: float) -> tuple[float | None, int]:
+    """Mean of per-step max-rank wall_step after skipping the first skip_frac.
+
+    timing_profile.json stores one frame per accepted step; scalars follow
+    frame_metric_names (wall_step is index 2 in the tungsten schema).
+    """
+    cands = [p for p in run.glob("timing_profile*.json") if p.is_file()]
     for p in cands:
         try:
             data = json.loads(p.read_text())
         except (OSError, json.JSONDecodeError):
             continue
-        for key in ("wall_step", "wall_time_per_step", "mean_step"):
-            if key in data:
-                return float(data[key])
-        timers = data.get("timers") or data.get("phases") or {}
-        if isinstance(timers, dict) and "step" in timers:
-            val = timers["step"]
-            if isinstance(val, dict) and "mean" in val:
-                return float(val["mean"])
-            if isinstance(val, (int, float)):
-                return float(val)
-    return None
+        names = data.get("frame_metric_names") or []
+        if "wall_step" not in names:
+            continue
+        idx = names.index("wall_step")
+        ranks = data.get("ranks") or []
+        if not ranks:
+            continue
+        n_frames = min(len(r.get("frames") or []) for r in ranks)
+        if n_frames == 0:
+            continue
+        cut = int(skip_frac * n_frames)
+        kept = 0
+        acc = 0.0
+        for i in range(cut, n_frames):
+            mx = 0.0
+            for r in ranks:
+                frames = r.get("frames") or []
+                scalars = frames[i].get("scalars") or []
+                if len(scalars) > idx:
+                    mx = max(mx, float(scalars[idx]))
+            acc += mx
+            kept += 1
+        if kept:
+            return acc / kept, kept
+    return None, 0
 
 
 def summarize_rank(events: list[tuple[str, float, float]], skip_frac: float = 0.1):
     """Drop the first skip_frac of event time span (warmup), then sum leaves."""
+    keys = (
+        "fft",
+        "pack",
+        "mpi_wait",
+        "mpi_post",
+        "mpi_coll",
+        "reshape_outer",
+        "other",
+        "n_events",
+    )
     if not events:
-        return {k: 0.0 for k in ("fft", "pack", "mpi", "reshape_outer", "other", "n_events")}
+        return {k: 0.0 for k in keys}
     t0 = events[0][1]
     t1 = events[-1][1] + events[-1][2]
     cut = t0 + skip_frac * (t1 - t0)
@@ -140,11 +170,25 @@ def main() -> int:
     if args.self_test:
         fake = "fft-1d" + " " * 34 + "1.0                 0.25\n"
         fake += "packing" + " " * 33 + "1.25                0.10\n"
-        fake += "all2all" + " " * 33 + "1.35                0.40\n"
+        fake += "waitany" + " " * 33 + "1.35                0.30\n"
+        fake += "unpacking from 1" + " " * 24 + "1.65                0.05\n"
+        fake += "isend 8 for 1" + " " * 27 + "1.70                0.02\n"
         tmp = Path("/tmp/heffte_trace_self_test/fake_run")
         tmp.mkdir(parents=True, exist_ok=True)
         (tmp / "heffte_trace_0.log").write_text(fake)
-        (tmp / "run_meta.txt").write_text("job=0\nLx=8\nLy=8\nLz=8\nproc_grid=1x1x1\n")
+        (tmp / "run_meta.txt").write_text(
+            "job=0\nLx=8\nLy=8\nLz=8\nproc_grid=1x1x1\nlocal_brick=8x8x8\n"
+        )
+        (tmp / "timing_profile.json").write_text(
+            json.dumps(
+                {
+                    "frame_metric_names": ["step", "mpi_rank", "wall_step"],
+                    "ranks": [
+                        {"frames": [{"scalars": [1.0, 0.0, 0.80]}]},
+                    ],
+                }
+            )
+        )
         args.runs_root = str(tmp.parent)
         skip_frac = 0.0
     else:
@@ -162,20 +206,45 @@ def main() -> int:
         for log in logs:
             ev = parse_log(log)
             rank_sums.append(summarize_rank(ev, skip_frac=skip_frac))
-        # critical path: max across ranks of each exclusive bucket
-        def mx(key):
-            return max(r[key] for r in rank_sums)
+        def leaf_total(r):
+            return (
+                r["fft"]
+                + r["pack"]
+                + r["mpi_wait"]
+                + r["mpi_post"]
+                + r["mpi_coll"]
+                + r["other"]
+            )
 
-        fft = mx("fft")
-        pack = mx("pack")
-        mpi = mx("mpi")
-        other = mx("other")
-        outer = mx("reshape_outer")
-        leaves = fft + pack + mpi + other
+        # One rank: the largest traced leaf sum. Independent per-bucket
+        # maxima would mix ranks and overstate the remainder.
+        crit = max(rank_sums, key=leaf_total)
+        fft = crit["fft"]
+        pack = crit["pack"]
+        mpi_wait = crit["mpi_wait"]
+        mpi_post = crit["mpi_post"]
+        mpi_coll = crit["mpi_coll"]
+        mpi = mpi_wait + mpi_post + mpi_coll
+        other = crit["other"]
+        outer = crit["reshape_outer"]
+        leaves = leaf_total(crit)
         nx = int(meta.get("Lx") or 0)
         ny = int(meta.get("Ly") or 0)
         nz = int(meta.get("Lz") or 0)
-        wall = profile_wall(run)
+        wall, n_kept = profile_wall(run, skip_frac)
+        n_steps = n_kept if n_kept else 0
+        # Per-step phases so they sit next to wall_step. Trace totals span
+        # the kept window; do not force leaf_sum == n_steps * wall_step.
+        def per_step(total: float) -> float:
+            return total / n_steps if n_steps else total
+
+        fft_ps = per_step(fft)
+        pack_ps = per_step(pack)
+        mpi_ps = per_step(mpi)
+        other_ps = per_step(other)
+        leaves_ps = per_step(leaves)
+        denom = wall if wall else leaves_ps
+        remainder = None if wall is None else wall - leaves_ps
         rows.append(
             {
                 "run": run.name,
@@ -192,16 +261,22 @@ def main() -> int:
                 "revision": meta.get("revision", ""),
                 "dirty": meta.get("dirty", ""),
                 "heffte_root": meta.get("HEFFTE_ROOT", ""),
-                "fft_s": f"{fft:.6f}",
-                "pack_s": f"{pack:.6f}",
-                "mpi_s": f"{mpi:.6f}",
-                "other_s": f"{other:.6f}",
-                "reshape_outer_s": f"{outer:.6f}",
-                "leaf_sum_s": f"{leaves:.6f}",
+                "n_steps_kept": n_steps,
                 "wall_step_s": "" if wall is None else f"{wall:.6f}",
-                "fft_frac_leaf": f"{fft / leaves:.4f}" if leaves else "",
-                "pack_frac_leaf": f"{pack / leaves:.4f}" if leaves else "",
-                "mpi_frac_leaf": f"{mpi / leaves:.4f}" if leaves else "",
+                "fft_s": f"{fft_ps:.6f}",
+                "pack_s": f"{pack_ps:.6f}",
+                "mpi_s": f"{mpi_ps:.6f}",
+                "mpi_wait_s": f"{per_step(mpi_wait):.6f}",
+                "mpi_post_s": f"{per_step(mpi_post):.6f}",
+                "mpi_coll_s": f"{per_step(mpi_coll):.6f}",
+                "other_s": f"{other_ps:.6f}",
+                "reshape_outer_s": f"{per_step(outer):.6f}",
+                "leaf_sum_s": f"{leaves_ps:.6f}",
+                "remainder_s": "" if remainder is None else f"{remainder:.6f}",
+                "fft_frac": f"{fft_ps / denom:.4f}" if denom else "",
+                "pack_frac": f"{pack_ps / denom:.4f}" if denom else "",
+                "mpi_frac": f"{mpi_ps / denom:.4f}" if denom else "",
+                "other_frac": f"{other_ps / denom:.4f}" if denom else "",
                 "n_logs": len(logs),
             }
         )
