@@ -1,0 +1,55 @@
+--- a/include/heffte_trace.h	2026-09-18 22:31:07.889394372 +0300
++++ b/include/heffte_trace.h	2026-09-18 22:31:07.937394032 +0300
+@@ -8,6 +8,13 @@
+ #define HEFFTE_TRACE_H
+ 
+ #include "heffte_utils.h"
++#ifdef Heffte_ENABLE_ROCM
++#include <hip/hip_runtime.h>
++#endif
++#ifdef Heffte_ENABLE_CUDA
++#include <cuda_runtime.h>
++#endif
++#include <stdexcept>
+ 
+ /*!
+  * \ingroup fft3d
+@@ -83,9 +90,13 @@
+      */
+     struct add_trace {
+         //! \brief Defines a trace.
+-        add_trace(std::string s) : name(s), start_time(MPI_Wtime()){}
++        add_trace(std::string s) : name(std::move(s)), start_time(0.0){
++            sync_device();
++            start_time = MPI_Wtime();
++        }
+         //! \brief Saves a trace.
+         ~add_trace(){
++            sync_device();
+             double duration = MPI_Wtime() - start_time;
+             event_log.push_back({std::move(name), start_time, duration});
+         }
+@@ -93,6 +104,23 @@
+         std::string name;
+         //! \brief Saves the starting wall-clock-time of the trace.
+         double start_time;
++        //! \brief Wait for GPU work so MPI_Wtime is device-valid.
++        static void sync_device(){
++#ifdef Heffte_ENABLE_ROCM
++            hipError_t st = hipDeviceSynchronize();
++            if (st != hipSuccess){
++                throw std::runtime_error(std::string("heFFTe trace hipDeviceSynchronize: ") +
++                                         hipGetErrorString(st));
++            }
++#endif
++#ifdef Heffte_ENABLE_CUDA
++            cudaError_t st = cudaDeviceSynchronize();
++            if (st != cudaSuccess){
++                throw std::runtime_error(std::string("heFFTe trace cudaDeviceSynchronize: ") +
++                                         cudaGetErrorString(st));
++            }
++#endif
++        }
+     };
+ 
+     /*!
