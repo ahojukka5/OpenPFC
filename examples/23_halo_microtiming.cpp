@@ -8,24 +8,25 @@
  * Host Faces is the default. `--cuda` / `--hip` select the device facade.
  * Each timed iteration is one `wall_step` (barrier, exchange, barrier).
  *
- * Capture on tohtori:
- *   mpirun -n 2 ./examples/23_halo_microtiming --nx 128 --iters 50 \\
- *     --output results/halo/host_2rank.json
- *   mpirun -n 2 ./examples/23_halo_microtiming --cuda --nx 128 --iters 50 \\
- *     --output results/halo/cuda_2rank.json
+ *   mpirun -n 16 ./examples/23_halo_microtiming --hip --nx 512 --ny 512 \\
+ *     --nz 1024 --halo 1 --iters 50 --output results/halo/hip_2n.json
+ *   OPENPFC_FD_PROC_GRID=2,2,4 mpirun -n 16 ...
  */
 
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 #include <mpi.h>
 
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
+#include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/kernel/profiling/profiling.hpp>
@@ -49,6 +50,8 @@ struct Options {
   bool use_hip = false;
   bool full = false;
   int nx = 128;
+  int ny = 0;
+  int nz = 0;
   int halo = 1;
   int iters = 50;
   int warmup = 5;
@@ -57,7 +60,10 @@ struct Options {
 
 [[noreturn]] void usage(int code) {
   std::cerr << "Usage: 23_halo_microtiming [--cuda|--hip] [--full] [--nx N] "
-               "[--halo N] [--iters N] [--warmup N] --output PATH.json\n";
+               "[--ny N] [--nz N] [--halo N] [--iters N] [--warmup N] "
+               "--output PATH.json\n"
+            << "  Ny/Nz default to Nx. OPENPFC_FD_PROC_GRID=gx,gy,gz selects "
+               "the Cartesian split.\n";
   std::exit(code);
 }
 
@@ -81,6 +87,10 @@ Options parse_args(int argc, char **argv) {
       opt.full = true;
     } else if (a == "--nx") {
       need(opt.nx);
+    } else if (a == "--ny") {
+      need(opt.ny);
+    } else if (a == "--nz") {
+      need(opt.nz);
     } else if (a == "--halo") {
       need(opt.halo);
     } else if (a == "--iters") {
@@ -96,8 +106,14 @@ Options parse_args(int argc, char **argv) {
       usage(2);
     }
   }
-  if (opt.output.empty() || opt.nx <= 0 || opt.halo < 0 || opt.iters <= 0 ||
-      opt.warmup < 0) {
+  if (opt.ny <= 0) {
+    opt.ny = opt.nx;
+  }
+  if (opt.nz <= 0) {
+    opt.nz = opt.nx;
+  }
+  if (opt.output.empty() || opt.nx <= 0 || opt.ny <= 0 || opt.nz <= 0 ||
+      opt.halo < 0 || opt.iters <= 0 || opt.warmup < 0) {
     usage(2);
   }
   if (opt.use_cuda && opt.use_hip) {
@@ -185,8 +201,27 @@ int main(int argc, char **argv) {
     if (opt.use_cuda || opt.use_hip) {
       bind_local_gpu();
     }
-    auto domain = domain::create({opt.nx, opt.nx, opt.nx});
+    auto domain = domain::create({opt.nx, opt.ny, opt.nz});
     auto decomp = decomposition::create(domain, nproc);
+    const auto grid = decomposition::get_grid(decomp);
+    const auto box = decomposition::local_box(decomp, rank);
+    char host[256];
+    if (gethostname(host, sizeof(host)) != 0) {
+      std::snprintf(host, sizeof(host), "unknown");
+    }
+    int loc[3] = {box.size[0], box.size[1], box.size[2]};
+    int loc_min[3] = {0, 0, 0};
+    int loc_max[3] = {0, 0, 0};
+    MPI_Allreduce(loc, loc_min, 3, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(loc, loc_max, 3, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    if (rank == 0) {
+      std::cout << "HALO_DECOMP proc_grid=" << grid[0] << "x" << grid[1] << "x"
+                << grid[2] << " global=" << opt.nx << "x" << opt.ny << "x" << opt.nz
+                << " local_min=" << loc_min[0] << "x" << loc_min[1] << "x"
+                << loc_min[2] << " local_max=" << loc_max[0] << "x" << loc_max[1]
+                << "x" << loc_max[2] << " halo=" << opt.halo << " nproc=" << nproc
+                << " host0=" << host << "\n";
+    }
     comm::HaloExchangeOptions hop;
     if (opt.full) {
       hop.connectivity = comm::HaloConnectivity::Full;
@@ -212,6 +247,11 @@ int main(int argc, char **argv) {
       fill_owned(u, static_cast<double>(rank));
       comm::HaloExchange<HIPSpace, double> halo(u, decomp, rank, MPI_COMM_WORLD,
                                                 hop);
+      if (rank == 0) {
+        std::cout << "HALO_MODE gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
+                  << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
+                  << "\n";
+      }
       run_timed(u, halo, opt, rank);
 #else
       throw std::runtime_error("23_halo_microtiming: --hip requires HIP build");
@@ -232,7 +272,8 @@ int main(int argc, char **argv) {
 
   if (rank == 0) {
     std::cout << "halo microtiming wrote " << opt.output << " (nproc=" << nproc
-              << " nx=" << opt.nx << " iters=" << opt.iters << ")\n";
+              << " n=" << opt.nx << "x" << opt.ny << "x" << opt.nz
+              << " iters=" << opt.iters << ")\n";
   }
   MPI_Finalize();
   return 0;
