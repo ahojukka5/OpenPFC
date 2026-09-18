@@ -90,7 +90,7 @@ Decomposition::Decomposition(const Domain &domain, const Int3 &grid)
                                 std::to_string(total_grid_points) + " grid points");
   }
 
-  const Int3 grid = min_surface_proc_grid(size, nparts);
+  const Int3 grid = fd_proc_grid(size, nparts);
   return create(domain, grid);
 }
 

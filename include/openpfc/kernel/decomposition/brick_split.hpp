@@ -171,9 +171,12 @@ inline constexpr int kSpectralNodeGcds = 8;
   return e != nullptr && e[0] == '1' && e[1] == '\0';
 }
 
-/// `OPENPFC_FFT_PROC_GRID=gx,gy,gz` (or `gx x gy x gz`). `{0,0,0}` if unset.
-[[nodiscard]] inline Int3 fft_proc_grid_override() {
-  const char *e = std::getenv("OPENPFC_FFT_PROC_GRID");
+/// Parse `gx,gy,gz` or `gx x gy x gz` from @p name. `{0,0,0}` if unset/invalid.
+[[nodiscard]] inline Int3 parse_proc_grid_env(const char *name) {
+  if (name == nullptr) {
+    return Int3{0, 0, 0};
+  }
+  const char *e = std::getenv(name);
   if (e == nullptr || e[0] == '\0') {
     return Int3{0, 0, 0};
   }
@@ -196,6 +199,47 @@ inline constexpr int kSpectralNodeGcds = 8;
     }
   }
   return Int3{g[0], g[1], g[2]};
+}
+
+/// `OPENPFC_FFT_PROC_GRID=gx,gy,gz` (or `gx x gy x gz`). `{0,0,0}` if unset.
+[[nodiscard]] inline Int3 fft_proc_grid_override() {
+  return parse_proc_grid_env("OPENPFC_FFT_PROC_GRID");
+}
+
+/// `OPENPFC_FD_PROC_GRID=gx,gy,gz` (or `gx x gy x gz`). `{0,0,0}` if unset.
+[[nodiscard]] inline Int3 fd_proc_grid_override() {
+  return parse_proc_grid_env("OPENPFC_FD_PROC_GRID");
+}
+
+/// True when @p grid factors @p num_procs and divides @p size on every axis.
+[[nodiscard]] inline bool proc_grid_divides(const Int3 &grid, const Int3 &size,
+                                            int num_procs) {
+  return grid[0] >= 1 && grid[1] >= 1 && grid[2] >= 1 &&
+         grid[0] * grid[1] * grid[2] == num_procs && size[0] % grid[0] == 0 &&
+         size[1] % grid[1] == 0 && size[2] % grid[2] == 0;
+}
+
+/**
+ * @brief FD process grid: `OPENPFC_FD_PROC_GRID` when it is a legal Cartesian
+ *        split, otherwise @ref min_surface_proc_grid.
+ *
+ * A set-but-illegal override throws rather than silently falling back so a
+ * weak-scaling recipe cannot admit the wrong local brick.
+ */
+[[nodiscard]] inline Int3 fd_proc_grid(const Int3 &size, int num_procs) {
+  const char *e = std::getenv("OPENPFC_FD_PROC_GRID");
+  if (e != nullptr && e[0] != '\0') {
+    const Int3 forced = fd_proc_grid_override();
+    if (!proc_grid_divides(forced, size, num_procs)) {
+      throw std::invalid_argument(
+          "OPENPFC_FD_PROC_GRID=" + std::string(e) +
+          " is not a legal Cartesian grid for " + std::to_string(size[0]) + "x" +
+          std::to_string(size[1]) + "x" + std::to_string(size[2]) + " on " +
+          std::to_string(num_procs) + " ranks");
+    }
+    return forced;
+  }
+  return min_surface_proc_grid(size, num_procs);
 }
 
 /// Brick min-surface on one node; 1D slabs off-node (measured fastest on
