@@ -65,9 +65,10 @@ Tracking uses a **physical** gate \(\Delta r \le 2\,\Delta t\)
 translating topology keeps 8 tracks with no birth/death at
 \(N=32,64,128\) and \(\Delta t=0.025,0.05,0.10\).
 
-Connectivity is the X–O adjacency graph (which O-track basins each
-well-conditioned X connects). \((n_X,n_O,n_{\mathrm{degen}})\) is
-only a sentinel.
+Magnetic connectivity is the \(a=a_X\) contour graph along
+\(\mathbf B\): X–X separatrix edges and O enclosure by those
+faces. Morse \(\pm\nabla a\) basins are not used as connectivity.
+\((n_X,n_O,n_{\mathrm{degen}})\) is only a sentinel.
 
 `halfmax_area_sqrt` is an operational area proxy, **not** a
 sheet-axis length. No upstream \(B\) is measured, so no physical
