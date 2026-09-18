@@ -26,3 +26,11 @@ path = [
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+[[annotations]]
+path = [
+    "apps/inverse_homogenization/evidence/2026-09-18-auxetic64-476.json",
+    "apps/inverse_homogenization/evidence/2026-09-18-auxetic64-476-history.csv",
+]
+SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
