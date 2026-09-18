@@ -27,6 +27,8 @@ def load_csv(path: str) -> dict:
 
 
 def cfl_key(data: dict) -> str:
+    if "cfl_elsasser_sum" in data:
+        return "cfl_elsasser_sum"
     if "cfl_elsasser" in data:
         return "cfl_elsasser"
     return "cfl"

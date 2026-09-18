@@ -179,33 +179,53 @@ def main() -> int:
         f"Z_relL2={report['spectra']['enstrophy_rel_l2']:.4e}"
     )
 
-    jabs = np.abs(j_c)
-    loc = np.unravel_index(np.argmax(jabs), jabs.shape)
-
     def periodic_fwhm(arr: np.ndarray, ipeak: int) -> int:
-        n = arr.size
+        nloc = arr.size
         half = 0.5 * arr[ipeak]
         left = 0
-        while left < n and arr[(ipeak - left - 1) % n] >= half:
+        while left < nloc and arr[(ipeak - left - 1) % nloc] >= half:
             left += 1
         right = 0
-        while right < n and arr[(ipeak + right + 1) % n] >= half:
+        while right < nloc and arr[(ipeak + right + 1) % nloc] >= half:
             right += 1
-        return int(min(n, left + right + 1))
+        return int(min(nloc, left + right + 1))
 
-    fwhm_x = periodic_fwhm(jabs[:, loc[1]], loc[0])
-    fwhm_y = periodic_fwhm(jabs[loc[0], :], loc[1])
-    report["sheet"] = {
-        "argmax_i": int(loc[0]),
-        "argmax_j": int(loc[1]),
-        "max_abs_j": float(jabs[loc]),
-        "fwhm_cells_x": fwhm_x,
-        "fwhm_cells_y": fwhm_y,
-        "fwhm_cells_min": int(min(fwhm_x, fwhm_y)),
-    }
+    def sheet_stats(jfield: np.ndarray, ngrid: int) -> dict:
+        jabs = np.abs(jfield)
+        loc = np.unravel_index(np.argmax(jabs), jabs.shape)
+        fwhm_x = periodic_fwhm(jabs[:, loc[1]], loc[0])
+        fwhm_y = periodic_fwhm(jabs[loc[0], :], loc[1])
+        dx = 2.0 * math.pi / ngrid
+        fwhm_min = int(min(fwhm_x, fwhm_y))
+        return {
+            "n": ngrid,
+            "argmax_i": int(loc[0]),
+            "argmax_j": int(loc[1]),
+            "x": (loc[0] + 0.5) * dx,
+            "y": (loc[1] + 0.5) * dx,
+            "max_abs_j": float(jabs[loc]),
+            "fwhm_cells_x": fwhm_x,
+            "fwhm_cells_y": fwhm_y,
+            "fwhm_cells_min": fwhm_min,
+            "fwhm_phys_x": fwhm_x * dx,
+            "fwhm_phys_y": fwhm_y * dx,
+            "fwhm_phys_min": fwhm_min * dx,
+            "dx": dx,
+        }
+
+    j_f = load_brick(field_path(args.fine_dir, "j", args.fine_inc), args.fine_n)
+    report["sheet_coarse"] = sheet_stats(j_c, args.coarse_n)
+    report["sheet_fine"] = sheet_stats(j_f, args.fine_n)
+    sc, sf = report["sheet_coarse"], report["sheet_fine"]
     print(
-        f"sheet argmax=({loc[0]},{loc[1]}) max|j|={jabs[loc]:.6g} "
-        f"FWHM_x={fwhm_x} FWHM_y={fwhm_y} FWHM_min={min(fwhm_x, fwhm_y)}"
+        f"sheet N={sc['n']} argmax=({sc['argmax_i']},{sc['argmax_j']}) "
+        f"max|j|={sc['max_abs_j']:.6g} FWHM_min={sc['fwhm_phys_min']:.4g} "
+        f"({sc['fwhm_cells_min']} cells)"
+    )
+    print(
+        f"sheet N={sf['n']} argmax=({sf['argmax_i']},{sf['argmax_j']}) "
+        f"max|j|={sf['max_abs_j']:.6g} FWHM_min={sf['fwhm_phys_min']:.4g} "
+        f"({sf['fwhm_cells_min']} cells)"
     )
 
     if args.json_out:
