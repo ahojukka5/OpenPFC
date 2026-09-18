@@ -37,6 +37,13 @@ if(OpenPFC_BUILD_TESTS)
   set_tests_properties(mhd2d-cli-verify PROPERTIES
                        PASS_REGULAR_EXPRESSION "VERIFY PASS"
                        TIMEOUT 120)
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME mhd-topology-python
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mhd_topology.py)
+    set_tests_properties(mhd-topology-python PROPERTIES TIMEOUT 120)
+  endif()
 endif()
 
 if(OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
