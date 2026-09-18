@@ -26,6 +26,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **2-D incompressible visco-resistive MHD prototype** (`mhd2d` in
+  `examples/ns2d_vorticity`, issue
+  [#23](https://github.com/ahojukka5/OpenPFC/issues/23)). Coupled
+  \((\omega,a)\) on the shared `SpectralPlane` from #22: Lorentz
+  \(+B\cdot\nabla j\), state 2/3 on both fields, IFRK4. Hydro reduction,
+  force-free diffusion, Alfvénic sign test, ideal invariants, energy
+  budget, Orszag–Tang ladder vs hydro control. Not Strauss RMHD; no
+  reconnection claim.
 - **2-D vorticity–streamfunction Navier–Stokes prototype**
   (`examples/ns2d_vorticity`, issue
   [#21](https://github.com/ahojukka5/OpenPFC/issues/21)). Periodic

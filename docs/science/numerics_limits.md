@@ -14,12 +14,12 @@ This page collects **honest** expectations: OpenPFC is a serious HPC framework, 
 - **Resolution** changes physics: interface widths, defect cores, and nucleation depend on grid spacing; do not compare runs at different resolutions without a convergence mindset.
 - **Aliasing:** a cubic nonlinearity evaluated in real space and transformed back aliases the highest third of the spectrum onto retained modes. OpenPFC does **not** apply a 2/3-rule mask by default. Call `pfc::fft::kspace::fill_two_thirds_mask` and multiply the nonlinear spectrum when you need Orszag dealiasing (`kernel/fft/dealias.hpp`).
 - **Nyquist (odd derivatives):** `SpectralGradient` zeros `i k` at the even-grid Nyquist mode. The real-to-complex Nyquist coefficient is real; a nonzero `i k_N` is not uniquely defined.
-- **2-D vorticity NS (issue #21):** `examples/ns2d_vorticity` reuses the
-  2/3 mask and odd-\(k\) rule, and **projects the state** onto the retained
-  band before products. The nonlinear term is IFRK4, not ETD1/Euler.
-  Taylor–Green is spectrally exact. Minion–Brown shear is posed on the
-  unit square with \(\rho=30\). A Kelvin–Helmholtz movie is not a
-  substitute for the quantitative checks in that README.
+- **2-D vorticity NS (issue #21) and incompressible MHD (issue #23):**
+  `examples/ns2d_vorticity` reuses the 2/3 mask and odd-\(k\) rule, and
+  **projects the state** onto the retained band before products. The
+  nonlinear term is IFRK4. MHD adds a magnetic potential \(a\) with
+  Lorentz \(+B\cdot\nabla j\); it is 2-D incompressible MHD, not Strauss
+  reduced MHD. A current-sheet movie is not reconnection.
 
 ## Finite differences (kernel helpers and examples)
 
