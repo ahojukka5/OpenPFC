@@ -13,13 +13,17 @@
  *   OPENPFC_FD_PROC_GRID=2,2,4 mpirun -n 16 ...
  */
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unistd.h>
+#include <vector>
 
 #include <mpi.h>
 
@@ -28,6 +32,7 @@
 #include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/decomposition/decomposition_factory.hpp>
+#include <openpfc/kernel/decomposition/decomposition_neighbors.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/kernel/profiling/profiling.hpp>
 
@@ -138,7 +143,11 @@ void bind_local_gpu() {
 #if defined(OpenPFC_ENABLE_HIP)
   int n = 0;
   if (hipGetDeviceCount(&n) == hipSuccess && n > 0) {
-    hipSetDevice(local % n);
+    const hipError_t err = hipSetDevice(local % n);
+    if (err != hipSuccess) {
+      throw std::runtime_error(std::string("hipSetDevice: ") +
+                               hipGetErrorString(err));
+    }
   }
 #endif
 }
@@ -214,13 +223,64 @@ int main(int argc, char **argv) {
     int loc_max[3] = {0, 0, 0};
     MPI_Allreduce(loc, loc_min, 3, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(loc, loc_max, 3, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    host[sizeof(host) - 1] = '\0';
+    std::vector<char> hosts(static_cast<std::size_t>(nproc) * 256);
+    MPI_Allgather(host, 256, MPI_CHAR, hosts.data(), 256, MPI_CHAR, MPI_COMM_WORLD);
+    const int gx = grid[0];
+    const int gy = grid[1];
+    const int rx = rank % gx;
+    const int ry = (rank / gx) % gy;
+    const int rz = rank / (gx * gy);
+    int gpu = -1;
+#if defined(OpenPFC_ENABLE_HIP)
+    if (opt.use_hip) {
+      (void)hipGetDevice(&gpu);
+    }
+#endif
+    int offnode = 0;
+    const std::array<std::array<int, 3>, 6> faces = {{{{1, 0, 0}},
+                                                      {{-1, 0, 0}},
+                                                      {{0, 1, 0}},
+                                                      {{0, -1, 0}},
+                                                      {{0, 0, 1}},
+                                                      {{0, 0, -1}}}};
+    for (const auto &dir : faces) {
+      const int peer =
+          decomposition::get_neighbor_rank(decomp, rank, {dir[0], dir[1], dir[2]});
+      if (peer < 0 || peer == rank) {
+        continue;
+      }
+      if (std::strncmp(host, &hosts[static_cast<std::size_t>(peer) * 256], 256) !=
+          0) {
+        ++offnode;
+      }
+    }
+    int off_sum = 0;
+    int off_max = 0;
+    MPI_Allreduce(&offnode, &off_sum, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&offnode, &off_max, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    std::vector<int> gpus(static_cast<std::size_t>(nproc));
+    std::vector<int> coords(static_cast<std::size_t>(nproc) * 4);
+    const int local_meta[4] = {rx, ry, rz, offnode};
+    MPI_Gather(&gpu, 1, MPI_INT, gpus.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(local_meta, 4, MPI_INT, coords.data(), 4, MPI_INT, 0, MPI_COMM_WORLD);
     if (rank == 0) {
       std::cout << "HALO_DECOMP proc_grid=" << grid[0] << "x" << grid[1] << "x"
                 << grid[2] << " global=" << opt.nx << "x" << opt.ny << "x" << opt.nz
                 << " local_min=" << loc_min[0] << "x" << loc_min[1] << "x"
                 << loc_min[2] << " local_max=" << loc_max[0] << "x" << loc_max[1]
                 << "x" << loc_max[2] << " halo=" << opt.halo << " nproc=" << nproc
-                << " host0=" << host << "\n";
+                << " offnode_sum=" << off_sum << " offnode_max=" << off_max
+                << std::endl;
+      std::ofstream plc("halo_placement.txt");
+      plc << "rank host gpu rx ry rz offnode_faces\n";
+      for (int r = 0; r < nproc; ++r) {
+        plc << r << " " << &hosts[static_cast<std::size_t>(r) * 256] << " "
+            << gpus[r] << " " << coords[static_cast<std::size_t>(r) * 4] << " "
+            << coords[static_cast<std::size_t>(r) * 4 + 1] << " "
+            << coords[static_cast<std::size_t>(r) * 4 + 2] << " "
+            << coords[static_cast<std::size_t>(r) * 4 + 3] << "\n";
+      }
     }
     comm::HaloExchangeOptions hop;
     if (opt.full) {
@@ -250,7 +310,7 @@ int main(int argc, char **argv) {
       if (rank == 0) {
         std::cout << "HALO_MODE gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
                   << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
-                  << "\n";
+                  << std::endl;
       }
       run_timed(u, halo, opt, rank);
 #else
