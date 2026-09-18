@@ -75,16 +75,15 @@ def sheet_metrics(j, x, y, length=mt.TWOPI):
     # domain-wide half-max area^{1/2} as an operational upper bound.
     half = 0.5 * float(np.max(jabs))
     area = float(np.count_nonzero(jabs >= half)) * dx * dx
-    length_op = math.sqrt(area)
-    aspect = length_op / max(thickness, 1.0e-12)
-    # Upstream |B| ~ |∇a| sampled one thickness away is not available here;
-    # use rms |B| from j = k^2 a is heavy. Report peak |j| and local |j|.
+    halfmax_area_sqrt = math.sqrt(area)
+    aspect_proxy = halfmax_area_sqrt / max(thickness, 1.0e-12)
     return {
-        "thickness": thickness,
-        "length_op": length_op,
-        "aspect": aspect,
+        "fwhm_thickness": thickness,
+        "halfmax_area_sqrt": halfmax_area_sqrt,
+        "aspect_proxy": aspect_proxy,
         "peak_j": float(np.max(jabs)),
         "j_at_point": float(jabs[i, jj]),
+        "note": "halfmax_area_sqrt is an operational area proxy, not a sheet-axis length; no upstream-B / VA measurement, so no physical S_local",
     }
 
 
@@ -113,30 +112,58 @@ def analyze_dir(directory, n, eta, stride=1):
         t = float(table[inc]["time"]) if inc in table else float(inc)
         times.append(t)
         fields.append({"inc": inc, "t": t, "a": a, "j": j, "pts": pts})
-    dx = mt.TWOPI / n
-    tracks, events = mt.track_points(frames, max_speed=4.0 * dx)
+    tracks, events = mt.track_points(
+        frames, times=times, max_speed=mt.DEFAULT_CP_SPEED)
+
+    def track_id_at(t_index, x, y):
+        best, best_d = None, 1.0e9
+        for tr in tracks:
+            for ti, p in tr["history"]:
+                if ti != t_index:
+                    continue
+                d = mt.periodic_dist(p["x"], p["y"], x, y)
+                if d < best_d:
+                    best_d, best = d, tr["id"]
+        return best
+
     series = []
-    prev_sig = None
+    prev_counts = None
+    prev_adj = None
     for k, fld in enumerate(fields):
         pts = fld["pts"]
         pairs, xs, os_ = mt.pair_morse(pts, fld["a"])
-        sig = pairing_signature(pts)
+        graph = mt.connectivity_graph(pts, fld["a"])
+        adj = []
+        for node in graph:
+            xid = track_id_at(k, node["x"], node["y"])
+            oids = []
+            for b in node["basins"]:
+                if b["o"] is None:
+                    continue
+                oids.append(track_id_at(k, b["o"]["x"], b["o"]["y"]))
+            adj.append((xid, tuple(sorted(set(oids)))))
+        adj_key = tuple(sorted(adj))
+        counts = pairing_signature(pts)
         rec = {
             "inc": fld["inc"],
             "t": fld["t"],
-            "nX": sum(1 for p in pts if p["kind"] == mt.KIND_X),
-            "nO": sum(1 for p in pts if p["kind"] in (mt.KIND_OMAX, mt.KIND_OMIN)),
-            "n_degen": sum(1 for p in pts if p["kind"] == mt.KIND_DEGEN),
-            "pairing": sig,
-            "connectivity_changed": prev_sig is not None and sig != prev_sig,
+            "nX": counts[0],
+            "nO": counts[1],
+            "n_degen": counts[2],
+            "count_sentinel": counts,
+            "count_changed": prev_counts is not None and counts != prev_counts,
+            "graph": graph,
+            "adjacency": adj_key,
+            "graph_changed": prev_adj is not None and adj_key != prev_adj,
         }
-        prev_sig = sig
+        rec["connectivity_changed"] = rec["graph_changed"]
+        prev_counts = counts
+        prev_adj = adj_key
         if xs:
             xpt = max(xs, key=lambda p: abs(p["j"] or 0.0))
             rec["X"] = {kk: xpt[kk] for kk in ("x", "y", "a", "j", "hess_cond", "eig_ratio", "kind")}
             rec["eta_j_X"] = eta * (xpt["j"] or 0.0)
             if os_ and pairs:
-                # Pair this X with linked O of largest |a|.
                 xi = xs.index(xpt) if xpt in xs else 0
                 links = []
                 for pr in pairs:
@@ -148,9 +175,6 @@ def analyze_dir(directory, n, eta, stride=1):
                     rec["Delta_a"] = o["a"] - xpt["a"]
             if fld["j"] is not None:
                 rec["sheet"] = sheet_metrics(fld["j"], xpt["x"], xpt["y"])
-                Bup = rec["sheet"]["thickness"]
-                # Local Lundquist using operational length and V_A~1, eta given.
-                rec["sheet"]["S_local"] = rec["sheet"]["length_op"] / max(eta, 1.0e-30)
         series.append(rec)
 
     # Ez along the longest X track.
@@ -183,7 +207,8 @@ def analyze_dir(directory, n, eta, stride=1):
         "events": [{"type": e["type"], "t_index": e.get("t_index")} for e in events],
         "series": series,
         "ez": ez_series,
-        "connectivity_changes": sum(1 for r in series if r["connectivity_changed"]),
+        "connectivity_changes": sum(1 for r in series if r["graph_changed"]),
+        "count_sentinel_changes": sum(1 for r in series if r["count_changed"]),
     }
 
 
@@ -243,23 +268,33 @@ def main():
     for rec in report["series"]:
         if rec["connectivity_changed"]:
             nchg += 1
-            print("  connectivity change at t=%.4f nX=%d nO=%d degen=%d" % (
-                rec["t"], rec["nX"], rec["nO"], rec["n_degen"]))
+            print("  graph change at t=%.4f nX=%d nO=%d degen=%d (count_sentinel=%s)" % (
+                rec["t"], rec["nX"], rec["nO"], rec["n_degen"], rec["count_changed"]))
     if args.fine_dir:
         fine = analyze_dir(args.fine_dir, args.fine_n, args.eta, args.stride)
-        report["fine"] = {k: fine[k] for k in fine if k != "series"}
-        toi = [2.238, 1.924, 1.492, 0.0]
+        report["fine"] = {k: fine[k] for k in fine if k not in ("series", "graph")}
+        toi = [2.238, 1.924, 1.492, 0.0, 0.5, 1.178]
         report["resolution_compare"] = compare_resolutions(report, fine, toi)
+        report["graph_compare"] = []
+        for t0 in toi:
+            rc = min(report["series"], key=lambda r: abs(r["t"] - t0))
+            rf = min(fine["series"], key=lambda r: abs(r["t"] - t0))
+            ok, msg = mt.graphs_match(rc["graph"], rf["graph"])
+            report["graph_compare"].append({
+                "t": t0, "match": ok, "msg": msg,
+                "cond_c": [n["hess_cond"] for n in rc["graph"]],
+                "cond_f": [n["hess_cond"] for n in rf["graph"]],
+            })
+            print("graph 256 vs 512 t~%.3f: %s (%s)" % (t0, ok, msg))
         for row in report["resolution_compare"]:
             print("N-compare t~%.3f  nX %s vs %s  a_X %s vs %s  Delta_a %s vs %s" % (
                 row["t_request"], row.get("nX_c"), row.get("nX_f"),
                 row.get("a_X_c"), row.get("a_X_f"),
                 row.get("Delta_a_c"), row.get("Delta_a_f")))
     if args.json_out:
-        # Drop bulky pairing tuples to keep JSON small; stringify.
         out = dict(report)
         for rec in out["series"]:
-            rec["pairing"] = repr(rec.get("pairing"))
+            rec["adjacency"] = repr(rec.get("adjacency"))
         with open(args.json_out, "w") as fh:
             json.dump(out, fh, indent=2, default=str)
             fh.write("\n")
