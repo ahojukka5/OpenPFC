@@ -392,6 +392,45 @@ TEST_CASE("A full-solid cell has no opening loss and percolates",
   REQUIRE_THAT(m.solid_frac, WithinAbs(1.0, 1.0e-12));
 }
 
+TEST_CASE("Rotating-cube seed is 3-D, binary, and periodically connected",
+          "[inverse][auxetic][geometry]") {
+  if (world_size() != 1) {
+    SKIP("manufacturability helper is dense/single-rank");
+  }
+  constexpr int N = 32;
+  Case cs(N);
+  pfc::apps::inverse::fill_rotating_cubes(cs.h, N, N, N, 0.210, 0.40);
+  const auto loc = cs.h.local_size();
+  double zvar = 0.0, yvar = 0.0, xvar = 0.0;
+  double vmin = 2.0, vmax = -1.0;
+  for (int k = 0; k < loc[2]; ++k)
+    for (int j = 0; j < loc[1]; ++j)
+      for (int i = 0; i < loc[0]; ++i) {
+        const double v = cs.h(i, j, k);
+        vmin = std::min(vmin, v);
+        vmax = std::max(vmax, v);
+        zvar = std::max(zvar, std::abs(v - cs.h(i, j, 0)));
+        yvar = std::max(yvar, std::abs(v - cs.h(i, 0, k)));
+        xvar = std::max(xvar, std::abs(v - cs.h(0, j, k)));
+      }
+  REQUIRE_THAT(vmin, WithinAbs(0.0, 1.0e-12));
+  REQUIRE_THAT(vmax, WithinAbs(1.0, 1.0e-12));
+  REQUIRE(zvar > 0.5);
+  REQUIRE(yvar > 0.5);
+  REQUIRE(xvar > 0.5);
+  const auto m = pfc::apps::inverse::measure_manufacturability(cs.h, N, N, N);
+  INFO("solid_frac=" << m.solid_frac << " components=" << m.n_solid_components
+                     << " perc=" << m.percolate_solid_x << m.percolate_solid_y
+                     << m.percolate_solid_z);
+  REQUIRE(m.solid_frac > 0.15);
+  REQUIRE(m.solid_frac < 0.85);
+  REQUIRE(m.n_solid_components == 1);
+  REQUIRE(m.island_solid_frac < 1.0e-12);
+  REQUIRE(m.percolate_solid_x);
+  REQUIRE(m.percolate_solid_y);
+  REQUIRE(m.percolate_solid_z);
+}
+
 TEST_CASE("Double-well derivative vanishes at the wells and at 1/2",
           "[inverse][algebra]") {
   REQUIRE_THAT(double_well_prime(0.0), WithinAbs(0.0, 1e-15));

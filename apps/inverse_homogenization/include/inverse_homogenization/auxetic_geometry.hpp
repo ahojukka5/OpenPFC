@@ -69,6 +69,33 @@ inline bool in_rotated_square(double px, double py, double cx, double cy,
   return std::abs(lx) <= half && std::abs(ly) <= half;
 }
 
+/// Point-in-cube after a Rodrigues rotation by -angle about unit axis u.
+inline bool in_rotated_cube(double px, double py, double pz, double cx, double cy,
+                            double cz, double half, double ux, double uy, double uz,
+                            double angle) noexcept {
+  const double dx = pdelta(px, cx);
+  const double dy = pdelta(py, cy);
+  const double dz = pdelta(pz, cz);
+  const double nrm = std::sqrt(ux * ux + uy * uy + uz * uz);
+  if (nrm <= 0.0) {
+    return std::abs(dx) <= half && std::abs(dy) <= half && std::abs(dz) <= half;
+  }
+  ux /= nrm;
+  uy /= nrm;
+  uz /= nrm;
+  const double c = std::cos(-angle);
+  const double s = std::sin(-angle);
+  const double omc = 1.0 - c;
+  const double dot = ux * dx + uy * dy + uz * dz;
+  const double cxv_x = uy * dz - uz * dy;
+  const double cxv_y = uz * dx - ux * dz;
+  const double cxv_z = ux * dy - uy * dx;
+  const double lx = dx * c + cxv_x * s + ux * dot * omc;
+  const double ly = dy * c + cxv_y * s + uy * dot * omc;
+  const double lz = dz * c + cxv_z * s + uz * dot * omc;
+  return std::abs(lx) <= half && std::abs(ly) <= half && std::abs(lz) <= half;
+}
+
 /**
  * @brief Grima rotating-square seed.
  *
@@ -152,6 +179,56 @@ inline void fill_reentrant_honeycomb(RealField &h, int nx, int ny, double t,
           dmin = std::min(dmin, dist_segment_periodic(x, y, s[0], s[1], s[2], s[3]));
         }
         h(i, j, k) = (dmin <= t) ? 1.0 : 0.0;
+      }
+    }
+  }
+  h.note_host_write();
+}
+
+/**
+ * @brief 3-D rotating-cube seed (forward-oracle geometry, OpenPFC #31).
+ *
+ * Eight cubes on the octant centres of the unit cell. Neighbouring cubes
+ * rotate in opposite sense about cubic-symmetric axes so they meet at
+ * edge hinges. This is the 3-D analogue of `fill_rotating_squares`, not
+ * an extrusion: occupancy varies in x, y, and z.
+ *
+ * Mechanical idea: Attard, D. & Grima, J. N., Phys. Status Solidi B 249
+ * (2012) 1330–1338 (3-D rotating rigid units). The voxelisation below
+ * reproduces cubes + opposite-sense rotations, not a digitised figure.
+ *
+ * @param half   cube half-side in the unit cell (0.20–0.22; 0.16 leaves
+ *               islands in 2-D and will disconnect 3-D hinges too)
+ * @param angle  rotation in radians (0.35–0.45 typical)
+ */
+inline void fill_rotating_cubes(RealField &h, int nx, int ny, int nz, double half,
+                                double angle) {
+  const auto n = h.local_size();
+  for (int k = 0; k < n[2]; ++k) {
+    for (int j = 0; j < n[1]; ++j) {
+      for (int i = 0; i < n[0]; ++i) {
+        const auto g = h.global(i, j, k);
+        const double x = (static_cast<double>(g[0]) + 0.5) / static_cast<double>(nx);
+        const double y = (static_cast<double>(g[1]) + 0.5) / static_cast<double>(ny);
+        const double z = (static_cast<double>(g[2]) + 0.5) / static_cast<double>(nz);
+        bool solid = false;
+        for (int iz = 0; iz < 2 && !solid; ++iz) {
+          for (int iy = 0; iy < 2 && !solid; ++iy) {
+            for (int ix = 0; ix < 2; ++ix) {
+              const double cx = 0.25 + 0.5 * static_cast<double>(ix);
+              const double cy = 0.25 + 0.5 * static_cast<double>(iy);
+              const double cz = 0.25 + 0.5 * static_cast<double>(iz);
+              const double ux = ((iy + iz) % 2 == 0) ? 1.0 : -1.0;
+              const double uy = ((iz + ix) % 2 == 0) ? 1.0 : -1.0;
+              const double uz = ((ix + iy) % 2 == 0) ? 1.0 : -1.0;
+              if (in_rotated_cube(x, y, z, cx, cy, cz, half, ux, uy, uz, angle)) {
+                solid = true;
+                break;
+              }
+            }
+          }
+        }
+        h(i, j, k) = solid ? 1.0 : 0.0;
       }
     }
   }
