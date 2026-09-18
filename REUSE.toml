@@ -31,6 +31,9 @@ SPDX-License-Identifier = "AGPL-3.0-or-later"
 path = [
     "apps/inverse_homogenization/evidence/2026-09-18-auxetic64-476.json",
     "apps/inverse_homogenization/evidence/2026-09-18-auxetic64-476-history.csv",
+    "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes.json",
+    "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes-32.png",
+    "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes-64.png",
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
