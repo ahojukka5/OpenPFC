@@ -392,6 +392,28 @@ TEST_CASE("A full-solid cell has no opening loss and percolates",
   REQUIRE_THAT(m.solid_frac, WithinAbs(1.0, 1.0e-12));
 }
 
+TEST_CASE("Rotating-square seed extruded in z is invariant and percolating",
+          "[inverse][auxetic][geometry]") {
+  if (world_size() != 1) {
+    SKIP("manufacturability helper is dense/single-rank");
+  }
+  constexpr int N = 16;
+  Case cs(N);
+  pfc::apps::inverse::fill_rotating_squares(cs.h, N, N, 0.200, 0.45);
+  const auto loc = cs.h.local_size();
+  double zvar = 0.0;
+  for (int k = 0; k < loc[2]; ++k)
+    for (int j = 0; j < loc[1]; ++j)
+      for (int i = 0; i < loc[0]; ++i)
+        zvar = std::max(zvar, std::abs(cs.h(i, j, k) - cs.h(i, j, 0)));
+  REQUIRE_THAT(zvar, WithinAbs(0.0, 1.0e-12));
+  const auto m = pfc::apps::inverse::measure_manufacturability(cs.h, N, N, N);
+  REQUIRE(m.percolate_solid_x);
+  REQUIRE(m.percolate_solid_y);
+  REQUIRE(m.percolate_solid_z);
+  REQUIRE(m.n_solid_components == 1);
+}
+
 TEST_CASE("Rotating-cube seed is 3-D, binary, and periodically connected",
           "[inverse][auxetic][geometry]") {
   if (world_size() != 1) {

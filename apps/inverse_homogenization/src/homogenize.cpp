@@ -45,8 +45,8 @@ struct Config {
   double nu_void{0.3};
   std::string shape{"homogeneous"};
   double volume{1.0};
-  double half{0.210};
-  double angle{0.40};
+  double half{0.200};
+  double angle{0.45};
   std::string dump_dir{};
 };
 
@@ -57,9 +57,10 @@ void usage(std::ostream &os, const char *exe) {
      << "  --nx --ny --nz     grid (default 16^3)\n"
      << "  --dx               spacing (default 1)\n"
      << "  --E-solid --nu-solid --E-void --nu-void\n"
-     << "  --shape            homogeneous | laminate-z | sphere | rotating-cubes\n"
+     << "  --shape            homogeneous | laminate-z | sphere |\n"
+     << "                    rotating-cubes | rotating-squares\n"
      << "  --volume           h for homogeneous; ignored otherwise\n"
-     << "  --half --angle     rotating-cubes half-side and rotation (rad)\n"
+     << "  --half --angle     rotating-square/cube half-side and rotation (rad)\n"
      << "  --dump-dir         write gathered h.bin + h.xdmf\n";
 }
 
@@ -121,7 +122,8 @@ bool parse(int argc, char **argv, Config &cfg) {
     }
   }
   return cfg.shape == "homogeneous" || cfg.shape == "laminate-z" ||
-         cfg.shape == "sphere" || cfg.shape == "rotating-cubes";
+         cfg.shape == "sphere" || cfg.shape == "rotating-cubes" ||
+         cfg.shape == "rotating-squares";
 }
 
 std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx, int ny,
@@ -228,6 +230,9 @@ int main(int argc, char **argv) {
   if (cfg.shape == "rotating-cubes") {
     pfc::apps::inverse::fill_rotating_cubes(h, cfg.nx, cfg.ny, cfg.nz, cfg.half,
                                             cfg.angle);
+  } else if (cfg.shape == "rotating-squares") {
+    pfc::apps::inverse::fill_rotating_squares(h, cfg.nx, cfg.ny, cfg.half,
+                                              cfg.angle);
   } else {
     const auto n = h.local_size();
     for (int k = 0; k < n[2]; ++k) {
@@ -270,7 +275,7 @@ int main(int argc, char **argv) {
   if (rank == 0) {
     std::cout << "shape " << cfg.shape << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
               << cfg.nz << " ranks " << nproc;
-    if (cfg.shape == "rotating-cubes") {
+    if (cfg.shape == "rotating-cubes" || cfg.shape == "rotating-squares") {
       std::cout << std::setprecision(8) << " half " << cfg.half << " angle "
                 << cfg.angle;
     }
