@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdlib>
 #include <heffte.h>
+#include <stdexcept>
 #include <vector>
 
 #include <openpfc/kernel/data/box3i.hpp>
@@ -13,6 +14,7 @@
 #include <openpfc/kernel/decomposition/brick_split.hpp>
 
 using namespace pfc;
+using pfc::decomposition::fd_proc_grid;
 using pfc::decomposition::min_surface_proc_grid;
 using pfc::decomposition::node_aware_fft_proc_grid;
 using pfc::decomposition::slab_proc_grid;
@@ -207,4 +209,28 @@ TEST_CASE("slab_proc_grid honors OPENPFC_FFT_SLAB_AXIS", "[brick_split][unit]") 
   REQUIRE(slab_proc_grid(cube, 16) == Int3{1, 1, 16});
   REQUIRE(unsetenv("OPENPFC_FFT_SLAB_AXIS") == 0);
   REQUIRE(slab_proc_grid(cube, 16) == Int3{1, 1, 16});
+}
+
+TEST_CASE("fd_proc_grid honors OPENPFC_FD_PROC_GRID and fails closed",
+          "[brick_split][unit]") {
+  struct Clear {
+    ~Clear() { unsetenv("OPENPFC_FD_PROC_GRID"); }
+  } clear;
+  const Int3 box{512, 512, 1024};
+  REQUIRE(unsetenv("OPENPFC_FD_PROC_GRID") == 0);
+  REQUIRE(pfc::decomposition::fd_proc_grid_override() == Int3{0, 0, 0});
+  REQUIRE(fd_proc_grid(box, 16) == min_surface_proc_grid(box, 16));
+  REQUIRE(setenv("OPENPFC_FD_PROC_GRID", "2x2x4", 1) == 0);
+  REQUIRE(fd_proc_grid(box, 16) == Int3{2, 2, 4});
+  REQUIRE(setenv("OPENPFC_FD_PROC_GRID", "2,4,4", 1) == 0);
+  REQUIRE(fd_proc_grid({512, 1024, 1024}, 32) == Int3{2, 4, 4});
+  REQUIRE(setenv("OPENPFC_FD_PROC_GRID", "2x2x2", 1) == 0);
+  bool threw = false;
+  try {
+    (void)fd_proc_grid(box, 16);
+  } catch (const std::invalid_argument &) {
+    threw = true;
+  }
+  REQUIRE(threw);
+  REQUIRE(unsetenv("OPENPFC_FD_PROC_GRID") == 0);
 }
