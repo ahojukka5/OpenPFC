@@ -94,17 +94,52 @@ def test_harris_b_up():
                           theta, n, geo["B_up_plus"], geo["B_up_minus"]))
 
 
+def test_wide_sheet_is_capped():
+    print("\n== search-window saturation is flagged, not a physical width ==")
+    cx = cy = math.pi
+    # FWHM ~ 2.355 * sig_n. sig_n=1.6 => FWHM ~ 3.8 > DELTA_CAP=pi.
+    j = mt.sample_grid(
+        lambda x, y: sg.gaussian_j(x - cx, y - cy, 0.0, 1.6, 2.5), 128)
+    nh, th = sg.sheet_frame(j, cx, cy)
+    dx = 2.0 * math.pi / 128
+    s_n, j_n = sg._sample_line(
+        j, cx, cy, nh[0], nh[1], sg.S_MAX_N, sg.N_LINE, dx, mt.TWOPI)
+    width, capped = sg._width_at_level(
+        s_n, j_n, 0.5 * float(np.max(np.abs(j_n))))
+    check(capped, "wide Gaussian FWHM hits S_MAX_N (width=%.3f, cap=%.3f)" % (
+        width, sg.DELTA_CAP))
+    a = mt.sample_grid(
+        lambda x, y: sg.harris_a(x - cx, y - cy, 0.0, 0.10, 1.0), 128)
+    geo = sg.measure_sheet(a, cx, cy, eta=0.01)
+    check(not geo["delta_capped"],
+          "thin Harris delta not capped (delta=%.4f)" % geo["delta"])
+    check(geo["L_capped"] and not geo["sheet_ok"],
+          "infinite Harris L is window-capped, not a finite sheet")
+    # Finite ridge: Gaussian |j| generated from a localized flux.
+    def loc_a(x, y):
+        nn = -(x - cx)
+        tt = (y - cy)
+        return 0.08 * np.exp(-0.5 * (nn / 0.08) ** 2 - 0.5 * (tt / 0.40) ** 2)
+    a2 = mt.sample_grid(loc_a, 128)
+    geo2 = sg.measure_sheet(a2, cx, cy, eta=0.01)
+    check(geo2["sheet_ok"] and not geo2["delta_capped"] and not geo2["L_capped"],
+          "localized flux sheet_ok (delta=%.4f L=%.4f)" % (
+              geo2["delta"], geo2["L"]))
+
+
 def test_constants_frozen():
     print("\n== frozen constants ==")
     check(abs(sg.ALPHA_J - 0.5) < 1e-15, "ALPHA_J=0.5")
     check(abs(sg.KAPPA_UP - 2.0) < 1e-15, "KAPPA_UP=2")
     check(abs(sg.R_ST - 0.5) < 1e-15, "R_ST=0.5")
+    check(abs(sg.B_UP_MIN - 1.0e-3) < 1e-15, "B_UP_MIN=1e-3")
 
 
 def main():
     test_constants_frozen()
     test_rotated_gaussian_orientation_and_sizes()
     test_harris_b_up()
+    test_wide_sheet_is_capped()
     print("\n%d failures" % len(FAILS))
     if FAILS:
         for f in FAILS:
