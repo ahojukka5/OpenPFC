@@ -127,6 +127,12 @@ Analytic OT at \(t=0\): 4 X (\(a=\pm 0.5\)) and 4 O
 (resp. \(-0.5\)) network with \(\Delta a=\pm 1\). Tests at
 \(N=64,128\) require this.
 
+Through \(t\le 0.80\) both 256² and 512² keep 4 X, 4 O and 8
+enclosed faces. \(\Delta a\) is identical. X–X hit *labels* can
+swap among equivalent partners; enclosure count does not. No new
+magnetic island. That is persistent-X flux transfer, not a
+separatrix bifurcation.
+
 **Island flux budget** (one \(a=-0.5\) X with enclosed
 \(\mathrm{O}_{\min}\), \(t\in[0,0.80]\)). Definitions:
 \(F=a_O-a_X\), \(E_z=-\partial_t a\). At a null \(\nabla a=0\),
