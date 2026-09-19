@@ -290,6 +290,17 @@ Real process-grid A/B at 16 GCD (same 768³, `standard-g`, CCD bind,
 `spectral_fft_proc_grid` and do not resurrect `1×8×N`. A general cost
 model is not justified until it beats slabs on a held-out rank count.
 
+Off-node `use_pencils=1` at the same 16 GCD 768³ point (job 22162734,
+`HEAT3D_USE_PENCILS=1` after the slab overlay) is 48.4 ms vs slabs
+48.6 ms. A tie. Keep production `use_pencils=false`. Checksum HEX
+matches the slab 16 GCD run (`0x1.7785970621a73p+3`).
+
+Cubic weak scaling at constant *cell count* is not constant FFT work
+for 1D z-slabs: 8 GCD `1536³` (job 22162696) OOM'd because the in-plane
+transform grew 4×. The comparable protocol grows only the split axis
+(`768×768×(768 P)`), keeping local `768³` and in-plane `768²`. Job
+**22164976** is that 8 GCD point.
+
 ## How to read a point
 
 From each `timing_profile.json` (schema v4 summary; see
