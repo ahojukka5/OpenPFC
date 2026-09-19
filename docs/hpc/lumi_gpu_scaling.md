@@ -301,24 +301,11 @@ binary `f77bb73a…`, jobs **22165163** / **22165164**): `p2p_plined`
 (`0x1.77859706219b1p+3`, matches the pre-override 8 GCD pin
 22162433). Keep production `p2p_plined`.
 
-Held-out off-node reshape A/B at the same 16 GCD 768³ strong point
-(job **22166458**, `dev-g`, 2 nodes, sequential in one allocation,
-same `f77bb73a…` binary). Barriered median `wall_step` after the
-profile warmup:
-
-| algorithm | median `wall_step` |
-|-----------|-------------------:|
-| `p2p_plined` (production) | 48.8 ms |
-| `alltoall` | 47.7 ms |
-| `alltoallv` | 48.8 ms |
-| `p2p` | 48.1 ms |
-
-`alltoall` is 2% faster than `p2p_plined` here, within the 48.6 ms
-pin (job 22162465) plus a 59 ms outlier that `p2p_plined` did not
-show (max 50 ms). On-node `alltoall` remains +25%. Do not switch the
-production reshape algorithm; the on-node loss is not an off-node
-win large enough to justify a scale-dependent policy. Checksum HEX
-`0x1.7785970621a73p+3` on all four, matching the 16 GCD slab pin.
+Job **22166458** is **not** an off-node reshape A/B. A leaked
+`HEAT3D_SPECTRAL_HIP_BIN` pointed at `c4e2f667…`, which does not
+parse `HEAT3D_RESHAPE_ALG`; the four sequential 16 GCD 768³ runs are
+repeat `p2p_plined` noise (~48 ms ±2%). The rerun with a hardcoded
+override-capable binary is job **22166715**.
 
 Cubic weak scaling at constant *cell count* is not constant FFT work
 for 1D z-slabs: 8 GCD `1536³` (job 22162696) OOM'd because the in-plane
