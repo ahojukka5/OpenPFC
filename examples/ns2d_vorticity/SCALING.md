@@ -11,6 +11,23 @@ not duplicated. Local sheet constants were frozen before any
 \(\eta\) comparison and were **not** retuned after the connected-
 component correction.
 
+## Decision
+
+**Outcome (2): systematically different scaling.**
+
+In the frozen transient Orszag–Tang reconnection window, the
+local sheet geometry and X-point current remain nearly
+\(\eta\)-independent. Ohmic \(E_z=\eta j_X\) therefore produces
+an approximately \(R\sim S_{\mathrm{local}}^{-1}\) trend, while
+\(\delta/L\) does not show Sweet–Parker \(S^{-1/2}\) scaling.
+The transient OT sheet does not self-adjust as a quasi-steady
+Sweet–Parker layer over \(\eta=0.01\ldots 0.0025\).
+
+Restricted to 2-D incompressible resistive MHD, \(P_m=1\), the
+Orszag–Tang initial condition, persistent-X reconnection, and
+\(t\in[0.314,0.70]\). Three \(\eta\) values are not a universal
+law. No plasmoid claim.
+
 ## Question
 
 For the persistent-X-point reconnection established in #26, how do
@@ -270,6 +287,23 @@ Per-dump max relative difference in the window is
 \(<2\times10^{-6}\) on \(R\). Flux-budget *and* local geometry
 converge. \(\eta=0.0025\) is admitted.
 
+### Timestep provenance (historical 512² `--cfl 0.4`)
+
+#24 already integrated 512² `--cfl 0.4` through this interval
+(the later \(t=2.47\) crash is outside \(t\le 0.80\)). Field
+dumps exist at \(t=0.314\), \(0.471\), \(0.628\) (cadence
+\(\pi/20\), coarser than the admitted \(\pi/80\)).
+
+Final `sheet_scaling.py` on those dumps vs the admitted 512²
+`--cfl 0.2` at the three common times:
+
+| quantity | agreement |
+| --- | --- |
+| \(F\), \(\delta\), \(L\), \(B_{\mathrm{up}}\), \(S_{\mathrm{local}}\) | rel \(\lesssim 10^{-7}\) |
+| \(E_{z,X}\) and \(R\) | rel \(\approx 3\%\) |
+
+The \(3\%\) on \(E_{z,X}\) is a **dump-cadence** effect: \(E_z=-\partial_t a\) is a central difference on dumps, and `--cfl 0.4` stores four times fewer frames. The fields themselves (\(F\), sheet geometry) are timestep-converged. On the admitted `--cfl 0.2` series, \(E_{z,X}\approx\eta j_X\) to relative \(6.5\times10^{-4}\). No new `--cfl 0.4` run was generated.
+
 Window means (1024²):
 
 | quantity | mean | std | min | max |
@@ -284,7 +318,52 @@ Window means (1024²):
 | \(S_{\mathrm{local}}\) | 281.0 | 117.4 | 188.2 | 507.7 |
 | \(R\) | 0.1602 | 0.0365 | 0.0904 | 0.1947 |
 
-## Outcome A: three-point scaling, not Sweet–Parker
+## Mechanism: why \(R\sim S_{\mathrm{local}}^{-1}\) here
+
+From the frozen definitions and the Ohm check at a null,
+
+\[
+R=\frac{E_{z,X}}{B_{\mathrm{up}}^2},\qquad
+E_{z,X}=\eta j_X,\qquad
+S_{\mathrm{local}}=\frac{L B_{\mathrm{up}}}{\eta},
+\]
+
+so the identity
+
+\[
+R\,S_{\mathrm{local}}=\frac{j_X L}{B_{\mathrm{up}}}
+\]
+
+holds dump-by-dump up to the small Ohm residual. Means of that
+product on the frozen window:
+
+| \(\eta\) | \(\langle R\rangle\) | \(\langle S_{\mathrm{local}}\rangle\) | \(\langle R S\rangle\) | \(\langle j_X\rangle\) | \(\langle L\rangle\) | \(\langle B_{\mathrm{up}}\rangle\) | \(\langle j_X L/B_{\mathrm{up}}\rangle\) |
+| -------: | -------------------: | ------------------------------------: | ---------------------: | ---------------------: | -------------------: | ---------------------------------: | ---------------------------------------: |
+|    0.010 |               0.7736 |                                 66.75 |                  43.72 |                  2.542 |                3.549 |                             0.1840 |                                    43.64 |
+|    0.005 |               0.3403 |                                 137.9 |                  41.70 |                  2.648 |                3.490 |                             0.1971 |                                    41.61 |
+|   0.0025 |               0.1602 |                                 281.0 |                  40.82 |                  2.704 |                3.468 |                             0.2042 |                                    40.72 |
+
+\(\langle R S\rangle\) is approximately constant (it falls about
+\(7\%\) while \(\eta\) drops by a factor of four). That is the
+same statement as \(R\sim S^{-1}\) at leading order.
+
+Physically, in this window:
+
+* \(\delta\) changes very little with \(\eta\) (\(0.455\to 0.450\));
+* \(L\) changes very little (\(3.55\to 3.47\), about \(2\%\));
+* \(B_{\mathrm{up}}\) changes only modestly (\(0.184\to 0.204\),
+  about \(11\%\));
+* \(j_X\) is weakly \(\eta\)-dependent (\(2.54\to 2.70\));
+* therefore \(E_{z,X}\approx\eta j_X\);
+* \(S_{\mathrm{local}}\) grows approximately as \(1/\eta\);
+* hence normalized \(R\) behaves approximately as
+  \(S_{\mathrm{local}}^{-1}\).
+
+\(\delta/L\) is nearly independent of \(S_{\mathrm{local}}\)
+(log-log slope \(+0.007\)), not \(S^{-1/2}\). The sheet does
+**not** self-adjust as a quasi-steady Sweet–Parker layer.
+
+## Outcome (2): systematically different scaling
 
 Admitted points, frozen \([0.314,0.70]\) only:
 
@@ -294,43 +373,37 @@ Admitted points, frozen \([0.314,0.70]\) only:
 |        0.005 |   512 |     0.3403 |                       137.9 |          0.4517 |      3.490 |                   0.1971 |
 |       0.0025 |  1024 |     0.1602 |                       281.0 |          0.4498 |      3.468 |                   0.2042 |
 
-OLS in \(\log R\) vs \(\log S_{\mathrm{local}}\) (three points):
+A log-log fit of the three window-averaged points gives
+\(R\sim S_{\mathrm{local}}^{-1.10}\). Pairwise slopes are
+\(-1.13\), \(-1.06\), \(-1.10\); early-half and late-half of the
+frozen window give \(-1.03\) and \(-1.08\). None is compatible
+with Sweet–Parker \(-1/2\).
 
-\[
-\log R = 4.337 - 1.096\,\log S_{\mathrm{local}}.
-\]
+A formal 1-dof OLS standard error on that three-point slope is
+\(0.021\). That number is **not** a physical uncertainty interval.
+It does not include time-window uncertainty, diagnostic-definition
+uncertainty, model uncertainty, or the fact that only three
+\(\eta\) values exist.
 
-Slope \(-1.096\) with one-degree-of-freedom standard error
-\(0.021\). Pairwise slopes: \(-1.132\) (\(0.01\to0.005\)),
-\(-1.058\) (\(0.005\to0.0025\)), \(-1.095\) (outer). Early-half
-and late-half of the frozen window give \(-1.031\) and
-\(-1.076\). None is compatible with Sweet–Parker \(-1/2\).
+Supported within:
 
-This is predeclared outcome **(2)**: systematically different
-power-law behaviour over the available range. Outcome **(1)** is
-rejected. Three points are **not** a universal law.
+* 2-D incompressible resistive MHD, \(P_m=1\);
+* Orszag–Tang initial condition;
+* \(\eta=\nu\in\{0.01,0.005,0.0025\}\);
+* persistent-X regime;
+* frozen window \([0.314,0.70]\).
+
+Three \(\eta\) values are spatially converged. Timestep
+convergence of the fields is documented. Topology and the flux
+budget remain valid. Normalized \(R\) follows approximately
+\(S_{\mathrm{local}}^{-1}\) over this range. \(\delta/L\) is
+nearly independent of \(S_{\mathrm{local}}\). Sweet–Parker
+\(S^{-1/2}\) is not supported in this transient window. Three
+points do not establish a universal law.
 
 \(R(t)\) is not steady: it rises through the window at every
-\(\eta\) (e.g. \(\eta=0.0025\): \(0.090\to0.195\)). The reported
-\(R\) is the frozen-window time average, not a peak.
-
-## Geometry scaling
-
-On the same three admitted points:
-
-* \(\delta/L\) is nearly independent of \(S_{\mathrm{local}}\)
-  (log-log slope \(+0.007\)), not \(S^{-1/2}\).
-* Mean \(L\) changes little (\(3.55\to3.47\), about \(2\%\) over a
-  factor-of-four drop in \(\eta\)).
-* Mean \(B_{\mathrm{up}}\) rises about \(11\%\) (\(0.184\to0.204\)).
-* Mean \(\delta\) is almost flat (\(0.455\to0.450\)).
-
-So \(S_{\mathrm{local}}\propto L B_{\mathrm{up}}/\eta\) increases
-almost as \(1/\eta\). The non-Sweet–Parker \(R(S)\) slope is **not**
-coming from a classical \(\delta/L\sim S^{-1/2}\) aspect-ratio
-change. It is consistent with a time-dependent OT sheet whose
-mean thickness and length barely move with \(\eta\) in this
-window, while \(E_{z,X}\approx\eta j_X\) still holds.
+\(\eta\). The reported \(R\) is the frozen-window time average,
+not a peak.
 
 No extra islands, X/O births, or peak-current plasmoid structures
 occur inside the frozen accepted window at these resolutions.
@@ -354,4 +427,6 @@ python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
   --dir /scratch/.../ot512_nu00025_cfl02_t080 --n 512 --eta 0.0025 --t-max 0.80
 python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
   --dir /scratch/.../ot1024_nu00025_cfl02_t080 --n 1024 --eta 0.0025 --t-max 0.80
+python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
+  --dir /scratch/.../ot512_nu00025_peak --n 512 --eta 0.0025 --t-max 0.80
 ```
