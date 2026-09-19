@@ -20,6 +20,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,7 +39,11 @@
 #include <openpfc_apps/homogenization_hip.hpp>
 #include <inverse_homogenization/auxetic_geometry.hpp>
 #include <inverse_homogenization/field_output.hpp>
+#include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
+#include <inverse_homogenization/spinodal_generator.hpp>
+#include <inverse_homogenization/target_io.hpp>
+#include <inverse_homogenization/yang_reentrant.hpp>
 
 namespace {
 
@@ -100,15 +105,26 @@ struct Config {
   double max_delta{0.05};
   int project_volume{1};
   double simp{1.0};
+  double simp_end{-1.0};
+  double lambda_reg_end{-1.0};
   double w12{1.0};
+  double init_amp{0.12};
+  int n_el_iter{200};
+  int ch_steps{80};
+  double ch_kappa{1.0};
+  double ch_dt{0.2};
+  std::string load_bin{};
+  std::string C_target_file{};
   pfc::apps::inverse::FieldOutputConfig fields{};
 };
 
 void usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe << " [--key=value]...\n"
      << "  HIP inverse homogenization (device Green, host Allen-Cahn).\n"
-     << "  --nx --ny --nz --dx --target isotropic|auxetic|orthotropic\n"
-     << "  --init rotating-squares|noise|uniform --steps --csv --dump-dir\n";
+     << "  --nx --ny --nz --dx --target isotropic|auxetic|file\n"
+     << "  --C-target-file=PATH 6x6 Voigt text\n"
+     << "  --init rotating-squares|noise|uniform|spinodal|yang-a3\n"
+     << "  --load-bin=PATH Fortran float64 brick --steps --csv --dump-dir\n";
 }
 
 bool parse_double(std::string_view v, double &out) {
@@ -170,20 +186,40 @@ bool parse_args(int argc, char **argv, Config &cfg) {
     else if (key == "max-delta") ok = parse_double(val, cfg.max_delta) && cfg.max_delta >= 0.0;
     else if (key == "project-volume") ok = parse_int(val, cfg.project_volume);
     else if (key == "simp") ok = parse_double(val, cfg.simp) && cfg.simp >= 1.0;
+    else if (key == "simp-end") ok = parse_double(val, cfg.simp_end) && cfg.simp_end >= 1.0;
+    else if (key == "lambda-reg-end")
+      ok = parse_double(val, cfg.lambda_reg_end) && cfg.lambda_reg_end >= 0.0;
     else if (key == "W-12") ok = parse_double(val, cfg.w12) && cfg.w12 >= 0.0;
+    else if (key == "init-amp") ok = parse_double(val, cfg.init_amp) && cfg.init_amp >= 0.0;
+    else if (key == "n-el-iter") ok = parse_int(val, cfg.n_el_iter) && cfg.n_el_iter > 0;
+    else if (key == "ch-steps") ok = parse_int(val, cfg.ch_steps) && cfg.ch_steps >= 0;
+    else if (key == "ch-kappa") ok = parse_double(val, cfg.ch_kappa) && cfg.ch_kappa > 0.0;
+    else if (key == "ch-dt") ok = parse_double(val, cfg.ch_dt) && cfg.ch_dt > 0.0;
+    else if (key == "load-bin") cfg.load_bin = std::string(val);
+    else if (key == "C-target-file") cfg.C_target_file = std::string(val);
     else if (key == "dump-dir") cfg.fields.dir = std::string(val);
     else if (key == "dump-every") ok = parse_int(val, cfg.fields.every) && cfg.fields.every > 0;
     else return false;
     if (!ok) return false;
   }
-  if (cfg.target != "isotropic" && cfg.target != "auxetic") return false;
+  if (cfg.target != "isotropic" && cfg.target != "auxetic" &&
+      cfg.target != "file")
+    return false;
+  if (cfg.target == "file" && cfg.C_target_file.empty()) return false;
   if (cfg.init != "uniform" && cfg.init != "noise" &&
-      cfg.init != "rotating-squares")
+      cfg.init != "rotating-squares" && cfg.init != "spinodal" &&
+      cfg.init != "yang-a3")
     return false;
   return true;
 }
 
 pfc::apps::Voigt6 make_target(const Config &cfg) {
+  if (cfg.target == "file") {
+    pfc::apps::Voigt6 C;
+    if (!pfc::apps::inverse::load_voigt6_file(cfg.C_target_file, C))
+      throw std::runtime_error("C-target-file unreadable");
+    return C;
+  }
   const double nu = (cfg.target == "auxetic") ? -std::abs(cfg.nu_target)
                                                 : cfg.nu_target;
   return pfc::apps::voigt_from_stiffness(
@@ -341,6 +377,23 @@ int run(int argc, char **argv, int rank, int nproc) {
   if (cfg.init == "rotating-squares") {
     pfc::apps::inverse::fill_rotating_squares(h, cfg.nx, cfg.ny, cfg.init_half,
                                               cfg.init_angle);
+  } else if (cfg.init == "spinodal") {
+    pfc::apps::inverse::SpinodalSpec ch;
+    ch.c0 = cfg.init_volume;
+    ch.noise = cfg.init_amp;
+    ch.seed = cfg.seed;
+    pfc::apps::inverse::seed_spinodal_noise(h, cfg.nx, cfg.ny, cfg.nz, ch);
+  } else if (cfg.init == "yang-a3") {
+    pfc::apps::inverse::fill_yang_a3(h, cfg.nx, cfg.ny, cfg.nz);
+  }
+  if (!cfg.load_bin.empty()) {
+    if (!pfc::apps::inverse::load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny,
+                                              cfg.nz, h)) {
+      if (rank == 0)
+        std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin
+                  << '\n';
+      return 2;
+    }
   }
   h.note_host_write();
 
@@ -348,12 +401,17 @@ int run(int argc, char **argv, int rank, int nproc) {
   p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
   p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
   p.tol_el = 1.0e-8;
-  p.n_el_iter = 200;
+  p.n_el_iter = cfg.n_el_iter;
   p.warm_start = false;
   p.comm = MPI_COMM_WORLD;
 
   pfc::apps::inverse::InverseSpec spec;
-  spec.C_target = make_target(cfg);
+  try {
+    spec.C_target = make_target(cfg);
+  } catch (const std::exception &e) {
+    if (rank == 0) std::cerr << e.what() << '\n';
+    return 2;
+  }
   spec.volume_target = cfg.volume;
   spec.lambda_volume = cfg.lambda_volume;
   spec.lambda_reg = cfg.lambda_reg;
@@ -426,9 +484,19 @@ int run(int argc, char **argv, int rank, int nproc) {
   };
   dump(0);
 
+  const double simp0 = cfg.simp;
+  const double simp1 = (cfg.simp_end > 0.0) ? cfg.simp_end : cfg.simp;
+  const double lreg0 = cfg.lambda_reg;
+  const double lreg1 =
+      (cfg.lambda_reg_end >= 0.0) ? cfg.lambda_reg_end : cfg.lambda_reg;
+
   pfc::apps::inverse::InverseStepReport last{};
   int n_done = 0;
   for (int s = 0; s < cfg.steps; ++s) {
+    const double t =
+        (cfg.steps > 1) ? static_cast<double>(s) / (cfg.steps - 1) : 1.0;
+    spec.simp_p = simp0 + t * (simp1 - simp0);
+    spec.lambda_reg = lreg0 + t * (lreg1 - lreg0);
     const auto t0 = std::chrono::steady_clock::now();
     last = ac_step(hom, domain, fft, h, spec, hat, lap, dJdh, g, d_real, d_hat,
                    MPI_COMM_WORLD);
