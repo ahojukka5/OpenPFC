@@ -114,6 +114,7 @@ Not paper claims. Grey linear interpolation **cannot** produce \(\nu<0\).
 | **22157558** | #36 3-D re-entrant honeycomb **forward** oracle | — | 0.29 | Yang/Evans TRH, $t=0.06$, inset=0.14, all four 0.5-squares. $32^3$ $\nu_{xy}=+0.213$, $64^3$ $\nu_{xy}=+0.219$, $\nu_{zx}\approx+0.31$, SPD, perc $xyz$, 1 component. **Not auxetic.** One representation correction used. Not inverse. |
 | **22159921** | #40 threshold archived 2-D inverse (jobs 22112442/443) | — | 0.50/0.57 | Step 600 **not rerun**. $256^2$ continuous $\nu_{xy}=-0.140$ (grey 0.32); $h>0.5$ $\nu_{xy}=-0.166$, perc $xy$, SPD. $1024^2$ continuous $\nu_{xy}=-0.128$ (grey 0.45); $h>0.5$ $\nu_{xy}=-0.162$. **Binarization preserves auxeticity.** |
 | **22160325** | #40 volume-matched binary of the same bricks | — | **0.50** | $t_v$ from order statistics of $h$ (not from $\nu$). $256^2$ $t_v=0.6978$, $\nu_{xy}=-0.166$; $1024^2$ $t_v=0.6738$, $\nu_{xy}=-0.171$. Both SPD, 1 solid component, perc $xy$. **Volume-preserving binary stays auxetic.** |
+| **22160647** | #43 Yang A3 density-qualified forward | — | 0.26/0.25 | Published box $2(H-L\cos\theta)$, square $t$, two $z$-stories. $64\times64\times121$ $\nu_{zx}=+0.365$ vf $0.258$; $96\times96\times182$ $\nu_{zx}=+0.365$ vf $0.248$ (Table 1 $0.233$, Wang $0.165$). SPD, perc $xyz$, 1 component. **Not auxetic.** No inverse A/B. |
 
 The double well drives a *uniform* grey field to the wells (Catch2). A
 sharp/tanh interface with large \(\lambda_r/\varepsilon\) inverts bands
