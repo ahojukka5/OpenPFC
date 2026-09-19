@@ -53,5 +53,5 @@
       "Euclidean tube (cylinder) occupancy instead of square section t"
     ]
   },
-  "interpretation": "First reconstruction attempt. Connected, SPD, perc xyz, but not source-faithful: vf≈0.089 vs published 0.233. Positive nu_zx is not a Yang-model failure. Geometry superseded; elasticity withheld until the density gate on the corrected skeleton passes."
+  "interpretation": "First reconstruction attempt. Connected, SPD, perc xyz, but not source-faithful: vf≈0.089 vs published 0.233. Positive nu_zx is not a Yang-model failure. Superseded by the density-qualified reconstruction (jobs 22160647 / 22160921)."
 }

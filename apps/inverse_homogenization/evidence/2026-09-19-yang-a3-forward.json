@@ -29,6 +29,7 @@
   "resolutions_predeclared": ["64x64x121", "96x96x182"],
   "strut_voxels_at_64": 9.58,
   "job": "22160647",
+  "canonical_clean_E_void_0p02_job": "22160921",
   "source_revision": "975612fff970446e8ad6ae1589cad0dc74e241c4",
   "dirty": 1,
   "dirty_classification": "case_A_slurm_only",
