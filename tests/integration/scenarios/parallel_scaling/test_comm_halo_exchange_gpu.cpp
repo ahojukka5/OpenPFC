@@ -106,7 +106,33 @@ TEST_CASE("HaloExchange HIPSpace Faces: single-rank periodic wrap",
   REQUIRE(halo_x_matches(u, n[0], 7.0));
 }
 
-TEST_CASE("HaloExchange HIPSpace: start() and persistent are rejected",
+TEST_CASE("HaloExchange HIPSpace Faces: start/finish matches exchange",
+          "[halo_exchange][hip]") {
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1 || !device_runtime_available<HIPSpace>()) {
+    return;
+  }
+
+  auto domain = domain::create({8, 6, 4});
+  auto decomp = decomposition::create(domain, 1);
+  auto u = make_padded_field<HIPSpace>(decomp, rank, /*halo=*/1);
+  fill_owned_host(u, 7.0);
+
+  comm::HaloExchange<HIPSpace, double> halo(u, decomp, rank, MPI_COMM_WORLD);
+  REQUIRE_THROWS_AS(halo.finish(), std::logic_error);
+  halo.start();
+  REQUIRE_THROWS_AS(halo.start(), std::logic_error);
+  REQUIRE(halo.progress());
+  halo.finish();
+
+  const auto n = u.local_size();
+  REQUIRE(halo_x_matches(u, -1, 7.0));
+  REQUIRE(halo_x_matches(u, n[0], 7.0));
+}
+
+TEST_CASE("HaloExchange HIPSpace: Full start/finish and persistent rejected",
           "[halo_exchange][hip]") {
   int rank = 0, size = 1;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -120,9 +146,12 @@ TEST_CASE("HaloExchange HIPSpace: start() and persistent are rejected",
   auto u = make_padded_field<HIPSpace>(decomp, rank, /*halo=*/1);
   fill_owned_host(u, 1.0);
 
-  comm::HaloExchange<HIPSpace, double> halo(u, decomp, rank, MPI_COMM_WORLD);
-  REQUIRE_THROWS_AS(halo.start(), std::logic_error);
-  REQUIRE_THROWS_AS(halo.finish(), std::logic_error);
+  comm::HaloExchangeOptions full;
+  full.connectivity = comm::HaloConnectivity::Full;
+  comm::HaloExchange<HIPSpace, double> halo_full(u, decomp, rank, MPI_COMM_WORLD,
+                                                 full);
+  REQUIRE_THROWS_AS(halo_full.start(), std::logic_error);
+  REQUIRE_THROWS_AS(halo_full.finish(), std::logic_error);
 
   comm::HaloExchangeOptions opt;
   opt.persistent = true;
@@ -219,6 +248,33 @@ TEST_CASE("HaloExchange HIPSpace Faces: 2-rank X-neighbor pack+device MPI",
     REQUIRE(halo.uses_contiguous_device_mpi());
   }
   halo.exchange();
+
+  const auto n = u.local_size();
+  REQUIRE(halo_x_matches(u, -1, other));
+  REQUIRE(halo_x_matches(u, n[0], other));
+}
+
+TEST_CASE("HaloExchange HIPSpace Faces: 2-rank start/finish equals exchange",
+          "[MPI][halo_exchange][hip]") {
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 2 || !device_runtime_available<HIPSpace>()) {
+    return;
+  }
+
+  auto domain = domain::create({16, 8, 4});
+  auto decomp = decomposition::create(domain, {2, 1, 1});
+  auto u = make_padded_field<HIPSpace>(decomp, rank, /*halo=*/1);
+  const double mine = static_cast<double>(rank);
+  const double other = static_cast<double>(1 - rank);
+  fill_owned_host(u, mine);
+
+  comm::HaloExchange<HIPSpace, double> halo(u, decomp, rank, MPI_COMM_WORLD);
+  halo.start();
+  while (!halo.progress()) {
+  }
+  halo.finish();
 
   const auto n = u.local_size();
   REQUIRE(halo_x_matches(u, -1, other));
