@@ -901,15 +901,17 @@ TEST_CASE("heat3d::parse_fd: rejects out-of-range values", "[heat3d][cli]") {
   }
 }
 
-TEST_CASE("heat3d::parse_spectral: happy path", "[heat3d][cli]") {
+TEST_CASE("heat3d::parse_spectral: rectangular happy path", "[heat3d][cli]") {
   char *argv[] = {const_cast<char *>("heat3d_spectral"), const_cast<char *>("32"),
-                  const_cast<char *>("50"), const_cast<char *>("0.005")};
-  const auto cfg = heat3d::parse_spectral(4, argv);
+                  const_cast<char *>("32"), const_cast<char *>("64"),
+                  const_cast<char *>("10"), const_cast<char *>("0.01")};
+  const auto cfg = heat3d::parse_spectral(6, argv);
   REQUIRE(cfg.has_value());
-  REQUIRE(cfg->N == 32);
-  REQUIRE(cfg->n_steps == 50);
-  REQUIRE_THAT(cfg->dt, WithinAbs(0.005, 1e-15));
-  REQUIRE(cfg->fd_order == 2);
+  REQUIRE(cfg->Nx == 32);
+  REQUIRE(cfg->Ny == 32);
+  REQUIRE(cfg->Nz == 64);
+  REQUIRE(cfg->n_steps == 10);
+  REQUIRE_THAT(cfg->dt, WithinAbs(0.01, 1e-15));
 }
 
 TEST_CASE("heat3d::parse_spectral: insufficient args returns nullopt",

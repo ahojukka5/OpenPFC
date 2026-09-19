@@ -15,14 +15,17 @@
 # Submit with docs/lumi_slurm/submit_heat3d_spectral_hip_scaling.sh.
 #
 # Required: HEAT3D_SPECTRAL_HIP_BIN
-# Optional: HEAT3D_N (default 256), HEAT3D_STEPS (20), HEAT3D_DT (0.01),
-#           OPENPFC_SCALING_ROOT
+# Optional: HEAT3D_N (default 256), or HEAT3D_NX/NY/NZ for a brick,
+#           HEAT3D_STEPS (20), HEAT3D_DT (0.01), OPENPFC_SCALING_ROOT
 
 set -euo pipefail
 
 : "${HEAT3D_SPECTRAL_HIP_BIN:?set HEAT3D_SPECTRAL_HIP_BIN to the 0.2 heat3d_spectral_hip binary}"
 
 N="${HEAT3D_N:-256}"
+NX="${HEAT3D_NX:-}"
+NY="${HEAT3D_NY:-}"
+NZ="${HEAT3D_NZ:-}"
 STEPS="${HEAT3D_STEPS:-20}"
 DT="${HEAT3D_DT:-0.01}"
 JOBROOT="${OPENPFC_SCALING_ROOT:-/scratch/project_462001519/juaho/openpfc-scaling}"
@@ -61,13 +64,22 @@ fi
   echo "job=${SLURM_JOB_ID} name=${SLURM_JOB_NAME}"
   echo "nodes=${SLURM_NNODES} ntasks=${NTASKS} partition=${SLURM_JOB_PARTITION}"
   echo "bin=${HEAT3D_SPECTRAL_HIP_BIN}"
-  echo "N=${N} steps=${STEPS} dt=${DT} cwd=${RUNDIR}"
+  if [[ -n "${NX}" && -n "${NY}" && -n "${NZ}" ]]; then
+    echo "N=${NX}x${NY}x${NZ} steps=${STEPS} dt=${DT} cwd=${RUNDIR}"
+  else
+    echo "N=${N} steps=${STEPS} dt=${DT} cwd=${RUNDIR}"
+  fi
   echo "cpu-bind=${CPU_BIND}"
   echo "MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED}"
   echo "MPICH_OFI_NIC_POLICY=${MPICH_OFI_NIC_POLICY:-unset}"
 } | tee "${RUNDIR}/run_meta.txt"
 
-srun "${SRUN_BIND[@]}" \
-  "${HEAT3D_SPECTRAL_HIP_BIN}" "${N}" "${STEPS}" "${DT}"
+if [[ -n "${NX}" && -n "${NY}" && -n "${NZ}" ]]; then
+  srun "${SRUN_BIND[@]}" \
+    "${HEAT3D_SPECTRAL_HIP_BIN}" "${NX}" "${NY}" "${NZ}" "${STEPS}" "${DT}"
+else
+  srun "${SRUN_BIND[@]}" \
+    "${HEAT3D_SPECTRAL_HIP_BIN}" "${N}" "${STEPS}" "${DT}"
+fi
 
 echo "=== done ==="
