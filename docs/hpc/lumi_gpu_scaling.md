@@ -325,6 +325,7 @@ job 22162399 (416 ms). Binary SHA256
 | 8 | `768×768×6144` | `dev-g` | none | 22165032 | 495 ms | 84% |
 | 8 | `768×768×6144` | `standard-g` | CCD | **22165026** | **489 ms** | **85%** |
 | 16 | `768×768×12288` | `standard-g` | CCD | **22165047** | **873 ms** | **48%** |
+| 32 | `768×768×24576` | `standard-g` | CCD | **22165128** | **1146 ms** | **36%** |
 
 8 GCD `standard-g` HEX `0x1.7785970621e4fp+3` matches the `dev-g`
 replicate. MaxRSS ≈ 7.6 GiB/rank, `AllocTRES mem=480G`. Extra vs 1 GCD:
