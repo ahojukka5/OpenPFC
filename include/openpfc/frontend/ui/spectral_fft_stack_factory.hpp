@@ -118,8 +118,8 @@ cpu_spectral_plan_options_from_json(const nlohmann::json &settings,
 cpu_fft_from_json_and_decomposition(const nlohmann::json &settings,
                                     const decomposition::Decomposition &decomp,
                                     int rank_id, MPI_Comm comm) {
-  return fft::create(fft::layout::create(decomp, 0), rank_id,
-                     cpu_spectral_plan_options_from_json(settings), comm);
+  const auto options = cpu_spectral_plan_options_from_json(settings);
+  return fft::create(decomp, rank_id, comm, 0, options);
 }
 
 #if defined(OpenPFC_ENABLE_CUDA_SPECTRAL)

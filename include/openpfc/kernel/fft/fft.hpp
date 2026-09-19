@@ -44,6 +44,10 @@ class CPUFFT;
                             MPI_Comm comm = MPI_COMM_WORLD);
 
 [[nodiscard]] CPUFFT create(const Decomposition &decomposition, int rank_id,
+                            MPI_Comm comm, int r2c_direction,
+                            const heffte::plan_options &options);
+
+[[nodiscard]] CPUFFT create(const Decomposition &decomposition, int rank_id,
                             MPI_Comm comm = MPI_COMM_WORLD, int r2c_direction = 0);
 
 [[nodiscard]] CPUFFT create(const Decomposition &decomposition,
