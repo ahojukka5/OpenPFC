@@ -33,7 +33,7 @@
 #include <mpi.h>
 
 #include <openpfc_apps/plasma_dispersion.hpp>
-#include <vlasov_maxwell/cli.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 #include <vlasov_maxwell/diagnostics.hpp>
 #include <vlasov_maxwell/field_output.hpp>
 #include <vlasov_maxwell/ics.hpp>
@@ -182,7 +182,7 @@ struct Case {
 } // namespace
 
 int run(int argc, char **argv, int rank, int nproc) {
-  vlasov::Options opt(argc, argv);
+  pfc::utils::CliOptions opt(argc, argv);
   if (opt.help()) {
     if (rank == 0) print_usage(std::cout, argv[0]);
     return EXIT_SUCCESS;

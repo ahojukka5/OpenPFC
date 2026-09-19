@@ -87,7 +87,7 @@
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 
-#include <alloy_dendrite/cli.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 #include <alloy_dendrite/device_stepper_hip.hpp>
 #include <alloy_dendrite/diagnostics.hpp>
 #include <alloy_dendrite/parameters.hpp>
@@ -564,7 +564,7 @@ void print_usage(std::ostream &os, const char *exe) {
 }
 
 int run(int argc, char **argv, int rank, int nproc) {
-  alloy_dendrite::Options opt(argc, argv);
+  pfc::utils::CliOptions opt(argc, argv);
   if (opt.help()) {
     if (rank == 0) {
       print_usage(std::cout, argv[0]);
