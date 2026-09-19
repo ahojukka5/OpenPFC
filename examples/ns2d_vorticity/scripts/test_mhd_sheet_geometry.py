@@ -222,6 +222,14 @@ def test_constants_frozen():
     check(abs(sg.R_ST - 0.5) < 1e-15, "R_ST=0.5")
     check(abs(sg.B_UP_MIN - 1.0e-3) < 1e-15, "B_UP_MIN=1e-3")
     check(abs(sg.J_X_MIN - 1.0e-12) < 1e-20, "J_X_MIN=1e-12")
+    try:
+        import sheet_scaling as sc
+        check(abs(sc.T_AVG_LO - 0.10) < 1e-15, "stage1 T_AVG_LO=0.10 (failed)")
+        check(abs(sc.T_AVG_HI - 0.70) < 1e-15, "stage1 T_AVG_HI=0.70 (failed)")
+        check(abs(sc.T_SCALE_LO - 0.314) < 1e-15, "stage2 T_SCALE_LO=0.314")
+        check(abs(sc.T_SCALE_HI - 0.70) < 1e-15, "stage2 T_SCALE_HI=0.70")
+    except Exception as exc:
+        check(False, "sheet_scaling constants: %s" % exc)
 
 
 def main():
