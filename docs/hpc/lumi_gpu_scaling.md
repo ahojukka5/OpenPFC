@@ -318,8 +318,12 @@ hardcoded binary `fba65f33…`, banner confirms `reshape=`). Same 768³
 | `p2p` | 63.2 ms (**+31%**) |
 
 Checksum HEX `0x1.7785970621a73p+3` on all four. Production
-`p2p_plined` wins on-node *and* off-node. Do not add a
-scale-dependent reshape policy.
+`p2p_plined` wins on-node *and* off-node at this 16-GCD point. A
+large-rank protocol tournament (issue
+[#61](https://github.com/ahojukka5/OpenPFC/issues/61),
+[`heffte_protocol_tournament.md`](heffte_protocol_tournament.md))
+tests whether the ranking changes at hundreds or thousands of ranks.
+Do not treat the 16-GCD table as that result.
 
 On-node `use_reorder` / `gpu_aware` A/B (job **22166716**, 8 GCD
 768³, same binary, banner confirms the flags):
