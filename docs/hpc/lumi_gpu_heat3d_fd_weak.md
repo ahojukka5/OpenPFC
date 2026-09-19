@@ -186,23 +186,31 @@ Checksum HEX unchanged. Clean median `wall_step`:
 |     8 | 1.005 | **0.868** | −13.6% | 22162444 / 22162445 |
 |    16 | 1.036 | **0.876** | −15.4% | 22162463 / 22162464 |
 |    32 | 1.044 | **0.886** | −15.1% | 22162481 / 22162482 |
+|    64 | 1.146 | **0.944** | −17.6% | 22167340 / 22167339 |
 
-32-node used `4x8x8` / `1024x2048x2048` (first doubling past the #25
-range). Blocking matches the #25 pins through 16 nodes. Overlap-1 is
-nearly flat from 1 to 32 nodes (0.859–0.886 ms). Off-node faces/rank
-saturate at three from 8 nodes onward, so further loss is not
-surface/volume. Weak efficiency vs overlap-1 \(T_1=0.859\) ms: 1.00 /
-1.00 / 0.99 / 0.99 / 0.98 / 0.97. HEX checksum unchanged. 64 nodes
-would only test whether the ~1% per doubling contention drip continues;
-stop the weak ladder here and move to strong scaling. Do not replace
-the admitted blocking table.
+1–16 nodes used binary `6fe3b280…`. 32-node used a rebuild `c01edbba…`
+of the same protocol (`4x8x8` / `1024x2048x2048`). 64-node used
+production `cbbb31fc` / `aa757ee4…` with default
+`HEAT3D_HALO_OVERLAP=1`, `8x8x8` / `2048³`. Blocking matches the #25
+pins through 16 nodes. Overlap-1 is nearly flat from 1 to 32 nodes
+(0.859–0.886 ms) while off-node faces/rank stay at three. At 64 nodes
+every rank has **four** off-node faces: the `8x8x8` x-line fills a
+node, so y and z faces all leave the node. Overlap-1 is 0.944 ms
+(91% vs \(T_1=0.859\) ms); blocking is 1.146 ms. That is a topology
+change, not a surface/volume change at fixed local work. Weak
+efficiency vs overlap-1 \(T_1\): 1.00 / 1.00 / 0.99 / 0.99 / 0.98 /
+0.97 / 0.91. HEX checksum unchanged on both 64-node jobs
+(`sum_u=0x1.7785970621d7cp+3`). Do not submit 128 nodes merely to add
+a five-face point; the limiting mechanism is off-node face count.
+Do not replace the admitted blocking table.
 
 ### Persistent MPI (A6; not implemented)
 
 Device `HaloExchange` still rejects `persistent`. The remaining
 overlap-1 1→32 node loss is +27 µs (0.859 → 0.886 ms) and tracks the
-three saturated off-node faces, not per-step `MPI_Isend`/`Irecv`
-setup. Diagnostic `start()` post was 76 µs and already overlaps the
+three off-node faces, not per-step `MPI_Isend`/`Irecv` setup. At 64
+nodes the extra off-node face (3→4) accounts for the further 0.886 →
+0.944 ms step. Diagnostic `start()` post was 76 µs and already overlaps the
 interior kernel on the two-stream path. Persistent requests would
 only replace init+post with `MPI_Startall`; they do not shrink packed
 bytes or Slingshot latency. Host persistent Faces is already in-tree
