@@ -18,6 +18,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,9 +30,11 @@
 #include <openpfc/kernel/data/strong_types.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <inverse_homogenization/auxetic_geometry.hpp>
+#include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
-#include <inverse_homogenization/manufacturability.hpp>
+#include <inverse_homogenization/target_io.hpp>
+#include <inverse_homogenization/yang_reentrant.hpp>
 #include <openpfc_apps/homogenization.hpp>
 
 namespace {
@@ -70,7 +73,10 @@ struct Config {
   std::string dump_dir{};
   int dump_every{0};
   std::string load_h{};
+  std::string load_bin{};
+  std::string C_target_file{};
   double w12{1.0};
+  int n_el_iter{200};
   int ch_steps{200};
   double ch_kappa{1.0};
   double ch_dt{0.2};
@@ -83,9 +89,10 @@ void usage(std::ostream &os, const char *exe) {
      << "  Allen-Cahn descent on ||W odot (C_H - C_target)||_F^2.\n\n"
      << "  --nx --ny --nz --dx\n"
      << "  --E-solid --nu-solid --E-void --nu-void\n"
-     << "  --target isotropic|auxetic|orthotropic\n"
+     << "  --target isotropic|auxetic|orthotropic|file\n"
      << "  --E-target --nu-target          (isotropic / auxetic)\n"
      << "  --C11 --C22 --C12 --C66         (orthotropic in-plane block)\n"
+     << "  --C-target-file=PATH            6x6 Voigt text (target=file)\n"
      << "  --volume --lambda-volume --lambda-reg --epsilon\n"
      << "  --dt --steps --init uniform|noise --init-volume --csv=PATH\n"
      << "  --normalize=0|1 --max-delta   (default 1 and 0.05; RMS-normalise g)\n"
@@ -93,7 +100,8 @@ void usage(std::ostream &os, const char *exe) {
      << "  --simp=P --simp-end=P         SIMP continuation (linear in step)\n"
      << "  --lambda-reg-end              perimeter continuation\n"
      << "  --init-amp                    noise amplitude (default 0.25)\n"
-     << "  --init rotating-squares|reentrant|spinodal|noise|uniform\n"
+     << "  --init rotating-squares|reentrant|spinodal|yang-a3|noise|uniform\n"
+     << "  --load-bin=PATH               Fortran float64 brick (overrides init)\n"
      << "  --ch-steps --ch-kappa --ch-dt --ch-aniso-y   (Stage 6 CH family)\n"
      << "  --init-half --init-angle      rotating-square size/rotation\n"
      << "  --init-thickness --init-inset re-entrant wall geometry\n"
@@ -192,8 +200,14 @@ bool parse_args(int argc, char **argv, Config &cfg) {
       ok = parse_int(val, cfg.dump_every) && cfg.dump_every >= 0;
     } else if (key == "load-h") {
       cfg.load_h = std::string(val);
+    } else if (key == "load-bin") {
+      cfg.load_bin = std::string(val);
+    } else if (key == "C-target-file") {
+      cfg.C_target_file = std::string(val);
     } else if (key == "W-12") {
       ok = parse_double(val, cfg.w12) && cfg.w12 >= 0.0;
+    } else if (key == "n-el-iter") {
+      ok = parse_int(val, cfg.n_el_iter) && cfg.n_el_iter > 0;
     } else if (key == "ch-steps") {
       ok = parse_int(val, cfg.ch_steps) && cfg.ch_steps >= 0;
     } else if (key == "ch-kappa") {
@@ -208,11 +222,12 @@ bool parse_args(int argc, char **argv, Config &cfg) {
     if (!ok) return false;
   }
   if (cfg.target != "isotropic" && cfg.target != "auxetic" &&
-      cfg.target != "orthotropic")
+      cfg.target != "orthotropic" && cfg.target != "file")
     return false;
+  if (cfg.target == "file" && cfg.C_target_file.empty()) return false;
   if (cfg.init != "uniform" && cfg.init != "noise" &&
       cfg.init != "rotating-squares" && cfg.init != "reentrant" &&
-      cfg.init != "spinodal")
+      cfg.init != "spinodal" && cfg.init != "yang-a3")
     return false;
   return true;
 }
@@ -292,6 +307,12 @@ pfc::apps::Voigt6 make_target(const Config &cfg) {
   using pfc::apps::Stiffness;
   using pfc::apps::voigt_from_stiffness;
   using pfc::apps::Voigt6;
+  if (cfg.target == "file") {
+    Voigt6 C;
+    if (!pfc::apps::inverse::load_voigt6_file(cfg.C_target_file, C))
+      throw std::runtime_error("C-target-file unreadable");
+    return C;
+  }
   if (cfg.target == "orthotropic") {
     Voigt6 C;
     C(0, 0) = cfg.C11;
@@ -369,6 +390,18 @@ int main(int argc, char **argv) {
     ch.ay = cfg.ch_aniso_y;
     pfc::apps::inverse::seed_spinodal_noise(h, cfg.nx, cfg.ny, cfg.nz, ch);
     pfc::apps::inverse::generate_spinodal(domain, stack.fft(), h, ch);
+  } else if (cfg.init == "yang-a3") {
+    pfc::apps::inverse::fill_yang_a3(h, cfg.nx, cfg.ny, cfg.nz);
+  }
+  if (!cfg.load_bin.empty()) {
+    if (!pfc::apps::inverse::load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny,
+                                              cfg.nz, h)) {
+      if (rank == 0)
+        std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin
+                  << '\n';
+      MPI_Finalize();
+      return 2;
+    }
   }
   if (!cfg.load_h.empty()) {
     std::ifstream in(cfg.load_h);
@@ -393,12 +426,18 @@ int main(int argc, char **argv) {
   p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
   p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
   p.tol_el = 1.0e-8;
-  p.n_el_iter = 200;
+  p.n_el_iter = cfg.n_el_iter;
   p.warm_start = false;
   p.comm = MPI_COMM_WORLD;
 
   pfc::apps::inverse::InverseSpec spec;
-  spec.C_target = make_target(cfg);
+  try {
+    spec.C_target = make_target(cfg);
+  } catch (const std::exception &e) {
+    if (rank == 0) std::cerr << e.what() << '\n';
+    MPI_Finalize();
+    return 2;
+  }
   spec.volume_target = cfg.volume;
   spec.lambda_volume = cfg.lambda_volume;
   spec.lambda_reg = cfg.lambda_reg;

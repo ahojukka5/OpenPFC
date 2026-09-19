@@ -15,6 +15,8 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <numbers>
 #include <vector>
@@ -30,6 +32,7 @@
 #include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
+#include <inverse_homogenization/target_io.hpp>
 #include <inverse_homogenization/yang_reentrant.hpp>
 #include <openpfc_apps/homogenization.hpp>
 
@@ -594,6 +597,69 @@ TEST_CASE("Rotating-cube seed is 3-D, binary, and periodically connected",
   REQUIRE(m.percolate_solid_x);
   REQUIRE(m.percolate_solid_y);
   REQUIRE(m.percolate_solid_z);
+}
+
+TEST_CASE("Voigt C_target file roundtrips through load_voigt6_file",
+          "[inverse][target-io]") {
+  Voigt6 C;
+  C(0, 0) = 0.043419814778;
+  C(0, 1) = C(1, 0) = -0.008538062443;
+  C(1, 1) = 0.043419814778;
+  C(2, 2) = 0.089238208384;
+  C(5, 5) = 0.005265498373;
+  const std::string path = "openpfc_test_C_target.txt";
+  REQUIRE(pfc::apps::inverse::write_voigt6_file(path, C));
+  Voigt6 L;
+  REQUIRE(pfc::apps::inverse::load_voigt6_file(path, L));
+  REQUIRE_THAT(L(0, 0), WithinAbs(C(0, 0), 1.0e-12));
+  REQUIRE_THAT(L(0, 1), WithinAbs(C(0, 1), 1.0e-12));
+  REQUIRE_THAT(L(2, 2), WithinAbs(C(2, 2), 1.0e-12));
+  REQUIRE_THAT(L(5, 5), WithinAbs(C(5, 5), 1.0e-12));
+  std::remove(path.c_str());
+}
+
+TEST_CASE("Fortran design brick load_fortran_bin matches i-fastest layout",
+          "[inverse][target-io]") {
+  if (world_size() != 1) {
+    SKIP("brick helper is dense/single-rank");
+  }
+  constexpr int nx = 4, ny = 3, nz = 2;
+  const std::string path = "openpfc_test_h.bin";
+  {
+    std::ofstream out(path, std::ios::binary);
+    for (int k = 0; k < nz; ++k)
+      for (int j = 0; j < ny; ++j)
+        for (int i = 0; i < nx; ++i) {
+          const double v = 0.01 * i + 0.1 * j + k;
+          out.write(reinterpret_cast<const char *>(&v), sizeof(double));
+        }
+  }
+  Case cs(nx, ny, nz);
+  REQUIRE(pfc::apps::inverse::load_fortran_bin(path, nx, ny, nz, cs.h));
+  REQUIRE_THAT(cs.h(1, 2, 1), WithinAbs(0.01 * 1 + 0.1 * 2 + 1.0, 1.0e-12));
+  REQUIRE_THAT(cs.h(3, 0, 0), WithinAbs(0.03, 1.0e-12));
+  std::remove(path.c_str());
+}
+
+TEST_CASE("3-D spinodal seed varies in z and is not an extrusion",
+          "[inverse][spinodal]") {
+  if (world_size() != 1) {
+    SKIP("single-rank occupancy check");
+  }
+  constexpr int N = 16;
+  Case cs(N);
+  pfc::apps::inverse::SpinodalSpec spec;
+  spec.c0 = 0.5;
+  spec.noise = 0.2;
+  spec.seed = 7;
+  pfc::apps::inverse::seed_spinodal_noise(cs.h, N, N, N, spec);
+  const auto loc = cs.h.local_size();
+  double zvar = 0.0;
+  for (int k = 0; k < loc[2]; ++k)
+    for (int j = 0; j < loc[1]; ++j)
+      for (int i = 0; i < loc[0]; ++i)
+        zvar = std::max(zvar, std::abs(cs.h(i, j, k) - cs.h(i, j, 0)));
+  REQUIRE(zvar > 0.05);
 }
 
 TEST_CASE("Double-well derivative vanishes at the wells and at 1/2",
