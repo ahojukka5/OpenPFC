@@ -90,4 +90,10 @@ does not increase wall time. Component sum / clean wall is 1.00, 1.00,
 0.99, 0.94, 1.00; the diagnostic path is not the admitted timer.
 
 Issue #25 H1 (halo/network) is supported. H2 is not primary: halo-only
-time is not flat. H3 is not supported. No overlap work was added.
+time is not flat. H3 is not supported.
+
+Issue #48 tests whether that blocking halo can be hidden. Keep admitted
+weak-scaling runs on `HEAT3D_HALO_OVERLAP=0` until a clean production
+A/B on this protocol justifies changing the default. Overlap modes `1`
+(interior during `Waitall`) and `2` (`MPI_Testall` progress) must not
+replace the clean barriered `wall_step`.

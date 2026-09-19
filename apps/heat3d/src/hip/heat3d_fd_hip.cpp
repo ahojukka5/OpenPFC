@@ -13,6 +13,9 @@
  * `HEAT3D_REQUIRE_INTERIOR=nx,ny,nz` fails closed unless every rank's owned
  * interior matches. `HEAT3D_DIAG_TIMING=1` adds HIP-event / blocking-halo
  * attribution and must not replace the clean barriered `wall_step`.
+ * `HEAT3D_HALO_OVERLAP=0` (default) is blocking `exchange()`. `1` posts
+ * Faces MPI, computes the interior stencil, then `finish()` + boundary.
+ * `2` additionally pumps `MPI_Testall` until the interior event completes.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP)
@@ -227,7 +230,9 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << "x" << loc_max[2] << " halo=" << hw
               << " gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
               << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
-              << " ranks=" << nproc << " fd_order=" << cfg.fd_order << std::endl;
+              << " ranks=" << nproc << " fd_order=" << cfg.fd_order
+              << " halo_overlap=" << env_int("HEAT3D_HALO_OVERLAP", 0)
+              << std::endl;
     std::ofstream plc("fd_placement.txt");
     plc << "rank host gpu rx ry rz offnode_faces\n";
     for (int r = 0; r < nproc; ++r) {
@@ -258,6 +263,11 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   const char *profile_path = std::getenv("HEAT3D_PROFILE_JSON");
   const int warmup = env_int("HEAT3D_WARMUP", 1);
   const bool diag = env_flag("HEAT3D_DIAG_TIMING");
+  const int overlap = env_int("HEAT3D_HALO_OVERLAP", 0);
+  if (overlap < 0 || overlap > 2) {
+    throw std::runtime_error(
+        "heat3d_fd_hip: HEAT3D_HALO_OVERLAP must be 0, 1, or 2");
+  }
   std::unique_ptr<pfc::profiling::ProfilingSession> prof;
   if (profile_path != nullptr && *profile_path != '\0') {
     using pfc::profiling::ProfilingMetricCatalog;
@@ -268,18 +278,58 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   }
   pfc::profiling::ProfilingContextScope prof_ctx(prof.get());
 
-  std::unique_ptr<HipEvent> rhs0, rhs1, upd0, upd1;
-  std::vector<double> t_halo, t_rhs, t_upd;
+  std::unique_ptr<HipEvent> rhs0, rhs1, upd0, upd1, inner0, inner1, bord0, bord1;
+  std::vector<double> t_halo, t_rhs, t_upd, t_post, t_wait, t_inner, t_border;
   if (diag) {
     rhs0 = std::make_unique<HipEvent>();
     rhs1 = std::make_unique<HipEvent>();
     upd0 = std::make_unique<HipEvent>();
     upd1 = std::make_unique<HipEvent>();
+    if (overlap != 0) {
+      inner0 = std::make_unique<HipEvent>();
+      inner1 = std::make_unique<HipEvent>();
+      bord0 = std::make_unique<HipEvent>();
+      bord1 = std::make_unique<HipEvent>();
+    }
   }
+  std::unique_ptr<HipEvent> inner_done;
+  if (overlap == 2) {
+    inner_done = std::make_unique<HipEvent>();
+  }
+
+  auto pump_until_inner = [&] {
+    hip_check(hipEventRecord(inner_done->e, nullptr), "inner_done record");
+    bool gpu_done = false;
+    for (;;) {
+      if (!gpu_done) {
+        const hipError_t q = hipEventQuery(inner_done->e);
+        if (q == hipSuccess) {
+          gpu_done = true;
+        } else if (q != hipErrorNotReady) {
+          hip_check(q, "inner_done query");
+        }
+      }
+      const bool mpi_done = halo.progress();
+      if (gpu_done && mpi_done) {
+        break;
+      }
+    }
+  };
+
+  double t = 0.0;
+  auto overlap_rhs = [&] {
+    halo.start();
+    heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, /*sync=*/false);
+    if (overlap == 2) {
+      pump_until_inner();
+    }
+    halo.finish();
+    heat3d::fd_rhs_border_hip(grad, du.data(), t, nx, ny, nz, hw, /*sync=*/true);
+    du.note_device_write();
+  };
 
   MPI_Barrier(MPI_COMM_WORLD);
   const double t_start = MPI_Wtime();
-  double t = 0.0;
   for (int step = 0; step < cfg.n_steps; ++step) {
     const bool record = prof && step >= warmup;
     if (record) {
@@ -287,7 +337,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
       hip_check(hipDeviceSynchronize(), "hipDeviceSynchronize");
     }
     const double wall = pfc::profiling::measure_barriered(MPI_COMM_WORLD, [&] {
-      if (diag) {
+      if (diag && overlap == 0) {
         hip_check(hipDeviceSynchronize(), "diag pre-halo sync");
         const double h0 = MPI_Wtime();
         halo.exchange();
@@ -312,6 +362,53 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
           t_rhs.push_back(static_cast<double>(rhs_ms) * 1.0e-3);
           t_upd.push_back(static_cast<double>(upd_ms) * 1.0e-3);
         }
+      } else if (diag && overlap != 0) {
+        hip_check(hipDeviceSynchronize(), "diag pre-overlap sync");
+        const double p0 = MPI_Wtime();
+        halo.start();
+        const double post_s = MPI_Wtime() - p0;
+        hip_check(hipEventRecord(inner0->e, nullptr), "inner0");
+        heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, false);
+        hip_check(hipEventRecord(inner1->e, nullptr), "inner1");
+        if (overlap == 2) {
+          pump_until_inner();
+        }
+        const double w0 = MPI_Wtime();
+        halo.finish();
+        const double wait_s = MPI_Wtime() - w0;
+        hip_check(hipEventRecord(bord0->e, nullptr), "bord0");
+        heat3d::fd_rhs_border_hip(grad, du.data(), t, nx, ny, nz, hw, true);
+        du.note_device_write();
+        hip_check(hipEventRecord(bord1->e, nullptr), "bord1");
+        hip_check(hipEventSynchronize(inner1->e), "inner sync");
+        hip_check(hipEventSynchronize(bord1->e), "border sync");
+        float inner_ms = 0.0f;
+        float bord_ms = 0.0f;
+        hip_check(hipEventElapsedTime(&inner_ms, inner0->e, inner1->e),
+                  "inner elapsed");
+        hip_check(hipEventElapsedTime(&bord_ms, bord0->e, bord1->e),
+                  "border elapsed");
+        hip_check(hipEventRecord(upd0->e, nullptr), "upd0");
+        heat3d::euler_axpy_hip(u.data(), du.data(), cfg.dt, u.size());
+        u.note_device_write();
+        hip_check(hipEventRecord(upd1->e, nullptr), "upd1");
+        hip_check(hipEventSynchronize(upd1->e), "upd sync");
+        float upd_ms = 0.0f;
+        hip_check(hipEventElapsedTime(&upd_ms, upd0->e, upd1->e), "upd elapsed");
+        if (step >= warmup) {
+          t_post.push_back(post_s);
+          t_wait.push_back(wait_s);
+          t_inner.push_back(static_cast<double>(inner_ms) * 1.0e-3);
+          t_border.push_back(static_cast<double>(bord_ms) * 1.0e-3);
+          t_halo.push_back(post_s + wait_s);
+          t_rhs.push_back(static_cast<double>(inner_ms + bord_ms) * 1.0e-3);
+          t_upd.push_back(static_cast<double>(upd_ms) * 1.0e-3);
+        }
+      } else if (overlap != 0) {
+        overlap_rhs();
+        heat3d::euler_axpy_hip(u.data(), du.data(), cfg.dt, u.size());
+        u.note_device_write();
+        hip_check(hipDeviceSynchronize(), "heat3d step sync");
       } else {
         halo.exchange();
         heat3d::fd_rhs_hip(grad, du.data(), t, nx, ny, nz);
@@ -345,6 +442,17 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
                 << " halo_minmax=" << gmin[0] << "," << gmax[0]
                 << " rhs_minmax=" << gmin[1] << "," << gmax[1]
                 << " update_minmax=" << gmin[2] << "," << gmax[2] << std::endl;
+    }
+    if (overlap != 0 && !t_wait.empty()) {
+      const double ol[4] = {median_of(t_post), median_of(t_wait),
+                            median_of(t_inner), median_of(t_border)};
+      double omax[4] = {0.0, 0.0, 0.0, 0.0};
+      MPI_Allreduce(ol, omax, 4, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+      if (rank == 0) {
+        std::cout << "HEAT3D_OVERLAP reduce=max_rank_median post_s=" << omax[0]
+                  << " exposed_wait_s=" << omax[1] << " inner_s=" << omax[2]
+                  << " border_s=" << omax[3] << " mode=" << overlap << std::endl;
+      }
     }
   }
 

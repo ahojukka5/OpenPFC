@@ -75,6 +75,12 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     set_tests_properties(heat3d-fd-hip-smoke PROPERTIES
       PASS_REGULAR_EXPRESSION "HEAT3D_HIP_CHECKSUM"
       TIMEOUT 180)
+    add_test(NAME heat3d-fd-hip-overlap-smoke
+             COMMAND $<TARGET_FILE:heat3d_fd_hip> 16 4 0.01 2)
+    set_tests_properties(heat3d-fd-hip-overlap-smoke PROPERTIES
+      ENVIRONMENT "HEAT3D_HALO_OVERLAP=1"
+      PASS_REGULAR_EXPRESSION "HEAT3D_HIP_CHECKSUM"
+      TIMEOUT 180)
   endif()
 
   if(OpenPFC_ENABLE_HIP_SPECTRAL)

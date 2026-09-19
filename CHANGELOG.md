@@ -43,6 +43,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `HaloExchange<HIPSpace/CUDASpace>` Faces posts pack+MPI and returns;
   `finish()` waits and unpacks. Full connectivity and `persistent` still
   fail closed.
+- **Heat3D halo-overlap opt-in** (issue #48). Interior vs boundary
+  device stencil launches plus `HEAT3D_HALO_OVERLAP=1` (interior during
+  `Waitall`) or `2` (`MPI_Testall` progress). Default remains blocking
+  `exchange()`.
 
 ### Changed
 

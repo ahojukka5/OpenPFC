@@ -458,6 +458,74 @@ TEST_CASE("HIP FDGradientDevice create(Field<HIPSpace>) agrees with analytic "
   hipFree(d_du);
 }
 
+TEST_CASE("HIP inner+border device stencil covers owned cells exactly once",
+          "[hip][fd_gradient_device][integration][overlap]") {
+  if (!hip_runtime_available()) {
+    SUCCEED("Skipping: no HIP device on this host.");
+    return;
+  }
+
+  const int order = 2;
+  const int hw = order / 2;
+  const int nx = 8, ny = 8, nz = 8;
+  const int nxp = nx + 2 * hw, nyp = ny + 2 * hw, nzp = nz + 2 * hw;
+  const std::size_t total = static_cast<std::size_t>(nxp) *
+                            static_cast<std::size_t>(nyp) *
+                            static_cast<std::size_t>(nzp);
+  const double dx = 1.0 / 8.0, dy = 1.0 / 8.0, dz = 1.0 / 8.0;
+
+  std::vector<double> h_u(total, 0.0);
+  for (int pk = 0; pk < nzp; ++pk) {
+    for (int pj = 0; pj < nyp; ++pj) {
+      for (int pi = 0; pi < nxp; ++pi) {
+        const double x = static_cast<double>(pi - hw) * dx;
+        const double y = static_cast<double>(pj - hw) * dy;
+        const double z = static_cast<double>(pk - hw) * dz;
+        h_u[lin(pi, pj, pk, nxp, nyp)] = poly_value(x, y, z);
+      }
+    }
+  }
+
+  double *d_u = nullptr;
+  double *d_full = nullptr;
+  double *d_split = nullptr;
+  REQUIRE(hipMalloc(&d_u, total * sizeof(double)) == hipSuccess);
+  REQUIRE(hipMalloc(&d_full, total * sizeof(double)) == hipSuccess);
+  REQUIRE(hipMalloc(&d_split, total * sizeof(double)) == hipSuccess);
+  REQUIRE(hipMemcpy(d_u, h_u.data(), total * sizeof(double),
+                    hipMemcpyHostToDevice) == hipSuccess);
+  REQUIRE(hipMemset(d_full, 0, total * sizeof(double)) == hipSuccess);
+  REQUIRE(hipMemset(d_split, 0, total * sizeof(double)) == hipSuccess);
+
+  pfc::gpu::FDGradientDevice<TestGrads> eval(d_u, nx, ny, nz, dx, dy, dz, hw,
+                                             order);
+  TestModel model;
+  pfc::sim::gpu::for_each_interior_device<TestModel, TestGrads>(
+      model, eval, d_full, /*t=*/0.0, nx, ny, nz);
+  pfc::sim::gpu::for_each_inner_device<TestModel, TestGrads>(
+      model, eval, d_split, /*t=*/0.0, nx, ny, nz, hw, nullptr, false);
+  pfc::sim::gpu::for_each_border_device<TestModel, TestGrads>(
+      model, eval, d_split, /*t=*/0.0, nx, ny, nz, hw, nullptr, true);
+  REQUIRE(hipDeviceSynchronize() == hipSuccess);
+
+  std::vector<double> h_full(total, 0.0);
+  std::vector<double> h_split(total, 0.0);
+  REQUIRE(hipMemcpy(h_full.data(), d_full, total * sizeof(double),
+                    hipMemcpyDeviceToHost) == hipSuccess);
+  REQUIRE(hipMemcpy(h_split.data(), d_split, total * sizeof(double),
+                    hipMemcpyDeviceToHost) == hipSuccess);
+
+  bool match = true;
+  for (std::size_t i = 0; i < total; ++i) {
+    match &= h_full[i] == h_split[i];
+  }
+  REQUIRE(match);
+
+  hipFree(d_u);
+  hipFree(d_full);
+  hipFree(d_split);
+}
+
 #else // !OpenPFC_ENABLE_HIP
 
 TEST_CASE("HIP fd_gradient_device tests skipped (HIP disabled)",
