@@ -37,23 +37,41 @@ What is **not** claimed: grey linear \(C(h)\) cannot produce \(\nu<0\);
 SIMP from noise did not enter the rotating-square basin; coupled dendrite
 device Green is issue #157, not this app. Catalog stays closed.
 
-## Convergence (issue #59)
+## Convergence (issues #59 / #63)
 
 `--steps` / `--max-steps` is a **ceiling**, not success. SIMP and
 `lambda-reg` interpolate over `--continuation-steps` (default 300) and
-then freeze. After freeze, three metrics must hold together for
-`--conv-window` (20) consecutive iterates, then a
-`--verify-convergence-steps` (100) hold with the same frozen problem:
+then freeze. Convergence is impossible during continuation. After freeze,
+three metrics must hold together for `--conv-window` (20) consecutive
+iterates, then a `--verify-convergence-steps` (100) hold with the same
+frozen problem. A broken hold rejects the candidate immediately.
+Morphology-change fraction is a diagnostic, not a stop.
 
-* post-projection design RMS \(\lVert h_{k+1}-h_k\rVert_2/\sqrt{N}<10^{-4}\)
-  (not the pre-projection `step_rms`);
-* \(\lvert J_{k+1}-J_k\rvert/\max(1,\lvert J_k\rvert)<10^{-6}\);
-* \(\lVert C_H^{k+1}-C_H^k\rVert_F /
-  \max(\lVert C_H^k\rVert_F,\varepsilon)<10^{-4}\).
+Logged row \(s\) compares consecutive **accepted** post-projection
+states, not a post-update design RMS paired with a pre-update objective:
 
-CSV records the window, candidate/verified flags, binary morphology-change
-fraction, and `termination` = `CONVERGED` | `MAX_STEPS` |
-`ELASTICITY_FAILURE`. The final accepted `h` is always snapshotted.
+* design RMS \(\lVert h_s-h_{s-1}\rVert_2/\sqrt{N}<10^{-4}\) is measured
+  **before** the Allen–Cahn update (not the pre-projection `step_rms`);
+* \(\lvert J(h_s)-J(h_{s-1})\rvert/\max(1,\lvert J(h_{s-1})\rvert)<10^{-6}\);
+* \(\lVert C_H(h_s)-C_H(h_{s-1})\rVert_F /
+  \max(\lVert C_H(h_{s-1})\rVert_F,\varepsilon)<10^{-4}\).
+
+\(J\) and \(C_H\) are the homogenization of that same accepted \(h_s\).
+The update to \(h_{s+1}\) happens after the row is written. The first
+iterate has no predecessor and is never quiet. The trailing one-step
+update is not in the certified pair; the verification hold is the buffer.
+
+CPU and HIP write the same 26-column iterate schema
+(`kInverseCsvHeader`). The unpenalized final \(C_H\) is a
+`# FINAL_RECOMPUTE` comment, not a data row. Comment lines are not
+iterate records. The final accepted field is always snapshotted, even
+between `--dump-every` points; `MAX_STEPS` is not labelled `CONVERGED`.
+
+HIP SIMP uses the same `simp_density` / `simp_chain` helpers as CPU:
+elasticity on \(h^p\), sensitivity chain rule \(p h^{p-1}\). \(p=1\) is
+identity and does not call \(\mathrm{pow}(h,0)\). Before #60 the HIP
+path set `spec.simp_p` but did not apply the transformation, so earlier
+HIP SIMP-continuation claims need qualification.
 
 Job 22162138 (300 fixed steps) still had `step_rms≈0.019` on the last
 iterate, so those animations were cut while the design was moving.

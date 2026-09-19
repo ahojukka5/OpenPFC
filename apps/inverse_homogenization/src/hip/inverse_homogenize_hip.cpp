@@ -33,6 +33,7 @@
 #include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
+#include <inverse_homogenization/simp_penalty.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
 #include <inverse_homogenization/target_io.hpp>
 #include <inverse_homogenization/yang_reentrant.hpp>
@@ -342,7 +343,8 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   if (spec.simp_p != 1.0) {
     double *pp = penalized.data();
     const double *hd = h.data();
-    for (std::size_t i = 0; i < n_local; ++i) pp[i] = std::pow(hd[i], spec.simp_p);
+    for (std::size_t i = 0; i < n_local; ++i)
+      pp[i] = pfc::apps::inverse::simp_density(hd[i], spec.simp_p);
     penalized.note_host_write();
     h_el = &penalized;
   }
@@ -355,11 +357,10 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   out.C_fro = out.C.frobenius_norm();
   hom.objective_sensitivity(*h_el, spec.C_target, spec.W, dJdh);
   if (spec.simp_p != 1.0) {
-    const double pexp = spec.simp_p;
-    const double pm1 = pexp - 1.0;
     double *dj = dJdh.data();
     const double *hd = h.data();
-    for (std::size_t i = 0; i < n_local; ++i) dj[i] *= pexp * std::pow(hd[i], pm1);
+    for (std::size_t i = 0; i < n_local; ++i)
+      dj[i] *= pfc::apps::inverse::simp_chain(hd[i], spec.simp_p);
     dJdh.note_host_write();
   }
   if (spec.lambda_reg != 0.0)
@@ -547,10 +548,7 @@ int run(int argc, char **argv, int rank, int nproc) {
                  "window candidate verify ms conv\n";
     if (!cfg.csv.empty()) {
       csv.open(cfg.csv);
-      csv << "step,J,J_tensor,J_volume,J_reg,volume,grey,C11,C12,nu_eff,"
-             "C_fro,design_rms,dJ_rel,dC_rel,morph_frac,step_rms,grad_rms,"
-             "simp_p,lambda_reg,frozen,conv_window,candidate,verified,ms,"
-             "elasticity,termination\n";
+      csv << pfc::apps::inverse::kInverseCsvHeader << '\n';
     }
   }
 
@@ -602,24 +600,26 @@ int run(int argc, char **argv, int rank, int nproc) {
         pfc::apps::inverse::continuation_fraction(s, cfg.continuation_steps);
     spec.simp_p = simp0 + t * (simp1 - simp0);
     spec.lambda_reg = lreg0 + t * (lreg1 - lreg0);
-    const auto t0 = std::chrono::steady_clock::now();
-    last = ac_step(hom, domain, fft, h, spec, hat, lap, dJdh, g, penalized, d_real,
-                   d_hat, MPI_COMM_WORLD);
-    const auto t1 = std::chrono::steady_clock::now();
-    const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    // Accepted-state pair: (h_s, J(h_s), C_H(h_s)) vs previous accepted
+    // state. Measure ||h_s-h_{s-1}|| before the update that produces h_{s+1}.
     double local_dh2 = 0.0, local_morph = 0.0;
     for (std::size_t i = 0; i < h.size(); ++i) {
       const double d = h.data()[i] - h_prev.data()[i];
       local_dh2 += d * d;
-      const bool b = h.data()[i] > 0.5;
-      const bool bp = h_prev.data()[i] > 0.5;
-      if (b != bp) local_morph += 1.0;
+      if ((h.data()[i] > 0.5) != (h_prev.data()[i] > 0.5)) local_morph += 1.0;
     }
     double glo_dh2 = 0.0, glo_morph = 0.0;
     MPI_Allreduce(&local_dh2, &glo_dh2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     MPI_Allreduce(&local_morph, &glo_morph, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     const double design_rms = std::sqrt(glo_dh2 / n_global);
     const double morph_frac = glo_morph / n_global;
+    for (std::size_t i = 0; i < h.size(); ++i) h_prev.data()[i] = h.data()[i];
+    h_prev.note_host_write();
+    const auto t0 = std::chrono::steady_clock::now();
+    last = ac_step(hom, domain, fft, h, spec, hat, lap, dJdh, g, penalized, d_real,
+                   d_hat, MPI_COMM_WORLD);
+    const auto t1 = std::chrono::steady_clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     double dC2 = 0.0;
     if (have_prev) {
       for (int i = 0; i < 6; ++i)
@@ -628,9 +628,10 @@ int run(int argc, char **argv, int rank, int nproc) {
           dC2 += d * d;
         }
     }
-    const auto metrics = pfc::apps::inverse::make_metrics(
+    auto metrics = pfc::apps::inverse::make_metrics(
         design_rms, last.J, have_prev ? J_prev : last.J, std::sqrt(dC2),
         have_prev ? C_prev.frobenius_norm() : last.C_fro, morph_frac, tracker.cfg);
+    if (!have_prev) metrics.quiet = false;
     reason = tracker.after_step(s, last.elasticity_converged, metrics);
     const double nu = nu_of(last.C11, last.C12);
     const int frozen =
@@ -647,23 +648,39 @@ int run(int argc, char **argv, int rank, int nproc) {
                 << (last.elasticity_converged ? "yes" : "no") << ' '
                 << pfc::apps::inverse::termination_name(reason) << '\n';
       if (csv.is_open()) {
-        csv << s << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
-            << ',' << last.J_reg << ',' << last.volume_fraction << ','
-            << last.grey_fraction << ',' << last.C11 << ',' << last.C12 << ',' << nu
-            << ',' << last.C_fro << ',' << design_rms << ',' << metrics.dJ_rel << ','
-            << metrics.dC_rel << ',' << morph_frac << ',' << last.step_rms << ','
-            << last.grad_rms << ',' << spec.simp_p << ',' << spec.lambda_reg << ','
-            << frozen << ',' << tracker.quiet_count << ','
-            << (tracker.candidate ? 1 : 0) << ',' << (tracker.verified ? 1 : 0)
-            << ',' << ms << ',' << (last.elasticity_converged ? 1 : 0) << ','
-            << pfc::apps::inverse::termination_name(reason) << '\n';
+        pfc::apps::inverse::InverseCsvRow row;
+        row.step = s;
+        row.J = last.J;
+        row.J_tensor = last.J_tensor;
+        row.J_volume = last.J_volume;
+        row.J_reg = last.J_reg;
+        row.volume = last.volume_fraction;
+        row.grey = last.grey_fraction;
+        row.C11 = last.C11;
+        row.C12 = last.C12;
+        row.nu_eff = nu;
+        row.C_fro = last.C_fro;
+        row.design_rms = design_rms;
+        row.dJ_rel = metrics.dJ_rel;
+        row.dC_rel = metrics.dC_rel;
+        row.morph_frac = morph_frac;
+        row.step_rms = last.step_rms;
+        row.grad_rms = last.grad_rms;
+        row.simp_p = spec.simp_p;
+        row.lambda_reg = spec.lambda_reg;
+        row.frozen = frozen;
+        row.conv_window = tracker.quiet_count;
+        row.candidate = tracker.candidate ? 1 : 0;
+        row.verified = tracker.verified ? 1 : 0;
+        row.ms = ms;
+        row.elasticity = last.elasticity_converged ? 1 : 0;
+        row.termination = pfc::apps::inverse::termination_name(reason);
+        pfc::apps::inverse::write_inverse_csv_row(csv, row);
         csv.flush();
       }
     }
     dump(s + 1, false);
     n_done = s + 1;
-    for (std::size_t i = 0; i < h.size(); ++i) h_prev.data()[i] = h.data()[i];
-    h_prev.note_host_write();
     C_prev = last.C;
     J_prev = last.J;
     have_prev = true;
@@ -675,17 +692,22 @@ int run(int argc, char **argv, int rank, int nproc) {
   dump(n_done, true);
 
   const auto final = hom.compute(h);
-  if (rank == 0 && csv.is_open()) {
+  if (rank == 0) {
     const auto &C = final.stiffness;
     const double nu = nu_of(C(0, 0), C(0, 1));
     const double Jt = pfc::apps::tensor_mismatch(C, spec.C_target, spec.W);
-    const double dv = last.volume_fraction - spec.volume_target;
-    const double Jv = spec.lambda_volume * dv * dv;
-    csv << n_done << ',' << (Jt + Jv + last.J_reg) << ',' << Jt << ',' << Jv << ','
-        << last.J_reg << ',' << last.volume_fraction << ',' << last.grey_fraction
-        << ',' << C(0, 0) << ',' << C(0, 1) << ',' << nu << ',' << 0.0 << ','
-        << (final.all_converged() ? 1 : 0) << '\n';
-    csv.flush();
+    std::cout << std::setprecision(16) << "FINAL_RECOMPUTE J_tensor " << Jt
+              << " C11 " << C(0, 0) << " C12 " << C(0, 1) << " nu_eff " << nu
+              << " C_fro " << C.symmetrized().frobenius_norm() << " elasticity "
+              << (final.all_converged() ? 1 : 0) << '\n';
+    if (csv.is_open()) {
+      csv << "# FINAL_RECOMPUTE unpenalized C_H of in-memory h after the last "
+             "update; not an iterate J_tensor="
+          << Jt << " C11=" << C(0, 0) << " C12=" << C(0, 1) << " nu_eff=" << nu
+          << " C_fro=" << C.symmetrized().frobenius_norm()
+          << " elasticity=" << (final.all_converged() ? 1 : 0) << '\n';
+      csv.flush();
+    }
   }
   auto hbin = h;
   for (std::size_t i = 0; i < h.size(); ++i)

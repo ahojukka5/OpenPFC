@@ -15,10 +15,25 @@
  * `--max-steps` is a ceiling, not success. Job 22162138 still had
  * pre-projection `step_rms≈0.019` at step 300, so a J-only stop would
  * have fired while the design was moving.
+ *
+ * Logged row \(s\) compares consecutive **accepted** states: design RMS
+ * is \(\lVert h_s-h_{s-1}\rVert_2/\sqrt{N}\) measured before the
+ * Allen--Cahn update; \(J\) and \(C_H\) are evaluated on that same
+ * \(h_s\). The update to \(h_{s+1}\) happens after the row is written.
+ * The first iterate has no predecessor and is never quiet, so a zero
+ * first-row design RMS cannot seed the window. The trailing one-step
+ * update is not in the certified pair; the verification hold is the
+ * buffer. Unpenalized final \(C_H\) is a `# FINAL_RECOMPUTE` comment,
+ * never a truncated iterate row.
  */
 
 #include <algorithm>
 #include <cmath>
+#include <istream>
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <string_view>
 
 namespace pfc::apps::inverse {
 
@@ -147,5 +162,75 @@ struct ConvergenceTracker {
     return TerminationReason::Running;
   }
 };
+
+/// Iterate-row schema used by CPU and HIP inverse drivers.
+inline constexpr std::string_view kInverseCsvHeader =
+    "step,J,J_tensor,J_volume,J_reg,volume,grey,C11,C12,nu_eff,"
+    "C_fro,design_rms,dJ_rel,dC_rel,morph_frac,step_rms,grad_rms,"
+    "simp_p,lambda_reg,frozen,conv_window,candidate,verified,ms,"
+    "elasticity,termination";
+
+[[nodiscard]] inline std::size_t csv_field_count(std::string_view line) {
+  if (line.empty()) return 0;
+  std::size_t n = 1;
+  for (char c : line)
+    if (c == ',') ++n;
+  return n;
+}
+
+[[nodiscard]] inline bool csv_is_comment_line(std::string_view line) {
+  std::size_t i = 0;
+  while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+  return i < line.size() && line[i] == '#';
+}
+
+/// Empty string if every non-empty, non-comment row has the documented
+/// column count. Comment lines (`# …`) are not data rows.
+[[nodiscard]] inline std::string validate_inverse_csv(std::istream &in) {
+  const auto ncol = csv_field_count(kInverseCsvHeader);
+  std::string line;
+  int n = 0;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty() || csv_is_comment_line(line)) continue;
+    const auto c = csv_field_count(line);
+    if (c != ncol) {
+      return "row " + std::to_string(n) + " has " + std::to_string(c) +
+             " fields, expected " + std::to_string(ncol);
+    }
+    ++n;
+  }
+  return {};
+}
+
+struct InverseCsvRow {
+  int step{0};
+  double J{0}, J_tensor{0}, J_volume{0}, J_reg{0}, volume{0}, grey{0};
+  double C11{0}, C12{0}, nu_eff{0}, C_fro{0};
+  double design_rms{0}, dJ_rel{0}, dC_rel{0}, morph_frac{0};
+  double step_rms{0}, grad_rms{0}, simp_p{1}, lambda_reg{0};
+  int frozen{0}, conv_window{0}, candidate{0}, verified{0};
+  double ms{0};
+  int elasticity{0};
+  const char *termination{"RUNNING"};
+};
+
+inline void write_inverse_csv_row(std::ostream &os, const InverseCsvRow &r) {
+  os << r.step << ',' << r.J << ',' << r.J_tensor << ',' << r.J_volume << ','
+     << r.J_reg << ',' << r.volume << ',' << r.grey << ',' << r.C11 << ',' << r.C12
+     << ',' << r.nu_eff << ',' << r.C_fro << ',' << r.design_rms << ',' << r.dJ_rel
+     << ',' << r.dC_rel << ',' << r.morph_frac << ',' << r.step_rms << ','
+     << r.grad_rms << ',' << r.simp_p << ',' << r.lambda_reg << ',' << r.frozen
+     << ',' << r.conv_window << ',' << r.candidate << ',' << r.verified << ','
+     << r.ms << ',' << r.elasticity << ',' << r.termination << '\n';
+}
+
+[[nodiscard]] inline std::string format_inverse_csv_row(const InverseCsvRow &r) {
+  std::ostringstream os;
+  write_inverse_csv_row(os, r);
+  std::string s = os.str();
+  if (!s.empty() && s.back() == '\n') s.pop_back();
+  return s;
+}
 
 } // namespace pfc::apps::inverse

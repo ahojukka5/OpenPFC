@@ -42,6 +42,7 @@
 
 #include <mpi.h>
 
+#include <inverse_homogenization/simp_penalty.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/fft_interface.hpp>
@@ -185,7 +186,7 @@ public:
         double *pp = m_penalized.data();
         const double *hd = h.data();
         for (std::size_t i = 0; i < m_n_local; ++i)
-          pp[i] = std::pow(hd[i], spec.simp_p);
+          pp[i] = simp_density(hd[i], spec.simp_p);
         m_penalized.note_host_write();
         h_el = &m_penalized;
       }
@@ -198,12 +199,10 @@ public:
       out.C_fro = out.C.frobenius_norm();
       m_hom.objective_sensitivity(*h_el, spec.C_target, spec.W, m_dJdh);
       if (spec.simp_p != 1.0) {
-        const double pexp = spec.simp_p;
-        const double pm1 = pexp - 1.0;
         double *dj = m_dJdh.data();
         const double *hd = h.data();
         for (std::size_t i = 0; i < m_n_local; ++i)
-          dj[i] *= pexp * std::pow(hd[i], pm1);
+          dj[i] *= simp_chain(hd[i], spec.simp_p);
         m_dJdh.note_host_write();
       }
     } else {

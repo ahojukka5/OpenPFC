@@ -11,9 +11,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
+#include <sstream>
 #include <string>
 
 #include <inverse_homogenization/inverse_convergence.hpp>
+#include <inverse_homogenization/simp_penalty.hpp>
 
 int main(int argc, char *argv[]) { return Catch::Session().run(argc, argv); }
 
@@ -180,4 +183,67 @@ TEST_CASE("criteria_hold requires all three tolerances", "[inverse-conv][59]") {
   REQUIRE_FALSE(criteria_hold(1e-3, 1e-7, 1e-5, cfg));
   REQUIRE_FALSE(criteria_hold(1e-5, 1e-4, 1e-5, cfg));
   REQUIRE_FALSE(criteria_hold(1e-5, 1e-7, 1e-3, cfg));
+}
+
+TEST_CASE("CSV iterate rows match the documented header width",
+          "[inverse-conv][63]") {
+  using pfc::apps::inverse::csv_field_count;
+  using pfc::apps::inverse::csv_is_comment_line;
+  using pfc::apps::inverse::format_inverse_csv_row;
+  using pfc::apps::inverse::InverseCsvRow;
+  using pfc::apps::inverse::kInverseCsvHeader;
+  using pfc::apps::inverse::validate_inverse_csv;
+  const auto ncol = csv_field_count(kInverseCsvHeader);
+  REQUIRE(ncol == 26);
+  InverseCsvRow row;
+  row.termination = "CONVERGED";
+  const auto line = format_inverse_csv_row(row);
+  REQUIRE(csv_field_count(line) == ncol);
+  const std::string truncated =
+      "12,0.1,0.01,0.0,0.09,0.25,0.4,0.04,-0.008,0.3,0.0,1";
+  REQUIRE(csv_field_count(truncated) != ncol);
+  REQUIRE_FALSE(csv_is_comment_line(truncated));
+  REQUIRE(csv_is_comment_line(
+      "# FINAL_RECOMPUTE unpenalized C_H of in-memory h; not an iterate"));
+  std::istringstream ok(std::string(kInverseCsvHeader) + "\n" + line + "\n" +
+                        "# FINAL_RECOMPUTE J_tensor=0.1 C11=0.04\n");
+  REQUIRE(validate_inverse_csv(ok).empty());
+  std::istringstream bad(std::string(kInverseCsvHeader) + "\n" + truncated + "\n");
+  REQUIRE_FALSE(validate_inverse_csv(bad).empty());
+}
+
+TEST_CASE("first accepted state cannot seed a quiet window", "[inverse-conv][63]") {
+  ConvergenceConfig cfg;
+  auto m = make_metrics(0.0, 1.0, 1.0, 0.0, 1.0, 0.0, cfg);
+  REQUIRE(m.quiet);
+  m.quiet = false;
+  ConvergenceTracker tr;
+  tr.cfg.continuation_steps = 0;
+  tr.cfg.max_steps = 100;
+  tr.cfg.conv_window = 2;
+  tr.cfg.verify_steps = 0;
+  REQUIRE(tr.after_step(0, true, m) == TerminationReason::Running);
+  REQUIRE(tr.quiet_count == 0);
+  REQUIRE_FALSE(tr.candidate);
+}
+
+TEST_CASE("SIMP p=1 is identity and skips 0^0", "[inverse-conv][63]") {
+  using pfc::apps::inverse::simp_chain;
+  using pfc::apps::inverse::simp_density;
+  REQUIRE(simp_density(0.0, 1.0) == 0.0);
+  REQUIRE(simp_density(0.7, 1.0) == 0.7);
+  REQUIRE(simp_density(1.0, 1.0) == 1.0);
+  REQUIRE(simp_chain(0.0, 1.0) == 1.0);
+  REQUIRE(simp_chain(0.4, 1.0) == 1.0);
+  REQUIRE_THAT(simp_density(0.5, 3.0), WithinAbs(0.125, 1e-15));
+  REQUIRE_THAT(simp_chain(0.5, 3.0), WithinAbs(0.75, 1e-15));
+  REQUIRE(simp_density(0.0, 3.0) == 0.0);
+  REQUIRE(simp_chain(0.0, 3.0) == 0.0);
+  REQUIRE(simp_density(1.0, 3.0) == 1.0);
+  REQUIRE(simp_chain(1.0, 3.0) == 3.0);
+  REQUIRE(std::isfinite(simp_density(0.0, 3.0)));
+  REQUIRE(std::isfinite(simp_chain(0.0, 3.0)));
+  REQUIRE(std::isfinite(simp_chain(1e-300, 3.0)));
+  REQUIRE(simp_density(-0.2, 3.0) == 0.0);
+  REQUIRE(simp_chain(1.2, 3.0) == 3.0);
 }

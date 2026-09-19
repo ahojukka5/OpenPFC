@@ -74,6 +74,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- **Inverse-homogenization CSV / accepted-state / SIMP** (issue
+  [#63](https://github.com/ahojukka5/OpenPFC/issues/63)). HIP no longer
+  writes a truncated extra iterate row after the loop; CPU and HIP share
+  the 26-column header and emit unpenalized final \(C_H\) as a
+  `# FINAL_RECOMPUTE` comment. Logged row \(s\) compares accepted
+  \(h_s\), \(J(h_s)\), and \(C_H(h_s)\) against the previous accepted
+  state (the first row is never quiet). Shared `simp_density` /
+  `simp_chain` helpers: elasticity on \(h^p\), chain rule
+  \(p h^{p-1}\), \(p=1\) skips \(0^0\), \(h\) clamped to \([0,1]\).
 - **Heat3D spectral HIP scaling submit memory** (issue #51). LUMI-G
   GPU partitions default to ~6 GiB host/GCD. Constant-local-work
   `768³`/rank needs ~8 GiB host/rank; request `--mem=0` on

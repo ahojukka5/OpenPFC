@@ -523,10 +523,7 @@ int main(int argc, char **argv) {
                    "morph_frac step_rms termination\n";
       if (!cfg.csv.empty()) {
         csv.open(cfg.csv);
-        csv << "step,J,J_tensor,J_volume,J_reg,volume,grad_rms,step_rms,grey,"
-               "perimeter,C11,C12,C_fro,design_rms,dJ_rel,dC_rel,morph_frac,"
-               "simp_p,lambda_reg,frozen,conv_window,candidate,verified,ms,"
-               "elasticity,termination\n";
+        csv << pfc::apps::inverse::kInverseCsvHeader << '\n';
       }
     }
     pfc::apps::inverse::InverseStepReport last{};
@@ -556,10 +553,6 @@ int main(int argc, char **argv) {
           pfc::apps::inverse::continuation_fraction(s, cfg.continuation_steps);
       spec.simp_p = simp0 + t * (simp1 - simp0);
       spec.lambda_reg = lr0 + t * (lr1 - lr0);
-      const auto t0 = std::chrono::steady_clock::now();
-      last = inv.step(h, spec);
-      const auto t1 = std::chrono::steady_clock::now();
-      const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
       double local_dh2 = 0.0, local_morph = 0.0;
       const double *hp = h.data();
       for (std::size_t i = 0; i < h.size(); ++i) {
@@ -573,6 +566,11 @@ int main(int argc, char **argv) {
                     MPI_COMM_WORLD);
       const double design_rms = std::sqrt(glo_dh2 / n_global);
       const double morph_frac = glo_morph / n_global;
+      h_prev.assign(h.vec().begin(), h.vec().end());
+      const auto t0 = std::chrono::steady_clock::now();
+      last = inv.step(h, spec);
+      const auto t1 = std::chrono::steady_clock::now();
+      const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
       double dC2 = 0.0;
       if (have_prev) {
         for (int i = 0; i < 6; ++i)
@@ -581,9 +579,10 @@ int main(int argc, char **argv) {
             dC2 += d * d;
           }
       }
-      const auto metrics = pfc::apps::inverse::make_metrics(
+      auto metrics = pfc::apps::inverse::make_metrics(
           design_rms, last.J, have_prev ? J_prev : last.J, std::sqrt(dC2),
           have_prev ? C_prev.frobenius_norm() : last.C_fro, morph_frac, tracker.cfg);
+      if (!have_prev) metrics.quiet = false;
       reason = tracker.after_step(s, last.elasticity_converged, metrics);
       const int frozen =
           pfc::apps::inverse::params_frozen(s, cfg.continuation_steps) ? 1 : 0;
@@ -595,21 +594,41 @@ int main(int argc, char **argv) {
                   << ' ' << morph_frac << ' ' << last.step_rms << ' '
                   << pfc::apps::inverse::termination_name(reason) << '\n';
         if (csv.is_open()) {
-          csv << s << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
-              << ',' << last.J_reg << ',' << last.volume_fraction << ','
-              << last.grad_rms << ',' << last.step_rms << ',' << last.grey_fraction
-              << ',' << last.perimeter << ',' << last.C11 << ',' << last.C12 << ','
-              << last.C_fro << ',' << design_rms << ',' << metrics.dJ_rel << ','
-              << metrics.dC_rel << ',' << morph_frac << ',' << spec.simp_p << ','
-              << spec.lambda_reg << ',' << frozen << ',' << tracker.quiet_count
-              << ',' << (tracker.candidate ? 1 : 0) << ','
-              << (tracker.verified ? 1 : 0) << ',' << ms << ','
-              << (last.elasticity_converged ? 1 : 0) << ','
-              << pfc::apps::inverse::termination_name(reason) << '\n';
+          pfc::apps::inverse::InverseCsvRow row;
+          row.step = s;
+          row.J = last.J;
+          row.J_tensor = last.J_tensor;
+          row.J_volume = last.J_volume;
+          row.J_reg = last.J_reg;
+          row.volume = last.volume_fraction;
+          row.grey = last.grey_fraction;
+          row.C11 = last.C11;
+          row.C12 = last.C12;
+          row.nu_eff = 0.0;
+          {
+            const double den = last.C11 + last.C12;
+            if (std::abs(den) > 1.0e-30) row.nu_eff = last.C12 / den;
+          }
+          row.C_fro = last.C_fro;
+          row.design_rms = design_rms;
+          row.dJ_rel = metrics.dJ_rel;
+          row.dC_rel = metrics.dC_rel;
+          row.morph_frac = morph_frac;
+          row.step_rms = last.step_rms;
+          row.grad_rms = last.grad_rms;
+          row.simp_p = spec.simp_p;
+          row.lambda_reg = spec.lambda_reg;
+          row.frozen = frozen;
+          row.conv_window = tracker.quiet_count;
+          row.candidate = tracker.candidate ? 1 : 0;
+          row.verified = tracker.verified ? 1 : 0;
+          row.ms = ms;
+          row.elasticity = last.elasticity_converged ? 1 : 0;
+          row.termination = pfc::apps::inverse::termination_name(reason);
+          pfc::apps::inverse::write_inverse_csv_row(csv, row);
         }
       }
       n_done = s + 1;
-      h_prev.assign(h.vec().begin(), h.vec().end());
       C_prev = last.C;
       J_prev = last.J;
       have_prev = true;
@@ -653,6 +672,24 @@ int main(int argc, char **argv) {
     // Physical C_H of the final h (linear two-phase interpolation), even if
     // SIMP or W=0 was used during the loop.
     const auto final = inv.homogenizer().compute(h);
+    if (rank == 0) {
+      const auto &C = final.stiffness;
+      const double den = C(0, 0) + C(0, 1);
+      const double nu = (std::abs(den) > 1.0e-30) ? C(0, 1) / den : 0.0;
+      const double Jt = pfc::apps::tensor_mismatch(C, spec.C_target, spec.W);
+      std::cout << std::setprecision(16) << "FINAL_RECOMPUTE J_tensor " << Jt
+                << " C11 " << C(0, 0) << " C12 " << C(0, 1) << " nu_eff " << nu
+                << " C_fro " << C.symmetrized().frobenius_norm() << " elasticity "
+                << (final.all_converged() ? 1 : 0) << '\n';
+      if (csv.is_open()) {
+        csv << "# FINAL_RECOMPUTE unpenalized C_H of in-memory h after the last "
+               "update; not an iterate J_tensor="
+            << Jt << " C11=" << C(0, 0) << " C12=" << C(0, 1) << " nu_eff=" << nu
+            << " C_fro=" << C.symmetrized().frobenius_norm()
+            << " elasticity=" << (final.all_converged() ? 1 : 0) << '\n';
+        csv.flush();
+      }
+    }
     auto hbin = h;
     {
       const auto ln2 = h.local_size();
