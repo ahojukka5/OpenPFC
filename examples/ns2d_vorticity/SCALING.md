@@ -7,8 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 Research note for the follow-on to closed #26 / merged #27. The
 solver is unchanged. Topology and flux-budget machinery is reused,
-not duplicated. Local sheet definitions were frozen before any
-\(\eta\) comparison.
+not duplicated. Local sheet constants were frozen before any
+\(\eta\) comparison and were **not** retuned after the connected-
+component correction.
 
 ## Question
 
@@ -29,31 +30,35 @@ valid.
 4. Lower-\(\eta\) regime unresolved.
 
 This pass does **not** claim an exponent. Only \(\eta=0.01\) and
-\(\eta=0.005\) are compared, and local Sweet–Parker geometry is not
-yet a qualified observable on the Orszag–Tang X-point in
-\(t\le 0.80\).
+\(\eta=0.005\) are compared.
 
 ## Frozen local-sheet definitions
 
 Around the tracked persistent reconnection X-point
-(`scripts/mhd_sheet_geometry.py`):
+(`scripts/mhd_sheet_geometry.py`). Constants
+\(\alpha=0.5\), \(\kappa=2\), search windows, and
+\(t\in[0.10,0.70]\) are unchanged.
 
-* \(\hat n\): eigenvector of the most negative Hessian of \(|j|\)
-  at the X-point (Fourier). Fallback: largest-eigenvalue direction
-  of the \(\nabla|j|\) structure tensor in a disk of radius
-  \(R_{\mathrm{ST}}=0.5\).
-* \(\hat t = (-\hat n_y,\hat n_x)\).
+Orientation uses the **smooth signed ridge**
+\(q=\mathrm{sign}(j_X)\,j\), never Fourier derivatives of \(|j|\).
+\(\hat n\) is the most negative Hessian eigenvector of \(q\) at the
+X-point. Fallback: largest-eigenvalue direction of the \(\nabla q\)
+structure tensor in a disk of radius \(R_{\mathrm{ST}}=0.5\). If
+\(|j_X|<10^{-12}\) or both constructions are degenerate, fail
+closed. \(\hat t=(-\hat n_y,\hat n_x)\).
 
-**Thickness** \(\delta\): sub-grid FWHM of \(|j|\) along \(\hat n\)
-through the X-point. Physical length, not a cell count.
+**Thickness** \(\delta\): sub-grid width of the **connected**
+\(|j|\ge\tfrac12|j_X|\) component containing \(s=0\) along
+\(\hat n\). Remote superlevel lobes are ignored. Not a cell count.
 
-**Length** \(L\): extent along \(\hat t\) where
-\(|j|\ge \alpha |j|_X\) with \(\alpha=0.5\). This is not
+**Length** \(L\): connected \(|j|\ge\alpha|j_X|\) component
+containing \(s=0\) along \(\hat t\). Not
 \(\sqrt{\text{half-max area}}\).
 
 **Upstream field** \(B_{\mathrm{up}}\): reconnecting component
-\(\mathbf B\cdot\hat t\) sampled at \(n=\pm\kappa\delta\) with
-\(\kappa=2\). Mean of the two absolute values. The sampling
+\(\mathbf B\cdot\hat t\) at \(n=\pm\kappa\delta\), with
+\(\mathbf B=(a_y,-a_x)\) from Fourier derivatives of \(a\) (not
+bilinear interpolation). Mean of the two absolute values. Sampling
 distance is not retuned per \(\eta\).
 
 Density is 1, so \(V_A=B_{\mathrm{up}}\).
@@ -63,113 +68,91 @@ S_{\mathrm{local}} = L V_A/\eta,\qquad
 R = |E_{z,X}|/(B_{\mathrm{up}} V_A) = |E_{z,X}|/B_{\mathrm{up}}^2.
 \]
 
-Search windows are frozen: \(s_n\in[-\pi/2,\pi/2]\),
-\(s_t\in[-\pi,\pi]\). If the half-max set reaches a window
-endpoint, \(\delta\) or \(L\) is **capped** and is not a physical
-sheet width. `sheet_ok` requires uncapped \(\delta\), uncapped
+Search windows: \(s_n\in[-\pi/2,\pi/2]\), \(s_t\in[-\pi,\pi]\).
+`capped` is true only if **that connected component** reaches a
+window endpoint. `sheet_ok` requires uncapped \(\delta\), uncapped
 \(L\), and \(B_{\mathrm{up}}>10^{-3}\).
-
-Capped frames must not enter a scaling point.
 
 ## Synthetic qualification
 
-`scripts/test_mhd_sheet_geometry.py` (Gaussian ridge and Harris
-sheet, \(N=64,128,256\)):
+`scripts/test_mhd_sheet_geometry.py` (\(N=64,128,256\)):
 
-* rotated sheets recover \(\hat n\) (catches tangent/normal swap);
-* FWHM \(\delta\) and length \(L\) match the known Gaussian widths
-  and stay distinct;
+* rotated Gaussian ridges recover \(\hat n\), \(\delta\), and \(L\);
+* a separated remote ridge above the same threshold is ignored for
+  both \(\delta\) and \(L\); a remote lobe at a window endpoint does
+  **not** mark the local sheet capped;
+* \(j\to -j\) leaves \(\hat n\), \(\hat t\) (up to eigenvector
+  sign), \(\delta\), and \(L\) unchanged on the Harris orientation
+  path;
 * grid-aligned Harris \(B_{\mathrm{up}}\approx B_0\) at
   \(\pm 2\delta\);
-* both sides of a rotated Harris are sampled;
-* a sheet wider than the search window is flagged capped, not
-  treated as a physical FWHM.
+* a sheet wider than the search window is flagged capped.
 
-The geometry code is qualified on synthetics. That is necessary
-and not sufficient for Orszag–Tang.
+## Proposed scalar reconnection statistic (frozen)
 
-## Proposed scalar reconnection statistic (frozen here)
+Track the same #26 island / X family.
 
-Track the same #26 symmetry-related persistent island / X family.
-
-* Primary un-normalized rate: \(E_{z,X}(t)\) and island flux
-  \(F=a_O-a_X\), already N-converged in #26.
+* Primary un-normalized rate: \(E_{z,X}(t)\) and \(F=a_O-a_X\).
 * Primary *normalized* \(R\): time average of \(R(t)\) on
-  \(t\in[0.10,0.70]\) **restricted to `sheet_ok` frames**, and only
-  if that interval is common (every compared run is
+  \(t\in[0.10,0.70]\) restricted to `sheet_ok` frames, **and only
+  if that interval is common** (every compared run is
   well-conditioned and `sheet_ok` throughout).
 * Always show the full \(R(t)\) with saturation flags.
-* Peak \(R\) is secondary and is not used to pick \(\eta\) points.
+* Peak \(R\) is secondary.
 
-**Finding:** a common thin-sheet interval cannot be defined in the
-accepted \(t\le 0.80\) window. Most of \([0.10,0.70]\) is FWHM-
-capped at both \(\eta\). The few `sheet_ok` frames sit at
-\(t\gtrsim 0.59\), where the X Hessian condition number is already
-rising toward the #26 degeneracy near \(t\approx 0.82\). Those
-frames are not a well-conditioned common interval. Do not extract
-a single \(R(S_{\mathrm{local}})\) from them.
+The window \([0.10,0.70]\) is **not** retuned after the connected-
+component correction.
 
-Event-based fallback, if a later campaign needs one number per
-\(\eta\): match the same tracked X/O pair on a predeclared
-`sheet_ok` run of at least three consecutive dumps, after 256² vs
-512² geometry agreement, and still show full \(R(t)\). That rule
-is recorded before \(\eta=0.0025\). It is **not** applied in this
-pass.
+## Corrected re-analysis of \(\eta=\nu=0.005\)
 
-## Re-analysis of \(\eta=\nu=0.005\) (existing #26 dumps)
-
-No new 256²/512² runs. Cadence \(\Delta t_{\mathrm{dump}}=\pi/80\),
+Existing #26 dumps only. Cadence \(\Delta t_{\mathrm{dump}}=\pi/80\),
 \(t\le 0.80\).
 
-Flux / Ohm (necessary, not sufficient for #38):
+Flux / Ohm is unchanged and N-converged:
 
 |  N  | rel \(\eta(j)\) budget | mean \(E_{z,X}\) | \(F(t_{\mathrm{last}})\) |
 | --: | ---------------------: | ---------------: | -----------------------: |
 | 256 |                5.65e-4 |          0.01169 |                 -0.97862 |
 | 512 |                5.65e-4 |          0.01169 |                 -0.97862 |
 
-Ohm at the X-point remains \(E_{z,X}\approx\eta j_X\) on the
-tracked pair. 256² vs 512² flux diagnostics agree.
+Local geometry, after the connected-component / signed-\(q\) /
+spectral-\(B_{\mathrm{up}}\) correction:
 
-Local geometry in \([0.10,0.70]\):
+| \(t\)  | \(\delta\) | \(L\) | \(B_{\mathrm{up}}\) | \(R\) | `sheet_ok` |
+| -----: | ---------: | ----: | ------------------: | ----: | ---------: |
+| 0.000  |      0.723 | 6.283 |               0.248 | 0.081 | L-cap      |
+| 0.118  |      0.705 | 6.283 |               0.246 | 0.089 | L-cap      |
+| 0.275  |      0.626 | 6.283 |               0.219 | 0.149 | L-cap      |
+| 0.314  |      0.598 | 6.076 |               0.209 | 0.180 | yes        |
+| 0.393  |      0.534 | 5.193 |               0.192 | 0.261 | yes        |
+| 0.471  |      0.466 | 2.781 |               0.184 | 0.351 | yes        |
+| 0.550  |      0.400 | 2.379 |               0.190 | 0.412 | yes        |
+| 0.628  |      0.340 | 2.229 |               0.207 | 0.431 | yes        |
+| 0.707  |      0.287 | 2.163 |               0.230 | 0.433 | yes        |
+| 0.785  |      0.241 | 2.140 |               0.250 | 0.426 | yes        |
 
-|  N  | capped / 15 | `sheet_ok` | mean \(\delta\) (all) | mean \(\delta\) (`ok`) |
-| --: | ----------: | ---------: | --------------------: | ---------------------: |
-| 256 |          12 |          3 |                  2.83 |                   1.85 |
-| 512 |          12 |          3 |                  2.79 |                   1.86 |
+256² and 512² agree to printed precision on every listed geometry
+quantity (relative difference \(\lesssim 10^{-5}\) on
+\(\delta,L,B_{\mathrm{up}},R\)). Timestep is the #26 accepted CFL.
 
-FWHM is at the search-window cap \(\delta=\pi\) for 13 of 21 dumps
-(through \(t\approx 0.47\)). The current around the X-point is
-**not a thin Sweet–Parker sheet** during most of the accepted
-reconnection window.
+\(\delta\) is **never** search-window capped. Early \(L=2\pi\) is a
+genuine tangent-window cap: the connected \(|j|\ge\tfrac12|j_X|\)
+component along \(\hat t\) fills \(s_t\in[-\pi,\pi]\). That is a
+broad current structure, not a finite-length Sweet–Parker sheet.
 
-Late thinning (not a scaling interval):
+From the first `sheet_ok` dump \(t=0.314\) through \(t=0.785\),
+\(\delta\) thins from 0.60 to 0.24, \(L/\delta\sim 4\)–\(10\), and
+the same dumps are `sheet_ok` at 256² and 512².
 
-| \(t\)  | \(\delta\) 256 | \(\delta\) 512 | \(L\) 256 | \(L\) 512 | `sheet_ok` |
-| -----: | -------------: | -------------: | --------: | --------: | ---------: |
-| 0.589  |          2.038 |          1.966 |     2.218 |     1.985 | yes / yes  |
-| 0.628  |          1.877 |          1.822 |     2.194 |     2.227 | yes / yes  |
-| 0.668  |          1.641 |          1.802 |     2.112 |     1.556 | yes / yes  |
-| 0.707  |          1.275 |          1.771 |     2.037 |     6.283 | yes / L-cap |
-| 0.746  |          1.501 |          1.117 |     0.807 |     2.054 | yes / yes  |
-| 0.785  |          0.242 |          0.242 |     1.902 |     1.829 | yes / yes  |
-
-\(\delta\) at \(t=0.785\) agrees at 256² and 512², but that dump
-is at Hessian cond \(\approx 18\), next to the #26 stop. \(L\) and
-\(B_{\mathrm{up}}\) do **not** agree across \(N\) on the late
-`sheet_ok` frames. Normalized \(R\) on those three interior
-`sheet_ok` dumps is \(0.12\pm 0.05\) (256) vs \(0.23\pm 0.22\)
-(512). Local SP geometry is **not** N-converged in this window.
-
-Naive \(R\) averaged over all of \([0.10,0.70]\) (including capped
-frames) is \(0.071\) vs \(3.09\) and is discarded.
+The frozen interval \([0.10,0.70]\) has 5 L-capped dumps and 10
+`sheet_ok` dumps. `common_thin_sheet_interval` is **false**. The
+primary normalized \(R\) is therefore **not** admitted as a single
+scaling point.
 
 ## New physical point \(\eta=\nu=0.01\)
 
-Same Orszag–Tang initial condition, same frozen geometry constants,
-same island family. New runs: 128² CFL 0.4; 256² CFL 0.4 and CFL
-0.2. Timestep refinement at 256² leaves flux and geometry traces
-indistinguishable at dump cadence.
+Same IC, same frozen constants, same island family. 128² CFL 0.4;
+256² CFL 0.4 and 0.2.
 
 |  N  | CFL | rel \(\eta(j)\) | mean \(E_{z,X}\) | \(F(t_{\mathrm{last}})\) |
 | --: | --: | --------------: | ---------------: | -----------------------: |
@@ -177,53 +160,70 @@ indistinguishable at dump cadence.
 | 256 | 0.4 |         4.55e-4 |          0.02236 |                 -0.95823 |
 | 256 | 0.2 |         4.55e-4 |          0.02236 |                 -0.95823 |
 
-Mean \(E_{z,X}\) is about twice the \(\eta=0.005\) value
-(\(0.02236/0.01169\approx 1.91\)), consistent with
-\(E_{z,X}\approx\eta j_X\) at similar \(j_X\). Fractional X-point
-contribution to \(dF/dt\) remains \(\approx 0.40\).
+Local geometry is again L-capped for \(t\le 0.275\) and `sheet_ok`
+from \(t=0.314\). 128², 256², and CFL 0.2 agree to printed
+precision. Representative `sheet_ok` dumps (256², CFL 0.4):
 
-Local geometry is again FWHM-capped for most of \([0.10,0.70]\)
-(10–11 of 15 dumps). `sheet_ok` counts: 2 (128²) and 4 (256²).
-No common thin-sheet interval.
+| \(t\)  | \(\delta\) | \(L\) | \(B_{\mathrm{up}}\) | \(R\) | \(S_{\mathrm{local}}\) |
+| -----: | ---------: | ----: | ------------------: | ----: | ---------------------: |
+| 0.314  |      0.598 | 6.098 |               0.209 | 0.355 |                    128 |
+| 0.471  |      0.469 | 2.825 |               0.176 | 0.748 |                     50 |
+| 0.628  |      0.347 | 2.248 |               0.180 | 1.081 |                     40 |
+| 0.785  |      0.253 | 2.167 |               0.189 | 1.360 |                     41 |
 
-## Two physical points, no exponent
+The same \(t=0.314\) onset of `sheet_ok` occurs at both
+resistivities.
 
-Un-normalized, N-converged rate diagnostics exist at two
-resistivities:
+## Two \(\eta\) values, no exponent
+
+Un-normalized N-converged rates:
 
 | \(\eta=\nu\) | mean \(E_{z,X}\) on \(t\le 0.80\) | \(\Delta F\) |
 | -----------: | --------------------------------: | -----------: |
 |        0.010 |                           0.02236 |       0.0418 |
 |        0.005 |                           0.01169 |       0.0214 |
 
-That is **not** a Sweet–Parker test. \(S_{\mathrm{local}}\) and
-normalized \(R\) are not admitted while \(\delta\) is search-window
-capped and \(L\), \(B_{\mathrm{up}}\) are not N-converged.
+Local geometry is now a qualified, N-converged observable after
+\(t=0.314\). The frozen \([0.10,0.70]\) window is still not a
+common `sheet_ok` interval, so no single \(R(S_{\mathrm{local}})\)
+is extracted. Full \(R(t)\) is the comparison. No power law is
+fitted.
 
-Working classification against the predeclared outcomes: **(3)** no
-defensible single local-sheet scaling law on the accessible
-\(\eta\) range in \(t\le 0.80\), with **(4)** still open if a later
-well-conditioned thin sheet appears outside this window. Outcome
-**(1)** is not supported by this pass.
+The earlier “no thin sheet / FWHM at \(\pi\)” reading was a
+**measurement artefact** (union of disconnected superlevel lobes,
+and Fourier derivatives of \(|j|\)). It is withdrawn.
+
+Working classification: **(3)** no defensible single scaling law
+from the frozen common-interval statistic, with **(4)** still open
+at lower \(\eta\). Outcome **(1)** is not supported. This is not
+the same as “no local sheet exists”.
 
 ## Gate: \(\eta=0.0025\) at 512²/1024²
 
-**Not justified for local Sweet–Parker geometry.**
+**Not launched in this pass.**
 
-The geometry diagnostic works on analytic sheets. On the #26
-Orszag–Tang X-point it reports the absence of a thin sheet in the
-accepted reconnection window, and the quantities that would enter
-\(R(S_{\mathrm{local}})\) do not converge between 256² and 512².
-A 1024² run at \(\eta=0.0025\) cannot repair that: it would spend
-the expensive ladder on a diagnostic that is already saturated at
-higher \(\eta\).
+The geometry diagnostic is now qualified on Orszag–Tang: \(\delta\),
+\(L\), \(B_{\mathrm{up}}\), and \(R\) agree between 256² and 512²
+and between CFL 0.4 and 0.2. A local connected current sheet is
+present and thinning for \(t\ge 0.314\).
 
-Un-normalized \(E_{z,X}\) and \(F\) *are* N-converged at both
-\(\eta\) already in hand. They do not by themselves authorize the
-1024² gate.
+That does **not** by itself authorize the expensive ladder:
+
+* the frozen \([0.10,0.70]\) interval is not fully `sheet_ok`;
+* a later common dump set must be **predeclared** before looking
+  at \(\eta=0.0025\), not chosen after seeing two \(\eta\) values;
+* two resistivities are not a scaling law;
+* the X Hessian condition number is already 3 at \(t=0.314\) and
+  18 at \(t=0.785\), next to the #26 stop.
+
+A candidate common window for a later pass, recorded here so it is
+not invented after a low-\(\eta\) run: every dump with
+\(0.314\le t\le 0.80\) is `sheet_ok` at both \(\eta=0.01\) and
+\(\eta=0.005\), 128²–512², and both CFLs. That window is **not**
+used as the primary statistic in this PR.
 
 Do not hunt plasmoids. Do not lower \(\eta\) below 0.0025. Do not
-extend \(t\) past 0.80 in this campaign (Hessian degeneracy).
+extend \(t\) past 0.80.
 
 ## Commands
 
