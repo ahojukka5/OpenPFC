@@ -1,0 +1,19 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "openpfc_issue": 43,
+  "openpfc_pr": 44,
+  "status": "protocol_frozen_before_run",
+  "question": "Does the 2% ersatz stiffness suppress the bending-dominated Yang mechanism?",
+  "geometry": "exact Yang A3 reconstruction of 22160647; no geometry change",
+  "grid": "64x64x121",
+  "E_solid": 1.0,
+  "nu_solid": 0.3,
+  "nu_void": 0.3,
+  "E_void_over_E_solid": [0.02, 0.002, 0.0002],
+  "n_el_iter": 80,
+  "not_a_parameter_optimization": true,
+  "decision": {
+    "A": "nu_zx clearly negative at lower E_void: repeat that contrast at 96x96x182; classify +0.365 as ersatz-contrast effect",
+    "B": "nu_zx stays positive across the ladder: stop; bounded continuum-vs-beam mismatch"
+  }
+}
