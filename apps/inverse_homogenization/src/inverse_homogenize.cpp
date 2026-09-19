@@ -25,16 +25,17 @@
 
 #include <mpi.h>
 
-#include <openpfc/kernel/data/domain.hpp>
-#include <openpfc/kernel/data/grid_field.hpp>
-#include <openpfc/kernel/data/strong_types.hpp>
-#include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <inverse_homogenization/auxetic_geometry.hpp>
+#include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
 #include <inverse_homogenization/target_io.hpp>
 #include <inverse_homogenization/yang_reentrant.hpp>
+#include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/data/strong_types.hpp>
+#include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc_apps/homogenization.hpp>
 
 namespace {
@@ -52,7 +53,13 @@ struct Config {
   double lambda_reg{0.05};
   double epsilon{2.0};
   double dt{0.1};
-  int steps{10};
+  int steps{5000};
+  int continuation_steps{300};
+  int conv_window{20};
+  int verify_steps{100};
+  double tol_design{1e-4};
+  double tol_objective{1e-6};
+  double tol_tensor{1e-4};
   std::string init{"noise"};
   double init_volume{0.55};
   unsigned seed{1};
@@ -94,7 +101,9 @@ void usage(std::ostream &os, const char *exe) {
      << "  --C11 --C22 --C12 --C66         (orthotropic in-plane block)\n"
      << "  --C-target-file=PATH            6x6 Voigt text (target=file)\n"
      << "  --volume --lambda-volume --lambda-reg --epsilon\n"
-     << "  --dt --steps --init uniform|noise --init-volume --csv=PATH\n"
+     << "  --dt --max-steps|--steps --continuation-steps --conv-window\n"
+     << "  --verify-convergence-steps --tol-design --tol-objective --tol-tensor\n"
+     << "  --init uniform|noise --init-volume --csv=PATH\n"
      << "  --normalize=0|1 --max-delta   (default 1 and 0.05; RMS-normalise g)\n"
      << "  --project-volume=0|1          shift h to hold --volume after each step\n"
      << "  --simp=P --simp-end=P         SIMP continuation (linear in step)\n"
@@ -139,29 +148,64 @@ bool parse_args(int argc, char **argv, Config &cfg) {
     const auto key = tok.substr(2, eq - 2);
     const auto val = tok.substr(eq + 1);
     bool ok = true;
-    if (key == "nx") ok = parse_int(val, cfg.nx) && cfg.nx > 0;
-    else if (key == "ny") ok = parse_int(val, cfg.ny) && cfg.ny > 0;
-    else if (key == "nz") ok = parse_int(val, cfg.nz) && cfg.nz > 0;
-    else if (key == "dx") ok = parse_double(val, cfg.dx) && cfg.dx > 0.0;
-    else if (key == "E-solid") ok = parse_double(val, cfg.E_solid);
-    else if (key == "nu-solid") ok = parse_double(val, cfg.nu_solid);
-    else if (key == "E-void") ok = parse_double(val, cfg.E_void);
-    else if (key == "nu-void") ok = parse_double(val, cfg.nu_void);
-    else if (key == "target") cfg.target = std::string(val);
-    else if (key == "E-target") ok = parse_double(val, cfg.E_target);
-    else if (key == "nu-target") ok = parse_double(val, cfg.nu_target);
-    else if (key == "C11") ok = parse_double(val, cfg.C11);
-    else if (key == "C22") ok = parse_double(val, cfg.C22);
-    else if (key == "C12") ok = parse_double(val, cfg.C12);
-    else if (key == "C66") ok = parse_double(val, cfg.C66);
-    else if (key == "volume") ok = parse_double(val, cfg.volume);
-    else if (key == "lambda-volume") ok = parse_double(val, cfg.lambda_volume);
-    else if (key == "lambda-reg") ok = parse_double(val, cfg.lambda_reg);
-    else if (key == "epsilon") ok = parse_double(val, cfg.epsilon) && cfg.epsilon > 0.0;
-    else if (key == "dt") ok = parse_double(val, cfg.dt) && cfg.dt > 0.0;
-    else if (key == "steps") ok = parse_int(val, cfg.steps) && cfg.steps >= 0;
-    else if (key == "init") cfg.init = std::string(val);
-    else if (key == "init-volume") ok = parse_double(val, cfg.init_volume);
+    if (key == "nx")
+      ok = parse_int(val, cfg.nx) && cfg.nx > 0;
+    else if (key == "ny")
+      ok = parse_int(val, cfg.ny) && cfg.ny > 0;
+    else if (key == "nz")
+      ok = parse_int(val, cfg.nz) && cfg.nz > 0;
+    else if (key == "dx")
+      ok = parse_double(val, cfg.dx) && cfg.dx > 0.0;
+    else if (key == "E-solid")
+      ok = parse_double(val, cfg.E_solid);
+    else if (key == "nu-solid")
+      ok = parse_double(val, cfg.nu_solid);
+    else if (key == "E-void")
+      ok = parse_double(val, cfg.E_void);
+    else if (key == "nu-void")
+      ok = parse_double(val, cfg.nu_void);
+    else if (key == "target")
+      cfg.target = std::string(val);
+    else if (key == "E-target")
+      ok = parse_double(val, cfg.E_target);
+    else if (key == "nu-target")
+      ok = parse_double(val, cfg.nu_target);
+    else if (key == "C11")
+      ok = parse_double(val, cfg.C11);
+    else if (key == "C22")
+      ok = parse_double(val, cfg.C22);
+    else if (key == "C12")
+      ok = parse_double(val, cfg.C12);
+    else if (key == "C66")
+      ok = parse_double(val, cfg.C66);
+    else if (key == "volume")
+      ok = parse_double(val, cfg.volume);
+    else if (key == "lambda-volume")
+      ok = parse_double(val, cfg.lambda_volume);
+    else if (key == "lambda-reg")
+      ok = parse_double(val, cfg.lambda_reg);
+    else if (key == "epsilon")
+      ok = parse_double(val, cfg.epsilon) && cfg.epsilon > 0.0;
+    else if (key == "dt")
+      ok = parse_double(val, cfg.dt) && cfg.dt > 0.0;
+    else if (key == "steps" || key == "max-steps")
+      ok = parse_int(val, cfg.steps) && cfg.steps >= 0;
+    else if (key == "continuation-steps")
+      ok = parse_int(val, cfg.continuation_steps) && cfg.continuation_steps >= 0;
+    else if (key == "conv-window")
+      ok = parse_int(val, cfg.conv_window) && cfg.conv_window > 0;
+    else if (key == "verify-convergence-steps")
+      ok = parse_int(val, cfg.verify_steps) && cfg.verify_steps >= 0;
+    else if (key == "tol-design")
+      ok = parse_double(val, cfg.tol_design) && cfg.tol_design > 0.0;
+    else if (key == "tol-objective")
+      ok = parse_double(val, cfg.tol_objective) && cfg.tol_objective > 0.0;
+    else if (key == "tol-tensor")
+      ok = parse_double(val, cfg.tol_tensor) && cfg.tol_tensor > 0.0;
+    else if (key == "init")
+      cfg.init = std::string(val);
+    else if (key == "init-volume")
+      ok = parse_double(val, cfg.init_volume);
     else if (key == "seed") {
       int s = 1;
       ok = parse_int(val, s);
@@ -232,12 +276,12 @@ bool parse_args(int argc, char **argv, Config &cfg) {
   return true;
 }
 
-std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx,
-                                 int ny, int nz) {
+std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx, int ny,
+                                 int nz) {
   auto local = pfc::apps::inverse::dense_from_field(h, nx, ny, nz);
   std::vector<double> g(local.size(), 0.0);
-  MPI_Allreduce(local.data(), g.data(), static_cast<int>(local.size()),
-                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(local.data(), g.data(), static_cast<int>(local.size()), MPI_DOUBLE,
+                MPI_SUM, MPI_COMM_WORLD);
   return g;
 }
 
@@ -247,21 +291,21 @@ void write_raw_bin(const std::string &path, const std::vector<double> &a) {
           static_cast<std::streamsize>(a.size() * sizeof(double)));
 }
 
-void write_xdmf_brick(const std::string &path, const std::string &bin,
-                      int nx, int ny, int nz, double dx, const char *name) {
+void write_xdmf_brick(const std::string &path, const std::string &bin, int nx,
+                      int ny, int nz, double dx, const char *name) {
   std::ofstream f(path);
   f << "<?xml version=\"1.0\"?>\n<Xdmf Version=\"2.0\"><Domain>"
     << "<Grid Name=\"g\" GridType=\"Uniform\">\n"
-    << "<Topology TopologyType=\"3DCoRectMesh\" Dimensions=\"" << nz << ' '
-    << ny << ' ' << nx << "\"/>\n"
+    << "<Topology TopologyType=\"3DCoRectMesh\" Dimensions=\"" << nz << ' ' << ny
+    << ' ' << nx << "\"/>\n"
     << "<Geometry Type=\"ORIGIN_DXDYDZ\">\n"
     << "<DataItem Format=\"XML\" Dimensions=\"3\">0 0 0</DataItem>\n"
-    << "<DataItem Format=\"XML\" Dimensions=\"3\">" << dx << ' ' << dx << ' '
-    << dx << "</DataItem>\n</Geometry>\n"
+    << "<DataItem Format=\"XML\" Dimensions=\"3\">" << dx << ' ' << dx << ' ' << dx
+    << "</DataItem>\n</Geometry>\n"
     << "<Attribute Name=\"" << name << "\" Center=\"Node\">\n"
     << "<DataItem Format=\"Binary\" DataType=\"Float\" Precision=\"8\" "
-    << "Endian=\"Little\" Dimensions=\"" << nz << ' ' << ny << ' ' << nx
-    << "\">" << bin << "</DataItem>\n</Attribute>\n</Grid></Domain></Xdmf>\n";
+    << "Endian=\"Little\" Dimensions=\"" << nz << ' ' << ny << ' ' << nx << "\">"
+    << bin << "</DataItem>\n</Attribute>\n</Grid></Domain></Xdmf>\n";
 }
 
 void print_C(const char *label, const pfc::apps::Voigt6 &C) {
@@ -281,13 +325,12 @@ void print_stiffness_report(const char *label, const pfc::apps::Voigt6 &C,
   using pfc::apps::diagnose_stiffness;
   const auto d = diagnose_stiffness(C, &Ct);
   print_C(label, d.C);
-  std::cout << std::setprecision(8)
-            << "rel_frobenius " << d.rel_frobenius << " spd " << (d.spd ? 1 : 0)
-            << " invertible " << (d.invertible ? 1 : 0) << " min_eig "
-            << d.min_eig << '\n';
-  std::cout << "nu_shortcut " << d.nu_shortcut << " nu_xy " << d.nu_xy
-            << " nu_xz " << d.nu_xz << " nu_yx " << d.nu_yx << " nu_yz "
-            << d.nu_yz << " nu_zx " << d.nu_zx << " nu_zy " << d.nu_zy << '\n';
+  std::cout << std::setprecision(8) << "rel_frobenius " << d.rel_frobenius << " spd "
+            << (d.spd ? 1 : 0) << " invertible " << (d.invertible ? 1 : 0)
+            << " min_eig " << d.min_eig << '\n';
+  std::cout << "nu_shortcut " << d.nu_shortcut << " nu_xy " << d.nu_xy << " nu_xz "
+            << d.nu_xz << " nu_yx " << d.nu_yx << " nu_yz " << d.nu_yz << " nu_zx "
+            << d.nu_zx << " nu_zy " << d.nu_zy << '\n';
   std::cout << "spread_C11 " << d.spread_C11 << " spread_C12 " << d.spread_C12
             << " spread_C44 " << d.spread_C44 << '\n';
   int it_max = 0;
@@ -305,8 +348,8 @@ void print_stiffness_report(const char *label, const pfc::apps::Voigt6 &C,
 
 pfc::apps::Voigt6 make_target(const Config &cfg) {
   using pfc::apps::Stiffness;
-  using pfc::apps::voigt_from_stiffness;
   using pfc::apps::Voigt6;
+  using pfc::apps::voigt_from_stiffness;
   if (cfg.target == "file") {
     Voigt6 C;
     if (!pfc::apps::inverse::load_voigt6_file(cfg.C_target_file, C))
@@ -323,8 +366,8 @@ pfc::apps::Voigt6 make_target(const Config &cfg) {
     C(3, 3) = C(4, 4) = C(5, 5) = cfg.C66;
     return C;
   }
-  const double nu = (cfg.target == "auxetic") ? -std::abs(cfg.nu_target)
-                                              : cfg.nu_target;
+  const double nu =
+      (cfg.target == "auxetic") ? -std::abs(cfg.nu_target) : cfg.nu_target;
   return voigt_from_stiffness(Stiffness::isotropic(cfg.E_target, nu));
 }
 
@@ -338,268 +381,338 @@ int main(int argc, char **argv) {
 
   Config cfg;
   if (!parse_args(argc, argv, cfg)) {
-    if (rank == 0) usage(std::cerr, argc >= 1 ? argv[0] : "openpfc_inverse_homogenize");
+    if (rank == 0)
+      usage(std::cerr, argc >= 1 ? argv[0] : "openpfc_inverse_homogenize");
     MPI_Finalize();
     return 2;
   }
 
   int rc = 0;
   {
-  const pfc::Domain domain = pfc::domain::create(
-      pfc::GridSize({cfg.nx, cfg.ny, cfg.nz}),
-      pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-      pfc::GridSpacing({cfg.dx, cfg.dx, cfg.dx}));
-  pfc::sim::stacks::SpectralCPUStack stack(domain, rank, nproc, MPI_COMM_WORLD);
-  auto h = pfc::data::field_from_inbox<double>(domain,
-                                               stack.fft().get_inbox_bounds());
-  const auto n = h.local_size();
-  for (int k = 0; k < n[2]; ++k)
-    for (int j = 0; j < n[1]; ++j)
-      for (int i = 0; i < n[0]; ++i) {
-        double hv = cfg.init_volume;
-        if (cfg.init == "noise") {
-          const auto g = h.global(i, j, k);
-          const double twopi = 2.0 * 3.141592653589793;
-          const double nx = std::max(cfg.nx, 1);
-          const double ny = std::max(cfg.ny, 1);
-          const double nz = std::max(cfg.nz, 1);
-          const double s = static_cast<double>(cfg.seed);
-          const double n1 = std::sin(twopi * (g[0] + s) / nx);
-          const double n2 = std::sin(twopi * (2.0 * g[1] + s) / ny);
-          const double n3 = std::sin(twopi * (g[2] + 2.0 * s) / nz);
-          const double n4 = std::sin(2.0 * twopi * g[0] / nx) *
-                            std::sin(twopi * g[1] / ny);
-          hv += cfg.init_amp * (0.6 * n1 * n2 + 0.3 * n3 + 0.4 * n4);
-        }
-        h(i, j, k) = std::min(1.0, std::max(0.0, hv));
-      }
-  if (cfg.init == "rotating-squares") {
-    pfc::apps::inverse::fill_rotating_squares(h, cfg.nx, cfg.ny, cfg.init_half,
-                                              cfg.init_angle);
-  } else if (cfg.init == "reentrant") {
-    pfc::apps::inverse::fill_reentrant_honeycomb(
-        h, cfg.nx, cfg.ny, cfg.init_thickness, cfg.init_inset);
-  } else if (cfg.init == "spinodal") {
-    pfc::apps::inverse::SpinodalSpec ch;
-    ch.c0 = cfg.init_volume;
-    ch.kappa = cfg.ch_kappa;
-    ch.dt = cfg.ch_dt;
-    ch.steps = cfg.ch_steps;
-    ch.noise = cfg.init_amp;
-    ch.seed = cfg.seed;
-    ch.ay = cfg.ch_aniso_y;
-    pfc::apps::inverse::seed_spinodal_noise(h, cfg.nx, cfg.ny, cfg.nz, ch);
-    pfc::apps::inverse::generate_spinodal(domain, stack.fft(), h, ch);
-  } else if (cfg.init == "yang-a3") {
-    pfc::apps::inverse::fill_yang_a3(h, cfg.nx, cfg.ny, cfg.nz);
-  }
-  if (!cfg.load_bin.empty()) {
-    if (!pfc::apps::inverse::load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny,
-                                              cfg.nz, h)) {
-      if (rank == 0)
-        std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin
-                  << '\n';
-      MPI_Finalize();
-      return 2;
-    }
-  }
-  if (!cfg.load_h.empty()) {
-    std::ifstream in(cfg.load_h);
-    int nx = 0, ny = 0, nz = 0;
-    in >> nx >> ny >> nz;
-    if (!in || nx != cfg.nx || ny != cfg.ny || nz != cfg.nz) {
-      if (rank == 0)
-        std::cerr << "load-h: grid mismatch or unreadable " << cfg.load_h << '\n';
-      rc = 2;
-    }
+    const pfc::Domain domain =
+        pfc::domain::create(pfc::GridSize({cfg.nx, cfg.ny, cfg.nz}),
+                            pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                            pfc::GridSpacing({cfg.dx, cfg.dx, cfg.dx}));
+    pfc::sim::stacks::SpectralCPUStack stack(domain, rank, nproc, MPI_COMM_WORLD);
+    auto h =
+        pfc::data::field_from_inbox<double>(domain, stack.fft().get_inbox_bounds());
+    const auto n = h.local_size();
     for (int k = 0; k < n[2]; ++k)
       for (int j = 0; j < n[1]; ++j)
         for (int i = 0; i < n[0]; ++i) {
-          double v = 0.0;
-          in >> v;
-          h(i, j, k) = std::min(1.0, std::max(0.0, v));
+          double hv = cfg.init_volume;
+          if (cfg.init == "noise") {
+            const auto g = h.global(i, j, k);
+            const double twopi = 2.0 * 3.141592653589793;
+            const double nx = std::max(cfg.nx, 1);
+            const double ny = std::max(cfg.ny, 1);
+            const double nz = std::max(cfg.nz, 1);
+            const double s = static_cast<double>(cfg.seed);
+            const double n1 = std::sin(twopi * (g[0] + s) / nx);
+            const double n2 = std::sin(twopi * (2.0 * g[1] + s) / ny);
+            const double n3 = std::sin(twopi * (g[2] + 2.0 * s) / nz);
+            const double n4 =
+                std::sin(2.0 * twopi * g[0] / nx) * std::sin(twopi * g[1] / ny);
+            hv += cfg.init_amp * (0.6 * n1 * n2 + 0.3 * n3 + 0.4 * n4);
+          }
+          h(i, j, k) = std::min(1.0, std::max(0.0, hv));
         }
-  }
-  h.note_host_write();
-
-  pfc::apps::MicroelasticityParams p;
-  p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
-  p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
-  p.tol_el = 1.0e-8;
-  p.n_el_iter = cfg.n_el_iter;
-  p.warm_start = false;
-  p.comm = MPI_COMM_WORLD;
-
-  pfc::apps::inverse::InverseSpec spec;
-  try {
-    spec.C_target = make_target(cfg);
-  } catch (const std::exception &e) {
-    if (rank == 0) std::cerr << e.what() << '\n';
-    MPI_Finalize();
-    return 2;
-  }
-  spec.volume_target = cfg.volume;
-  spec.lambda_volume = cfg.lambda_volume;
-  spec.lambda_reg = cfg.lambda_reg;
-  spec.epsilon = cfg.epsilon;
-  spec.dt = cfg.dt;
-  spec.normalize_grad = cfg.normalize != 0;
-  spec.max_abs_delta = cfg.max_delta;
-  spec.project_volume = cfg.project_volume != 0;
-  spec.simp_p = cfg.simp;
-  if (cfg.no_tensor != 0) {
-    spec.W = pfc::apps::Voigt6{};
-  } else if (cfg.w12 != 1.0 || cfg.target == "auxetic") {
-    const double w = (cfg.target == "auxetic" && cfg.w12 == 1.0) ? 4.0 : cfg.w12;
-    spec.W(0, 1) = spec.W(1, 0) = w;
-    spec.W(0, 2) = spec.W(2, 0) = w;
-    spec.W(1, 2) = spec.W(2, 1) = w;
-  }
-
-  pfc::apps::inverse::PhaseFieldInverse inv(domain, stack.fft(), p);
-  const auto init_h = inv.homogenizer().compute(h);
-  if (rank == 0) {
-    std::cout << "target " << cfg.target << " grid " << cfg.nx << 'x' << cfg.ny
-              << 'x' << cfg.nz << " steps " << cfg.steps << " seed "
-              << cfg.seed << '\n';
-    std::cout << "backend cpu ranks " << nproc << " grid " << cfg.nx << 'x'
-              << cfg.ny << 'x' << cfg.nz << " loads 6\n";
-    print_stiffness_report("C_H_initial", init_h.stiffness, spec.C_target,
-                           init_h);
-  }
-  if (!cfg.dump_dir.empty()) {
-    const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
-    if (rank == 0) {
-      write_raw_bin(cfg.dump_dir + "/h_init.bin", dense);
-      write_xdmf_brick(cfg.dump_dir + "/h_init.xdmf", "h_init.bin", cfg.nx,
-                       cfg.ny, cfg.nz, cfg.dx, "h");
+    if (cfg.init == "rotating-squares") {
+      pfc::apps::inverse::fill_rotating_squares(h, cfg.nx, cfg.ny, cfg.init_half,
+                                                cfg.init_angle);
+    } else if (cfg.init == "reentrant") {
+      pfc::apps::inverse::fill_reentrant_honeycomb(
+          h, cfg.nx, cfg.ny, cfg.init_thickness, cfg.init_inset);
+    } else if (cfg.init == "spinodal") {
+      pfc::apps::inverse::SpinodalSpec ch;
+      ch.c0 = cfg.init_volume;
+      ch.kappa = cfg.ch_kappa;
+      ch.dt = cfg.ch_dt;
+      ch.steps = cfg.ch_steps;
+      ch.noise = cfg.init_amp;
+      ch.seed = cfg.seed;
+      ch.ay = cfg.ch_aniso_y;
+      pfc::apps::inverse::seed_spinodal_noise(h, cfg.nx, cfg.ny, cfg.nz, ch);
+      pfc::apps::inverse::generate_spinodal(domain, stack.fft(), h, ch);
+    } else if (cfg.init == "yang-a3") {
+      pfc::apps::inverse::fill_yang_a3(h, cfg.nx, cfg.ny, cfg.nz);
     }
-  }
-  std::ofstream csv;
-  if (rank == 0) {
-    std::cout << "step J J_tensor J_volume J_reg volume grad_rms step_rms grey perimeter C11 C12 ms\n";
-    if (!cfg.csv.empty()) {
-      csv.open(cfg.csv);
-      csv << "step,J,J_tensor,J_volume,J_reg,volume,grad_rms,step_rms,grey,perimeter,C11,C12,ms\n";
-    }
-  }
-  pfc::apps::inverse::InverseStepReport last{};
-  const double simp0 = cfg.simp;
-  const double simp1 = (cfg.simp_end > 0.0) ? cfg.simp_end : cfg.simp;
-  const double lr0 = cfg.lambda_reg;
-  const double lr1 = (cfg.lambda_reg_end >= 0.0) ? cfg.lambda_reg_end : cfg.lambda_reg;
-  for (int s = 0; s < cfg.steps; ++s) {
-    const double t =
-        (cfg.steps > 1) ? static_cast<double>(s) / (cfg.steps - 1) : 1.0;
-    spec.simp_p = simp0 + t * (simp1 - simp0);
-    spec.lambda_reg = lr0 + t * (lr1 - lr0);
-    const auto t0 = std::chrono::steady_clock::now();
-    last = inv.step(h, spec);
-    const auto t1 = std::chrono::steady_clock::now();
-    const double ms =
-        std::chrono::duration<double, std::milli>(t1 - t0).count();
-    if (rank == 0) {
-      std::cout << std::setprecision(8) << s << ' ' << last.J << ' '
-                << last.J_tensor << ' ' << last.J_volume << ' ' << last.J_reg
-                << ' ' << last.volume_fraction << ' ' << last.grad_rms << ' '
-                << last.step_rms << ' ' << last.grey_fraction << ' '
-                << last.perimeter << ' ' << last.C11 << ' ' << last.C12 << ' '
-                << std::setprecision(3) << ms << '\n';
-      if (csv.is_open()) {
-        csv << s << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
-            << ',' << last.J_reg << ',' << last.volume_fraction << ','
-            << last.grad_rms << ',' << last.step_rms << ',' << last.grey_fraction
-            << ',' << last.perimeter << ',' << last.C11 << ',' << last.C12 << ','
-            << ms << '\n';
+    if (!cfg.load_bin.empty()) {
+      if (!pfc::apps::inverse::load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny, cfg.nz,
+                                                h)) {
+        if (rank == 0)
+          std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin << '\n';
+        MPI_Finalize();
+        return 2;
       }
     }
-    if (!last.elasticity_converged) {
-      if (rank == 0) std::cerr << "elasticity did not converge at step " << s << '\n';
-      rc = 1;
-      break;
-    }
-    if (!cfg.dump_dir.empty() && cfg.dump_every > 0 &&
-        (s % cfg.dump_every == 0 || s + 1 == cfg.steps)) {
-      const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
-      if (rank == 0) {
-        char name[64];
-        std::snprintf(name, sizeof(name), "/h_%04d.bin", s);
-        write_raw_bin(cfg.dump_dir + name, dense);
+    if (!cfg.load_h.empty()) {
+      std::ifstream in(cfg.load_h);
+      int nx = 0, ny = 0, nz = 0;
+      in >> nx >> ny >> nz;
+      if (!in || nx != cfg.nx || ny != cfg.ny || nz != cfg.nz) {
+        if (rank == 0)
+          std::cerr << "load-h: grid mismatch or unreadable " << cfg.load_h << '\n';
+        rc = 2;
       }
+      for (int k = 0; k < n[2]; ++k)
+        for (int j = 0; j < n[1]; ++j)
+          for (int i = 0; i < n[0]; ++i) {
+            double v = 0.0;
+            in >> v;
+            h(i, j, k) = std::min(1.0, std::max(0.0, v));
+          }
     }
-  }
-  if (rank == 0 && !cfg.dump_h.empty()) {
-    std::ofstream hf(cfg.dump_h);
-    hf << cfg.nx << ' ' << cfg.ny << ' ' << cfg.nz << '\n';
-    const auto ln = h.local_size();
-    for (int k = 0; k < ln[2]; ++k)
-      for (int j = 0; j < ln[1]; ++j)
-        for (int i = 0; i < ln[0]; ++i)
-          hf << std::setprecision(8) << h(i, j, k) << '\n';
-  }
-  // Physical C_H of the final h (linear two-phase interpolation), even if
-  // SIMP or W=0 was used during the loop.
-  const auto final = inv.homogenizer().compute(h);
-  auto hbin = h;
-  {
-    const auto ln2 = h.local_size();
-    for (int k = 0; k < ln2[2]; ++k)
-      for (int j = 0; j < ln2[1]; ++j)
-        for (int i = 0; i < ln2[0]; ++i)
-          hbin(i, j, k) = (h(i, j, k) > 0.5) ? 1.0 : 0.0;
-    hbin.note_host_write();
-  }
-  const auto bin = inv.homogenizer().compute(hbin);
-  const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
-  const auto dense_bin = gather_dense(hbin, cfg.nx, cfg.ny, cfg.nz);
-  if (rank == 0) {
-    std::cout << std::setprecision(16) << "INVERSE_CHECKSUM " << last.J << '\n';
-    print_C("C_target", spec.C_target);
-    print_stiffness_report("C_H_final", final.stiffness, spec.C_target, final);
-    std::cout << "grey " << last.grey_fraction << '\n';
-    print_stiffness_report("C_H_thresholded (h>0.5)", bin.stiffness,
-                           spec.C_target, bin);
-    const auto man = pfc::apps::inverse::measure_manufacturability(
-        dense, cfg.nx, cfg.ny, cfg.nz);
-    const auto manb = pfc::apps::inverse::measure_manufacturability(
-        dense_bin, cfg.nx, cfg.ny, cfg.nz);
-    std::cout << std::setprecision(6)
-              << "manufacturability_physical solid_comp " << man.n_solid_components
-              << " void_comp " << man.n_void_components << " island_solid "
-              << man.island_solid_frac << " island_void " << man.island_void_frac
-              << " grey " << man.grey_fraction << '\n';
-    std::cout << "percolate_physical_solid x=" << man.percolate_solid_x
-              << " y=" << man.percolate_solid_y << " z=" << man.percolate_solid_z
-              << '\n';
-    std::cout << "manufacturability_thresholded solid_comp "
-              << manb.n_solid_components << " void_comp "
-              << manb.n_void_components << " island_solid "
-              << manb.island_solid_frac << " island_void "
-              << manb.island_void_frac << '\n';
-    std::cout << "percolate_thresholded_solid x=" << manb.percolate_solid_x
-              << " y=" << manb.percolate_solid_y
-              << " z=" << manb.percolate_solid_z << " percolate_void x="
-              << manb.percolate_void_x << " y=" << manb.percolate_void_y
-              << " z=" << manb.percolate_void_z << '\n';
-    std::cout << "opening_loss_r1 " << manb.opening_loss_r1 << " opening_loss_r2 "
-              << manb.opening_loss_r2 << '\n';
-    std::cout << "ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
-              << cfg.nz << " steps " << cfg.steps << " loads_per_step 6\n";
-    std::ifstream status("/proc/self/status");
-    std::string line;
-    while (std::getline(status, line)) {
-      if (line.rfind("VmHWM:", 0) == 0 || line.rfind("VmRSS:", 0) == 0)
-        std::cout << line << '\n';
+    h.note_host_write();
+
+    pfc::apps::MicroelasticityParams p;
+    p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
+    p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
+    p.tol_el = 1.0e-8;
+    p.n_el_iter = cfg.n_el_iter;
+    p.warm_start = false;
+    p.comm = MPI_COMM_WORLD;
+
+    pfc::apps::inverse::InverseSpec spec;
+    try {
+      spec.C_target = make_target(cfg);
+    } catch (const std::exception &e) {
+      if (rank == 0) std::cerr << e.what() << '\n';
+      MPI_Finalize();
+      return 2;
+    }
+    spec.volume_target = cfg.volume;
+    spec.lambda_volume = cfg.lambda_volume;
+    spec.lambda_reg = cfg.lambda_reg;
+    spec.epsilon = cfg.epsilon;
+    spec.dt = cfg.dt;
+    spec.normalize_grad = cfg.normalize != 0;
+    spec.max_abs_delta = cfg.max_delta;
+    spec.project_volume = cfg.project_volume != 0;
+    spec.simp_p = cfg.simp;
+    if (cfg.no_tensor != 0) {
+      spec.W = pfc::apps::Voigt6{};
+    } else if (cfg.w12 != 1.0 || cfg.target == "auxetic") {
+      const double w = (cfg.target == "auxetic" && cfg.w12 == 1.0) ? 4.0 : cfg.w12;
+      spec.W(0, 1) = spec.W(1, 0) = w;
+      spec.W(0, 2) = spec.W(2, 0) = w;
+      spec.W(1, 2) = spec.W(2, 1) = w;
+    }
+
+    pfc::apps::inverse::PhaseFieldInverse inv(domain, stack.fft(), p);
+    const auto init_h = inv.homogenizer().compute(h);
+    if (rank == 0) {
+      std::cout << "target " << cfg.target << " grid " << cfg.nx << 'x' << cfg.ny
+                << 'x' << cfg.nz << " steps " << cfg.steps << " seed " << cfg.seed
+                << '\n';
+      std::cout << "backend cpu ranks " << nproc << " grid " << cfg.nx << 'x'
+                << cfg.ny << 'x' << cfg.nz << " loads 6\n";
+      print_stiffness_report("C_H_initial", init_h.stiffness, spec.C_target, init_h);
     }
     if (!cfg.dump_dir.empty()) {
-      write_raw_bin(cfg.dump_dir + "/h_final.bin", dense);
-      write_raw_bin(cfg.dump_dir + "/h_thresh.bin", dense_bin);
-      write_xdmf_brick(cfg.dump_dir + "/h_final.xdmf", "h_final.bin", cfg.nx,
-                       cfg.ny, cfg.nz, cfg.dx, "h");
-      write_xdmf_brick(cfg.dump_dir + "/h_thresh.xdmf", "h_thresh.bin", cfg.nx,
-                       cfg.ny, cfg.nz, cfg.dx, "h");
+      const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+      if (rank == 0) {
+        write_raw_bin(cfg.dump_dir + "/h_init.bin", dense);
+        write_xdmf_brick(cfg.dump_dir + "/h_init.xdmf", "h_init.bin", cfg.nx, cfg.ny,
+                         cfg.nz, cfg.dx, "h");
+      }
     }
-  }
+    std::ofstream csv;
+    if (rank == 0) {
+      std::cout << "step J J_tensor volume grey C11 C12 design_rms dJ_rel dC_rel "
+                   "morph_frac step_rms termination\n";
+      if (!cfg.csv.empty()) {
+        csv.open(cfg.csv);
+        csv << "step,J,J_tensor,J_volume,J_reg,volume,grad_rms,step_rms,grey,"
+               "perimeter,C11,C12,C_fro,design_rms,dJ_rel,dC_rel,morph_frac,"
+               "simp_p,lambda_reg,frozen,conv_window,candidate,verified,ms,"
+               "elasticity,termination\n";
+      }
+    }
+    pfc::apps::inverse::InverseStepReport last{};
+    const double simp0 = cfg.simp;
+    const double simp1 = (cfg.simp_end > 0.0) ? cfg.simp_end : cfg.simp;
+    const double lr0 = cfg.lambda_reg;
+    const double lr1 =
+        (cfg.lambda_reg_end >= 0.0) ? cfg.lambda_reg_end : cfg.lambda_reg;
+    pfc::apps::inverse::ConvergenceTracker tracker;
+    tracker.cfg.continuation_steps = cfg.continuation_steps;
+    tracker.cfg.max_steps = cfg.steps;
+    tracker.cfg.conv_window = cfg.conv_window;
+    tracker.cfg.verify_steps = cfg.verify_steps;
+    tracker.cfg.tol_design = cfg.tol_design;
+    tracker.cfg.tol_objective = cfg.tol_objective;
+    tracker.cfg.tol_tensor = cfg.tol_tensor;
+    std::vector<double> h_prev(h.vec());
+    pfc::apps::Voigt6 C_prev{};
+    double J_prev = 0.0;
+    bool have_prev = false;
+    auto reason = pfc::apps::inverse::TerminationReason::Running;
+    const auto gs = h.global_size();
+    const double n_global = static_cast<double>(gs[0]) * gs[1] * gs[2];
+    int n_done = 0;
+    for (int s = 0; s < cfg.steps; ++s) {
+      const double t =
+          pfc::apps::inverse::continuation_fraction(s, cfg.continuation_steps);
+      spec.simp_p = simp0 + t * (simp1 - simp0);
+      spec.lambda_reg = lr0 + t * (lr1 - lr0);
+      const auto t0 = std::chrono::steady_clock::now();
+      last = inv.step(h, spec);
+      const auto t1 = std::chrono::steady_clock::now();
+      const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+      double local_dh2 = 0.0, local_morph = 0.0;
+      const double *hp = h.data();
+      for (std::size_t i = 0; i < h.size(); ++i) {
+        const double d = hp[i] - h_prev[i];
+        local_dh2 += d * d;
+        if ((hp[i] > 0.5) != (h_prev[i] > 0.5)) local_morph += 1.0;
+      }
+      double glo_dh2 = 0.0, glo_morph = 0.0;
+      MPI_Allreduce(&local_dh2, &glo_dh2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+      MPI_Allreduce(&local_morph, &glo_morph, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+      const double design_rms = std::sqrt(glo_dh2 / n_global);
+      const double morph_frac = glo_morph / n_global;
+      double dC2 = 0.0;
+      if (have_prev) {
+        for (int i = 0; i < 6; ++i)
+          for (int j = 0; j < 6; ++j) {
+            const double d = last.C(i, j) - C_prev(i, j);
+            dC2 += d * d;
+          }
+      }
+      const auto metrics = pfc::apps::inverse::make_metrics(
+          design_rms, last.J, have_prev ? J_prev : last.J, std::sqrt(dC2),
+          have_prev ? C_prev.frobenius_norm() : last.C_fro, morph_frac, tracker.cfg);
+      reason = tracker.after_step(s, last.elasticity_converged, metrics);
+      const int frozen =
+          pfc::apps::inverse::params_frozen(s, cfg.continuation_steps) ? 1 : 0;
+      if (rank == 0) {
+        std::cout << std::setprecision(8) << s << ' ' << last.J << ' '
+                  << last.J_tensor << ' ' << last.volume_fraction << ' '
+                  << last.grey_fraction << ' ' << last.C11 << ' ' << last.C12 << ' '
+                  << design_rms << ' ' << metrics.dJ_rel << ' ' << metrics.dC_rel
+                  << ' ' << morph_frac << ' ' << last.step_rms << ' '
+                  << pfc::apps::inverse::termination_name(reason) << '\n';
+        if (csv.is_open()) {
+          csv << s << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
+              << ',' << last.J_reg << ',' << last.volume_fraction << ','
+              << last.grad_rms << ',' << last.step_rms << ',' << last.grey_fraction
+              << ',' << last.perimeter << ',' << last.C11 << ',' << last.C12 << ','
+              << last.C_fro << ',' << design_rms << ',' << metrics.dJ_rel << ','
+              << metrics.dC_rel << ',' << morph_frac << ',' << spec.simp_p << ','
+              << spec.lambda_reg << ',' << frozen << ',' << tracker.quiet_count
+              << ',' << (tracker.candidate ? 1 : 0) << ','
+              << (tracker.verified ? 1 : 0) << ',' << ms << ','
+              << (last.elasticity_converged ? 1 : 0) << ','
+              << pfc::apps::inverse::termination_name(reason) << '\n';
+        }
+      }
+      n_done = s + 1;
+      h_prev.assign(h.vec().begin(), h.vec().end());
+      C_prev = last.C;
+      J_prev = last.J;
+      have_prev = true;
+      if (reason != pfc::apps::inverse::TerminationReason::Running) {
+        if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) {
+          if (rank == 0)
+            std::cerr << "elasticity did not converge at step " << s << '\n';
+          rc = 1;
+        }
+        break;
+      }
+      if (!cfg.dump_dir.empty() && cfg.dump_every > 0 &&
+          (s % cfg.dump_every == 0 || s + 1 == cfg.steps)) {
+        const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+        if (rank == 0) {
+          char name[64];
+          std::snprintf(name, sizeof(name), "/h_%04d.bin", s);
+          write_raw_bin(cfg.dump_dir + name, dense);
+        }
+      }
+    }
+    if (!cfg.dump_dir.empty() &&
+        (cfg.dump_every <= 0 ||
+         (n_done > 0 && (n_done - 1) % std::max(1, cfg.dump_every) != 0))) {
+      const auto dense_final = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+      if (rank == 0) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "/h_%04d.bin", std::max(0, n_done - 1));
+        write_raw_bin(cfg.dump_dir + name, dense_final);
+      }
+    }
+    if (rank == 0 && !cfg.dump_h.empty()) {
+      std::ofstream hf(cfg.dump_h);
+      hf << cfg.nx << ' ' << cfg.ny << ' ' << cfg.nz << '\n';
+      const auto ln = h.local_size();
+      for (int k = 0; k < ln[2]; ++k)
+        for (int j = 0; j < ln[1]; ++j)
+          for (int i = 0; i < ln[0]; ++i)
+            hf << std::setprecision(8) << h(i, j, k) << '\n';
+    }
+    // Physical C_H of the final h (linear two-phase interpolation), even if
+    // SIMP or W=0 was used during the loop.
+    const auto final = inv.homogenizer().compute(h);
+    auto hbin = h;
+    {
+      const auto ln2 = h.local_size();
+      for (int k = 0; k < ln2[2]; ++k)
+        for (int j = 0; j < ln2[1]; ++j)
+          for (int i = 0; i < ln2[0]; ++i)
+            hbin(i, j, k) = (h(i, j, k) > 0.5) ? 1.0 : 0.0;
+      hbin.note_host_write();
+    }
+    const auto bin = inv.homogenizer().compute(hbin);
+    const auto dense = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
+    const auto dense_bin = gather_dense(hbin, cfg.nx, cfg.ny, cfg.nz);
+    if (rank == 0) {
+      std::cout << std::setprecision(16) << "INVERSE_CHECKSUM " << last.J << '\n';
+      std::cout << "termination " << pfc::apps::inverse::termination_name(reason)
+                << " steps_done " << n_done << '\n';
+      print_C("C_target", spec.C_target);
+      print_stiffness_report("C_H_final", final.stiffness, spec.C_target, final);
+      std::cout << "grey " << last.grey_fraction << '\n';
+      print_stiffness_report("C_H_thresholded (h>0.5)", bin.stiffness, spec.C_target,
+                             bin);
+      const auto man = pfc::apps::inverse::measure_manufacturability(dense, cfg.nx,
+                                                                     cfg.ny, cfg.nz);
+      const auto manb = pfc::apps::inverse::measure_manufacturability(
+          dense_bin, cfg.nx, cfg.ny, cfg.nz);
+      std::cout << std::setprecision(6) << "manufacturability_physical solid_comp "
+                << man.n_solid_components << " void_comp " << man.n_void_components
+                << " island_solid " << man.island_solid_frac << " island_void "
+                << man.island_void_frac << " grey " << man.grey_fraction << '\n';
+      std::cout << "percolate_physical_solid x=" << man.percolate_solid_x
+                << " y=" << man.percolate_solid_y << " z=" << man.percolate_solid_z
+                << '\n';
+      std::cout << "manufacturability_thresholded solid_comp "
+                << manb.n_solid_components << " void_comp " << manb.n_void_components
+                << " island_solid " << manb.island_solid_frac << " island_void "
+                << manb.island_void_frac << '\n';
+      std::cout << "percolate_thresholded_solid x=" << manb.percolate_solid_x
+                << " y=" << manb.percolate_solid_y << " z=" << manb.percolate_solid_z
+                << " percolate_void x=" << manb.percolate_void_x
+                << " y=" << manb.percolate_void_y << " z=" << manb.percolate_void_z
+                << '\n';
+      std::cout << "opening_loss_r1 " << manb.opening_loss_r1 << " opening_loss_r2 "
+                << manb.opening_loss_r2 << '\n';
+      std::cout << "ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
+                << cfg.nz << " steps " << cfg.steps << " loads_per_step 6\n";
+      std::ifstream status("/proc/self/status");
+      std::string line;
+      while (std::getline(status, line)) {
+        if (line.rfind("VmHWM:", 0) == 0 || line.rfind("VmRSS:", 0) == 0)
+          std::cout << line << '\n';
+      }
+      if (!cfg.dump_dir.empty()) {
+        write_raw_bin(cfg.dump_dir + "/h_final.bin", dense);
+        write_raw_bin(cfg.dump_dir + "/h_thresh.bin", dense_bin);
+        write_xdmf_brick(cfg.dump_dir + "/h_final.xdmf", "h_final.bin", cfg.nx,
+                         cfg.ny, cfg.nz, cfg.dx, "h");
+        write_xdmf_brick(cfg.dump_dir + "/h_thresh.xdmf", "h_thresh.bin", cfg.nx,
+                         cfg.ny, cfg.nz, cfg.dx, "h");
+      }
+    }
   } // SpectralCPUStack / HeFFTe before MPI_Finalize
   MPI_Finalize();
   return rc;

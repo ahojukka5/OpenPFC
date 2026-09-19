@@ -9,6 +9,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Inverse-homogenization convergence protocol** (issue
+  [#59](https://github.com/ahojukka5/OpenPFC/issues/59)). After
+  `--continuation-steps` the SIMP/regularization problem is frozen.
+  Stopping requires simultaneous post-projection design RMS, relative
+  \(J\), and relative \(\lVert C_H\rVert_F\) for `--conv-window`
+  iterates plus a `--verify-convergence-steps` hold. `--max-steps` is a
+  ceiling (`CONVERGED` / `MAX_STEPS` / `ELASTICITY_FAILURE`). Job
+  22162138 still had `step_rms≈0.019` at step 300, so a J-only stop
+  would have been premature.
 - **2-D finite-strain multimaterial experiment** (issue
   [#57](https://github.com/ahojukka5/OpenPFC/issues/57), research #484).
   16² periodic neo-Hookean homogenizer with \(P_{22}=0\); rotating-square

@@ -95,6 +95,8 @@ struct InverseStepReport {
   double perimeter{0.0};
   double C11{0.0};
   double C12{0.0};
+  double C_fro{0.0};
+  Voigt6 C{};
   bool elasticity_converged{false};
 };
 
@@ -190,8 +192,10 @@ public:
       const auto r = m_hom.compute(*h_el);
       out.elasticity_converged = r.all_converged();
       out.J_tensor = tensor_mismatch(r.stiffness, spec.C_target, spec.W);
-      out.C11 = r.stiffness(0, 0);
-      out.C12 = r.stiffness(0, 1);
+      out.C = r.stiffness.symmetrized();
+      out.C11 = out.C(0, 0);
+      out.C12 = out.C(0, 1);
+      out.C_fro = out.C.frobenius_norm();
       m_hom.objective_sensitivity(*h_el, spec.C_target, spec.W, m_dJdh);
       if (spec.simp_p != 1.0) {
         const double pexp = spec.simp_p;
@@ -251,8 +255,8 @@ public:
     for (std::size_t i = 0; i < m_n_local; ++i) {
       const double g_el = el_scale * gp[i];
       const double g_vol = spec.lambda_volume * 2.0 * dv;
-      const double g_reg =
-          spec.lambda_reg * (-spec.epsilon * lp[i] + inv_eps * double_well_prime(hp[i]));
+      const double g_reg = spec.lambda_reg * (-spec.epsilon * lp[i] +
+                                              inv_eps * double_well_prime(hp[i]));
       const double g = g_el + g_vol + g_reg;
       gp[i] = g;
       local_g2 += g * g;

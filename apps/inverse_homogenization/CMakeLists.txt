@@ -168,5 +168,17 @@ if(INVERSE_HOMOGENIZATION_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
              COMMAND test_finite_strain_grid)
     set_tests_properties(inverse-homogenization-finite-strain-grid-tests
                          PROPERTIES TIMEOUT 120)
+    add_executable(test_inverse_convergence
+                   tests/test_inverse_convergence.cpp)
+    target_include_directories(test_inverse_convergence PRIVATE
+                               ${INVERSE_HOMOGENIZATION_INCLUDE_DIR})
+    target_link_libraries(test_inverse_convergence PRIVATE Catch2::Catch2)
+    set_target_properties(test_inverse_convergence PROPERTIES
+      CXX_STANDARD 20
+      CXX_STANDARD_REQUIRED ON)
+    add_test(NAME inverse-homogenization-convergence-tests
+             COMMAND test_inverse_convergence)
+    set_tests_properties(inverse-homogenization-convergence-tests
+                         PROPERTIES TIMEOUT 30)
   endif()
 endif()
