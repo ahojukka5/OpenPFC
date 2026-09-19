@@ -17,6 +17,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   cuFFT defaults or a caller overlay). `OPENPFC_FFT_COMPLEX_PROC_GRID`
   remains a fail-closed override; `OPENPFC_FFT_COMPLEX_OUTBOX=legacy`
   restores the even-divisibility y-slab heuristic.
+- **3-D inverse target/init surface** (issue
+  [#9](https://github.com/ahojukka5/OpenPFC/issues/9)). CPU and HIP
+  inverse drivers load a 6×6 Voigt `C_target` file, a Fortran design
+  brick, `--init=yang-a3`, and 3-D spinodal seeding. Successor to
+  stale PR #19; not a merge of that branch.
 
 ### Changed
 
