@@ -276,6 +276,20 @@ Job 22162400 failed: 8-GPU `dev-g` allocations do not own the exclusive
 CCD CPU mask. The submit script now applies that mask only on
 `standard-g`, matching `heat3d_fd_hip_weak.sbatch`.
 
+Real process-grid A/B at 16 GCD (same 768³, `standard-g`, CCD bind,
+`use_pencils=0`). Default off-node policy is `slab_proc_grid` →
+`1×1×16`. Held-out general factorizations:
+
+| grid | job | median `wall_step` |
+|------|-----|-------------------:|
+| `1×1×16` (default) | 22162465 | 48.6 ms |
+| `1×4×4` | 22162594 | 49.4 ms |
+| `2×2×4` | 22162593 | 76.7 ms |
+
+`2×2×4` is 58% slower. `1×4×4` is a tie within noise. Do not change
+`spectral_fft_proc_grid` and do not resurrect `1×8×N`. A general cost
+model is not justified until it beats slabs on a held-out rank count.
+
 ## How to read a point
 
 From each `timing_profile.json` (schema v4 summary; see
