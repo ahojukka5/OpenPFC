@@ -22,6 +22,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   inverse drivers load a 6×6 Voigt `C_target` file, a Fortran design
   brick, `--init=yang-a3`, and 3-D spinodal seeding. Successor to
   stale PR #19; not a merge of that branch.
+- **Matched 3-D inverse A/B evidence** (issue #9, job 22162138).
+  Generic spinodal and Yang-oracle seeds both reach in-plane
+  \(\nu_{xy}<0\) on a forward-attainable \(C_H\).
 
 ### Changed
 

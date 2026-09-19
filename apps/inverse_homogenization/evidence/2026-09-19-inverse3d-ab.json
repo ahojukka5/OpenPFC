@@ -1,0 +1,47 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "openpfc_issue": 9,
+  "openpfc_pr": 50,
+  "job": "22162138",
+  "source_revision": "92d8fc5adbcc991ba1f04f24d198dc078c5fed60",
+  "dirty": 0,
+  "machine": "LUMI-C nid001004",
+  "ranks": 8,
+  "elapsed": "02:28:28",
+  "grid": "64x64x121",
+  "E_void": 0.002,
+  "volume_target": 0.2575865186,
+  "C_target_job": "22160972",
+  "steps": 300,
+  "protocol": "apps/inverse_homogenization/evidence/2026-09-19-inverse3d-ab-protocol.json",
+  "gate": {
+    "final_grey_lt": 0.95,
+    "z_occupancy_std_gt": 0.02,
+    "J_rel_change_gt": 0.02,
+    "A": {"grey": 0.423, "zstd_final": 0.0945, "J_rel": 0.969, "pass": true},
+    "B": {"grey": 0.212, "zstd_final": 0.0790, "J_rel": 0.260, "pass": true}
+  },
+  "A_spinodal": {
+    "init": {"rel_F": 5.3925417, "nu_xy": 0.30369362, "grey": 1.0, "spd": true},
+    "final_continuous": {"rel_F": 1.2414324, "nu_xy": -0.075924534, "nu_zx": 0.38787945, "grey": 0.4232773, "spd": true, "J": 0.00586947, "J_tensor": 3.76205e-05},
+    "final_thresholded": {"rel_F": 0.1914733, "nu_xy": -0.38310374, "nu_zx": 0.36411452, "spd": true, "solid_components": 111, "perc_xyz": [true, true, true]},
+    "J0": 0.190228
+  },
+  "B_yang_a3": {
+    "init": {"rel_F": 9.4085358e-12, "nu_xy": -0.26229262, "grey": 0.0, "spd": true},
+    "final_continuous": {"rel_F": 0.7937657, "nu_xy": -0.023273779, "nu_zx": 0.35688345, "grey": 0.21194635, "spd": true, "J": 0.00555224, "J_tensor": 2.50813e-06},
+    "final_thresholded": {"rel_F": 0.074689605, "nu_xy": -0.32652055, "nu_zx": 0.37659111, "spd": true, "solid_components": 1, "perc_xyz": [true, true, true]},
+    "J0": 0.00750583
+  },
+  "decision": "A",
+  "interpretation": "Generic spinodal and Yang mechanism seed both reach in-plane nu_xy<0 on the thresholded field and drive J_tensor near zero. Generic basin access succeeds for this forward-attainable C_H. The earlier 64^3 isotropic-auxetic spinodal failure was target/protocol specific. Not a Yang nu_zx reproduction.",
+  "scratch": {
+    "run": "/scratch/project_462001519/juaho/inverse-homogenization/inv3d_ab_22162138",
+    "viz": "/scratch/project_462001519/juaho/inverse-homogenization/inv3d_ab_22162138/viz",
+    "mp4_A": "viz/A/opt_1080.mp4",
+    "mp4_B": "viz/B/opt_1080.mp4",
+    "sha256_A": "b2a854bf290efe7b131d4e73bfd8abb8cbbaab7402f49b5e04d892c5f55dbcd6",
+    "sha256_B": "d5fbaa8814158783c8884dbe74549e70a200afb2bafcc579a543b7fc5d1e75ac",
+    "encode": "ffmpeg -framerate 8 -pattern_type glob -i frame_*.ppm -vf scale=1080:1080:flags=neighbor -c:v libx264 -pix_fmt yuv420p opt_1080.mp4"
+  }
+}
