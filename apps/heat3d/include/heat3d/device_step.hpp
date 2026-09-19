@@ -14,6 +14,8 @@
 
 #include <cstddef>
 
+#include <hip/hip_runtime.h>
+
 #include <heat3d/heat_model.hpp>
 #include <openpfc/runtime/gpu/fd_gradient_device_gpu.hpp>
 
@@ -23,9 +25,10 @@ void fd_rhs_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
                 double *du_padded, double t, int nx, int ny, int nz);
 
 /// Halo-independent owned interior. @p sync false leaves the kernel in flight.
+/// @p stream defaults to the null (legacy default) stream.
 void fd_rhs_inner_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
                       double *du_padded, double t, int nx, int ny, int nz, int hw,
-                      bool sync = true);
+                      bool sync = true, hipStream_t stream = nullptr);
 
 /// Owned boundary shell after halo completion.
 void fd_rhs_border_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,

@@ -44,10 +44,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `finish()` waits and unpacks. Full connectivity and `persistent` still
   fail closed.
 - **Heat3D halo-overlap opt-in** (issue #48). Interior vs boundary
-  device stencil launches plus `HEAT3D_HALO_OVERLAP=1` (interior during
-  `Waitall`) or `2` (`MPI_Testall` progress). Default remains blocking
-  `exchange()`. The owned border shell is one device launch covering the
-  six CPU `for_each_border` slabs.
+  device stencil launches plus `HEAT3D_HALO_OVERLAP=1` (interior on a
+  non-blocking compute stream concurrent with Faces pack/MPI) or `2`
+  (`MPI_Testall` progress). Default remains blocking `exchange()`. The
+  owned border shell is one device launch covering the six CPU
+  `for_each_border` slabs.
 
 ### Changed
 
