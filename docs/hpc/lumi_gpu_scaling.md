@@ -240,6 +240,40 @@ than 1 GCD; they are not the pin. Pins:
 `HEAT3D_SPECTRAL_HIP_CHECKSUM` 1 vs 16 GCD agrees to ~3e-16 relative.
 Submit with `submit_heat3d_spectral_hip_scaling.sh`.
 
+### Spectral HIP after min-reshape (issue #51; not admitted)
+
+Current-master `heat3d_spectral_hip` (min-reshape PR #46 in the binary;
+FFT path unchanged vs `origin/master`). Same 768³ / 20 / `dt=0.01` /
+I/O off protocol. Efficiency vs 1 GCD job 22162399 (416 ms). Do not
+replace the pre-#46 table above; that remains the historical pin.
+
+1 GCD and 2 GCD `standard-g` match the old pins (416 / 204 ms). 4 GCD
+and 8 GCD are faster (103 / 77 ms vs 127 / 88 ms). The 2 GCD `dev-g`
+227 ms point was a shared-partition effect, not a min-reshape
+regression. 16 GCD (first off-node) is job 22162465 vs the old 50 ms
+pin.
+
+| GCDs | Nodes | Partition | bind | Job | Median `wall_step` | Speedup | Efficiency |
+|------|-------|-----------|------|-----|--------------------|---------|------------|
+| 1 | 1 | `dev-g` | none | 22162399 | 416 ms | 1.00 | 100% |
+| 2 | 1 | `standard-g` | none | 22162446 | 204 ms | 2.04 | 102% |
+| 4 | 1 | `standard-g` | none | 22162447 | 103 ms | 4.03 | 101% |
+| 8 | 1 | `standard-g` | CCD | 22162433 | 76.9 ms | 5.41 | 68% |
+| 2 | 1 | `dev-g` | none | 22162431 | 227 ms | 1.83 | 92% |
+| 4 | 1 | `dev-g` | none | 22162432 | 105 ms | 3.95 | 99% |
+| 8 | 1 | `dev-g` | none | 22162416 | 74.5 ms | 5.58 | 70% |
+
+Checksum HEX 1 GCD `0x1.778597062215fp+3` vs 8 GCD
+`0x1.77859706219b1p+3` (relative ~3e-13). `use_pencils=0`,
+`gpu_aware=1`, real slabs. Binary SHA256
+`0495828f6ba30e60d8d642e3dc0764083909efae0fc591a0f015ddf90662fb3a`.
+Scratch:
+`/scratch/project_462001519/juaho/openpfc-scaling/heat3d-spectral-fft-51`.
+
+Job 22162400 failed: 8-GPU `dev-g` allocations do not own the exclusive
+CCD CPU mask. The submit script now applies that mask only on
+`standard-g`, matching `heat3d_fd_hip_weak.sbatch`.
+
 ## How to read a point
 
 From each `timing_profile.json` (schema v4 summary; see
