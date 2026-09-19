@@ -3,10 +3,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Local sheet geometry + normalized rate on the #26 persistent-X island.
 
-Proposed scalar R: time-average of R on t in [T_AVG_LO, T_AVG_HI] =
-[0.10, 0.70] over frames with sheet_ok (uncapped FWHM/length and
-B_up > B_UP_MIN). Peak R is secondary. If no common sheet_ok interval
-exists, do not report a single scaling point.
+First-stage window [T_AVG_LO, T_AVG_HI] = [0.10, 0.70] failed as a
+common sheet_ok interval (early L-cap). It is kept as a
+preregistered negative and is not retuned.
+
+Second-stage window, frozen before eta=0.0025:
+  T_SCALE_LO = 0.314
+  T_SCALE_HI = 0.70
+Do not move these endpoints after seeing a low-eta result.
 """
 
 from __future__ import print_function
@@ -26,6 +30,65 @@ import mhd_topology as mt
 
 T_AVG_LO = 0.10
 T_AVG_HI = 0.70
+# Prospective second-stage window. Frozen before eta=0.0025.
+T_SCALE_LO = 0.314
+T_SCALE_HI = 0.70
+
+
+def _in_window(t, lo, hi):
+    return lo - 1.0e-12 <= t <= hi + 1.0e-12
+
+
+def _mean_std_minmax(vals):
+    if not vals:
+        return None, None, None, None
+    a = np.asarray(vals, dtype=float)
+    return (float(np.mean(a)), float(np.std(a)),
+            float(np.min(a)), float(np.max(a)))
+
+
+def _window_report(rows, lo, hi):
+    interior = [r for r in rows if _in_window(r["t"], lo, hi)]
+    ok = [r for r in interior if r.get("sheet_ok")]
+    common = bool(interior) and len(ok) == len(interior)
+
+    def col(key, src=None):
+        src = interior if src is None else src
+        return [r[key] for r in src if r.get(key) is not None]
+
+    def pack(key, src=None):
+        m, s, mn, mx = _mean_std_minmax(col(key, src))
+        return {"mean": m, "std": s, "min": mn, "max": mx}
+
+    # Scaling averages use every dump in the window only if it is
+    # common sheet_ok; otherwise means are reported on sheet_ok dumps
+    # and common_thin_sheet_interval is false.
+    src = interior if common else ok
+    return {
+        "lo": lo,
+        "hi": hi,
+        "n_avg": len(interior),
+        "n_capped": int(sum(1 for r in interior
+                            if r.get("delta_capped") or r.get("L_capped"))),
+        "n_sheet_ok": len(ok),
+        "common_thin_sheet_interval": common,
+        "Ez_X": pack("Ez_X", src),
+        "eta_j_X": pack("eta_j_X", src),
+        "dFdt": pack("dFdt", src),
+        "delta": pack("delta", src),
+        "L": pack("L", src),
+        "aspect": pack("aspect", src),
+        "B_up": pack("B_up", src),
+        "S_local": pack("S_local", src),
+        "R": pack("R", src),
+        "R_mean": pack("R", src)["mean"],
+        "R_std": pack("R", src)["std"],
+        "S_local_mean": pack("S_local", src)["mean"],
+        "delta_mean": pack("delta", src)["mean"],
+        "L_mean": pack("L", src)["mean"],
+        "B_up_mean": pack("B_up", src)["mean"],
+        "aspect_mean": pack("aspect", src)["mean"],
+    }
 
 
 def attach_geometry(directory, n, eta, flux_rep):
@@ -56,29 +119,16 @@ def attach_geometry(directory, n, eta, flux_rep):
             "sheet_ok": geo["sheet_ok"],
             "orientation_ok": geo.get("orientation_ok", False),
         })
-    interior = [r for r in flux_rep["rows"]
-                if T_AVG_LO - 1e-12 <= r["t"] <= T_AVG_HI + 1e-12]
-    ok = [r for r in interior if r.get("sheet_ok")]
-    Rs = [r["R"] for r in ok if r.get("R") is not None]
-    Ss = [r["S_local"] for r in ok if r.get("S_local") is not None]
-    flux_rep["scaling"] = {
-        "T_AVG_LO": T_AVG_LO,
-        "T_AVG_HI": T_AVG_HI,
-        "n_avg": len(interior),
-        "n_capped": int(sum(1 for r in interior
-                            if r.get("delta_capped") or r.get("L_capped"))),
-        "n_sheet_ok": len(ok),
-        "common_thin_sheet_interval": bool(ok) and len(ok) == len(interior),
-        "R_mean": float(np.mean(Rs)) if Rs else None,
-        "R_std": float(np.std(Rs)) if Rs else None,
-        "S_local_mean": float(np.mean(Ss)) if Ss else None,
-        "delta_mean": float(np.mean([r["delta"] for r in ok])) if ok else None,
-        "L_mean": float(np.mean([r["L"] for r in ok])) if ok else None,
-        "B_up_mean": float(np.mean([r["B_up"] for r in ok])) if ok else None,
-        "aspect_mean": (float(np.mean([r["aspect"] for r in ok
-                                       if r["aspect"] is not None]))
-                        if ok else None),
-    }
+    flux_rep["scaling_stage1"] = _window_report(
+        flux_rep["rows"], T_AVG_LO, T_AVG_HI)
+    flux_rep["scaling"] = _window_report(
+        flux_rep["rows"], T_SCALE_LO, T_SCALE_HI)
+    flux_rep["scaling"]["T_AVG_LO"] = T_SCALE_LO
+    flux_rep["scaling"]["T_AVG_HI"] = T_SCALE_HI
+    flux_rep["scaling"]["T_SCALE_LO"] = T_SCALE_LO
+    flux_rep["scaling"]["T_SCALE_HI"] = T_SCALE_HI
+    flux_rep["scaling_stage1"]["T_AVG_LO"] = T_AVG_LO
+    flux_rep["scaling_stage1"]["T_AVG_HI"] = T_AVG_HI
     return flux_rep
 
 
@@ -86,14 +136,21 @@ def print_geo(rep, tag=""):
     ifb.print_report(rep, tag=tag)
     if "error" in rep or "scaling" not in rep:
         return
+    s1 = rep.get("scaling_stage1") or {}
+    if s1:
+        print("  stage1 [%.3f, %.2f]: sheet_ok %d/%d common=%s (failed first "
+              "preregistration; not a scaling window)" % (
+                  T_AVG_LO, T_AVG_HI, s1.get("n_sheet_ok", 0),
+                  s1.get("n_avg", 0), s1.get("common_thin_sheet_interval")))
     s = rep["scaling"]
-    print("  sheet_ok %d/%d frames in [%.2f, %.2f]; common_interval=%s" % (
-        s["n_sheet_ok"], s["n_avg"], s["T_AVG_LO"], s["T_AVG_HI"],
+    print("  stage2 [%.3f, %.2f]: sheet_ok %d/%d common=%s" % (
+        T_SCALE_LO, T_SCALE_HI, s["n_sheet_ok"], s["n_avg"],
         s["common_thin_sheet_interval"]))
     if s["n_sheet_ok"]:
-        print("  geometry means on sheet_ok: delta=%.4g L=%.4g L/delta=%.3g "
-              "B_up=%.4g S_local=%.4g R_mean=%.4e ± %.1e" % (
-                  s["delta_mean"], s["L_mean"],
+        print("  means: Ez_X=%.4g  eta*j_X=%.4g  dF/dt=%.4g  delta=%.4g  "
+              "L=%.4g  L/delta=%.3g  B_up=%.4g  S=%.4g  R=%.4e ± %.1e" % (
+                  (s["Ez_X"]["mean"] or 0.0), (s["eta_j_X"]["mean"] or 0.0),
+                  (s["dFdt"]["mean"] or 0.0), s["delta_mean"], s["L_mean"],
                   s["aspect_mean"], s["B_up_mean"], s["S_local_mean"],
                   s["R_mean"] or 0.0, s["R_std"] or 0.0))
     else:
