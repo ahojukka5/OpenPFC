@@ -58,7 +58,7 @@ mpirun -n 2 ./apps/inverse_homogenization/openpfc_homogenize \
 (OpenPFC #31), `rotating-squares` (OpenPFC #33 extrusion consistency
 oracle, not a 3-D metamaterial), `reentrant-3d` (OpenPFC #36 Yang /
 Evans 3-D re-entrant honeycomb), or `yang-a3` (OpenPFC #43 Table 1
-design A3; graph and density gate before elasticity). The printed \(C_H\) is the
+design A3; density-qualified, not auxetic in \(\nu_{zx}\)). The printed \(C_H\) is the
 **engineering Voigt** \(6\times 6\) (order \(11,22,33,23,13,12\),
 \(\gamma=2\varepsilon\)). A homogeneous isotropic material therefore reports
 \(C_{44}=\mu\), not \(2\mu\). The driver also prints \(S=C_H^{-1}\),
