@@ -252,6 +252,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 - **Dendrite and Vlasov CLI drivers** use `pfc::utils::CliOptions`. The
   duplicated app-local `Options` headers are gone (issue #66).
+- **Heat3D HIP overlap** uses `pfc::comm::GpuHaloOverlap` for the
+  production two-stream step. `HEAT3D_HALO_OVERLAP` and diag timing stay
+  in the app (issue #68).
 - **Heat3D HIP default halo overlap** (issue #48).
   `HEAT3D_HALO_OVERLAP` defaults to `1` after a clean `standard-g` A/B
   on the issue #25 protocol (1–16 nodes) plus 32- and 64-node
