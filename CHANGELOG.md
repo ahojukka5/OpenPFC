@@ -7,6 +7,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Added
+
+- **r2c complex-outbox selector** (issue #45). Enumerate legal HeFFTe
+  `split_world()` complex process grids (uneven boxes allowed) and pick
+  the layout with the fewest distributed reshapes, then imbalance,
+  aspect, and a deterministic tie-break. Layout construction uses the
+  same `heffte::plan_options` as the FFT instance (FFTW / rocFFT /
+  cuFFT defaults or a caller overlay). `OPENPFC_FFT_COMPLEX_PROC_GRID`
+  remains a fail-closed override; `OPENPFC_FFT_COMPLEX_OUTBOX=legacy`
+  restores the even-divisibility y-slab heuristic.
+
 ### Changed
 
 - **Heat3D family held-out gate fails closed** (issue #7).

@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <openpfc/kernel/fft/complex_outbox.hpp>
 #include <openpfc/kernel/fft/fft_fftw.hpp>
 
 #include <array>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 
 #include <openpfc/kernel/data/domain.hpp>
@@ -69,36 +72,24 @@ auto get_complex_indices(const Decomposition &decomposition, int r2c_direction) 
   throw std::logic_error("Invalid r2c_direction: " + std::to_string(r2c_direction));
 }
 
-/// When real data is 1D z-slabs and r2c is x, put the complex outbox on
-/// y-slabs (full z). HeFFTe's z-FFT then ends in the outbox layout, so the
-/// second reshape (pencils back to z-slabs) is skipped. That hop dominated
-/// 16-GCD LUMI-G wall_step.
-[[nodiscard]] pfc::Int3
-complex_proc_grid_for_r2c(const pfc::Int3 &real_grid,
-                          const heffte::box3d<int> &complex_world,
-                          int r2c_direction) {
-  if (r2c_direction == 0 && real_grid[0] == 1 && real_grid[1] == 1 &&
-      real_grid[2] > 1) {
-    const int n = real_grid[2];
-    const int ny = complex_world.size[1];
-    if (n > 0 && ny % n == 0) {
-      return pfc::Int3{1, n, 1};
-    }
-  }
-  return real_grid;
-}
-
 [[nodiscard]] FFTLayout create(const Decomposition &decomposition,
-                               int r2c_direction) {
+                               int r2c_direction,
+                               const heffte::plan_options &options) {
   auto real_indices = get_real_indices(decomposition);
   auto complex_indices = get_complex_indices(decomposition, r2c_direction);
   auto grid = get_grid(decomposition);
   auto real_boxes = boxes_from_heffte(split_world(real_indices, grid));
-  const pfc::Int3 cgrid =
-      complex_proc_grid_for_r2c(grid, complex_indices, r2c_direction);
+  const pfc::Int3 cgrid = complex_proc_grid_for_r2c(
+      grid, real_indices, complex_indices, r2c_direction, options);
   auto complex_boxes = boxes_from_heffte(split_world(complex_indices, cgrid));
   return FFTLayout{decomposition, r2c_direction, std::move(real_boxes),
-                   std::move(complex_boxes)};
+                   std::move(complex_boxes), grid, cgrid};
+}
+
+[[nodiscard]] FFTLayout create(const Decomposition &decomposition,
+                               int r2c_direction) {
+  return create(decomposition, r2c_direction,
+                heffte::default_options<heffte::backend::fftw>());
 }
 
 } // namespace pfc::fft::layout
@@ -132,20 +123,44 @@ int get_mpi_size(MPI_Comm comm) {
 using layout::FFTLayout;
 using fft_r2c = heffte::fft3d_r2c<heffte::backend::fftw>;
 
+namespace {
+
+void log_r2c_layout(int rank_id, const pfc::Int3 &real_grid,
+                    const pfc::Int3 &complex_grid) {
+  if (rank_id != 0 || std::getenv("OPENPFC_FFT_LOG_LAYOUT") == nullptr) {
+    return;
+  }
+  std::cerr << "FFT_R2C_LAYOUT real_grid=" << layout::format_proc_grid(real_grid)
+            << " complex_grid=" << layout::format_proc_grid(complex_grid)
+            << '\n';
+}
+
+} // namespace
+
 [[nodiscard]] CPUFFT create(const FFTLayout &fft_layout, int rank_id,
                             const heffte::plan_options &options, MPI_Comm comm) {
   const auto &inbox = get_real_box(fft_layout, rank_id);
   const auto &outbox = get_complex_box(fft_layout, rank_id);
   auto r2c_dir = get_r2c_direction(fft_layout);
+  log_r2c_layout(rank_id, get_real_proc_grid(fft_layout),
+                 get_complex_proc_grid(fft_layout));
   return {fft_r2c(heffte_box_from_box3i(inbox), heffte_box_from_box3i(outbox),
                   r2c_dir, comm, options)};
 }
 
 [[nodiscard]] CPUFFT create(const Decomposition &decomposition, int rank_id,
-                            MPI_Comm comm, int r2c_direction) {
-  auto options = heffte::default_options<heffte::backend::fftw>();
-  auto fft_layout = layout::create(decomposition, r2c_direction);
+                            MPI_Comm comm, int r2c_direction,
+                            const heffte::plan_options &options) {
+  const auto plan_opts =
+      layout::effective_r2c_plan_options<heffte::backend::fftw>(options);
+  auto fft_layout = layout::create(decomposition, r2c_direction, plan_opts);
   return create(fft_layout, rank_id, options, comm);
+}
+
+[[nodiscard]] CPUFFT create(const Decomposition &decomposition, int rank_id,
+                            MPI_Comm comm, int r2c_direction) {
+  return create(decomposition, rank_id, comm, r2c_direction,
+                heffte::default_options<heffte::backend::fftw>());
 }
 
 [[nodiscard]] std::unique_ptr<IHostFFT>
@@ -178,11 +193,12 @@ create_with_backend(const FFTLayout &fft_layout, int rank_id,
 [[nodiscard]] std::unique_ptr<IHostFFT>
 create_with_backend(const Decomposition &decomposition, int rank_id, Backend backend,
                     MPI_Comm comm, int r2c_direction) {
-  auto fft_layout = layout::create(decomposition, r2c_direction);
-
   switch (backend) {
   case Backend::FFTW: {
     auto options = heffte::default_options<heffte::backend::fftw>();
+    const auto plan_opts =
+        layout::effective_r2c_plan_options<heffte::backend::fftw>(options);
+    auto fft_layout = layout::create(decomposition, r2c_direction, plan_opts);
     return create_with_backend(fft_layout, rank_id, options, backend, comm);
   }
   case Backend::CUDA:

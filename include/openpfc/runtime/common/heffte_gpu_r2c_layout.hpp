@@ -43,17 +43,21 @@ struct DefaultR2cBoxes {
   heffte::box3d<int> real_inbox;
   heffte::box3d<int> complex_outbox;
   int r2c_direction = 0;
+  pfc::Int3 real_proc_grid{};
+  pfc::Int3 complex_proc_grid{};
 };
 
 inline DefaultR2cBoxes
 make_default_r2c_boxes(const pfc::decomposition::Decomposition &decomposition,
-                       int rank_id, int r2c_direction = 0) {
+                       int rank_id, int r2c_direction,
+                       const heffte::plan_options &options) {
   using namespace pfc::fft::layout;
-  auto fft_layout = create(decomposition, r2c_direction);
+  auto fft_layout = create(decomposition, r2c_direction, options);
   const auto &inbox = get_real_box(fft_layout, rank_id);
   const auto &outbox = get_complex_box(fft_layout, rank_id);
   return {to_heffte_box(inbox), to_heffte_box(outbox),
-          get_r2c_direction(fft_layout)};
+          get_r2c_direction(fft_layout), get_real_proc_grid(fft_layout),
+          get_complex_proc_grid(fft_layout)};
 }
 
 [[gnu::cold]] inline void throw_if_mpi_decomposition_mismatch(

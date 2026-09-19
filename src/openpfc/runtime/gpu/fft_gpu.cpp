@@ -4,11 +4,15 @@
 #if defined(OpenPFC_ENABLE_CUDA_SPECTRAL) || defined(OpenPFC_ENABLE_HIP_SPECTRAL)
 
 #include <openpfc/kernel/decomposition/decomposition.hpp>
+#include <openpfc/kernel/fft/complex_outbox.hpp>
 #include <openpfc/runtime/common/heffte_gpu_r2c_layout.hpp>
 #include <openpfc/runtime/gpu/fft_gpu.hpp>
 
 #include <heffte.h>
+#include <cstdlib>
+#include <iostream>
 #include <mpi.h>
+#include <string>
 
 namespace pfc::fft {
 
@@ -19,8 +23,18 @@ using Decomposition = pfc::decomposition::Decomposition;
 [[nodiscard]] FFT_CUDA create_cuda(const Decomposition &decomposition, int rank_id,
                                    MPI_Comm comm, int r2c_direction,
                                    const heffte::plan_options &options) {
+  const auto plan_opts =
+      pfc::fft::layout::effective_r2c_plan_options<heffte::backend::cufft>(
+          options);
   auto boxes = pfc::runtime::heffte_gpu::make_default_r2c_boxes(
-      decomposition, rank_id, r2c_direction);
+      decomposition, rank_id, r2c_direction, plan_opts);
+  if (rank_id == 0 && std::getenv("OPENPFC_FFT_LOG_LAYOUT") != nullptr) {
+    std::cerr << "FFT_R2C_LAYOUT real_grid="
+              << pfc::fft::layout::format_proc_grid(boxes.real_proc_grid)
+              << " complex_grid="
+              << pfc::fft::layout::format_proc_grid(boxes.complex_proc_grid)
+              << '\n';
+  }
 
   using fft_r2c_cuda_type = heffte::fft3d_r2c<heffte::backend::cufft>;
   fft_r2c_cuda_type fft_cuda(boxes.real_inbox, boxes.complex_outbox,
@@ -50,8 +64,18 @@ using Decomposition = pfc::decomposition::Decomposition;
 [[nodiscard]] FFT_HIP create_hip(const Decomposition &decomposition, int rank_id,
                                  MPI_Comm comm, int r2c_direction,
                                  const heffte::plan_options &options) {
+  const auto plan_opts =
+      pfc::fft::layout::effective_r2c_plan_options<heffte::backend::rocfft>(
+          options);
   auto boxes = pfc::runtime::heffte_gpu::make_default_r2c_boxes(
-      decomposition, rank_id, r2c_direction);
+      decomposition, rank_id, r2c_direction, plan_opts);
+  if (rank_id == 0 && std::getenv("OPENPFC_FFT_LOG_LAYOUT") != nullptr) {
+    std::cerr << "FFT_R2C_LAYOUT real_grid="
+              << pfc::fft::layout::format_proc_grid(boxes.real_proc_grid)
+              << " complex_grid="
+              << pfc::fft::layout::format_proc_grid(boxes.complex_proc_grid)
+              << '\n';
+  }
 
   using fft_r2c_hip_type = heffte::fft3d_r2c<heffte::backend::rocfft>;
   fft_r2c_hip_type fft_hip(boxes.real_inbox, boxes.complex_outbox,

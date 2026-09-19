@@ -61,7 +61,8 @@ export TUNGSTEN_HIP_BIN=/flash/project_462001519/juaho/build/<tree>/apps/tungste
 TUNGSTEN_LX=768 ./docs/lumi_slurm/submit_tungsten_hip_scaling.sh strong
 
 # 3. Same grid, 2/3/4 nodes (16/24/32 GCDs). Off-node uses 1D z-slabs
-#    in real space and y-slabs in the r2c outbox.
+#    in real space. The r2c complex outbox is chosen by HeFFTe reshape
+#    cost (y-slabs when Ny divides nproc; otherwise a legal gz=1 grid).
 TUNGSTEN_LX=768 PARTITION=standard-g ./docs/lumi_slurm/submit_tungsten_hip_scaling.sh multinode
 
 # 4. 3D FD HIP twin (device halo + stencil), same node counts.
@@ -136,7 +137,10 @@ the metric.
 
 Pencil `p2p_plined` on a min-surface 2×2×4 grid was slower at 16 GCDs than
 at 8. Real-space 1D z-slabs with a **y-slab complex outbox** (full z per
-rank) drop HeFFTe's extra pencils-back-to-z-slabs reshape. Combined with
+rank, used when `Ny` divides `nproc`) drop HeFFTe's extra
+pencils-back-to-z-slabs reshape. When `Ny` does not divide, the
+production selector keeps that hop skip by choosing another legal
+`gz=1` complex grid (issue #45). Combined with
 leaving every GCD visible (no `ROCR_VISIBLE_DEVICES`) and pinning the
 device before `MPI_Init`, 16-GCD 768³ is 84 ms (64% vs 1 GCD). 1×8×N
 pencils and `alltoall` / `alltoallv` were slower. HIP `fft` exclusive

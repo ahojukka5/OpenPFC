@@ -80,8 +80,7 @@ public:
       : m_geometry({domain.size, domain.spacing, domain.origin, domain.periodic}),
         m_decomp(pfc::decomposition::create(
             domain, pfc::decomposition::spectral_fft_proc_grid(domain.size, nproc))),
-        m_fft(pfc::fft::create(pfc::fft::layout::create(m_decomp, 0), rank, options,
-                               comm)),
+        m_fft(pfc::fft::create(m_decomp, rank, comm, 0, options)),
         m_u(pfc::data::field_from_inbox<double>(domain, m_fft.get_inbox_bounds())),
         m_rank(rank), m_nproc(nproc), m_comm(comm) {}
 
