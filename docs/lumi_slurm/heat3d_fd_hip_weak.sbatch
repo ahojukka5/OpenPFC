@@ -16,6 +16,8 @@
 #           OPENPFC_FD_PROC_GRID
 # Optional: HEAT3D_STEPS (default 105), HEAT3D_WARMUP (5), HEAT3D_DT (0.01),
 #           HEAT3D_FD_ORDER (2), HEAT3D_DIAG_TIMING (unset = clean timing)
+# A/B knobs (`HEAT3D_HALO_OVERLAP`, `HEAT3D_DIAG_TIMING`) are dropped
+# unless `HEAT3D_KEEP_OVERRIDES=1`.
 # Scratch: HEAT3D_WEAK_ROOT / OPENPFC_SCALING_ROOT
 #          (default .../openpfc-scaling/heat3d-fd-weak)
 
@@ -26,6 +28,10 @@ set -euo pipefail
 : "${HEAT3D_NY:?}"
 : "${HEAT3D_NZ:?}"
 : "${OPENPFC_FD_PROC_GRID:?set OPENPFC_FD_PROC_GRID=gx,gy,gz}"
+
+if [[ "${HEAT3D_KEEP_OVERRIDES:-0}" != "1" ]]; then
+  unset HEAT3D_HALO_OVERLAP HEAT3D_DIAG_TIMING || true
+fi
 
 NX="${HEAT3D_NX}"
 NY="${HEAT3D_NY}"

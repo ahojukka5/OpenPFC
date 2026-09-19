@@ -17,10 +17,16 @@
 # Required: HEAT3D_HIP_BIN
 # Optional: HEAT3D_N (default 256), HEAT3D_STEPS (20), HEAT3D_DT (0.01),
 #           HEAT3D_FD_ORDER (2), OPENPFC_SCALING_ROOT
+# A/B knobs (`HEAT3D_HALO_OVERLAP`, `HEAT3D_DIAG_TIMING`) are dropped
+# unless `HEAT3D_KEEP_OVERRIDES=1`.
 
 set -euo pipefail
 
 : "${HEAT3D_HIP_BIN:?set HEAT3D_HIP_BIN to the 0.2 heat3d_fd_hip binary}"
+
+if [[ "${HEAT3D_KEEP_OVERRIDES:-0}" != "1" ]]; then
+  unset HEAT3D_HALO_OVERLAP HEAT3D_DIAG_TIMING || true
+fi
 
 N="${HEAT3D_N:-256}"
 STEPS="${HEAT3D_STEPS:-20}"

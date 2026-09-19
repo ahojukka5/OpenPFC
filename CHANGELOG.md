@@ -62,6 +62,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   the split is forced). `0` remains the blocking control. The admitted
   #25 curve stays the blocking baseline; overlap-1 is a held-out
   comparison, not a silent replacement.
+- **Heat3D FD HIP scaling sbatch drops A/B knobs** (issue #48).
+  Unless `HEAT3D_KEEP_OVERRIDES=1`, weak and strong submit paths unset
+  `HEAT3D_HALO_OVERLAP` and `HEAT3D_DIAG_TIMING` so a leaked login env
+  cannot change headline production runs.
 - **Heat3D family held-out gate fails closed** (issue #7).
   `heat3d_spectral_content_study --held-out-families` still writes the
   CSV and prints PASS/FAIL; a residual at or above the frozen \(10^{-6}\)
