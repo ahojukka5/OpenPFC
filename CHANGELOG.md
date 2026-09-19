@@ -54,10 +54,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 - **Heat3D HIP default halo overlap** (issue #48).
   `HEAT3D_HALO_OVERLAP` defaults to `1` after a clean `standard-g` A/B
-  on the issue #25 protocol (1–16 nodes) plus a 32-node extension, CCD
-  bind, HEX checksum unchanged. Median `wall_step` fell 5–15% vs
-  blocking. Overlap-1 stays 0.859–0.886 ms through 32 nodes while
-  blocking grows with off-node faces. A single rank has no MPI halo, so
+  on the issue #25 protocol (1–16 nodes) plus 32- and 64-node
+  extensions, CCD bind, HEX checksum unchanged. Median `wall_step` fell
+  5–18% vs blocking. Overlap-1 stays 0.859–0.886 ms through 32 nodes
+  (three off-node faces) and is 0.944 ms at 64 nodes once `8x8x8`
+  raises that count to four, while blocking grows with off-node faces.
+  A single rank has no MPI halo, so
   the default falls back to blocking (512³ 1 GCD: 6.42 vs 5.96 ms when
   the split is forced). `0` remains the blocking control. The admitted
   #25 curve stays the blocking baseline; overlap-1 is a held-out
