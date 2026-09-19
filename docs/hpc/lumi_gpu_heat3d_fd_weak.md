@@ -92,11 +92,11 @@ does not increase wall time. Component sum / clean wall is 1.00, 1.00,
 Issue #25 H1 (halo/network) is supported. H2 is not primary: halo-only
 time is not flat. H3 is not supported.
 
-Issue #48 tests whether that blocking halo can be hidden. Keep admitted
-weak-scaling runs on `HEAT3D_HALO_OVERLAP=0` until a clean production
-A/B on this protocol justifies changing the default. Overlap modes `1`
-(interior during `Waitall`) and `2` (`MPI_Testall` progress) must not
-replace the clean barriered `wall_step`.
+Issue #48 tests whether that blocking halo can be hidden. The admitted
+#25 curve stays on `HEAT3D_HALO_OVERLAP=0`. Production `heat3d_fd_hip`
+now defaults to two-stream overlap (`=1`) after the `standard-g` A/B
+below. Mode `2` (`MPI_Testall`) is not the production default. Overlap
+must not replace the clean barriered `wall_step`.
 
 ### Overlap A/B (not admitted; six-launch border)
 
@@ -172,6 +172,27 @@ Mode 1 Waitall exposed wait fell 0.419 → 0.241 ms once inner left the
 default stream (job 22162311). Mode 2 `MPI_Testall` (job 22162357)
 exposed wait 0.538 ms and is not the better 2-stream policy.
 
-Keep the default blocking until a `standard-g` CPU-bound A/B replicates
-the 2-node win. Then re-run the 1–16 weak ladder with overlap-1 as a
-held-out comparison, not by silently replacing the admitted curve.
+### Two-stream interior (`standard-g` CCD bind)
+
+Same binary as the `dev-g` table
+(`6fe3b2804bf3acdabd026f894849d69df7a0a794c2ae6217f7c4a9198b680ecf`).
+Checksum HEX unchanged. Clean median `wall_step`:
+
+| nodes | ov=0 | ov=1 | Δ | jobs |
+| ----: | ---: | ---: | --: | ---- |
+|     1 | 0.910 | **0.859** | −5.6% | 22162434 / 22162435 |
+|     2 | 0.908 | **0.860** | −5.3% | 22162371 / 22162372 |
+|     4 | 0.938 | **0.866** | −7.6% | 22162427 / 22162428 |
+|     8 | 1.005 | **0.868** | −13.6% | 22162444 / 22162445 |
+|    16 | 1.036 | **0.876** | −15.4% | 22162463 / 22162464 |
+|    32 | 1.044 | **0.886** | −15.1% | 22162481 / 22162482 |
+
+32-node used `4x8x8` / `1024x2048x2048` (first doubling past the #25
+range). Blocking matches the #25 pins through 16 nodes. Overlap-1 is
+nearly flat from 1 to 32 nodes (0.859–0.886 ms). Off-node faces/rank
+saturate at three from 8 nodes onward, so further loss is not
+surface/volume. Weak efficiency vs overlap-1 \(T_1=0.859\) ms: 1.00 /
+1.00 / 0.99 / 0.99 / 0.98 / 0.97. HEX checksum unchanged. 64 nodes
+would only test whether the ~1% per doubling contention drip continues;
+stop the weak ladder here and move to strong scaling. Do not replace
+the admitted blocking table.

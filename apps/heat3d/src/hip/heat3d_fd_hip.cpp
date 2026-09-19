@@ -13,10 +13,11 @@
  * `HEAT3D_REQUIRE_INTERIOR=nx,ny,nz` fails closed unless every rank's owned
  * interior matches. `HEAT3D_DIAG_TIMING=1` adds HIP-event / blocking-halo
  * attribution and must not replace the clean barriered `wall_step`.
- * `HEAT3D_HALO_OVERLAP=0` (default) is blocking `exchange()`. `1` launches
+ * `HEAT3D_HALO_OVERLAP` selects the device timestep: `1` (default) launches
  * the interior stencil on a non-blocking compute stream, posts Faces MPI on
- * the default stream, then `finish()` + boundary. `2` additionally pumps
- * `MPI_Testall` until the interior event completes.
+ * the default stream, then `finish()` + boundary; `0` is blocking
+ * `exchange()`; `2` additionally pumps `MPI_Testall` until the interior
+ * event completes.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP)
@@ -96,6 +97,11 @@ int env_int(const char *name, int fallback) {
   }
   return std::atoi(v);
 }
+
+// Two-stream Faces overlap is the production default after the
+// standard-g 1/2/4-node Heat3D A/B (issue #48). `0` remains the
+// blocking control.
+constexpr int kDefaultHaloOverlap = 1;
 
 bool env_flag(const char *name) {
   const char *v = std::getenv(name);
@@ -244,7 +250,8 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << " gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
               << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
               << " ranks=" << nproc << " fd_order=" << cfg.fd_order
-              << " halo_overlap=" << env_int("HEAT3D_HALO_OVERLAP", 0)
+              << " halo_overlap=" << env_int("HEAT3D_HALO_OVERLAP",
+                                            kDefaultHaloOverlap)
               << std::endl;
     std::ofstream plc("fd_placement.txt");
     plc << "rank host gpu rx ry rz offnode_faces\n";
@@ -276,7 +283,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   const char *profile_path = std::getenv("HEAT3D_PROFILE_JSON");
   const int warmup = env_int("HEAT3D_WARMUP", 1);
   const bool diag = env_flag("HEAT3D_DIAG_TIMING");
-  const int overlap = env_int("HEAT3D_HALO_OVERLAP", 0);
+  const int overlap = env_int("HEAT3D_HALO_OVERLAP", kDefaultHaloOverlap);
   if (overlap < 0 || overlap > 2) {
     throw std::runtime_error(
         "heat3d_fd_hip: HEAT3D_HALO_OVERLAP must be 0, 1, or 2");

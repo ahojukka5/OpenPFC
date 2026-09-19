@@ -43,15 +43,23 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `HaloExchange<HIPSpace/CUDASpace>` Faces posts pack+MPI and returns;
   `finish()` waits and unpacks. Full connectivity and `persistent` still
   fail closed.
-- **Heat3D halo-overlap opt-in** (issue #48). Interior vs boundary
-  device stencil launches plus `HEAT3D_HALO_OVERLAP=1` (interior on a
+- **Heat3D halo-overlap** (issue #48). Interior vs boundary device
+  stencil launches plus `HEAT3D_HALO_OVERLAP=1` (default: interior on a
   non-blocking compute stream concurrent with Faces pack/MPI) or `2`
-  (`MPI_Testall` progress). Default remains blocking `exchange()`. The
-  owned border shell is one device launch covering the six CPU
+  (`MPI_Testall` progress). `0` is blocking `exchange()`. The owned
+  border shell is one device launch covering the six CPU
   `for_each_border` slabs.
 
 ### Changed
 
+- **Heat3D HIP default halo overlap** (issue #48).
+  `HEAT3D_HALO_OVERLAP` defaults to `1` after a clean `standard-g` A/B
+  on the issue #25 protocol (1–16 nodes) plus a 32-node extension, CCD
+  bind, HEX checksum unchanged. Median `wall_step` fell 5–15% vs
+  blocking. Overlap-1 stays 0.859–0.886 ms through 32 nodes while
+  blocking grows with off-node faces. `0` remains the blocking control.
+  The admitted #25 curve stays the blocking baseline; overlap-1 is a
+  held-out comparison, not a silent replacement.
 - **Heat3D family held-out gate fails closed** (issue #7).
   `heat3d_spectral_content_study --held-out-families` still writes the
   CSV and prints PASS/FAIL; a residual at or above the frozen \(10^{-6}\)
