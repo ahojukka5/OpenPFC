@@ -318,11 +318,16 @@ job 22162399 (416 ms). Binary SHA256
 | 4 | `768×768×3072` | `dev-g` | none | 22165068 | 483 ms | 86% |
 | 8 | `768×768×6144` | `dev-g` | none | 22165032 | 495 ms | 84% |
 | 8 | `768×768×6144` | `standard-g` | CCD | **22165026** | **489 ms** | **85%** |
+| 16 | `768×768×12288` | `standard-g` | CCD | **22165047** | **873 ms** | **48%** |
 
 8 GCD `standard-g` HEX `0x1.7785970621e4fp+3` matches the `dev-g`
-replicate. MaxRSS ≈ 7.6 GiB/rank, `AllocTRES mem=480G`. The extra
-73 ms vs 1 GCD is the on-node transpose (2 GCD already pays 37 ms).
-16 GCD `768×768×12288` (first off-node, job **22165047**) is queued.
+replicate. MaxRSS ≈ 7.6 GiB/rank, `AllocTRES mem=480G`. Extra vs 1 GCD:
+2 GCD +37 ms, 4 GCD +67 ms, 8 GCD +73 ms — most of the on-node
+transpose tax is paid by four ranks. First off-node (16 GCD / 2 nodes,
+job **22165047**) is **873 ms** (48%): 1.78× the 8 GCD on-node step.
+Inbox stays `768³`; MaxRSS ≈ 7.5 GiB/rank; `AllocTRES mem=960G`. The
+drop is the Slingshot all-to-all, not local rocFFT. 32 GCD
+`768×768×24576` tests whether that interconnect tax then flattens.
 
 ## How to read a point
 
