@@ -337,8 +337,12 @@ Inbox stays `768³`; MaxRSS ≈ 7.5 GiB/rank; `AllocTRES mem=960G`. The
 drop is the Slingshot all-to-all, not local rocFFT. 32 GCD
 `768×768×24576` (job **22165128**) is **1146 ms** (36%): 1.31× the
 16 GCD step. The interconnect tax is **not** flattening after the
-first off-node hop. 64 GCD tests whether the peer-count drip then
-levels off; stop there unless that point is mechanistically new.
+first off-node hop. 64 GCD `768×768×49152` (job **22165443**) is
+**1434 ms** (29%): 1.25× the 32 GCD step. Doubling off-node ranks
+still costs ~25–31%, but the *percentage-point* drip is shrinking
+(−37 at 8→16, −12 at 16→32, −7 at 32→64). Stop here: further nodes
+would repeat the same all-to-all volume growth. Local inbox stayed
+`768³`; MaxRSS ≈ 7.6 GiB/rank.
 
 ## How to read a point
 
