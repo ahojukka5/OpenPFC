@@ -46,7 +46,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Heat3D halo-overlap opt-in** (issue #48). Interior vs boundary
   device stencil launches plus `HEAT3D_HALO_OVERLAP=1` (interior during
   `Waitall`) or `2` (`MPI_Testall` progress). Default remains blocking
-  `exchange()`.
+  `exchange()`. The owned border shell is one device launch covering the
+  six CPU `for_each_border` slabs.
 
 ### Changed
 
