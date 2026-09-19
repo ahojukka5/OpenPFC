@@ -196,3 +196,16 @@ surface/volume. Weak efficiency vs overlap-1 \(T_1=0.859\) ms: 1.00 /
 would only test whether the ~1% per doubling contention drip continues;
 stop the weak ladder here and move to strong scaling. Do not replace
 the admitted blocking table.
+
+### Persistent MPI (A6; not implemented)
+
+Device `HaloExchange` still rejects `persistent`. The remaining
+overlap-1 1→32 node loss is +27 µs (0.859 → 0.886 ms) and tracks the
+three saturated off-node faces, not per-step `MPI_Isend`/`Irecv`
+setup. Diagnostic `start()` post was 76 µs and already overlaps the
+interior kernel on the two-stream path. Persistent requests would
+only replace init+post with `MPI_Startall`; they do not shrink packed
+bytes or Slingshot latency. Host persistent Faces is already in-tree
+and is red on multi-rank LUMI. Do not add a device persistent path
+without a 2-node A/B that beats overlap-1 on clean wall by more than
+jitter.
