@@ -26,6 +26,7 @@
 
 #include <inverse_homogenization/auxetic_geometry.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
+#include <inverse_homogenization/yang_reentrant.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/data/strong_types.hpp>
@@ -63,7 +64,7 @@ void usage(std::ostream &os, const char *exe) {
      << "  --dx               spacing (default 1)\n"
      << "  --E-solid --nu-solid --E-void --nu-void\n"
      << "  --shape            homogeneous | laminate-z | sphere |\n"
-     << "                    rotating-cubes | rotating-squares | reentrant-3d\n"
+     << "                    rotating-cubes | rotating-squares | reentrant-3d | yang-a3\n"
      << "  --volume           h for homogeneous; ignored otherwise\n"
      << "  --half --angle     rotating-square/cube half-side and rotation (rad)\n"
      << "  --thickness --inset  reentrant-3d strut half-thickness and inset\n"
@@ -142,7 +143,8 @@ bool parse(int argc, char **argv, Config &cfg) {
   }
   return cfg.shape == "homogeneous" || cfg.shape == "laminate-z" ||
          cfg.shape == "sphere" || cfg.shape == "rotating-cubes" ||
-         cfg.shape == "rotating-squares" || cfg.shape == "reentrant-3d";
+         cfg.shape == "rotating-squares" || cfg.shape == "reentrant-3d" ||
+         cfg.shape == "yang-a3";
 }
 
 bool load_fortran_bin(const std::string &path, int nx, int ny, int nz,
@@ -304,6 +306,8 @@ int main(int argc, char **argv) {
   } else if (cfg.shape == "reentrant-3d") {
     pfc::apps::inverse::fill_reentrant_3d(h, cfg.nx, cfg.ny, cfg.nz, cfg.thickness,
                                           cfg.inset, 0.10, 0.30, 0.70, 0.90);
+  } else if (cfg.shape == "yang-a3") {
+    pfc::apps::inverse::fill_yang_a3(h, cfg.nx, cfg.ny, cfg.nz);
   } else {
     const auto n = h.local_size();
     for (int k = 0; k < n[2]; ++k) {
@@ -358,6 +362,14 @@ int main(int argc, char **argv) {
     if (cfg.shape == "reentrant-3d") {
       std::cout << std::setprecision(8) << " thickness " << cfg.thickness
                 << " inset " << cfg.inset;
+    }
+    if (cfg.shape == "yang-a3") {
+      using Y = pfc::apps::inverse::YangA3;
+      std::cout << std::setprecision(8) << " H " << Y::H_mm << " L " << Y::L_mm
+                << " t " << Y::t_mm << " theta_deg " << Y::theta_deg << " Lx "
+                << Y::Lx() << " Ly " << Y::Ly() << " Lz " << Y::Lz()
+                << " wang_rho " << Y::wang_rel_density() << " published_rho "
+                << Y::published_rel_density;
     }
     std::cout << '\n';
     std::cout << std::setprecision(10) << "volume_fraction " << r.volume_fraction
