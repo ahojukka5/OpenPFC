@@ -11,6 +11,8 @@
  * profile; `HEAT3D_WARMUP` (default 1) drops that many frames from the
  * profile. `HEAT3D_USE_PENCILS=0|1` overrides HeFFTe `use_pencils` after
  * the production slab overlay (default remains slabs).
+ * `HEAT3D_RESHAPE_ALG=alltoall|alltoallv|p2p|p2p_plined` overrides the
+ * reshape algorithm after that overlay (default remains `p2p_plined`).
  */
 
 #if !defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -81,6 +83,39 @@ int env_int(const char *name, int fallback) {
   return std::atoi(v);
 }
 
+const char *reshape_alg_name(heffte::reshape_algorithm alg) {
+  switch (alg) {
+  case heffte::reshape_algorithm::alltoall:
+    return "alltoall";
+  case heffte::reshape_algorithm::alltoallv:
+    return "alltoallv";
+  case heffte::reshape_algorithm::p2p:
+    return "p2p";
+  case heffte::reshape_algorithm::p2p_plined:
+    return "p2p_plined";
+  }
+  return "unknown";
+}
+
+heffte::reshape_algorithm parse_reshape_alg(const char *name) {
+  const std::string a(name);
+  if (a == "alltoall") {
+    return heffte::reshape_algorithm::alltoall;
+  }
+  if (a == "alltoallv") {
+    return heffte::reshape_algorithm::alltoallv;
+  }
+  if (a == "p2p") {
+    return heffte::reshape_algorithm::p2p;
+  }
+  if (a == "p2p_plined") {
+    return heffte::reshape_algorithm::p2p_plined;
+  }
+  throw std::runtime_error(
+      "heat3d_spectral_hip: HEAT3D_RESHAPE_ALG must be alltoall, "
+      "alltoallv, p2p, or p2p_plined");
+}
+
 int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   pfc::runtime::gpu::bind_local_device(MPI_COMM_WORLD);
 
@@ -105,6 +140,10 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
     throw std::runtime_error(
         "heat3d_spectral_hip: HEAT3D_USE_PENCILS must be 0 or 1");
   }
+  if (const char *alg = std::getenv("HEAT3D_RESHAPE_ALG");
+      alg != nullptr && alg[0] != '\0') {
+    opts.algorithm = parse_reshape_alg(alg);
+  }
   pfc::sim::stacks::HIPSpectralStack stack(domain, rank, nproc, MPI_COMM_WORLD,
                                            opts);
 
@@ -123,6 +162,7 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << " inbox=" << stack.fft().size_inbox()
               << " outbox=" << stack.fft().size_outbox()
               << " use_pencils=" << (opts.use_pencils ? 1 : 0)
+              << " reshape=" << reshape_alg_name(opts.algorithm)
               << " gpu_aware=" << (opts.use_gpu_aware ? 1 : 0) << "\n";
   }
 

@@ -27,6 +27,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `0`/`1` overrides HeFFTe `use_pencils` after the production slab
   overlay. Unset keeps slabs. Used for a controlled off-node A/B, not
   a size-specific default.
+- **Heat3D spectral HIP `HEAT3D_RESHAPE_ALG`** (issue #51). Explicit
+  `alltoall` / `alltoallv` / `p2p` / `p2p_plined` after the production
+  overlay. Unset keeps `p2p_plined`.
 - **Heat3D spectral rectangular CLI** (issue #51). `<Nx> <Ny> <Nz>
   <n_steps> <dt>` keeps local slab work fixed when growing the split
   axis (FFT weak scaling). Cubic `<N> <n_steps> <dt>` is unchanged.
