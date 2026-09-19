@@ -70,6 +70,7 @@ fi
     echo "N=${N} steps=${STEPS} dt=${DT} cwd=${RUNDIR}"
   fi
   echo "cpu-bind=${CPU_BIND}"
+  echo "mem_per_node=${SLURM_MEM_PER_NODE:-unset} mem_per_cpu=${SLURM_MEM_PER_CPU:-unset}"
   echo "MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED}"
   echo "MPICH_OFI_NIC_POLICY=${MPICH_OFI_NIC_POLICY:-unset}"
 } | tee "${RUNDIR}/run_meta.txt"
