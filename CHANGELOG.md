@@ -54,9 +54,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   (`openpfc_homogenize --shape=yang-a3`, issue
   [#43](https://github.com/ahojukka5/OpenPFC/issues/43)). Published
   cell box \(2(H-L\cos\theta)\times(2L\sin\theta)^2\), inward V's,
-  half-cell layer shift, square-section members, and a density gate
-  versus Table 1 \(\bar\rho=0.233\). Not inverse design. The first
-  0.089-density cylinder/one-story cell is not this geometry.
+  half-cell layer shift, square-section members, density-qualified
+  against Table 1 \(\bar\rho=0.233\), but **not auxetic** in
+  \(\nu_{zx}\) (jobs 22160921 / 22160647). The first 0.089-density
+  cylinder/one-story cell (job 22159982) is not this geometry. Not
+  inverse design.
 - **3-D re-entrant honeycomb forward oracle**
   (`openpfc_homogenize --shape=reentrant-3d`, issue
   [#36](https://github.com/ahojukka5/OpenPFC/issues/36)). Evans / Yang
