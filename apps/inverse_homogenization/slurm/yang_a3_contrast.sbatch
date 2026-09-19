@@ -49,20 +49,23 @@ test -x "${BIN}"
 
 run_one() {
   local ev="$1"
-  local dest="${OUT}/ev${ev}"
+  local niter="$2"
+  local dest="${OUT}/ev${ev}_niter${niter}"
   mkdir -p "${dest}"
-  echo "=== yang-a3 64x64x121 E_void=${ev} ==="
+  echo "=== yang-a3 64x64x121 E_void=${ev} n_el_iter=${niter} ==="
   srun --ntasks=8 --cpus-per-task=8 "${BIN}" \
     --shape=yang-a3 --nx=64 --ny=64 --nz=121 --dx=1 \
     --E-solid=1.0 --nu-solid=0.3 --E-void="${ev}" --nu-void=0.3 \
-    --n-el-iter=80 \
+    --n-el-iter="${niter}" \
     --dump-dir="${dest}" \
-    | tee "${dest}/run.log"
+    | tee "${dest}/run.log" || echo "homogenize_rc=$?"
 }
 
-run_one 0.02
-run_one 0.002
-run_one 0.0002
+# 0.02 at 80 already matched 22160647 in job 22160921.
+# 0.002 at 80 did not converge (residual 2.55e-3); complete the
+# remaining ladder at 400 iterations without adding E_void values.
+run_one 0.002 400
+run_one 0.0002 400
 
 echo "=== summary ==="
 for d in ev0.02 ev0.002 ev0.0002; do
