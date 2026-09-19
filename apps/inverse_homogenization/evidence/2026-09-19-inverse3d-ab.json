@@ -38,10 +38,21 @@
   "scratch": {
     "run": "/scratch/project_462001519/juaho/inverse-homogenization/inv3d_ab_22162138",
     "viz": "/scratch/project_462001519/juaho/inverse-homogenization/inv3d_ab_22162138/viz",
-    "mp4_A": "viz/A/opt_1080.mp4",
-    "mp4_B": "viz/B/opt_1080.mp4",
-    "sha256_A": "b2a854bf290efe7b131d4e73bfd8abb8cbbaab7402f49b5e04d892c5f55dbcd6",
-    "sha256_B": "d5fbaa8814158783c8884dbe74549e70a200afb2bafcc579a543b7fc5d1e75ac",
-    "encode": "ffmpeg -framerate 8 -pattern_type glob -i frame_*.ppm -vf scale=1080:1080:flags=neighbor -c:v libx264 -pix_fmt yuv420p opt_1080.mp4"
+    "paraview_jobs": ["22163704", "22163715", "22163730"],
+    "pvpython": "/scratch/project_462001519/juaho/opt/ParaView-5.13.3-egl-MPI-Linux-Python3.10-x86_64/bin/pvpython",
+    "script": "apps/inverse_homogenization/scripts/render_inverse3d.py",
+    "iso_A": "viz/A_pv/h_{init,mid,final,thresh}_iso.png",
+    "iso_B": "viz/B_pv/h_{init,mid,final,thresh}_iso.png",
+    "mp4_A_3d": "viz/A_pv/opt3d_1080.mp4",
+    "mp4_B_3d": "viz/B_pv/opt3d_1080.mp4",
+    "mp4_A_affine": "viz/A_pv/affine_1080.mp4",
+    "mp4_B_affine": "viz/B_pv/affine_1080.mp4",
+    "sha256_A_3d": "874e6bee6efe83e173ff4b21f6b24a15f41e09e8e03b6d977e8a9a43cae883d0",
+    "sha256_B_3d": "bf202717aa646a7a964fe042129f60f5061d41c8ee6f35813492f167b8282d60",
+    "sha256_A_affine": "d7d040761b8ad11fb37f39db6342f9cd43a4220a842ce6474818e12d37695e4e",
+    "sha256_B_affine": "b9176ed4f0f1c10331537708d5341217e9a122b42c05b9ed2cfa67fcb61c1b51",
+    "plots": "viz/plots/{A,B}_{J,grey,nu_shortcut}.png",
+    "affine_label": "HOMOGENIZED AFFINE (not local displacement); uniaxial eps_x with eps_y=-nu_xy*eps_x",
+    "encode": "ffmpeg -framerate 8 -pattern_type glob -i frames/h_*.png -c:v libx264 -pix_fmt yuv420p opt3d_1080.mp4"
   }
 }
