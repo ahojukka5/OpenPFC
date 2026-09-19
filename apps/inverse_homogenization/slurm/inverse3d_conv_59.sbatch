@@ -13,12 +13,15 @@
 #SBATCH --output=/scratch/project_462001245/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001245/juaho/logs/%x-%j.err
 #
-# OpenPFC #59: converge the matched 3-D inverse instead of stopping at N.
+# OpenPFC #59/#63: converge the matched 3-D inverse instead of stopping at N.
 # CONV_MODE=qual|64|128  (default 64)
 #
 # If the environment has SBATCH_ACCOUNT=project_462001519, submit with
 #   sbatch --account=project_462001245 ...
 # so the env does not override this file.
+#
+# SRC_DIR must be the checkout with the #63 CSV/SIMP fixes. Override if
+# this default worktree is not that branch.
 #
 #   CONV_MODE=qual sbatch ...   32x32x61, short continuation, machinery check
 #   CONV_MODE=64   sbatch ...   64x64x121, same target as job 22162138
@@ -26,8 +29,8 @@
 
 set -euo pipefail
 
-SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-conv}"
-BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-conv}"
+SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-conv2}"
+BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-conv63}"
 OUT="${OUT_DIR:-/scratch/project_462001245/juaho/inverse-homogenization/conv_${SLURM_JOB_ID}}"
 MODE="${CONV_MODE:-64}"
 CT="${SRC}/apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt"
