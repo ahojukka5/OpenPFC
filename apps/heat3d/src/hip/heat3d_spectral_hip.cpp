@@ -177,12 +177,29 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   heat3d::SpectralHeatPropagatorHIP prop(stack.fft(), stack.u(), heat3d::kD, cfg.dt);
 
   if (rank == 0) {
+    const auto inbox = stack.fft().get_inbox_bounds();
+    const auto outbox = stack.fft().get_outbox_bounds();
+    const auto &real_grid = stack.decomposition().m_grid;
+    const int cgx = outbox.size[0] > 0
+                        ? (cfg.Nx / 2 + 1 + outbox.size[0] - 1) / outbox.size[0]
+                        : 0;
+    const int cgy = outbox.size[1] > 0
+                        ? (cfg.Ny + outbox.size[1] - 1) / outbox.size[1]
+                        : 0;
+    const int cgz = outbox.size[2] > 0
+                        ? (cfg.Nz + outbox.size[2] - 1) / outbox.size[2]
+                        : 0;
     std::cout << "HEAT3D_SPECTRAL_HIP"
               << " N=" << cfg.Nx << "x" << cfg.Ny << "x" << cfg.Nz
               << " ranks=" << nproc
               << " inbox=" << stack.fft().size_inbox()
               << " outbox=" << stack.fft().size_outbox()
-              << " use_pencils=" << (opts.use_pencils ? 1 : 0)
+              << " inbox_xyz=" << inbox.size[0] << "x" << inbox.size[1] << "x"
+              << inbox.size[2] << " outbox_xyz=" << outbox.size[0] << "x"
+              << outbox.size[1] << "x" << outbox.size[2]
+              << " real_grid=" << real_grid[0] << "x" << real_grid[1] << "x"
+              << real_grid[2] << " complex_grid=" << cgx << "x" << cgy << "x"
+              << cgz << " use_pencils=" << (opts.use_pencils ? 1 : 0)
               << " use_reorder=" << (opts.use_reorder ? 1 : 0)
               << " reshape=" << reshape_alg_name(opts.algorithm)
               << " gpu_aware=" << (opts.use_gpu_aware ? 1 : 0) << "\n";
