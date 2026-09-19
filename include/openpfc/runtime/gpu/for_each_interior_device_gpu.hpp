@@ -255,8 +255,9 @@ inline void check_for_each_interior_device_launch(gpuStream_t stream,
 /**
  * @brief Owned-cell box kernel: `ix ∈ [i0, i0+ni)` (same for y, z).
  *
- * Interior overlap uses `[hw, n-hw)`. Border uses the six owned slabs
- * that complement that box. Coordinates are owned-core indices.
+ * Interior overlap uses `[hw, n-hw)`. The complementary owned shell is
+ * one linearized launch (`for_each_owned_shell_device_kernel`).
+ * Coordinates are owned-core indices.
  */
 template <class Model, class G>
 __global__ void
@@ -292,6 +293,87 @@ inline void launch_owned_box_device(const Model &model,
   for_each_owned_box_device_kernel<Model, G><<<grid, block, 0, stream>>>(
       model, eval, du_padded, t, i0, j0, k0, ni, nj, nk);
   check_for_each_interior_device_launch(stream, sync);
+}
+
+/// Map a linearized shell index onto the six CPU `for_each_border` slabs.
+__device__ inline void owned_shell_ijk(int tid, int nx, int ny, int nz, int hw,
+                                       int &ix, int &iy, int &iz) {
+  const int nx_in = nx - 2 * hw;
+  const int ny_in = ny - 2 * hw;
+  const int s_x = hw * ny * nz;
+  const int s_y = nx_in * hw * nz;
+  const int s_z = nx_in * ny_in * hw;
+  if (tid < s_x) {
+    ix = tid % hw;
+    iy = (tid / hw) % ny;
+    iz = tid / (hw * ny);
+    return;
+  }
+  tid -= s_x;
+  if (tid < s_x) {
+    ix = nx - hw + (tid % hw);
+    iy = (tid / hw) % ny;
+    iz = tid / (hw * ny);
+    return;
+  }
+  tid -= s_x;
+  if (tid < s_y) {
+    ix = hw + (tid % nx_in);
+    iy = (tid / nx_in) % hw;
+    iz = tid / (nx_in * hw);
+    return;
+  }
+  tid -= s_y;
+  if (tid < s_y) {
+    ix = hw + (tid % nx_in);
+    iy = ny - hw + ((tid / nx_in) % hw);
+    iz = tid / (nx_in * hw);
+    return;
+  }
+  tid -= s_y;
+  if (tid < s_z) {
+    ix = hw + (tid % nx_in);
+    iy = hw + ((tid / nx_in) % ny_in);
+    iz = tid / (nx_in * ny_in);
+    return;
+  }
+  tid -= s_z;
+  ix = hw + (tid % nx_in);
+  iy = hw + ((tid / nx_in) % ny_in);
+  iz = nz - hw + (tid / (nx_in * ny_in));
+}
+
+/// One launch covering the six owned slabs. Thin per-face boxes were
+/// launch-bound on LUMI-G (six kernels ~0.13 ms vs ~0.38 ms full RHS).
+template <class Model, class G>
+__global__ void
+for_each_owned_shell_device_kernel(Model model,
+                                   ::pfc::gpu::FDGradientDevicePOD eval,
+                                   double *du_padded, double t, int nx, int ny,
+                                   int nz, int hw, int n_shell) {
+  const int tid = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (tid >= n_shell) {
+    return;
+  }
+  int ix = 0;
+  int iy = 0;
+  int iz = 0;
+  owned_shell_ijk(tid, nx, ny, nz, hw, ix, iy, iz);
+  G g = ::pfc::gpu::evaluate_fd_grad<G>(eval, ix, iy, iz);
+  const double inc = model.rhs(t, g);
+  const std::ptrdiff_t c = static_cast<std::ptrdiff_t>(ix + eval.hw) +
+                           static_cast<std::ptrdiff_t>(iy + eval.hw) * eval.sy +
+                           static_cast<std::ptrdiff_t>(iz + eval.hw) * eval.sz;
+  du_padded[c] = inc;
+}
+
+inline int owned_shell_count(int nx, int ny, int nz, int hw) {
+  const int nx_in = nx - 2 * hw;
+  const int ny_in = ny - 2 * hw;
+  const int nz_in = nz - 2 * hw;
+  const long long n = static_cast<long long>(nx) * ny * nz -
+                      static_cast<long long>(nx_in) * ny_in * nz_in;
+  return static_cast<int>(n);
 }
 
 } // namespace detail
@@ -466,7 +548,8 @@ inline void for_each_inner_device(const Model &model,
  *
  * Complements `for_each_inner_device`. Falls back to the full owned region
  * when the inner box is empty. Default @p sync true so the shell is done
- * before the solution update.
+ * before the solution update. Coverage matches CPU `for_each_border`
+ * (±x full yz; ±y with x interior; ±z with xy interior) in one launch.
  */
 template <class Model, class G>
 inline void for_each_border_device(const Model &model,
@@ -482,23 +565,16 @@ inline void for_each_border_device(const Model &model,
                                        stream);
     return;
   }
-  const auto pod = eval.pod();
-  // Match CPU `for_each_border`: ±x full yz; ±y with x interior; ±z with xy
-  // interior. Last launch honors @p sync.
-  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, 0, 0, 0, hw,
-                                            ny, nz, stream, false);
-  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, nx - hw, 0, 0,
-                                            hw, ny, nz, stream, false);
-  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, 0, 0,
-                                            nx - 2 * hw, hw, nz, stream, false);
-  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, ny - hw, 0,
-                                            nx - 2 * hw, hw, nz, stream, false);
-  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, hw, 0,
-                                            nx - 2 * hw, ny - 2 * hw, hw, stream,
-                                            false);
-  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, hw,
-                                            nz - hw, nx - 2 * hw, ny - 2 * hw, hw,
-                                            stream, sync);
+  const int n_shell = detail::owned_shell_count(nx, ny, nz, hw);
+  if (n_shell <= 0) {
+    return;
+  }
+  constexpr int block = 256;
+  const int grid = (n_shell + block - 1) / block;
+  detail::for_each_owned_shell_device_kernel<Model, G>
+      <<<grid, block, 0, stream>>>(model, eval.pod(), du_padded, t, nx, ny, nz,
+                                   hw, n_shell);
+  detail::check_for_each_interior_device_launch(stream, sync);
 }
 
 } // namespace pfc::sim::gpu
