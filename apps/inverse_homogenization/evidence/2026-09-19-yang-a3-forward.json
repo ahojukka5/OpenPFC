@@ -31,6 +31,15 @@
   "job": "22160647",
   "source_revision": "975612fff970446e8ad6ae1589cad0dc74e241c4",
   "dirty": 1,
+  "dirty_classification": "case_A_slurm_only",
+  "dirty_files": ["apps/inverse_homogenization/slurm/yang_a3_oracle_43.sbatch"],
+  "dirty_diff": "BUILD default path inv-476 -> yang; skipped Catch2 [yang] after no-match abort. No homogenize.cpp or yang_reentrant.hpp edits.",
+  "executable_source_blobs": {
+    "homogenize.cpp": "5e44d19cd7a9a2861b5959ac38d4039082754c4e",
+    "yang_reentrant.hpp": "343c06636bfc2b909ccf109725fe946cb6e0541e",
+    "note": "blobs identical at 975612ff and at later HEAD cec2a7e8 / rebased descendants"
+  },
+  "physics_equivalent_to_clean_commit": true,
   "material": {"E_solid": 1.0, "nu_solid": 0.3, "E_void": 0.02, "nu_void": 0.3},
   "n_el_iter": 80,
   "n64": {
