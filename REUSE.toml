@@ -40,6 +40,7 @@ path = [
     "apps/inverse_homogenization/evidence/2026-09-19-yang-a3.json",
     "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-forward.json",
     "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-contrast-protocol.json",
+    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-contrast.json",
     "apps/inverse_homogenization/docs/yang-a3-geometry.md",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle33-rotating-squares-extrusion.png",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d.json",
