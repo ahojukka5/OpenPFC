@@ -47,6 +47,13 @@ submit_one() {
   local job_name="$4"
   local ntasks=$((nodes * per_node))
   export HEAT3D_N="${n}"
+  # LUMI-G GPU partitions default to ~6 GiB host/GCD. Local 768³ FFT
+  # work needs ~8 GiB host/rank (job 22162399 MaxRSS); eight such ranks
+  # OOM'd at 49 GiB (job 22164976). Exclusive nodes take all RAM.
+  local mem_opt=(--mem=0)
+  if [[ "${PARTITION}" != "standard-g" ]]; then
+    mem_opt=(--mem="$((per_node * 64))G")
+  fi
   sbatch \
     --account="${ACCOUNT}" \
     --partition="${PARTITION}" \
@@ -54,6 +61,7 @@ submit_one() {
     --ntasks="${ntasks}" \
     --ntasks-per-node="${per_node}" \
     --gpus-per-node="${per_node}" \
+    "${mem_opt[@]}" \
     --job-name="${job_name}" \
     --export=ALL \
     "${SBATCH}"

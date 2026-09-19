@@ -57,6 +57,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   border shell is one device launch covering the six CPU
   `for_each_border` slabs.
 
+### Fixed
+
+- **Heat3D spectral HIP scaling submit memory** (issue #51). LUMI-G
+  GPU partitions default to ~6 GiB host/GCD. Constant-local-work
+  `768³`/rank needs ~8 GiB host/rank; request `--mem=0` on
+  `standard-g` and 64 GiB/GCD on shared GPU partitions.
+
 ### Changed
 
 - **Heat3D HIP default halo overlap** (issue #48).

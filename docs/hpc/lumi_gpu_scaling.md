@@ -299,7 +299,11 @@ Cubic weak scaling at constant *cell count* is not constant FFT work
 for 1D z-slabs: 8 GCD `1536³` (job 22162696) OOM'd because the in-plane
 transform grew 4×. The comparable protocol grows only the split axis
 (`768×768×(768 P)`), keeping local `768³` and in-plane `768²`. Job
-**22164976** is that 8 GCD point.
+**22164976** is that 8 GCD point on the default GPU-partition host
+quota (`AllocTRES mem=49G`). It OOM-killed at MaxRSS ≈ 7.5 GiB/rank —
+the same host footprint as 1 GCD `768³` (job 22162399, `mem=64G`) —
+so eight ranks needed ~60 GiB and the quota, not HBM or in-plane
+growth, was the limit. Rerun with `--mem=0` on `standard-g`.
 
 ## How to read a point
 
