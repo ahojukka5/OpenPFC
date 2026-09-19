@@ -209,8 +209,8 @@ is.
 
 Issue #38 (`SCALING.md`) asks how that rate and the local sheet
 geometry scale with \(\eta\) at \(P_m=1\). It does not rewrite this
-decision. This note still does not report a physical local Lundquist
-number: `halfmax_area_sqrt` is not a sheet-axis length.
+decision. `halfmax_area_sqrt` remains an area proxy, not a
+sheet-axis length; local \(S\) and \(R\) live in `SCALING.md`.
 
 ## Commands
 
