@@ -50,6 +50,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   LUMI-G 1–16-node recipe at constant 256³ owned cells/GCD. Cubic CLI
   is unchanged. Diagnostic HIP-event timings are opt-in
   (`HEAT3D_DIAG_TIMING=1`) and are not the admitted `wall_step`.
+- **Yang 2015 A3 re-entrant skeleton**
+  (`openpfc_homogenize --shape=yang-a3`, issue
+  [#43](https://github.com/ahojukka5/OpenPFC/issues/43)). Published
+  cell box \(2(H-L\cos\theta)\times(2L\sin\theta)^2\), inward V's,
+  half-cell layer shift, square-section members, and a density gate
+  versus Table 1 \(\bar\rho=0.233\). Not inverse design. The first
+  0.089-density cylinder/one-story cell is not this geometry.
 - **3-D re-entrant honeycomb forward oracle**
   (`openpfc_homogenize --shape=reentrant-3d`, issue
   [#36](https://github.com/ahojukka5/OpenPFC/issues/36)). Evans / Yang
