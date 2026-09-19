@@ -13,6 +13,9 @@
  * the production slab overlay (default remains slabs).
  * `HEAT3D_RESHAPE_ALG=alltoall|alltoallv|p2p|p2p_plined` overrides the
  * reshape algorithm after that overlay (default remains `p2p_plined`).
+ * `HEAT3D_USE_REORDER=0|1` and `HEAT3D_GPU_AWARE=0|1` override HeFFTe
+ * `use_reorder` and `use_gpu_aware` the same way (defaults remain the
+ * rocFFT / GPU-aware production values).
  */
 
 #if !defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -144,6 +147,24 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
       alg != nullptr && alg[0] != '\0') {
     opts.algorithm = parse_reshape_alg(alg);
   }
+  const int reorder_ov = env_int("HEAT3D_USE_REORDER", -1);
+  if (reorder_ov == 1) {
+    opts.use_reorder = true;
+  } else if (reorder_ov == 0) {
+    opts.use_reorder = false;
+  } else if (reorder_ov != -1) {
+    throw std::runtime_error(
+        "heat3d_spectral_hip: HEAT3D_USE_REORDER must be 0 or 1");
+  }
+  const int aware_ov = env_int("HEAT3D_GPU_AWARE", -1);
+  if (aware_ov == 1) {
+    opts.use_gpu_aware = true;
+  } else if (aware_ov == 0) {
+    opts.use_gpu_aware = false;
+  } else if (aware_ov != -1) {
+    throw std::runtime_error(
+        "heat3d_spectral_hip: HEAT3D_GPU_AWARE must be 0 or 1");
+  }
   pfc::sim::stacks::HIPSpectralStack stack(domain, rank, nproc, MPI_COMM_WORLD,
                                            opts);
 
@@ -162,6 +183,7 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << " inbox=" << stack.fft().size_inbox()
               << " outbox=" << stack.fft().size_outbox()
               << " use_pencils=" << (opts.use_pencils ? 1 : 0)
+              << " use_reorder=" << (opts.use_reorder ? 1 : 0)
               << " reshape=" << reshape_alg_name(opts.algorithm)
               << " gpu_aware=" << (opts.use_gpu_aware ? 1 : 0) << "\n";
   }
