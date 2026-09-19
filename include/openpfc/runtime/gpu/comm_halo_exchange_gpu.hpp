@@ -10,9 +10,24 @@
  * @details
  * Composes the Faces backend (`gpu::DeviceFacesHalo`) and the Full
  * backend (`gpu::DeviceFullHalo`) so the unified name matches the host
- * facade. Device exchangers are blocking-only: `start()` / `finish()`
- * and `persistent` fail closed. Faces `exchange()` posts every bound
- * field then one `MPI_Waitall`. Pack kernels are double-only.
+ * facade. Faces supports split-phase `start()` / `finish()` (and optional
+ * `progress()` / `MPI_Testall`) so interior stencil work can run while
+ * MPI is in flight. Full stays blocking because each widening pass must
+ * complete before the next. `persistent` still fails closed. Pack kernels
+ * are double-only.
+ *
+ * Faces dependency graph (GPU-aware contiguous path):
+ * 1. `start()`: stream-sync so `u` is ready; copy self-periodic faces;
+ *    post Irecv; pack all remote send faces; stream-sync packs; post Isend;
+ *    return (no `Waitall`).
+ * 2. Caller computes halo-independent interior of `du` (reads owned `u`
+ *    excluding an `hw` shell; does not write `u`).
+ * 3. `finish()`: `Waitall`; unpack received faces into `u` halo; stream-sync.
+ * 4. Caller computes the owned boundary shell of `du`, then updates `u`.
+ *
+ * `start()` is not a no-op wrapper around `exchange()`. Hidden waits after
+ * the posts would serialize the interior kernel. Pack still has to finish
+ * before `MPI_Isend` of those device buffers.
  *
  * Include this header for device fields. The host header stays free of
  * runtime/gpu includes (kernel must not depend on runtime).
@@ -26,6 +41,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -33,6 +49,7 @@
 #include <mpi.h>
 
 #include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
+#include <openpfc/kernel/mpi/mpi_io_helpers.hpp>
 #include <openpfc/runtime/gpu/databuffer_gpu.hpp>
 #include <openpfc/runtime/gpu/full_padded_device_halo_gpu.hpp>
 #include <openpfc/runtime/gpu/memory_space_gpu.hpp>
@@ -97,42 +114,100 @@ public:
 
   /// Blocking exchange of every bound field (default device stream).
   ///
-  /// Faces posts every field first, then one `MPI_Waitall`, then unpacks.
-  /// Full stays sequential because each axis pass must complete before the
-  /// next.
+  /// Faces is `start()` then `finish()`. Full stays sequential because each
+  /// axis pass must complete before the next.
   void exchange() {
-    for (auto *f : m_fields) {
-      f->sync_to_device();
-    }
     if (!m_full.empty()) {
+      if (m_phase != Phase::Idle) {
+        throw std::logic_error(
+            "pfc::comm::HaloExchange::exchange: Faces split-phase in flight");
+      }
+      for (auto *f : m_fields) {
+        f->sync_to_device();
+      }
       for (std::size_t i = 0; i < m_full.size(); ++i) {
         T *ptr = m_fields[i]->data();
         m_full[i]->exchange(&ptr, nullptr);
       }
-    } else {
-      for (std::size_t i = 0; i < m_faces.size(); ++i) {
-        m_faces[i]->start_halos_device(*m_fields[i]);
+      for (auto *f : m_fields) {
+        f->note_device_write();
       }
+      return;
+    }
+    start();
+    finish();
+  }
+
+  /**
+   * @brief Pack, post Irecv/Isend, and return without waiting.
+   *
+   * @throws std::logic_error if connectivity is Full, or if an exchange is
+   *         already in flight.
+   */
+  void start() {
+    require_faces_split_("start");
+    if (m_phase != Phase::Idle) {
+      throw std::logic_error(
+          "pfc::comm::HaloExchange::start: exchange already in flight");
+    }
+    for (auto *f : m_fields) {
+      f->sync_to_device();
+    }
+    for (std::size_t i = 0; i < m_faces.size(); ++i) {
+      m_faces[i]->start_halos_device(*m_fields[i]);
+    }
+    m_phase = Phase::Posted;
+  }
+
+  /**
+   * @brief `MPI_Testall` on the in-flight Faces requests.
+   *
+   * Returns true when every request has completed (including the zero-request
+   * self-periodic case). Does not unpack. Use this to pump Cray MPICH while
+   * an interior kernel runs; do not add a progress thread from the caller.
+   *
+   * @throws std::logic_error if `start()` was not called.
+   */
+  bool progress() {
+    require_faces_split_("progress");
+    if (m_phase == Phase::Waited) {
+      return true;
+    }
+    if (m_phase != Phase::Posted) {
+      throw std::logic_error(
+          "pfc::comm::HaloExchange::progress: no in-flight exchange");
+    }
+    std::vector<MPI_Request> all = gather_outstanding_();
+    int flag = 0;
+    const int n = static_cast<int>(all.size());
+    pfc::mpi::throw_on_mpi_error(
+        MPI_Testall(n, n > 0 ? all.data() : nullptr, &flag, MPI_STATUSES_IGNORE),
+        "HaloExchange::progress MPI_Testall");
+    if (flag == 0) {
+      return false;
+    }
+    mark_waited_(all);
+    return true;
+  }
+
+  /// Wait (if still posted) and unpack received faces.
+  void finish() {
+    require_faces_split_("finish");
+    if (m_phase == Phase::Idle) {
+      throw std::logic_error(
+          "pfc::comm::HaloExchange::finish: no in-flight exchange");
+    }
+    if (m_phase == Phase::Posted) {
       wait_concatenated(m_faces);
-      for (std::size_t i = 0; i < m_faces.size(); ++i) {
-        m_faces[i]->complete_halos_device(*m_fields[i]);
-      }
+      m_phase = Phase::Waited;
+    }
+    for (std::size_t i = 0; i < m_faces.size(); ++i) {
+      m_faces[i]->complete_halos_device(*m_fields[i]);
     }
     for (auto *f : m_fields) {
       f->note_device_write();
     }
-  }
-
-  void start() {
-    throw std::logic_error(
-        "pfc::comm::HaloExchange::start: device exchangers are blocking-only; "
-        "use exchange()");
-  }
-
-  void finish() {
-    throw std::logic_error(
-        "pfc::comm::HaloExchange::finish: device exchangers are blocking-only; "
-        "use exchange()");
+    m_phase = Phase::Idle;
   }
 
   [[nodiscard]] HaloConnectivity connectivity() const noexcept {
@@ -155,10 +230,43 @@ public:
   }
 
 private:
+  enum class Phase { Idle, Posted, Waited };
+
+  void require_faces_split_(const char *what) const {
+    if (!m_full.empty()) {
+      throw std::logic_error(std::string("pfc::comm::HaloExchange::") + what +
+                             ": Full connectivity has no split-phase API; "
+                             "use exchange()");
+    }
+  }
+
+  std::vector<MPI_Request> gather_outstanding_() {
+    std::vector<MPI_Request> all;
+    for (auto &e : m_faces) {
+      const int n = e->outstanding_count();
+      if (n > 0) {
+        MPI_Request *r = e->outstanding();
+        all.insert(all.end(), r, r + n);
+      }
+    }
+    return all;
+  }
+
+  void mark_waited_(const std::vector<MPI_Request> &all) {
+    std::size_t off = 0;
+    for (auto &e : m_faces) {
+      const int n = e->outstanding_count();
+      e->take_waitall_result(n > 0 ? all.data() + off : nullptr, n);
+      off += static_cast<std::size_t>(n);
+    }
+    m_phase = Phase::Waited;
+  }
+
   HaloExchangeOptions m_opt{};
   std::vector<FieldT *> m_fields;
   std::vector<std::unique_ptr<FaceEx>> m_faces;
   std::vector<std::unique_ptr<FullEx>> m_full;
+  Phase m_phase = Phase::Idle;
 };
 
 } // namespace detail

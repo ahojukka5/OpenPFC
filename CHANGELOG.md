@@ -39,6 +39,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Matched 3-D inverse A/B evidence** (issue #9, job 22162138).
   Generic spinodal and Yang-oracle seeds both reach in-plane
   \(\nu_{xy}<0\) on a forward-attainable \(C_H\).
+- **Device Faces `start()` / `finish()`** (issue #48).
+  `HaloExchange<HIPSpace/CUDASpace>` Faces posts pack+MPI and returns;
+  `finish()` waits and unpacks. Full connectivity and `persistent` still
+  fail closed.
 
 ### Changed
 
