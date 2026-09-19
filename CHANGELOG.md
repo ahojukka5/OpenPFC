@@ -69,6 +69,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   Unless `HEAT3D_KEEP_OVERRIDES=1`, weak and strong submit paths unset
   `HEAT3D_HALO_OVERLAP` and `HEAT3D_DIAG_TIMING` so a leaked login env
   cannot change headline production runs.
+- **Heat3D spectral HIP CCD bind is `standard-g` only** (issue #51).
+  8-GPU `dev-g` allocations do not own the exclusive-node CPU mask
+  (job 22162400). Match `heat3d_fd_hip_weak.sbatch`.
 - **Heat3D family held-out gate fails closed** (issue #7).
   `heat3d_spectral_content_study --held-out-families` still writes the
   CSV and prints PASS/FAIL; a residual at or above the frozen \(10^{-6}\)

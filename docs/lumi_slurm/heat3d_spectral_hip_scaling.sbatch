@@ -45,7 +45,10 @@ export HEAT3D_WARMUP="${HEAT3D_WARMUP:-1}"
 PER_NODE="${SLURM_NTASKS_PER_NODE:-${NTASKS}}"
 SRUN_BIND=()
 CPU_BIND="none"
-if (( PER_NODE == 8 )); then
+# Exclusive standard-g nodes own the CCD CPU masks. Shared/dev-g 8-GPU
+# jobs can still get a thin CPU set (job 22162400: 16 CPUs) and srun
+# then rejects the mask. Match heat3d_fd_hip_weak.sbatch.
+if (( PER_NODE == 8 )) && [[ "${SLURM_JOB_PARTITION}" == "standard-g" ]]; then
   CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,0xfe00,0xfe00000000,0xfe0000000000"
   SRUN_BIND=(--cpu-bind="${CPU_BIND}")
 elif (( PER_NODE > 8 )); then
