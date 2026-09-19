@@ -1,0 +1,57 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "openpfc_issue": 43,
+  "openpfc_pr": 44,
+  "status": "superseded_fidelity_attempt",
+  "primary_source": "Yang, Harrysson, West & Cormier, Int. J. Solids Struct. 69-70 (2015) 475-490, doi:10.1016/j.ijsolstr.2015.05.005",
+  "design": "A3",
+  "parameters_frozen_before_poisson": {
+    "theta_deg": 45.0,
+    "H_mm": 7.74,
+    "L_mm": 3.78,
+    "H_over_L": 2.047619047619048,
+    "t_mm": 0.80,
+    "t_over_L": 0.21164021164021163,
+    "published_rel_density": 0.2330,
+    "published_nu_zx": -1.90,
+    "note": "nu_zx=-1.90 is a sign/mechanism expectation, not a voxel fit target. H/L matches 2.05."
+  },
+  "topology_attempt": "one story of 2-D layers, Lz=H+2 L cos theta (outward V), Euclidean tube occupancy",
+  "cell_mm": {"Lx": 5.345727265770298, "Ly": 5.345727265770298, "Lz": 13.085727265770299},
+  "resolutions": ["64x64x157", "96x96x235"],
+  "job": "22159982",
+  "source_revision": "fe67ce91",
+  "material": {"E_solid": 1.0, "nu_solid": 0.3, "E_void": 0.02, "nu_void": 0.3},
+  "n64": {
+    "grid": "64x64x157",
+    "volume": 0.08913465366,
+    "spd": true,
+    "nu_zx": 0.41351447313,
+    "n_solid_components": 1,
+    "percolate_solid": {"x": true, "y": true, "z": true}
+  },
+  "n96": {
+    "grid": "96x96x235",
+    "volume": 0.08762189716,
+    "spd": true,
+    "nu_zx": 0.40973525639,
+    "n_solid_components": 1,
+    "percolate_solid": {"x": true, "y": true, "z": true}
+  },
+  "qualification": {
+    "source_faithful": false,
+    "density_matches_source": false,
+    "auxetic_forward_oracle": false,
+    "do_not_interpret_as_yang_model_failure": true
+  },
+  "density_gap": {
+    "represented": 0.089,
+    "published": 0.233,
+    "causes": [
+      "Lz = H+2 L cos theta instead of Yang 2(H-L cos theta)",
+      "one z-story instead of two interlocking stories",
+      "Euclidean tube (cylinder) occupancy instead of square section t"
+    ]
+  },
+  "interpretation": "First reconstruction attempt. Connected, SPD, perc xyz, but not source-faithful: vf≈0.089 vs published 0.233. Positive nu_zx is not a Yang-model failure. Geometry superseded; elasticity withheld until the density gate on the corrected skeleton passes."
+}
