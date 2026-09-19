@@ -51,6 +51,16 @@ HEAT3D_N=768 ./docs/lumi_slurm/submit_heat3d_spectral_hip_scaling.sh strong
 PARTITION=standard-g HEAT3D_N=768 ./docs/lumi_slurm/submit_heat3d_spectral_hip_scaling.sh multinode
 ```
 
+Issue `#61` HeFFTe reshape-algorithm **tournament** (account
+`project_462001245`, separate scratch tree):
+[HeFFTe protocol tournament](../hpc/heffte_protocol_tournament.md).
+
+```bash
+export HEAT3D_SPECTRAL_HIP_BIN=/path/to/heat3d_spectral_hip
+./docs/lumi_slurm/submit_heffte_protocol_tournament.sh check
+./docs/lumi_slurm/submit_heffte_protocol_tournament.sh 768
+```
+
 Files: `tungsten_hip_scaling.sbatch`, `tungsten_hip_scaling.toml`,
 `submit_tungsten_hip_scaling.sh`, `heat3d_fd_hip_scaling.sbatch`,
 `submit_heat3d_fd_hip_scaling.sh`, `heat3d_spectral_hip_scaling.sbatch`,
