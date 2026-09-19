@@ -88,20 +88,36 @@ window endpoint. `sheet_ok` requires uncapped \(\delta\), uncapped
   \(\pm 2\delta\);
 * a sheet wider than the search window is flagged capped.
 
-## Proposed scalar reconnection statistic (frozen)
+## Preregistered windows
 
-Track the same #26 island / X family.
+Track the same #26 island / X family. Full \(R(t)\) is always shown.
+Peak \(R\) is secondary.
 
-* Primary un-normalized rate: \(E_{z,X}(t)\) and \(F=a_O-a_X\).
-* Primary *normalized* \(R\): time average of \(R(t)\) on
-  \(t\in[0.10,0.70]\) restricted to `sheet_ok` frames, **and only
-  if that interval is common** (every compared run is
-  well-conditioned and `sheet_ok` throughout).
-* Always show the full \(R(t)\) with saturation flags.
-* Peak \(R\) is secondary.
+**Stage 1 (failed, kept as history).**
+\(t\in[0.10,0.70]\). Not a common `sheet_ok` interval: the first
+dumps are genuinely \(L\)-capped at \(2\pi\). This window is **not**
+moved and is **not** the scaling statistic.
 
-The window \([0.10,0.70]\) is **not** retuned after the connected-
-component correction.
+**Stage 2 (frozen before \(\eta=0.0025\)).**
+
+\[
+T_{\mathrm{SCALE,LO}}=0.314,\qquad T_{\mathrm{SCALE,HI}}=0.70.
+\]
+
+Reasons, recorded before any low-\(\eta\) experiment:
+
+* at both \(\eta=0.01\) and \(\eta=0.005\) the same persistent-X
+  family becomes finite-length `sheet_ok` at the first common dump
+  \(t=8\pi/80\approx 0.314\);
+* geometry is spatially and timestep converged through \(t=0.70\);
+* the cut at \(0.70\) stays off the later Hessian-degeneracy region
+  (cond \(\approx 13\) already at \(t=0.707\)).
+
+Do **not** move these endpoints after seeing \(\eta=0.0025\).
+
+Primary normalized \(R\): time average of
+\(R=|E_{z,X}|/B_{\mathrm{up}}^2\) on \([0.314,0.70]\), admitted only
+if every dump in that window is `sheet_ok` and well-conditioned.
 
 ## Corrected re-analysis of \(\eta=\nu=0.005\)
 
@@ -174,53 +190,73 @@ precision. Representative `sheet_ok` dumps (256², CFL 0.4):
 The same \(t=0.314\) onset of `sheet_ok` occurs at both
 resistivities.
 
-## Two \(\eta\) values, no exponent
+## Two-point baseline on the frozen stage-2 window
 
-Un-normalized N-converged rates:
+All numbers below are time averages on exactly
+\([0.314,0.70]\) (10 dumps, \(t=0.3142\) to \(0.6676\)). Every dump
+is `sheet_ok`. No power-law exponent is fitted from two points.
 
-| \(\eta=\nu\) | mean \(E_{z,X}\) on \(t\le 0.80\) | \(\Delta F\) |
-| -----------: | --------------------------------: | -----------: |
-|        0.010 |                           0.02236 |       0.0418 |
-|        0.005 |                           0.01169 |       0.0214 |
+\(\eta=\nu=0.005\) (256² vs 512², #26 dumps):
 
-Local geometry is now a qualified, N-converged observable after
-\(t=0.314\). The frozen \([0.10,0.70]\) window is still not a
-common `sheet_ok` interval, so no single \(R(S_{\mathrm{local}})\)
-is extracted. Full \(R(t)\) is the comparison. No power law is
-fitted.
+| quantity | mean | std | min | max | 256 vs 512 rel |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| \(E_{z,X}\) | 0.01327 | 0.00409 | 0.00786 | 0.02062 | \(9\times10^{-9}\) |
+| \(\eta j_X\) | 0.01324 | 0.00408 | 0.00784 | 0.02059 | \(1\times10^{-8}\) |
+| \(dF/dt\) | 0.02871 | 0.00419 | 0.02311 | 0.03619 | \(6\times10^{-8}\) |
+| \(\delta\) | 0.4517 | 0.0924 | 0.3122 | 0.5976 | \(6\times10^{-8}\) |
+| \(L\) | 3.490 | 1.473 | 2.189 | 6.076 | \(2\times10^{-7}\) |
+| \(L/\delta\) | 7.458 | 1.696 | 5.831 | 10.17 | \(2\times10^{-7}\) |
+| \(B_{\mathrm{up}}\) | 0.1971 | 0.0109 | 0.1844 | 0.2185 | \(1\times10^{-6}\) |
+| \(S_{\mathrm{local}}\) | 137.9 | 60.6 | 90.4 | 254.2 | \(1\times10^{-6}\) |
+| \(R\) | 0.3403 | 0.0893 | 0.1797 | 0.4321 | \(2\times10^{-6}\) |
+
+\(\eta=\nu=0.01\) (128² CFL 0.4 vs 256² CFL 0.4; 256² CFL 0.2
+matches 256² CFL 0.4 to \(\sim10^{-6}\)):
+
+| quantity | mean | std | min | max | 128 vs 256 rel |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| \(E_{z,X}\) | 0.02546 | 0.00740 | 0.01549 | 0.03853 | \(3\times10^{-7}\) |
+| \(\eta j_X\) | 0.02542 | 0.00740 | 0.01545 | 0.03849 | \(3\times10^{-7}\) |
+| \(dF/dt\) | 0.05614 | 0.00756 | 0.04585 | 0.06939 | \(7\times10^{-7}\) |
+| \(\delta\) | 0.4554 | 0.0898 | 0.3206 | 0.5977 | \(1\times10^{-6}\) |
+| \(L\) | 3.549 | 1.482 | 2.208 | 6.098 | \(3\times10^{-6}\) |
+| \(L/\delta\) | 7.516 | 1.726 | 5.842 | 10.20 | \(4\times10^{-6}\) |
+| \(B_{\mathrm{up}}\) | 0.1840 | 0.0111 | 0.1735 | 0.2090 | \(1\times10^{-5}\) |
+| \(S_{\mathrm{local}}\) | 66.75 | 32.17 | 40.41 | 127.5 | \(2\times10^{-5}\) |
+| \(R\) | 0.7736 | 0.2633 | 0.3545 | 1.138 | \(3\times10^{-5}\) |
+
+\(L\) and \(B_{\mathrm{up}}\) are **not** constant in time, and they
+are not the same at the two resistivities. \(\delta\) means are
+almost equal (0.452 vs 0.455); \(L\) is slightly larger at
+\(\eta=0.01\). A later three-point slope in \(R(S_{\mathrm{local}})\)
+must be read against this evolving OT geometry, not as a test of a
+steady Sweet–Parker sheet with fixed \(L\) and \(B_{\mathrm{up}}\).
 
 The earlier “no thin sheet / FWHM at \(\pi\)” reading was a
-**measurement artefact** (union of disconnected superlevel lobes,
-and Fourier derivatives of \(|j|\)). It is withdrawn.
+**measurement artefact** and is withdrawn.
 
-Working classification: **(3)** no defensible single scaling law
-from the frozen common-interval statistic, with **(4)** still open
-at lower \(\eta\). Outcome **(1)** is not supported. This is not
-the same as “no local sheet exists”.
+## Gate: \(\eta=0.0025\)
 
-## Gate: \(\eta=0.0025\) at 512²/1024²
+The stage-2 window is now frozen. Two admitted \(\eta\) points exist.
+\(\eta=\nu=0.0025\) is the next physical point.
 
-**Not launched in this pass.**
+Admission plan (do not move \(T_{\mathrm{SCALE}}\)):
 
-The geometry diagnostic is now qualified on Orszag–Tang: \(\delta\),
-\(L\), \(B_{\mathrm{up}}\), and \(R\) agree between 256² and 512²
-and between CFL 0.4 and 0.2. A local connected current sheet is
-present and thinning for \(t\ge 0.314\).
-
-That does **not** by itself authorize the expensive ladder:
-
-* the frozen \([0.10,0.70]\) interval is not fully `sheet_ok`;
-* a later common dump set must be **predeclared** before looking
-  at \(\eta=0.0025\), not chosen after seeing two \(\eta\) values;
-* two resistivities are not a scaling law;
-* the X Hessian condition number is already 3 at \(t=0.314\) and
-  18 at \(t=0.785\), next to the #26 stop.
-
-A candidate common window for a later pass, recorded here so it is
-not invented after a low-\(\eta\) run: every dump with
-\(0.314\le t\le 0.80\) is `sheet_ok` at both \(\eta=0.01\) and
-\(\eta=0.005\), 128²–512², and both CFLs. That window is **not**
-used as the primary statistic in this PR.
+1. Exploratory 512² only, `--cfl 0.2` (the #24 stable smaller-CFL
+   regime; do not repeat the timestep-limited `--cfl 0.4` crash as
+   a scaling point). Same OT initial condition and X/O family.
+2. 512² is **not** admitted alone. Require: the same persistent X/O
+   through \([0.314,0.70]\); well-conditioned X and O;
+   \(E_{z,X}\approx\eta j_X\); flux budget closed; `sheet_ok`
+   throughout the frozen window; \(\delta\) not grid-limited;
+   \(L\), \(B_{\mathrm{up}}\), \(R\) not obviously unresolved.
+3. Launch 1024² only if 512² defines a spatial-convergence question.
+   Then require convergence of \(E_{z,X}\), \(F\), \(\delta\), \(L\),
+   \(B_{\mathrm{up}}\), \(S_{\mathrm{local}}\), and \(R\). Flux-budget
+   agreement alone is not enough.
+4. Fit \(\log R\) vs \(\log S_{\mathrm{local}}\) only after three
+   admitted \(\eta\) values. Also test \(\delta/L\) vs \(S\) and
+   whether \(L\) and \(B_{\mathrm{up}}\) change with \(\eta\).
 
 Do not hunt plasmoids. Do not lower \(\eta\) below 0.0025. Do not
 extend \(t\) past 0.80.
