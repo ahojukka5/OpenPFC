@@ -250,8 +250,9 @@ replace the pre-#46 table above; that remains the historical pin.
 1 GCD and 2 GCD `standard-g` match the old pins (416 / 204 ms). 4 GCD
 and 8 GCD are faster (103 / 77 ms vs 127 / 88 ms). The 2 GCD `dev-g`
 227 ms point was a shared-partition effect, not a min-reshape
-regression. 16 GCD (first off-node) is job 22162465 vs the old 50 ms
-pin.
+regression. 16 GCD (first off-node, job 22162465) is 48.6 ms vs the
+old 50 ms pin (53% efficiency), so the remaining drop is the
+distributed transpose, not a leftover extra reshape.
 
 | GCDs | Nodes | Partition | bind | Job | Median `wall_step` | Speedup | Efficiency |
 |------|-------|-----------|------|-----|--------------------|---------|------------|
@@ -259,6 +260,7 @@ pin.
 | 2 | 1 | `standard-g` | none | 22162446 | 204 ms | 2.04 | 102% |
 | 4 | 1 | `standard-g` | none | 22162447 | 103 ms | 4.03 | 101% |
 | 8 | 1 | `standard-g` | CCD | 22162433 | 76.9 ms | 5.41 | 68% |
+| 16 | 2 | `standard-g` | CCD | 22162465 | 48.6 ms | 8.55 | 53% |
 | 2 | 1 | `dev-g` | none | 22162431 | 227 ms | 1.83 | 92% |
 | 4 | 1 | `dev-g` | none | 22162432 | 105 ms | 3.95 | 99% |
 | 8 | 1 | `dev-g` | none | 22162416 | 74.5 ms | 5.58 | 70% |
