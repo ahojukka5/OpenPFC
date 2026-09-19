@@ -43,8 +43,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `OPENPFC_FFT_COMPLEX_PROC_GRID=gx,gy,gz` or
   `OPENPFC_FFT_COMPLEX_OUTBOX=min_reshape` to choose a legal complex
   grid that minimises distributed reshape count. Illegal grids fail
-  closed. Do not treat this as the production default until the
-  1200-axis experiment lands.
+  closed. Jobs `22160130` / `22160131` confirm 8→4 rounds and a
+  diagnostic wall drop 0.406→0.245 s with identical spectral
+  checksum; production default stays the even-divisibility y-slab.
 - **Diagnostic HeFFTe tracing build** (issue #13). Separate
   `heffte-rocm-trace` install with `Heffte_ENABLE_TRACING=ON` and a
   GPU-synchronous `add_trace` patch so local rocFFT work is not charged

@@ -90,8 +90,12 @@ def reshape_waitany_counts(
     return n_mpi, len(reshapes) - n_mpi
 
 
-def complex_outbox_grid(proc_grid: str, ny: int, nproc: int) -> str:
-    """OpenPFC r2c-x z-slab outbox: y-slab iff Ny % nproc == 0."""
+def complex_outbox_grid(meta: dict[str, str], proc_grid: str, ny: int,
+                        nproc: int) -> str:
+    """Prefer an explicit complex-grid override; else y-slab iff Ny % nproc == 0."""
+    forced = meta.get("OPENPFC_FFT_COMPLEX_PROC_GRID", "")
+    if forced and forced not in ("unset",):
+        return forced.replace(",", "x").replace("X", "x")
     g = proc_grid.replace("×", "x").lower()
     if g.startswith("1x1x") and nproc > 1 and ny > 0 and ny % nproc == 0:
         return f"1x{nproc}x1"
@@ -312,7 +316,7 @@ def main() -> int:
         wait_per_round = None
         if rounds:
             wait_per_round = mpi_wait_ps / rounds
-        cgrid = complex_outbox_grid(meta.get("proc_grid", ""), ny, nproc)
+        cgrid = complex_outbox_grid(meta, meta.get("proc_grid", ""), ny, nproc)
         rows.append(
             {
                 "run": run.name,
