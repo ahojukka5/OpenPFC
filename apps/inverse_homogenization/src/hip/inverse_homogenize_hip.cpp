@@ -25,9 +25,17 @@
 #include <string_view>
 #include <vector>
 
-#include <mpi.h>
 #include <hip/hip_runtime.h>
+#include <mpi.h>
 
+#include <inverse_homogenization/auxetic_geometry.hpp>
+#include <inverse_homogenization/field_output.hpp>
+#include <inverse_homogenization/inverse_convergence.hpp>
+#include <inverse_homogenization/manufacturability.hpp>
+#include <inverse_homogenization/phase_field_inverse.hpp>
+#include <inverse_homogenization/spinodal_generator.hpp>
+#include <inverse_homogenization/target_io.hpp>
+#include <inverse_homogenization/yang_reentrant.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/data/strong_types.hpp>
@@ -37,13 +45,6 @@
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/gpu_spectral_stack.hpp>
 #include <openpfc_apps/homogenization_hip.hpp>
-#include <inverse_homogenization/auxetic_geometry.hpp>
-#include <inverse_homogenization/field_output.hpp>
-#include <inverse_homogenization/manufacturability.hpp>
-#include <inverse_homogenization/phase_field_inverse.hpp>
-#include <inverse_homogenization/spinodal_generator.hpp>
-#include <inverse_homogenization/target_io.hpp>
-#include <inverse_homogenization/yang_reentrant.hpp>
 
 namespace {
 
@@ -93,7 +94,13 @@ struct Config {
   double lambda_reg{0.05};
   double epsilon{2.0};
   double dt{0.1};
-  int steps{40};
+  int steps{5000};
+  int continuation_steps{300};
+  int conv_window{20};
+  int verify_steps{100};
+  double tol_design{1e-4};
+  double tol_objective{1e-6};
+  double tol_tensor{1e-4};
   std::string init{"rotating-squares"};
   double init_volume{0.55};
   double init_half{0.200};
@@ -124,7 +131,9 @@ void usage(std::ostream &os, const char *exe) {
      << "  --nx --ny --nz --dx --target isotropic|auxetic|file\n"
      << "  --C-target-file=PATH 6x6 Voigt text\n"
      << "  --init rotating-squares|noise|uniform|spinodal|yang-a3\n"
-     << "  --load-bin=PATH Fortran float64 brick --steps --csv --dump-dir\n";
+     << "  --load-bin=PATH Fortran float64 brick --csv --dump-dir\n"
+     << "  --continuation-steps --max-steps|--steps --conv-window\n"
+     << "  --verify-convergence-steps --tol-design --tol-objective --tol-tensor\n";
 }
 
 bool parse_double(std::string_view v, double &out) {
@@ -155,55 +164,105 @@ bool parse_args(int argc, char **argv, Config &cfg) {
     const auto key = tok.substr(2, eq - 2);
     const auto val = tok.substr(eq + 1);
     bool ok = true;
-    if (key == "nx") ok = parse_int(val, cfg.nx) && cfg.nx > 0;
-    else if (key == "ny") ok = parse_int(val, cfg.ny) && cfg.ny > 0;
-    else if (key == "nz") ok = parse_int(val, cfg.nz) && cfg.nz > 0;
-    else if (key == "dx") ok = parse_double(val, cfg.dx) && cfg.dx > 0.0;
-    else if (key == "E-solid") ok = parse_double(val, cfg.E_solid);
-    else if (key == "nu-solid") ok = parse_double(val, cfg.nu_solid);
-    else if (key == "E-void") ok = parse_double(val, cfg.E_void);
-    else if (key == "nu-void") ok = parse_double(val, cfg.nu_void);
-    else if (key == "target") cfg.target = std::string(val);
-    else if (key == "E-target") ok = parse_double(val, cfg.E_target);
-    else if (key == "nu-target") ok = parse_double(val, cfg.nu_target);
-    else if (key == "volume") ok = parse_double(val, cfg.volume);
-    else if (key == "lambda-volume") ok = parse_double(val, cfg.lambda_volume);
-    else if (key == "lambda-reg") ok = parse_double(val, cfg.lambda_reg);
-    else if (key == "epsilon") ok = parse_double(val, cfg.epsilon) && cfg.epsilon > 0.0;
-    else if (key == "dt") ok = parse_double(val, cfg.dt) && cfg.dt > 0.0;
-    else if (key == "steps") ok = parse_int(val, cfg.steps) && cfg.steps >= 0;
-    else if (key == "init") cfg.init = std::string(val);
-    else if (key == "init-volume") ok = parse_double(val, cfg.init_volume);
-    else if (key == "init-half") ok = parse_double(val, cfg.init_half) && cfg.init_half > 0.0;
-    else if (key == "init-angle") ok = parse_double(val, cfg.init_angle);
+    if (key == "nx")
+      ok = parse_int(val, cfg.nx) && cfg.nx > 0;
+    else if (key == "ny")
+      ok = parse_int(val, cfg.ny) && cfg.ny > 0;
+    else if (key == "nz")
+      ok = parse_int(val, cfg.nz) && cfg.nz > 0;
+    else if (key == "dx")
+      ok = parse_double(val, cfg.dx) && cfg.dx > 0.0;
+    else if (key == "E-solid")
+      ok = parse_double(val, cfg.E_solid);
+    else if (key == "nu-solid")
+      ok = parse_double(val, cfg.nu_solid);
+    else if (key == "E-void")
+      ok = parse_double(val, cfg.E_void);
+    else if (key == "nu-void")
+      ok = parse_double(val, cfg.nu_void);
+    else if (key == "target")
+      cfg.target = std::string(val);
+    else if (key == "E-target")
+      ok = parse_double(val, cfg.E_target);
+    else if (key == "nu-target")
+      ok = parse_double(val, cfg.nu_target);
+    else if (key == "volume")
+      ok = parse_double(val, cfg.volume);
+    else if (key == "lambda-volume")
+      ok = parse_double(val, cfg.lambda_volume);
+    else if (key == "lambda-reg")
+      ok = parse_double(val, cfg.lambda_reg);
+    else if (key == "epsilon")
+      ok = parse_double(val, cfg.epsilon) && cfg.epsilon > 0.0;
+    else if (key == "dt")
+      ok = parse_double(val, cfg.dt) && cfg.dt > 0.0;
+    else if (key == "steps" || key == "max-steps")
+      ok = parse_int(val, cfg.steps) && cfg.steps >= 0;
+    else if (key == "continuation-steps")
+      ok = parse_int(val, cfg.continuation_steps) && cfg.continuation_steps >= 0;
+    else if (key == "conv-window")
+      ok = parse_int(val, cfg.conv_window) && cfg.conv_window > 0;
+    else if (key == "verify-convergence-steps")
+      ok = parse_int(val, cfg.verify_steps) && cfg.verify_steps >= 0;
+    else if (key == "tol-design")
+      ok = parse_double(val, cfg.tol_design) && cfg.tol_design > 0.0;
+    else if (key == "tol-objective")
+      ok = parse_double(val, cfg.tol_objective) && cfg.tol_objective > 0.0;
+    else if (key == "tol-tensor")
+      ok = parse_double(val, cfg.tol_tensor) && cfg.tol_tensor > 0.0;
+    else if (key == "init")
+      cfg.init = std::string(val);
+    else if (key == "init-volume")
+      ok = parse_double(val, cfg.init_volume);
+    else if (key == "init-half")
+      ok = parse_double(val, cfg.init_half) && cfg.init_half > 0.0;
+    else if (key == "init-angle")
+      ok = parse_double(val, cfg.init_angle);
     else if (key == "seed") {
       int s = 1;
       ok = parse_int(val, s);
       cfg.seed = static_cast<unsigned>(s);
-    } else if (key == "csv") cfg.csv = std::string(val);
-    else if (key == "run-id") cfg.run_id = std::string(val);
-    else if (key == "normalize") ok = parse_int(val, cfg.normalize);
-    else if (key == "max-delta") ok = parse_double(val, cfg.max_delta) && cfg.max_delta >= 0.0;
-    else if (key == "project-volume") ok = parse_int(val, cfg.project_volume);
-    else if (key == "simp") ok = parse_double(val, cfg.simp) && cfg.simp >= 1.0;
-    else if (key == "simp-end") ok = parse_double(val, cfg.simp_end) && cfg.simp_end >= 1.0;
+    } else if (key == "csv")
+      cfg.csv = std::string(val);
+    else if (key == "run-id")
+      cfg.run_id = std::string(val);
+    else if (key == "normalize")
+      ok = parse_int(val, cfg.normalize);
+    else if (key == "max-delta")
+      ok = parse_double(val, cfg.max_delta) && cfg.max_delta >= 0.0;
+    else if (key == "project-volume")
+      ok = parse_int(val, cfg.project_volume);
+    else if (key == "simp")
+      ok = parse_double(val, cfg.simp) && cfg.simp >= 1.0;
+    else if (key == "simp-end")
+      ok = parse_double(val, cfg.simp_end) && cfg.simp_end >= 1.0;
     else if (key == "lambda-reg-end")
       ok = parse_double(val, cfg.lambda_reg_end) && cfg.lambda_reg_end >= 0.0;
-    else if (key == "W-12") ok = parse_double(val, cfg.w12) && cfg.w12 >= 0.0;
-    else if (key == "init-amp") ok = parse_double(val, cfg.init_amp) && cfg.init_amp >= 0.0;
-    else if (key == "n-el-iter") ok = parse_int(val, cfg.n_el_iter) && cfg.n_el_iter > 0;
-    else if (key == "ch-steps") ok = parse_int(val, cfg.ch_steps) && cfg.ch_steps >= 0;
-    else if (key == "ch-kappa") ok = parse_double(val, cfg.ch_kappa) && cfg.ch_kappa > 0.0;
-    else if (key == "ch-dt") ok = parse_double(val, cfg.ch_dt) && cfg.ch_dt > 0.0;
-    else if (key == "load-bin") cfg.load_bin = std::string(val);
-    else if (key == "C-target-file") cfg.C_target_file = std::string(val);
-    else if (key == "dump-dir") cfg.fields.dir = std::string(val);
-    else if (key == "dump-every") ok = parse_int(val, cfg.fields.every) && cfg.fields.every > 0;
-    else return false;
+    else if (key == "W-12")
+      ok = parse_double(val, cfg.w12) && cfg.w12 >= 0.0;
+    else if (key == "init-amp")
+      ok = parse_double(val, cfg.init_amp) && cfg.init_amp >= 0.0;
+    else if (key == "n-el-iter")
+      ok = parse_int(val, cfg.n_el_iter) && cfg.n_el_iter > 0;
+    else if (key == "ch-steps")
+      ok = parse_int(val, cfg.ch_steps) && cfg.ch_steps >= 0;
+    else if (key == "ch-kappa")
+      ok = parse_double(val, cfg.ch_kappa) && cfg.ch_kappa > 0.0;
+    else if (key == "ch-dt")
+      ok = parse_double(val, cfg.ch_dt) && cfg.ch_dt > 0.0;
+    else if (key == "load-bin")
+      cfg.load_bin = std::string(val);
+    else if (key == "C-target-file")
+      cfg.C_target_file = std::string(val);
+    else if (key == "dump-dir")
+      cfg.fields.dir = std::string(val);
+    else if (key == "dump-every")
+      ok = parse_int(val, cfg.fields.every) && cfg.fields.every > 0;
+    else
+      return false;
     if (!ok) return false;
   }
-  if (cfg.target != "isotropic" && cfg.target != "auxetic" &&
-      cfg.target != "file")
+  if (cfg.target != "isotropic" && cfg.target != "auxetic" && cfg.target != "file")
     return false;
   if (cfg.target == "file" && cfg.C_target_file.empty()) return false;
   if (cfg.init != "uniform" && cfg.init != "noise" &&
@@ -220,15 +279,15 @@ pfc::apps::Voigt6 make_target(const Config &cfg) {
       throw std::runtime_error("C-target-file unreadable");
     return C;
   }
-  const double nu = (cfg.target == "auxetic") ? -std::abs(cfg.nu_target)
-                                                : cfg.nu_target;
+  const double nu =
+      (cfg.target == "auxetic") ? -std::abs(cfg.nu_target) : cfg.nu_target;
   return pfc::apps::voigt_from_stiffness(
       pfc::apps::Stiffness::isotropic(cfg.E_target, nu));
 }
 
 void spectral_laplacian_hip(const pfc::Domain &domain, FFT &fft, const RealField &h,
-                             ComplexField &hat, RealField &lap, FFT::RealBuffer &d_real,
-                             FFT::ComplexBuffer &d_hat) {
+                            ComplexField &hat, RealField &lap,
+                            FFT::RealBuffer &d_real, FFT::ComplexBuffer &d_hat) {
   d_real.copy_from_host(h.data(), h.size());
   fft.forward(d_real, d_hat);
   d_hat.copy_to_host(hat.data(), hat.size());
@@ -268,24 +327,41 @@ void project_mean(RealField &h, double target, MPI_Comm comm, double n_global) {
 pfc::apps::inverse::InverseStepReport
 ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &fft,
         RealField &h, const pfc::apps::inverse::InverseSpec &spec, ComplexField &hat,
-        RealField &lap, RealField &dJdh, RealField &g, FFT::RealBuffer &d_real,
-        FFT::ComplexBuffer &d_hat, MPI_Comm comm) {
+        RealField &lap, RealField &dJdh, RealField &g, RealField &penalized,
+        FFT::RealBuffer &d_real, FFT::ComplexBuffer &d_hat, MPI_Comm comm) {
   pfc::apps::inverse::InverseStepReport out;
   const std::size_t n_local = h.size();
   const auto gs = h.global_size();
-  const double n_global =
-      static_cast<double>(gs[0]) * static_cast<double>(gs[1]) *
-      static_cast<double>(gs[2]);
+  const double n_global = static_cast<double>(gs[0]) * static_cast<double>(gs[1]) *
+                          static_cast<double>(gs[2]);
   const double vf0 = mean_value(h, comm, n_global);
   const double dv = vf0 - spec.volume_target;
   out.J_volume = spec.lambda_volume * dv * dv;
 
-  const auto r = hom.compute(h);
+  const RealField *h_el = &h;
+  if (spec.simp_p != 1.0) {
+    double *pp = penalized.data();
+    const double *hd = h.data();
+    for (std::size_t i = 0; i < n_local; ++i) pp[i] = std::pow(hd[i], spec.simp_p);
+    penalized.note_host_write();
+    h_el = &penalized;
+  }
+  const auto r = hom.compute(*h_el);
   out.elasticity_converged = r.all_converged();
   out.J_tensor = pfc::apps::tensor_mismatch(r.stiffness, spec.C_target, spec.W);
-  out.C11 = r.stiffness(0, 0);
-  out.C12 = r.stiffness(0, 1);
-  hom.objective_sensitivity(h, spec.C_target, spec.W, dJdh);
+  out.C = r.stiffness.symmetrized();
+  out.C11 = out.C(0, 0);
+  out.C12 = out.C(0, 1);
+  out.C_fro = out.C.frobenius_norm();
+  hom.objective_sensitivity(*h_el, spec.C_target, spec.W, dJdh);
+  if (spec.simp_p != 1.0) {
+    const double pexp = spec.simp_p;
+    const double pm1 = pexp - 1.0;
+    double *dj = dJdh.data();
+    const double *hd = h.data();
+    for (std::size_t i = 0; i < n_local; ++i) dj[i] *= pexp * std::pow(hd[i], pm1);
+    dJdh.note_host_write();
+  }
   if (spec.lambda_reg != 0.0)
     spectral_laplacian_hip(domain, fft, h, hat, lap, d_real, d_hat);
   else
@@ -320,8 +396,9 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   for (std::size_t i = 0; i < n_local; ++i) {
     const double g_el = el_scale * gp[i];
     const double g_vol = spec.lambda_volume * 2.0 * dv;
-    const double g_reg = spec.lambda_reg * (-spec.epsilon * lp[i] +
-                                            inv_eps * pfc::apps::inverse::double_well_prime(hp[i]));
+    const double g_reg =
+        spec.lambda_reg * (-spec.epsilon * lp[i] +
+                           inv_eps * pfc::apps::inverse::double_well_prime(hp[i]));
     gp[i] = g_el + g_vol + g_reg;
     local_g2 += gp[i] * gp[i];
   }
@@ -349,7 +426,8 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
 int run(int argc, char **argv, int rank, int nproc) {
   Config cfg;
   if (!parse_args(argc, argv, cfg)) {
-    if (rank == 0) usage(std::cerr, argc >= 1 ? argv[0] : "openpfc_inverse_homogenize_hip");
+    if (rank == 0)
+      usage(std::cerr, argc >= 1 ? argv[0] : "openpfc_inverse_homogenize_hip");
     return 2;
   }
   int rc = 0;
@@ -387,11 +465,10 @@ int run(int argc, char **argv, int rank, int nproc) {
     pfc::apps::inverse::fill_yang_a3(h, cfg.nx, cfg.ny, cfg.nz);
   }
   if (!cfg.load_bin.empty()) {
-    if (!pfc::apps::inverse::load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny,
-                                              cfg.nz, h)) {
+    if (!pfc::apps::inverse::load_fortran_bin(cfg.load_bin, cfg.nx, cfg.ny, cfg.nz,
+                                              h)) {
       if (rank == 0)
-        std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin
-                  << '\n';
+        std::cerr << "load-bin: unreadable or wrong size " << cfg.load_bin << '\n';
       return 2;
     }
   }
@@ -433,6 +510,9 @@ int run(int argc, char **argv, int rank, int nproc) {
   auto lap = pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds());
   auto dJdh = pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds());
   auto g = pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds());
+  auto penalized =
+      pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds());
+  auto h_prev = pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds());
   FFT::RealBuffer d_real(fft.size_inbox());
   FFT::ComplexBuffer d_hat(fft.size_outbox());
 
@@ -448,8 +528,7 @@ int run(int argc, char **argv, int rank, int nproc) {
       {box.low[0], box.low[1], box.low[2]}, cfg.dx, rank, MPI_COMM_WORLD);
 
   {
-    const long long n_global =
-        static_cast<long long>(cfg.nx) * cfg.ny * cfg.nz;
+    const long long n_global = static_cast<long long>(cfg.nx) * cfg.ny * cfg.nz;
     const std::size_t n_owned =
         static_cast<std::size_t>(box.high[0] - box.low[0] + 1) *
         static_cast<std::size_t>(box.high[1] - box.low[1] + 1) *
@@ -459,14 +538,19 @@ int run(int argc, char **argv, int rank, int nproc) {
 
   std::ofstream csv;
   if (rank == 0) {
-    std::cout << "backend hip ranks " << nproc << " grid " << cfg.nx << 'x'
-              << cfg.ny << 'x' << cfg.nz << " init " << cfg.init << " target "
-              << cfg.target << " steps " << cfg.steps << '\n';
-    std::cout << "step J J_tensor volume grey C11 C12 nu_eff ms conv\n";
+    std::cout << "backend hip ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny
+              << 'x' << cfg.nz << " init " << cfg.init << " target " << cfg.target
+              << " max_steps " << cfg.steps << " continuation_steps "
+              << cfg.continuation_steps << '\n';
+    std::cout << "step J J_tensor volume grey C11 C12 nu_eff design_rms dJ_rel "
+                 "dC_rel morph_frac step_rms grad_rms simp lambda_reg frozen "
+                 "window candidate verify ms conv\n";
     if (!cfg.csv.empty()) {
       csv.open(cfg.csv);
-      csv << "step,J,J_tensor,J_volume,J_reg,volume,grey,C11,C12,nu_eff,ms,"
-             "converged\n";
+      csv << "step,J,J_tensor,J_volume,J_reg,volume,grey,C11,C12,nu_eff,"
+             "C_fro,design_rms,dJ_rel,dC_rel,morph_frac,step_rms,grad_rms,"
+             "simp_p,lambda_reg,frozen,conv_window,candidate,verified,ms,"
+             "elasticity,termination\n";
     }
   }
 
@@ -476,13 +560,16 @@ int run(int argc, char **argv, int rank, int nproc) {
   };
 
   int n_snap = 0;
-  auto dump = [&](int step) {
-    if (!snap.due(std::max(0, step))) return;
+  int last_dumped = -1;
+  auto dump = [&](int step, bool force) {
+    if (!force && !snap.due(std::max(0, step))) return;
+    if (force && last_dumped == step) return;
     snap.note_step(step);
     snap.write("h", n_snap, h);
     ++n_snap;
+    last_dumped = step;
   };
-  dump(0);
+  dump(0, false);
 
   const double simp0 = cfg.simp;
   const double simp1 = (cfg.simp_end > 0.0) ? cfg.simp_end : cfg.simp;
@@ -490,41 +577,102 @@ int run(int argc, char **argv, int rank, int nproc) {
   const double lreg1 =
       (cfg.lambda_reg_end >= 0.0) ? cfg.lambda_reg_end : cfg.lambda_reg;
 
+  pfc::apps::inverse::ConvergenceTracker tracker;
+  tracker.cfg.continuation_steps = cfg.continuation_steps;
+  tracker.cfg.max_steps = cfg.steps;
+  tracker.cfg.conv_window = cfg.conv_window;
+  tracker.cfg.verify_steps = cfg.verify_steps;
+  tracker.cfg.tol_design = cfg.tol_design;
+  tracker.cfg.tol_objective = cfg.tol_objective;
+  tracker.cfg.tol_tensor = cfg.tol_tensor;
+
+  for (std::size_t i = 0; i < h.size(); ++i) h_prev.data()[i] = h.data()[i];
+  h_prev.note_host_write();
+  pfc::apps::Voigt6 C_prev{};
+  double J_prev = 0.0;
+  bool have_prev = false;
+
   pfc::apps::inverse::InverseStepReport last{};
+  auto reason = pfc::apps::inverse::TerminationReason::Running;
   int n_done = 0;
+  const auto gs = h.global_size();
+  const double n_global = static_cast<double>(gs[0]) * gs[1] * gs[2];
   for (int s = 0; s < cfg.steps; ++s) {
     const double t =
-        (cfg.steps > 1) ? static_cast<double>(s) / (cfg.steps - 1) : 1.0;
+        pfc::apps::inverse::continuation_fraction(s, cfg.continuation_steps);
     spec.simp_p = simp0 + t * (simp1 - simp0);
     spec.lambda_reg = lreg0 + t * (lreg1 - lreg0);
     const auto t0 = std::chrono::steady_clock::now();
-    last = ac_step(hom, domain, fft, h, spec, hat, lap, dJdh, g, d_real, d_hat,
-                   MPI_COMM_WORLD);
+    last = ac_step(hom, domain, fft, h, spec, hat, lap, dJdh, g, penalized, d_real,
+                   d_hat, MPI_COMM_WORLD);
     const auto t1 = std::chrono::steady_clock::now();
     const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    double local_dh2 = 0.0, local_morph = 0.0;
+    for (std::size_t i = 0; i < h.size(); ++i) {
+      const double d = h.data()[i] - h_prev.data()[i];
+      local_dh2 += d * d;
+      const bool b = h.data()[i] > 0.5;
+      const bool bp = h_prev.data()[i] > 0.5;
+      if (b != bp) local_morph += 1.0;
+    }
+    double glo_dh2 = 0.0, glo_morph = 0.0;
+    MPI_Allreduce(&local_dh2, &glo_dh2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_morph, &glo_morph, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    const double design_rms = std::sqrt(glo_dh2 / n_global);
+    const double morph_frac = glo_morph / n_global;
+    double dC2 = 0.0;
+    if (have_prev) {
+      for (int i = 0; i < 6; ++i)
+        for (int j = 0; j < 6; ++j) {
+          const double d = last.C(i, j) - C_prev(i, j);
+          dC2 += d * d;
+        }
+    }
+    const auto metrics = pfc::apps::inverse::make_metrics(
+        design_rms, last.J, have_prev ? J_prev : last.J, std::sqrt(dC2),
+        have_prev ? C_prev.frobenius_norm() : last.C_fro, morph_frac, tracker.cfg);
+    reason = tracker.after_step(s, last.elasticity_converged, metrics);
     const double nu = nu_of(last.C11, last.C12);
+    const int frozen =
+        pfc::apps::inverse::params_frozen(s, cfg.continuation_steps) ? 1 : 0;
     if (rank == 0) {
-      std::cout << std::setprecision(8) << s << ' ' << last.J << ' '
-                << last.J_tensor << ' ' << last.volume_fraction << ' '
-                << last.grey_fraction << ' ' << last.C11 << ' ' << last.C12 << ' '
-                << nu << ' ' << std::setprecision(3) << ms << ' '
-                << (last.elasticity_converged ? "yes" : "no") << '\n';
+      std::cout << std::setprecision(8) << s << ' ' << last.J << ' ' << last.J_tensor
+                << ' ' << last.volume_fraction << ' ' << last.grey_fraction << ' '
+                << last.C11 << ' ' << last.C12 << ' ' << nu << ' ' << design_rms
+                << ' ' << metrics.dJ_rel << ' ' << metrics.dC_rel << ' '
+                << morph_frac << ' ' << last.step_rms << ' ' << last.grad_rms << ' '
+                << spec.simp_p << ' ' << spec.lambda_reg << ' ' << frozen << ' '
+                << tracker.quiet_count << ' ' << (tracker.candidate ? 1 : 0) << ' '
+                << tracker.verify_left << ' ' << std::setprecision(3) << ms << ' '
+                << (last.elasticity_converged ? "yes" : "no") << ' '
+                << pfc::apps::inverse::termination_name(reason) << '\n';
       if (csv.is_open()) {
         csv << s << ',' << last.J << ',' << last.J_tensor << ',' << last.J_volume
             << ',' << last.J_reg << ',' << last.volume_fraction << ','
-            << last.grey_fraction << ',' << last.C11 << ',' << last.C12 << ','
-            << nu << ',' << ms << ',' << (last.elasticity_converged ? 1 : 0)
-            << '\n';
+            << last.grey_fraction << ',' << last.C11 << ',' << last.C12 << ',' << nu
+            << ',' << last.C_fro << ',' << design_rms << ',' << metrics.dJ_rel << ','
+            << metrics.dC_rel << ',' << morph_frac << ',' << last.step_rms << ','
+            << last.grad_rms << ',' << spec.simp_p << ',' << spec.lambda_reg << ','
+            << frozen << ',' << tracker.quiet_count << ','
+            << (tracker.candidate ? 1 : 0) << ',' << (tracker.verified ? 1 : 0)
+            << ',' << ms << ',' << (last.elasticity_converged ? 1 : 0) << ','
+            << pfc::apps::inverse::termination_name(reason) << '\n';
         csv.flush();
       }
     }
-    dump(s + 1);
+    dump(s + 1, false);
     n_done = s + 1;
-    if (!last.elasticity_converged) {
-      rc = 1;
+    for (std::size_t i = 0; i < h.size(); ++i) h_prev.data()[i] = h.data()[i];
+    h_prev.note_host_write();
+    C_prev = last.C;
+    J_prev = last.J;
+    have_prev = true;
+    if (reason != pfc::apps::inverse::TerminationReason::Running) {
+      if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) rc = 1;
       break;
     }
   }
+  dump(n_done, true);
 
   const auto final = hom.compute(h);
   if (rank == 0 && csv.is_open()) {
@@ -533,10 +681,10 @@ int run(int argc, char **argv, int rank, int nproc) {
     const double Jt = pfc::apps::tensor_mismatch(C, spec.C_target, spec.W);
     const double dv = last.volume_fraction - spec.volume_target;
     const double Jv = spec.lambda_volume * dv * dv;
-    csv << n_done << ',' << (Jt + Jv + last.J_reg) << ',' << Jt << ',' << Jv
-        << ',' << last.J_reg << ',' << last.volume_fraction << ','
-        << last.grey_fraction << ',' << C(0, 0) << ',' << C(0, 1) << ',' << nu
-        << ',' << 0.0 << ',' << (final.all_converged() ? 1 : 0) << '\n';
+    csv << n_done << ',' << (Jt + Jv + last.J_reg) << ',' << Jt << ',' << Jv << ','
+        << last.J_reg << ',' << last.volume_fraction << ',' << last.grey_fraction
+        << ',' << C(0, 0) << ',' << C(0, 1) << ',' << nu << ',' << 0.0 << ','
+        << (final.all_converged() ? 1 : 0) << '\n';
     csv.flush();
   }
   auto hbin = h;
@@ -556,7 +704,8 @@ int run(int argc, char **argv, int rank, int nproc) {
     std::cout << "C11_bin " << Cb(0, 0) << " C12_bin " << Cb(0, 1) << " nu_bin "
               << nub << '\n';
     std::cout << "ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
-              << cfg.nz << " steps " << cfg.steps << '\n';
+              << cfg.nz << " steps_done " << n_done << " termination "
+              << pfc::apps::inverse::termination_name(reason) << '\n';
     std::ifstream status("/proc/self/status");
     std::string line;
     while (std::getline(status, line)) {
