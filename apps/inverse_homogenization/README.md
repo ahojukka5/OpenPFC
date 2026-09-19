@@ -55,11 +55,21 @@ small-strain \(C_H\) from `openpfc_homogenize`.
 5. Newton residual / \(J>0\) stability.
 
 Catch2 `inverse-homogenization-finite-strain-tests` calls those shipped
-functions. Inverse design is out of scope until this ladder stays green.
+functions.
+
+`openpfc_finite_strain_inverse` then runs the frozen research #484
+16² experiment: rotating-square half sweep, single-material+void versus
+hinge-painted stiff/compliant/void, neo-Hookean, \(F_{11}\) path
+\(1.02\)–\(1.20\). Catch2
+`inverse-homogenization-finite-strain-grid-tests` drives the periodic
+homogenizer (uniform cell recovers the homogeneous \(P_{22}=0\) path).
+The frozen family does **not** produce \(\nu_t>0\) then \(\nu_t<0\).
 
 ```bash
 ./apps/inverse_homogenization/openpfc_finite_strain_forward \
   --evidence apps/inverse_homogenization/evidence/2026-09-19-finite-strain-forward-55.json
+./apps/inverse_homogenization/openpfc_finite_strain_inverse \
+  --evidence apps/inverse_homogenization/evidence/2026-09-19-finite-strain-inverse-484.json
 ```
 
 ## Reuse

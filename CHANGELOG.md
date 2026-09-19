@@ -9,6 +9,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **2-D finite-strain multimaterial experiment** (issue
+  [#57](https://github.com/ahojukka5/OpenPFC/issues/57), research #484).
+  16² periodic neo-Hookean homogenizer with \(P_{22}=0\); rotating-square
+  half sweep; single-material+void versus hinge-painted
+  stiff/compliant/void. Frozen family does not produce \(\nu_t>0\) then
+  \(\nu_t<0\). Not small-strain \(C_H\).
 - **2-D finite-strain forward ladder** (issue
   [#55](https://github.com/ahojukka5/OpenPFC/issues/55)). Plane-strain
   neo-Hookean / St.\ Venant--Kirchhoff \(P=\partial W/\partial F\),
