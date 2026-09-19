@@ -119,3 +119,34 @@ does not complete while the default-stream interior kernel runs).
 Mode 2 `MPI_Testall` drops exposed wait to ~0.060 ms, but six thin
 border launches cost ~0.127 ms versus ~0.381 ms for the full RHS, so
 clean wall stays worse than blocking.
+
+### Fused one-launch border (not admitted)
+
+SHA `3bbde34c`, binary
+`662f3112c9948fe4f30f3f4ec94469ebaf6052c2b9827b184b1cbc84e2e7f3b5`.
+Checksum HEX unchanged. Clean median `wall_step`:
+
+| nodes | ov=0 | ov=1 | ov=2 | jobs |
+| ----: | ---: | ---: | ---: | ---- |
+|     2 | 0.904 | 0.910 | 0.923 | 22162094 / 95 / 96 |
+|     4 | 1.001 | 0.915 | 0.926 | 22162097 / 98 / 99 |
+
+4-node blocking 1.001 repeated as job 22162121; treat as jitter relative
+to the #25 0.941 ms point, not as a fuse regression (blocking does not
+run the border kernel).
+
+Fused diagnostics (jobs 22162115–20), ms:
+
+| nodes | mode | post | exposed wait | inner | border |
+| ----: | ---- | ---: | -----------: | ----: | -----: |
+|     2 | 1 | 0.076 | 0.419 | 0.364 | 0.094 |
+|     2 | 2 | 0.076 | 0.061 | 0.362 | 0.093 |
+|     4 | 1 | 0.078 | 0.418 | 0.363 | 0.094 |
+|     4 | 2 | 0.079 | 0.061 | 0.362 | 0.094 |
+
+Border fell 0.127 → 0.094 ms. Inner+border is still 0.456 vs 0.381 full
+RHS. Mode 2 critical path remains post+inner+wait+border+update ≈
+0.92 ms, so overlap is not a production default. Next software lever is
+a separate pack/MPI stream so `start()` does not sit in front of the
+interior kernel; do not extend node count to hide a constant split tax
+while per-rank face size is fixed.
