@@ -9,6 +9,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **HeFFTe reshape-algorithm tournament** (issue
+  [#61](https://github.com/ahojukka5/OpenPFC/issues/61)). LUMI-G
+  constant-local-work Heat3D spectral campaign comparing
+  `p2p_plined` / `p2p` / `alltoallv` / `alltoall` under account
+  `project_462001245`. Production FFT defaults are unchanged. Submit
+  fails closed on leaked `HEAT3D_*` / `OPENPFC_FFT_*` knobs and on
+  account `project_462001519`.
 - **2-D finite-strain multimaterial experiment** (issue
   [#57](https://github.com/ahojukka5/OpenPFC/issues/57), research #484).
   16² periodic neo-Hookean homogenizer with \(P_{22}=0\); rotating-square
