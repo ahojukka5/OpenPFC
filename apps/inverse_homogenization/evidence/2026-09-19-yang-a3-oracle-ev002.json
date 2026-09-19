@@ -1,0 +1,41 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "openpfc_issue": 9,
+  "status": "model_specific_3d_auxetic_oracle",
+  "not_yang_nu_zx_reproduction": true,
+  "geometry": "Yang A3 voxel reconstruction, no geometry change",
+  "E_solid": 1.0,
+  "nu_solid": 0.3,
+  "E_void": 0.002,
+  "nu_void": 0.3,
+  "n64": {
+    "job": "22160972",
+    "grid": "64x64x121",
+    "volume": 0.2575865186,
+    "nu_xy": -0.26229262064,
+    "nu_xz": 0.20080538956,
+    "nu_zx": 0.40697513148,
+    "spd": true,
+    "percolate_xyz": [true, true, true],
+    "n_solid_components": 1,
+    "converged": true,
+    "el_iters_max": 222,
+    "C_target_file": "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt"
+  },
+  "n96": {
+    "job": "22161950",
+    "grid": "96x96x182",
+    "volume": 0.2477583181,
+    "nu_xy": -0.26744187273,
+    "nu_xz": 0.20598350726,
+    "nu_zx": 0.39818255708,
+    "spd": true,
+    "percolate_xyz": [true, true, true],
+    "n_solid_components": 1,
+    "converged": true,
+    "el_iters_max": 221,
+    "source_revision": "20907b90d38c24f1eb095ba30687c134afeca537",
+    "dirty": 0
+  },
+  "interpretation": "nu_xy<0 at both resolutions. nu_zx remains positive. Model-specific genuinely 3-D auxetic forward oracle in x/y, not Yang's principal beam mechanism."
+}

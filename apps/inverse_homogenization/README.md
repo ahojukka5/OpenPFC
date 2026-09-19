@@ -75,8 +75,10 @@ mpirun -n 1 ./apps/inverse_homogenization/openpfc_inverse_homogenize \
   --volume=0.5 --nx=16 --ny=16 --nz=16 --steps=10 --init=noise
 ```
 
-`--target` is `isotropic`, `auxetic` (negative Poisson via `--nu-target`), or
-`orthotropic` (`--C11 --C22 --C12 --C66`). The loop is Takezawa-style
+`--target` is `isotropic`, `auxetic` (negative Poisson via `--nu-target`),
+`orthotropic` (`--C11 --C22 --C12 --C66`), or `file` (`--C-target-file`
+with a 6×6 Voigt text matrix). `--init` includes `spinodal`, `yang-a3`,
+and `--load-bin` for a Fortran `h` brick. The loop is Takezawa-style
 Allen–Cahn, not Cahn–Hilliard and not MMA. `INVERSE_CHECKSUM` is the last
 \(J\). Optional `--csv=PATH` writes the per-step history.
 
