@@ -295,6 +295,12 @@ Off-node `use_pencils=1` at the same 16 GCD 768³ point (job 22162734,
 48.6 ms. A tie. Keep production `use_pencils=false`. Checksum HEX
 matches the slab 16 GCD run (`0x1.7785970621a73p+3`).
 
+On-node `HEAT3D_RESHAPE_ALG=alltoall` at 8 GCD 768³ (`dev-g`, new
+binary `f77bb73a…`, jobs **22165163** / **22165164**): `p2p_plined`
+74.1 ms vs `alltoall` 92.8 ms (**+25%**). Checksum HEX identical
+(`0x1.77859706219b1p+3`, matches the pre-override 8 GCD pin
+22162433). Keep production `p2p_plined`.
+
 Cubic weak scaling at constant *cell count* is not constant FFT work
 for 1D z-slabs: 8 GCD `1536³` (job 22162696) OOM'd because the in-plane
 transform grew 4×. The comparable protocol grows only the split axis
