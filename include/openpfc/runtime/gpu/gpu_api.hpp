@@ -10,6 +10,9 @@
  * Include this from `runtime/gpu/` sources instead of `<cuda_runtime.h>` or
  * `<hip/hip_runtime.h>`. Names match the CUDA vocabulary with a `gpu` prefix
  * (`gpuMalloc`, `gpuMemcpyAsync`, `gpuStream_t`, `gpuEvent_t`).
+ * Stream-flags and event-query shims (`gpuStreamCreateWithFlags`,
+ * `gpuStreamNonBlocking`, `gpuEventQuery`, `gpuErrorNotReady`) support
+ * overlapped Faces work.
  *
  * Backend selection:
  *   - hipcc / `__HIPCC__` / `__HIP__` → HIP (checked first; hipcc may also
@@ -51,6 +54,8 @@ using gpuMemcpyKind = cudaMemcpyKind;
 
 inline constexpr gpuError_t gpuSuccess = cudaSuccess;
 inline constexpr gpuError_t gpuErrorMemoryAllocation = cudaErrorMemoryAllocation;
+inline constexpr gpuError_t gpuErrorNotReady = cudaErrorNotReady;
+inline constexpr unsigned int gpuStreamNonBlocking = cudaStreamNonBlocking;
 inline constexpr gpuMemcpyKind gpuMemcpyHostToDevice = cudaMemcpyHostToDevice;
 inline constexpr gpuMemcpyKind gpuMemcpyDeviceToHost = cudaMemcpyDeviceToHost;
 inline constexpr gpuMemcpyKind gpuMemcpyDeviceToDevice = cudaMemcpyDeviceToDevice;
@@ -71,6 +76,9 @@ inline gpuError_t gpuMemcpy(void *dst, const void *src, std::size_t size,
 inline gpuError_t gpuStreamCreate(gpuStream_t *stream) {
   return cudaStreamCreate(stream);
 }
+inline gpuError_t gpuStreamCreateWithFlags(gpuStream_t *stream, unsigned int flags) {
+  return cudaStreamCreateWithFlags(stream, flags);
+}
 inline gpuError_t gpuStreamDestroy(gpuStream_t stream) {
   return cudaStreamDestroy(stream);
 }
@@ -86,6 +94,7 @@ inline gpuError_t gpuEventDestroy(gpuEvent_t event) {
 inline gpuError_t gpuEventRecord(gpuEvent_t event, gpuStream_t stream) {
   return cudaEventRecord(event, stream);
 }
+inline gpuError_t gpuEventQuery(gpuEvent_t event) { return cudaEventQuery(event); }
 inline gpuError_t gpuEventSynchronize(gpuEvent_t event) {
   return cudaEventSynchronize(event);
 }
@@ -104,6 +113,8 @@ using gpuMemcpyKind = hipMemcpyKind;
 
 inline constexpr gpuError_t gpuSuccess = hipSuccess;
 inline constexpr gpuError_t gpuErrorMemoryAllocation = hipErrorMemoryAllocation;
+inline constexpr gpuError_t gpuErrorNotReady = hipErrorNotReady;
+inline constexpr unsigned int gpuStreamNonBlocking = hipStreamNonBlocking;
 inline constexpr gpuMemcpyKind gpuMemcpyHostToDevice = hipMemcpyHostToDevice;
 inline constexpr gpuMemcpyKind gpuMemcpyDeviceToHost = hipMemcpyDeviceToHost;
 inline constexpr gpuMemcpyKind gpuMemcpyDeviceToDevice = hipMemcpyDeviceToDevice;
@@ -124,6 +135,9 @@ inline gpuError_t gpuMemcpy(void *dst, const void *src, std::size_t size,
 inline gpuError_t gpuStreamCreate(gpuStream_t *stream) {
   return hipStreamCreate(stream);
 }
+inline gpuError_t gpuStreamCreateWithFlags(gpuStream_t *stream, unsigned int flags) {
+  return hipStreamCreateWithFlags(stream, flags);
+}
 inline gpuError_t gpuStreamDestroy(gpuStream_t stream) {
   return hipStreamDestroy(stream);
 }
@@ -131,10 +145,13 @@ inline gpuError_t gpuStreamSynchronize(gpuStream_t stream) {
   return hipStreamSynchronize(stream);
 }
 inline gpuError_t gpuEventCreate(gpuEvent_t *event) { return hipEventCreate(event); }
-inline gpuError_t gpuEventDestroy(gpuEvent_t event) { return hipEventDestroy(event); }
+inline gpuError_t gpuEventDestroy(gpuEvent_t event) {
+  return hipEventDestroy(event);
+}
 inline gpuError_t gpuEventRecord(gpuEvent_t event, gpuStream_t stream) {
   return hipEventRecord(event, stream);
 }
+inline gpuError_t gpuEventQuery(gpuEvent_t event) { return hipEventQuery(event); }
 inline gpuError_t gpuEventSynchronize(gpuEvent_t event) {
   return hipEventSynchronize(event);
 }
