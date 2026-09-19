@@ -23,6 +23,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   difference of the same shipped path. Does not reuse small-strain
   \(C_H\). Catch2 drives `relax_transverse` /
   `laminate_uniaxial` / `run_declared_ladder`. Not inverse design.
+- **Heat3D spectral HIP `HEAT3D_USE_PENCILS`** (issue #51). Explicit
+  `0`/`1` overrides HeFFTe `use_pencils` after the production slab
+  overlay. Unset keeps slabs. Used for a controlled off-node A/B, not
+  a size-specific default.
+- **Heat3D spectral rectangular CLI** (issue #51). `<Nx> <Ny> <Nz>
+  <n_steps> <dt>` keeps local slab work fixed when growing the split
+  axis (FFT weak scaling). Cubic `<N> <n_steps> <dt>` is unchanged.
 - **r2c complex-outbox selector** (issue #45). Enumerate legal HeFFTe
   `split_world()` complex process grids (uneven boxes allowed) and pick
   the layout with the fewest distributed reshapes, then imbalance,

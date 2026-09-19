@@ -73,7 +73,8 @@ inline void print_usage_fd(std::ostream &os, const char *exe) {
 
 /// Per-binary usage line for the spectral / manual / scratch executables.
 inline void print_usage_spectral(std::ostream &os, const char *exe) {
-  os << "Usage:\n  " << exe << " <N> <n_steps> <dt>\n";
+  os << "Usage:\n  " << exe << " <N> <n_steps> <dt>\n"
+     << "  " << exe << " <Nx> <Ny> <Nz> <n_steps> <dt>\n";
 }
 
 namespace detail {
@@ -134,17 +135,30 @@ inline std::optional<RunConfig> parse_fd(int argc, char **argv) noexcept {
 }
 
 /**
- * @brief Parse the spectral / manual / scratch CLI: `<N> <n_steps> <dt>`.
+ * @brief Parse the spectral / manual / scratch CLI.
+ *
+ * Cubic: `<N> <n_steps> <dt>` (`argc == 4`).
+ * Rectangular: `<Nx> <Ny> <Nz> <n_steps> <dt>` (`argc == 6`).
  *
  * `fd_order` is left at the `RunConfig` default (unused).
  */
 inline std::optional<RunConfig> parse_spectral(int argc, char **argv) noexcept {
-  if (argc < 4) return std::nullopt;
   RunConfig c;
-  c.N = std::atoi(argv[1]);
-  c.n_steps = std::atoi(argv[2]);
-  c.dt = std::atof(argv[3]);
-  detail::sync_cube(c);
+  if (argc == 4) {
+    c.N = std::atoi(argv[1]);
+    c.n_steps = std::atoi(argv[2]);
+    c.dt = std::atof(argv[3]);
+    detail::sync_cube(c);
+  } else if (argc == 6) {
+    c.Nx = std::atoi(argv[1]);
+    c.Ny = std::atoi(argv[2]);
+    c.Nz = std::atoi(argv[3]);
+    c.n_steps = std::atoi(argv[4]);
+    c.dt = std::atof(argv[5]);
+    c.N = c.Nx;
+  } else {
+    return std::nullopt;
+  }
   if (!detail::valid_values(c, /*needs_fd_order=*/false)) return std::nullopt;
   return c;
 }

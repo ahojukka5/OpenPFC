@@ -6,9 +6,11 @@
  * @brief 3D heat equation on HIP: implicit Euler in Fourier space.
  *
  * HIP twin of `heat3d_spectral` (2 FFTs/step), not the 4-FFT point-wise
- * path. Same CLI: `<N> <n_steps> <dt>`. Optional env:
- * `HEAT3D_PROFILE_JSON` writes a schema-v4 `wall_step` profile;
- * `HEAT3D_WARMUP` (default 1) drops that many frames from the profile.
+ * path. CLI: `<N> <n_steps> <dt>` or `<Nx> <Ny> <Nz> <n_steps> <dt>`.
+ * Optional env: `HEAT3D_PROFILE_JSON` writes a schema-v4 `wall_step`
+ * profile; `HEAT3D_WARMUP` (default 1) drops that many frames from the
+ * profile. `HEAT3D_USE_PENCILS=0|1` overrides HeFFTe `use_pencils` after
+ * the production slab overlay (default remains slabs).
  */
 
 #if !defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -82,7 +84,7 @@ int env_int(const char *name, int fallback) {
 int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   pfc::runtime::gpu::bind_local_device(MPI_COMM_WORLD);
 
-  const auto domain = pfc::domain::create(pfc::GridSize({cfg.N, cfg.N, cfg.N}),
+  const auto domain = pfc::domain::create(pfc::GridSize({cfg.Nx, cfg.Ny, cfg.Nz}),
                                           pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
                                           pfc::GridSpacing({1.0, 1.0, 1.0}));
   auto opts = pfc::sim::stacks::gpu_fft_for<pfc::HIPSpace>::default_plan_options();
@@ -92,6 +94,17 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   opts.use_gpu_aware = true;
   opts.algorithm = heffte::reshape_algorithm::p2p_plined;
   pfc::ui::apply_heffte_comm_scale(opts, nproc);
+  // apply_heffte_comm_scale forces slabs off-node. An explicit override
+  // is the B3 A/B, not a production default.
+  const int pencils_ov = env_int("HEAT3D_USE_PENCILS", -1);
+  if (pencils_ov == 1) {
+    opts.use_pencils = true;
+  } else if (pencils_ov == 0) {
+    opts.use_pencils = false;
+  } else if (pencils_ov != -1) {
+    throw std::runtime_error(
+        "heat3d_spectral_hip: HEAT3D_USE_PENCILS must be 0 or 1");
+  }
   pfc::sim::stacks::HIPSpectralStack stack(domain, rank, nproc, MPI_COMM_WORLD,
                                            opts);
 
@@ -105,7 +118,8 @@ int run_heat3d_spectral_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
 
   if (rank == 0) {
     std::cout << "HEAT3D_SPECTRAL_HIP"
-              << " N=" << cfg.N << " ranks=" << nproc
+              << " N=" << cfg.Nx << "x" << cfg.Ny << "x" << cfg.Nz
+              << " ranks=" << nproc
               << " inbox=" << stack.fft().size_inbox()
               << " outbox=" << stack.fft().size_outbox()
               << " use_pencils=" << (opts.use_pencils ? 1 : 0)
