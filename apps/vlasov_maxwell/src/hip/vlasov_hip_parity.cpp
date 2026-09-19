@@ -118,7 +118,7 @@
 
 #include <mpi.h>
 
-#include <vlasov_maxwell/cli.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 #include <vlasov_maxwell/device_step_hip.hpp>
 #include <vlasov_maxwell/diagnostics.hpp>
 #include <vlasov_maxwell/ics.hpp>
@@ -439,7 +439,7 @@ int run_science_landau(int nx, int nvx, int nvy, int interp, double dt_in,
 }
 
 int run(int argc, char **argv, int rank, int nproc) {
-  vlasov::Options opt(argc, argv);
+  pfc::utils::CliOptions opt(argc, argv);
   if (opt.help()) {
     if (rank == 0) print_usage(std::cout, argv[0]);
     return EXIT_SUCCESS;

@@ -45,7 +45,7 @@
 #include <openpfc/runtime/common/mpi_main.hpp>
 
 #include <alloy_dendrite/cases.hpp>
-#include <alloy_dendrite/cli.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 #if ALLOY_DENDRITE_HAVE_ELASTICITY
 #include <alloy_dendrite/material.hpp>
 #endif
@@ -257,7 +257,7 @@ void parse_tip_windows(const std::string &spec, int (&out)[4]) {
 }
 
 int run(int argc, char **argv, int rank, int nproc) {
-  alloy_dendrite::Options opt(argc, argv);
+  pfc::utils::CliOptions opt(argc, argv);
   if (opt.help()) {
     if (rank == 0) {
       print_usage(std::cout, argv[0]);
