@@ -298,12 +298,30 @@ matches the slab 16 GCD run (`0x1.7785970621a73p+3`).
 Cubic weak scaling at constant *cell count* is not constant FFT work
 for 1D z-slabs: 8 GCD `1536³` (job 22162696) OOM'd because the in-plane
 transform grew 4×. The comparable protocol grows only the split axis
-(`768×768×(768 P)`), keeping local `768³` and in-plane `768²`. Job
-**22164976** is that 8 GCD point on the default GPU-partition host
-quota (`AllocTRES mem=49G`). It OOM-killed at MaxRSS ≈ 7.5 GiB/rank —
-the same host footprint as 1 GCD `768³` (job 22162399, `mem=64G`) —
-so eight ranks needed ~60 GiB and the quota, not HBM or in-plane
-growth, was the limit. Rerun with `--mem=0` on `standard-g`.
+(`768×768×(768 P)`), keeping local `768³` and in-plane `768²`.
+
+Job **22164976** OOM-killed on the default GPU-partition host quota
+(`AllocTRES mem=49G`). MaxRSS ≈ 7.5 GiB/rank — the same host footprint
+as 1 GCD `768³` (job 22162399, `mem=64G`) — so eight ranks needed
+~60 GiB. The quota, not HBM, was the limit. `--mem=0` on `standard-g`
+allocates 480 GiB and is the production submit path.
+
+Constant-local-work weak scaling (inbox `452984832` = `768³` at every
+point; I/O off; 20/1; `dt=0.01`; `use_pencils=0`). Efficiency vs 1 GCD
+job 22162399 (416 ms). Binary SHA256
+`c4e2f66771bf6f365d4fc201081bec73ee78e81f3f84783b94a50e9be142ac0e`.
+
+| GCDs | grid | partition | bind | job | median `wall_step` | weak eff. |
+|------|------|-----------|------|-----|-------------------:|----------:|
+| 1 | `768³` | `dev-g` | none | 22162399 | 416 ms | 100% |
+| 2 | `768×768×1536` | `dev-g` | none | 22165046 | 453 ms | 92% |
+| 8 | `768×768×6144` | `dev-g` | none | 22165032 | 495 ms | 84% |
+| 8 | `768×768×6144` | `standard-g` | CCD | **22165026** | **489 ms** | **85%** |
+
+8 GCD `standard-g` HEX `0x1.7785970621e4fp+3` matches the `dev-g`
+replicate. MaxRSS ≈ 7.6 GiB/rank, `AllocTRES mem=480G`. The extra
+73 ms vs 1 GCD is the on-node transpose (2 GCD already pays 37 ms).
+16 GCD `768×768×12288` (first off-node, job **22165047**) is queued.
 
 ## How to read a point
 
