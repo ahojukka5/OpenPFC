@@ -57,6 +57,7 @@ The shortest useful mental model is:
 | `SimulationSession<Stack>` | Method × backend session: selection, Time, and a stack | `openpfc/kernel/simulation/simulation_session.hpp` | `user_guide/app_pipeline.md` |
 | JSON session factory | `make_simulation_session<Stack>` from `method`/`backend` JSON | `openpfc/frontend/ui/from_json_simulation_session.hpp` | `user_guide/app_pipeline.md` |
 | `CliOptions` | Fail-closed `--key=value` parsing for CLI-driven apps | `openpfc/frontend/utils/cli_options.hpp` | dendrite / Vlasov drivers |
+| `GpuHaloOverlap` | Interior-on-stream + Faces `start()` / `finish()` | `openpfc/runtime/gpu/halo_overlap_gpu.hpp` | Heat3D HIP |
 
 Use the [integrated C++ API reference](../api/index.md) for exact constructors,
 overloads, namespaces, and member documentation.

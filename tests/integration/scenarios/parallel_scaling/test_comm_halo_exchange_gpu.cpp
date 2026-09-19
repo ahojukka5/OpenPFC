@@ -17,6 +17,7 @@
 #include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/decomposition/halo_geometry.hpp>
 #include <openpfc/runtime/gpu/comm_halo_exchange_gpu.hpp>
+#include <openpfc/runtime/gpu/halo_overlap_gpu.hpp>
 
 using namespace pfc;
 
@@ -75,7 +76,42 @@ make_padded_field(const decomposition::Decomposition &decomp, int rank, int halo
                                     decomposition::local_box(decomp, rank), halo);
 }
 
+template <typename Space>
+void check_gpu_halo_overlap_rhs(comm::HaloOverlapMode mode) {
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  auto domain = domain::create({8, 6, 4});
+  auto decomp = decomposition::create(domain, 1);
+  auto u = make_padded_field<Space>(decomp, rank, /*halo=*/1);
+  fill_owned_host(u, 7.0);
+
+  comm::HaloExchange<Space, double> halo(u, decomp, rank, MPI_COMM_WORLD);
+  comm::GpuHaloOverlap ov(mode);
+  REQUIRE(ov.mode() == mode);
+  REQUIRE(ov.compute_stream() != gpuStream_t{});
+
+  int phase = 0;
+  ov.rhs(
+      halo,
+      [&](gpuStream_t stream) {
+        REQUIRE(stream == ov.compute_stream());
+        REQUIRE(phase == 0);
+        phase = 1;
+      },
+      [&] {
+        REQUIRE(phase == 1);
+        phase = 2;
+      });
+  REQUIRE(phase == 2);
+  REQUIRE(halo_x_matches(u, -1, 7.0));
+}
+
 } // namespace
+
+TEST_CASE("GpuHaloOverlap rejects Blocking", "[halo_exchange][gpu][overlap]") {
+  REQUIRE_THROWS_AS(comm::GpuHaloOverlap(comm::HaloOverlapMode::Blocking),
+                    std::invalid_argument);
+}
 
 #if defined(OpenPFC_ENABLE_HIP)
 TEST_CASE("HaloExchange HIPSpace Faces: single-rank periodic wrap",
@@ -130,6 +166,30 @@ TEST_CASE("HaloExchange HIPSpace Faces: start/finish matches exchange",
   const auto n = u.local_size();
   REQUIRE(halo_x_matches(u, -1, 7.0));
   REQUIRE(halo_x_matches(u, n[0], 7.0));
+}
+
+TEST_CASE("GpuHaloOverlap HIPSpace Waitall calls inner then border",
+          "[halo_exchange][hip][overlap]") {
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1 || !device_runtime_available<HIPSpace>()) {
+    return;
+  }
+  check_gpu_halo_overlap_rhs<HIPSpace>(comm::HaloOverlapMode::Waitall);
+  comm::GpuHaloOverlap waitall(comm::HaloOverlapMode::Waitall);
+  REQUIRE_THROWS_AS(waitall.record_inner_done(), std::logic_error);
+}
+
+TEST_CASE("GpuHaloOverlap HIPSpace Testall calls inner then border",
+          "[halo_exchange][hip][overlap]") {
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1 || !device_runtime_available<HIPSpace>()) {
+    return;
+  }
+  check_gpu_halo_overlap_rhs<HIPSpace>(comm::HaloOverlapMode::Testall);
 }
 
 TEST_CASE("HaloExchange HIPSpace: Full start/finish and persistent rejected",
@@ -393,6 +453,28 @@ TEST_CASE("HaloExchange CUDASpace Faces: single-rank periodic wrap",
   comm::HaloExchange<CUDASpace, double> halo(u, decomp, rank, MPI_COMM_WORLD);
   halo.exchange();
   REQUIRE(halo_x_matches(u, -1, 7.0));
+}
+
+TEST_CASE("GpuHaloOverlap CUDASpace Waitall calls inner then border",
+          "[halo_exchange][cuda][overlap]") {
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1 || !device_runtime_available<CUDASpace>()) {
+    return;
+  }
+  check_gpu_halo_overlap_rhs<CUDASpace>(comm::HaloOverlapMode::Waitall);
+}
+
+TEST_CASE("GpuHaloOverlap CUDASpace Testall calls inner then border",
+          "[halo_exchange][cuda][overlap]") {
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1 || !device_runtime_available<CUDASpace>()) {
+    return;
+  }
+  check_gpu_halo_overlap_rhs<CUDASpace>(comm::HaloOverlapMode::Testall);
 }
 
 TEST_CASE("HaloExchange CUDASpace Faces: two fields wrap", "[halo_exchange][cuda]") {

@@ -144,7 +144,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   retaining the previous complete generation. HIP stores
   `dump_steps.txt` in the same bundle so a restarted manifest keeps the
   original time/index mapping.
-
+- **GPU Faces overlap helper** (`pfc::comm::GpuHaloOverlap` in
+  `include/openpfc/runtime/gpu/halo_overlap_gpu.hpp`). Owns a
+  non-blocking compute stream and runs interior → Faces `start()` →
+  optional `MPI_Testall` pump → `finish()` → border. `HaloOverlapMode`
+  is 0/1/2 (`Blocking` / `Waitall` / `Testall`). The helper does not
+  read app env names
+  ([#68](https://github.com/ahojukka5/OpenPFC/issues/68)).
 - **Inverse-homogenization convergence protocol** (issue
   [#59](https://github.com/ahojukka5/OpenPFC/issues/59)). After
   `--continuation-steps` the SIMP/regularization problem is frozen.
