@@ -50,10 +50,10 @@ void fd_rhs_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
 
 void fd_rhs_inner_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
                       double *du_padded, double t, int nx, int ny, int nz, int hw,
-                      bool sync) {
+                      bool sync, hipStream_t stream) {
   HeatDeviceModel model;
   pfc::sim::gpu::for_each_inner_device<HeatDeviceModel, HeatGrads>(
-      model, eval, du_padded, t, nx, ny, nz, hw, nullptr, sync);
+      model, eval, du_padded, t, nx, ny, nz, hw, stream, sync);
 }
 
 void fd_rhs_border_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,

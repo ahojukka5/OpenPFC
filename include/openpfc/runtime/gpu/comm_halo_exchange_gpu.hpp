@@ -21,7 +21,9 @@
  *    post Irecv; pack all remote send faces; stream-sync packs; post Isend;
  *    return (no `Waitall`).
  * 2. Caller computes halo-independent interior of `du` (reads owned `u`
- *    excluding an `hw` shell; does not write `u`).
+ *    excluding an `hw` shell; does not write `u`). Launch that kernel on a
+ *    *non-blocking* stream *before* `start()` if pack/MPI should overlap
+ *    it; the default stream would drain a regular side stream.
  * 3. `finish()`: `Waitall`; unpack received faces into `u` halo; stream-sync.
  * 4. Caller computes the owned boundary shell of `du`, then updates `u`.
  *

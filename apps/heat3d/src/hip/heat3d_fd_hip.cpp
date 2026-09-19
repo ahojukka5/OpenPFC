@@ -13,9 +13,10 @@
  * `HEAT3D_REQUIRE_INTERIOR=nx,ny,nz` fails closed unless every rank's owned
  * interior matches. `HEAT3D_DIAG_TIMING=1` adds HIP-event / blocking-halo
  * attribution and must not replace the clean barriered `wall_step`.
- * `HEAT3D_HALO_OVERLAP=0` (default) is blocking `exchange()`. `1` posts
- * Faces MPI, computes the interior stencil, then `finish()` + boundary.
- * `2` additionally pumps `MPI_Testall` until the interior event completes.
+ * `HEAT3D_HALO_OVERLAP=0` (default) is blocking `exchange()`. `1` launches
+ * the interior stencil on a non-blocking compute stream, posts Faces MPI on
+ * the default stream, then `finish()` + boundary. `2` additionally pumps
+ * `MPI_Testall` until the interior event completes.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP)
@@ -143,6 +144,18 @@ struct HipEvent {
   ~HipEvent() { hipEventDestroy(e); }
   HipEvent(const HipEvent &) = delete;
   HipEvent &operator=(const HipEvent &) = delete;
+};
+
+/// Non-blocking so default-stream pack/MPI does not drain the interior kernel.
+struct HipStream {
+  hipStream_t s{};
+  HipStream() {
+    hip_check(hipStreamCreateWithFlags(&s, hipStreamNonBlocking),
+              "hipStreamCreateWithFlags");
+  }
+  ~HipStream() { hipStreamDestroy(s); }
+  HipStream(const HipStream &) = delete;
+  HipStream &operator=(const HipStream &) = delete;
 };
 
 int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
@@ -293,12 +306,15 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
     }
   }
   std::unique_ptr<HipEvent> inner_done;
+  std::unique_ptr<HipStream> compute;
+  if (overlap != 0) {
+    compute = std::make_unique<HipStream>();
+  }
   if (overlap == 2) {
     inner_done = std::make_unique<HipEvent>();
   }
 
   auto pump_until_inner = [&] {
-    hip_check(hipEventRecord(inner_done->e, nullptr), "inner_done record");
     bool gpu_done = false;
     for (;;) {
       if (!gpu_done) {
@@ -318,8 +334,12 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
 
   double t = 0.0;
   auto overlap_rhs = [&] {
+    heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, /*sync=*/false,
+                             compute->s);
+    if (overlap == 2) {
+      hip_check(hipEventRecord(inner_done->e, compute->s), "inner_done record");
+    }
     halo.start();
-    heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, /*sync=*/false);
     if (overlap == 2) {
       pump_until_inner();
     }
@@ -364,12 +384,16 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
         }
       } else if (diag && overlap != 0) {
         hip_check(hipDeviceSynchronize(), "diag pre-overlap sync");
+        hip_check(hipEventRecord(inner0->e, compute->s), "inner0");
+        heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, false,
+                                 compute->s);
+        hip_check(hipEventRecord(inner1->e, compute->s), "inner1");
+        if (overlap == 2) {
+          hip_check(hipEventRecord(inner_done->e, compute->s), "inner_done record");
+        }
         const double p0 = MPI_Wtime();
         halo.start();
         const double post_s = MPI_Wtime() - p0;
-        hip_check(hipEventRecord(inner0->e, nullptr), "inner0");
-        heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, false);
-        hip_check(hipEventRecord(inner1->e, nullptr), "inner1");
         if (overlap == 2) {
           pump_until_inner();
         }
