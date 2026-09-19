@@ -13,11 +13,13 @@
  * `HEAT3D_REQUIRE_INTERIOR=nx,ny,nz` fails closed unless every rank's owned
  * interior matches. `HEAT3D_DIAG_TIMING=1` adds HIP-event / blocking-halo
  * attribution and must not replace the clean barriered `wall_step`.
- * `HEAT3D_HALO_OVERLAP` selects the device timestep: `1` (default) launches
- * the interior stencil on a non-blocking compute stream, posts Faces MPI on
- * the default stream, then `finish()` + boundary; `0` is blocking
- * `exchange()`; `2` additionally pumps `MPI_Testall` until the interior
- * event completes.
+ * `HEAT3D_HALO_OVERLAP` selects the device timestep: `1` (default on
+ * more than one rank) launches the interior stencil on a non-blocking
+ * compute stream, posts Faces MPI on the default stream, then `finish()`
+ * + boundary; `0` is blocking `exchange()`; `2` additionally pumps
+ * `MPI_Testall` until the interior event completes. A single rank has no
+ * MPI halo, so the default falls back to blocking; an explicit `1` or `2`
+ * still runs the split.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP)
@@ -103,6 +105,23 @@ int env_int(const char *name, int fallback) {
 // blocking control.
 constexpr int kDefaultHaloOverlap = 1;
 
+int halo_overlap_mode(int nproc) {
+  const char *v = std::getenv("HEAT3D_HALO_OVERLAP");
+  const bool explicit_set = v != nullptr && v[0] != '\0';
+  const int overlap = explicit_set ? std::atoi(v) : kDefaultHaloOverlap;
+  if (overlap < 0 || overlap > 2) {
+    throw std::runtime_error(
+        "heat3d_fd_hip: HEAT3D_HALO_OVERLAP must be 0, 1, or 2");
+  }
+  // Single-rank has no MPI halo. Default two-stream was 8% slower on
+  // 512³ 1 GCD (jobs 22162498 / 22162499). Honor an explicit 1 or 2 so
+  // the inner/border split stays testable.
+  if (!explicit_set && nproc == 1) {
+    return 0;
+  }
+  return overlap;
+}
+
 bool env_flag(const char *name) {
   const char *v = std::getenv(name);
   return v != nullptr && v[0] == '1' && v[1] == '\0';
@@ -166,6 +185,7 @@ struct HipStream {
 
 int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   pfc::runtime::gpu::bind_local_device(MPI_COMM_WORLD);
+  const int overlap = halo_overlap_mode(nproc);
 
   const int hw = cfg.fd_order / 2;
   const auto domain = pfc::domain::create(pfc::GridSize({cfg.Nx, cfg.Ny, cfg.Nz}),
@@ -250,8 +270,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << " gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
               << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
               << " ranks=" << nproc << " fd_order=" << cfg.fd_order
-              << " halo_overlap=" << env_int("HEAT3D_HALO_OVERLAP",
-                                            kDefaultHaloOverlap)
+              << " halo_overlap=" << overlap
               << std::endl;
     std::ofstream plc("fd_placement.txt");
     plc << "rank host gpu rx ry rz offnode_faces\n";
@@ -283,11 +302,6 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   const char *profile_path = std::getenv("HEAT3D_PROFILE_JSON");
   const int warmup = env_int("HEAT3D_WARMUP", 1);
   const bool diag = env_flag("HEAT3D_DIAG_TIMING");
-  const int overlap = env_int("HEAT3D_HALO_OVERLAP", kDefaultHaloOverlap);
-  if (overlap < 0 || overlap > 2) {
-    throw std::runtime_error(
-        "heat3d_fd_hip: HEAT3D_HALO_OVERLAP must be 0, 1, or 2");
-  }
   std::unique_ptr<pfc::profiling::ProfilingSession> prof;
   if (profile_path != nullptr && *profile_path != '\0') {
     using pfc::profiling::ProfilingMetricCatalog;

@@ -184,6 +184,32 @@ Pins: `tests/baselines/perf/lumi-dev-g-heat3d-fd-hip-1gcd-release-512.json` and
 `HEAT3D_HIP_CHECKSUM` 1 vs 16 GCD agrees to ~5e-15 relative. Submit with
 `submit_heat3d_fd_hip_scaling.sh`.
 
+Two-stream overlap A/B on the same 512³ protocol (issue #48, binary
+`c01edbba…`, 20 steps, warmup 1). Do not replace the table above.
+
+| GCDs | ov=0 | ov=1 | jobs |
+| ---: | ---: | ---: | ---- |
+|    1 | 5.955 ms | 6.418 ms | 22162498 / 22162499 |
+|    8 | 0.934 ms | **0.856 ms** | 22162500 / 22162501 |
+|   16 | 0.558 ms | **0.473 ms** | 22162547 / 22162548 |
+|   32 | 0.374 ms | **0.344 ms** | 22162549 / 22162550 |
+
+1 GCD has no MPI halo: forcing the inner/border split is 8% slower, so
+production default overlap falls back to blocking on a single rank.
+8–32 GCD overlap is faster. Strong efficiency vs blocking
+\(T_1=5.955\) ms:
+
+| GCDs | ov=0 | ov=1 |
+| ---: | ---: | ---: |
+|    8 | 80% | 87% |
+|   16 | 67% | 79% |
+|   32 | 50% | 54% |
+
+512³ saturates near 32 GCD even with overlap (local brick 256×128×128).
+That is the meaningful strong-scaling endpoint for this grid: interior
+work is no longer enough to hide halo plus launch overhead. Do not
+replace the admitted blocking table.
+
 ### Spectral HIP (`heat3d_spectral_hip`)
 
 HIP twin of `heat3d_spectral`: implicit Euler in Fourier space, 2 FFTs per
