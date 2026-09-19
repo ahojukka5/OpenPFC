@@ -29,8 +29,9 @@ valid.
    range.
 4. Lower-\(\eta\) regime unresolved.
 
-This pass does **not** claim an exponent. Only \(\eta=0.01\) and
-\(\eta=0.005\) are compared.
+A log-space slope is reported only after three admitted
+\(\eta\) values on the frozen stage-2 window. Three points are a
+local description, not a universal law.
 
 ## Frozen local-sheet definitions
 
@@ -235,30 +236,106 @@ steady Sweet–Parker sheet with fixed \(L\) and \(B_{\mathrm{up}}\).
 The earlier “no thin sheet / FWHM at \(\pi\)” reading was a
 **measurement artefact** and is withdrawn.
 
-## Gate: \(\eta=0.0025\)
+## \(\eta=\nu=0.0025\): exploratory 512²
 
-The stage-2 window is now frozen. Two admitted \(\eta\) points exist.
-\(\eta=\nu=0.0025\) is the next physical point.
+Same OT initial condition, same X/O family, same frozen geometry,
+`--cfl 0.2` (the #24 stable smaller-CFL regime). Dump cadence
+\(\pi/80\) to \(t=0.80\). Measured Elsasser-sum CFL stays
+\(\approx 0.77<2\).
 
-Admission plan (do not move \(T_{\mathrm{SCALE}}\)):
+On \([0.314,0.70]\): 10/10 dumps `sheet_ok`; the same persistent
+X/O pair remains well-conditioned (Hessian cond \(2.91\to 11.1\));
+\(E_{z,X}\approx\eta j_X\); relative \(\eta(j)\) budget
+\(6.47\times10^{-4}\). \(\delta/\Delta x\) is \(25\)–\(49\)
+(mean \(37\)). This is the same finite-length sheet regime as
+the two higher \(\eta\). 512² is **not** admitted alone.
 
-1. Exploratory 512² only, `--cfl 0.2` (the #24 stable smaller-CFL
-   regime; do not repeat the timestep-limited `--cfl 0.4` crash as
-   a scaling point). Same OT initial condition and X/O family.
-2. 512² is **not** admitted alone. Require: the same persistent X/O
-   through \([0.314,0.70]\); well-conditioned X and O;
-   \(E_{z,X}\approx\eta j_X\); flux budget closed; `sheet_ok`
-   throughout the frozen window; \(\delta\) not grid-limited;
-   \(L\), \(B_{\mathrm{up}}\), \(R\) not obviously unresolved.
-3. Launch 1024² only if 512² defines a spatial-convergence question.
-   Then require convergence of \(E_{z,X}\), \(F\), \(\delta\), \(L\),
-   \(B_{\mathrm{up}}\), \(S_{\mathrm{local}}\), and \(R\). Flux-budget
-   agreement alone is not enough.
-4. Fit \(\log R\) vs \(\log S_{\mathrm{local}}\) only after three
-   admitted \(\eta\) values. Also test \(\delta/L\) vs \(S\) and
-   whether \(L\) and \(B_{\mathrm{up}}\) change with \(\eta\).
+## 1024² spatial gate
 
-Do not hunt plasmoids. Do not lower \(\eta\) below 0.0025. Do not
+1024² `--cfl 0.2` was launched because 512² posed a real
+spatial-convergence question. Over the frozen window, 512² vs
+1024² relative differences of the means:
+
+| quantity | 512² mean | 1024² mean | rel |
+| --- | ---: | ---: | ---: |
+| \(E_{z,X}\) | 0.006776 | 0.006776 | \(1\times10^{-11}\) |
+| \(F(t_{\mathrm{last}})\) | \(-0.989178\) | \(-0.989178\) | \(1\times10^{-11}\) |
+| \(\delta\) | 0.4498 | 0.4498 | \(1\times10^{-9}\) |
+| \(L\) | 3.468 | 3.468 | \(2\times10^{-7}\) |
+| \(B_{\mathrm{up}}\) | 0.2042 | 0.2042 | \(2\times10^{-7}\) |
+| \(S_{\mathrm{local}}\) | 281.0 | 281.0 | \(5\times10^{-7}\) |
+| \(R\) | 0.16019 | 0.16019 | \(2\times10^{-7}\) |
+
+Per-dump max relative difference in the window is
+\(<2\times10^{-6}\) on \(R\). Flux-budget *and* local geometry
+converge. \(\eta=0.0025\) is admitted.
+
+Window means (1024²):
+
+| quantity | mean | std | min | max |
+| --- | ---: | ---: | ---: | ---: |
+| \(E_{z,X}\) | 0.006776 | 0.002150 | 0.003960 | 0.01068 |
+| \(\eta j_X\) | 0.006761 | 0.002146 | 0.003950 | 0.01066 |
+| \(dF/dt\) | 0.01452 | 0.002204 | 0.01160 | 0.01850 |
+| \(\delta\) | 0.4498 | 0.0939 | 0.3077 | 0.5976 |
+| \(L\) | 3.468 | 1.471 | 2.178 | 6.064 |
+| \(L/\delta\) | 7.444 | 1.684 | 5.828 | 10.15 |
+| \(B_{\mathrm{up}}\) | 0.2042 | 0.0150 | 0.1889 | 0.2377 |
+| \(S_{\mathrm{local}}\) | 281.0 | 117.4 | 188.2 | 507.7 |
+| \(R\) | 0.1602 | 0.0365 | 0.0904 | 0.1947 |
+
+## Outcome A: three-point scaling, not Sweet–Parker
+
+Admitted points, frozen \([0.314,0.70]\) only:
+
+| \(\eta=\nu\) | \(N\) | mean \(R\) | mean \(S_{\mathrm{local}}\) | mean \(\delta\) | mean \(L\) | mean \(B_{\mathrm{up}}\) |
+| -----------: | ----: | ---------: | --------------------------: | --------------: | ---------: | -----------------------: |
+|        0.010 |   256 |     0.7736 |                       66.75 |          0.4554 |      3.549 |                   0.1840 |
+|        0.005 |   512 |     0.3403 |                       137.9 |          0.4517 |      3.490 |                   0.1971 |
+|       0.0025 |  1024 |     0.1602 |                       281.0 |          0.4498 |      3.468 |                   0.2042 |
+
+OLS in \(\log R\) vs \(\log S_{\mathrm{local}}\) (three points):
+
+\[
+\log R = 4.337 - 1.096\,\log S_{\mathrm{local}}.
+\]
+
+Slope \(-1.096\) with one-degree-of-freedom standard error
+\(0.021\). Pairwise slopes: \(-1.132\) (\(0.01\to0.005\)),
+\(-1.058\) (\(0.005\to0.0025\)), \(-1.095\) (outer). Early-half
+and late-half of the frozen window give \(-1.031\) and
+\(-1.076\). None is compatible with Sweet–Parker \(-1/2\).
+
+This is predeclared outcome **(2)**: systematically different
+power-law behaviour over the available range. Outcome **(1)** is
+rejected. Three points are **not** a universal law.
+
+\(R(t)\) is not steady: it rises through the window at every
+\(\eta\) (e.g. \(\eta=0.0025\): \(0.090\to0.195\)). The reported
+\(R\) is the frozen-window time average, not a peak.
+
+## Geometry scaling
+
+On the same three admitted points:
+
+* \(\delta/L\) is nearly independent of \(S_{\mathrm{local}}\)
+  (log-log slope \(+0.007\)), not \(S^{-1/2}\).
+* Mean \(L\) changes little (\(3.55\to3.47\), about \(2\%\) over a
+  factor-of-four drop in \(\eta\)).
+* Mean \(B_{\mathrm{up}}\) rises about \(11\%\) (\(0.184\to0.204\)).
+* Mean \(\delta\) is almost flat (\(0.455\to0.450\)).
+
+So \(S_{\mathrm{local}}\propto L B_{\mathrm{up}}/\eta\) increases
+almost as \(1/\eta\). The non-Sweet–Parker \(R(S)\) slope is **not**
+coming from a classical \(\delta/L\sim S^{-1/2}\) aspect-ratio
+change. It is consistent with a time-dependent OT sheet whose
+mean thickness and length barely move with \(\eta\) in this
+window, while \(E_{z,X}\approx\eta j_X\) still holds.
+
+No extra islands, X/O births, or peak-current plasmoid structures
+occur inside the frozen accepted window at these resolutions.
+
+Do not lower \(\eta\) below 0.0025. Do not hunt plasmoids. Do not
 extend \(t\) past 0.80.
 
 ## Commands
@@ -273,4 +350,8 @@ python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
   --dir /scratch/.../ot128_nu001_cfl04 --n 128 --eta 0.01 --t-max 0.80
 python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
   --dir /scratch/.../ot256_nu001_cfl04 --n 256 --eta 0.01 --t-max 0.80
+python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
+  --dir /scratch/.../ot512_nu00025_cfl02_t080 --n 512 --eta 0.0025 --t-max 0.80
+python3 examples/ns2d_vorticity/scripts/sheet_scaling.py \
+  --dir /scratch/.../ot1024_nu00025_cfl02_t080 --n 1024 --eta 0.0025 --t-max 0.80
 ```
