@@ -69,6 +69,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   GPU partitions default to ~6 GiB host/GCD. Constant-local-work
   `768³`/rank needs ~8 GiB host/rank; request `--mem=0` on
   `standard-g` and 64 GiB/GCD on shared GPU partitions.
+- **Heat3D spectral HIP scaling sbatch drops A/B knobs** (issue #51).
+  Unless `HEAT3D_KEEP_OVERRIDES=1`, the production submit path unsets
+  `HEAT3D_USE_PENCILS`, `HEAT3D_RESHAPE_ALG`, `HEAT3D_USE_REORDER`,
+  `HEAT3D_GPU_AWARE`, and `OPENPFC_FFT_*` grid overrides. Job 22166458
+  inherited a leaked binary/env and was not an algorithm A/B.
 
 ### Changed
 

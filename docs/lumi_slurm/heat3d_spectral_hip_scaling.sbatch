@@ -17,10 +17,21 @@
 # Required: HEAT3D_SPECTRAL_HIP_BIN
 # Optional: HEAT3D_N (default 256), or HEAT3D_NX/NY/NZ for a brick,
 #           HEAT3D_STEPS (20), HEAT3D_DT (0.01), OPENPFC_SCALING_ROOT
+# A/B knobs (HEAT3D_USE_PENCILS, HEAT3D_RESHAPE_ALG, HEAT3D_USE_REORDER,
+# HEAT3D_GPU_AWARE, OPENPFC_FFT_* grid overrides) are dropped unless
+# HEAT3D_KEEP_OVERRIDES=1, so a leaked login env cannot change headline
+# production runs (job 22166458).
 
 set -euo pipefail
 
 : "${HEAT3D_SPECTRAL_HIP_BIN:?set HEAT3D_SPECTRAL_HIP_BIN to the 0.2 heat3d_spectral_hip binary}"
+
+if [[ "${HEAT3D_KEEP_OVERRIDES:-0}" != "1" ]]; then
+  unset HEAT3D_USE_PENCILS HEAT3D_RESHAPE_ALG HEAT3D_USE_REORDER \
+    HEAT3D_GPU_AWARE HEAT3D_DIAG_TIMING \
+    OPENPFC_FFT_PROC_GRID OPENPFC_FFT_NODE_GRID \
+    OPENPFC_FFT_COMPLEX_PROC_GRID OPENPFC_FFT_COMPLEX_OUTBOX || true
+fi
 
 N="${HEAT3D_N:-256}"
 NX="${HEAT3D_NX:-}"
@@ -73,6 +84,9 @@ fi
   echo "mem_per_node=${SLURM_MEM_PER_NODE:-unset} mem_per_cpu=${SLURM_MEM_PER_CPU:-unset}"
   echo "MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED}"
   echo "MPICH_OFI_NIC_POLICY=${MPICH_OFI_NIC_POLICY:-unset}"
+  echo "HEAT3D_KEEP_OVERRIDES=${HEAT3D_KEEP_OVERRIDES:-0}"
+  echo "HEAT3D_RESHAPE_ALG=${HEAT3D_RESHAPE_ALG:-unset}"
+  echo "HEAT3D_USE_PENCILS=${HEAT3D_USE_PENCILS:-unset}"
 } | tee "${RUNDIR}/run_meta.txt"
 
 if [[ -n "${NX}" && -n "${NY}" && -n "${NZ}" ]]; then
