@@ -4,4 +4,5 @@
 target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_memory_reporter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_timeleft.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_options.cpp
 )

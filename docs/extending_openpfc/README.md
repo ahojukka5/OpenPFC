@@ -26,6 +26,7 @@ out-of-tree executable, follow the
 | Add an output format | `pfc::ResultsWriter` or a writer catalog | `examples/11_write_results.cpp` |
 | Add custom spatial interpretation | Domain and coordinate helper functions | `examples/17_custom_coordinate_system.cpp` |
 | Build a JSON/TOML-driven binary | `make_simulation_session` / `pfc::sim::run` | [Minimal custom application](../tutorials/custom_app_minimal.md) |
+| Parse `--key=value` in a CLI driver | `pfc::utils::CliOptions` (unknown keys fail closed) | `openpfc/frontend/utils/cli_options.hpp` |
 | Add point-wise gradients or finite-difference physics | Field/gradient primitives and halo policies | [Per-point gradients](per_point_grads.md), [Halo exchange](../concepts/halo_exchange.md) |
 | Couple an external solver | `pfc::coupling::FieldHandle` + `Time::clip_attempt_dt` | [External coupling](external_coupling.md), `examples/22_external_coupling.cpp` |
 | Restart from a checkpoint bundle | `CheckpointService` / `restart_from` | [Checkpoint publication](../development/checkpoint_publish.md) |

@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Fail-closed `--key=value` CLI** (`pfc::utils::CliOptions` in
+  `include/openpfc/frontend/utils/cli_options.hpp`). Standalone drivers
+  parse named flags without a per-app copy of the same class; unknown
+  keys are an error after the driver has queried every option it
+  understands ([#66](https://github.com/ahojukka5/OpenPFC/issues/66)).
 - **Inverse-homogenization convergence protocol** (issue
   [#59](https://github.com/ahojukka5/OpenPFC/issues/59)). After
   `--continuation-steps` the SIMP/regularization problem is frozen.

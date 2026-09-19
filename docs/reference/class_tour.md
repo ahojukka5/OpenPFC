@@ -56,6 +56,7 @@ The shortest useful mental model is:
 | `GPUSpectralStack` | Device FFT stack; JSON `plan_options` overlay like CPU | `openpfc/runtime/gpu/gpu_spectral_stack.hpp` | `tungsten_cuda`, session-matrix-cuda |
 | `SimulationSession<Stack>` | Method × backend session: selection, Time, and a stack | `openpfc/kernel/simulation/simulation_session.hpp` | `user_guide/app_pipeline.md` |
 | JSON session factory | `make_simulation_session<Stack>` from `method`/`backend` JSON | `openpfc/frontend/ui/from_json_simulation_session.hpp` | `user_guide/app_pipeline.md` |
+| `CliOptions` | Fail-closed `--key=value` parsing for CLI-driven apps | `openpfc/frontend/utils/cli_options.hpp` | dendrite / Vlasov drivers |
 
 Use the [integrated C++ API reference](../api/index.md) for exact constructors,
 overloads, namespaces, and member documentation.
