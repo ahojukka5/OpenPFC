@@ -15,6 +15,7 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <iostream>
 #include <numbers>
 #include <vector>
 
@@ -26,9 +27,10 @@
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <inverse_homogenization/auxetic_geometry.hpp>
+#include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
-#include <inverse_homogenization/manufacturability.hpp>
+#include <inverse_homogenization/yang_reentrant.hpp>
 #include <openpfc_apps/homogenization.hpp>
 
 using Catch::Matchers::WithinAbs;
@@ -71,6 +73,12 @@ pfc::Domain cube(int n) {
                              pfc::GridSpacing({1.0, 1.0, 1.0}));
 }
 
+pfc::Domain box(int nx, int ny, int nz) {
+  return pfc::domain::create(pfc::GridSize({nx, ny, nz}),
+                             pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                             pfc::GridSpacing({1.0, 1.0, 1.0}));
+}
+
 pfc::Domain slab(int nx, int ny) {
   return pfc::domain::create(pfc::GridSize({nx, ny, 1}),
                              pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
@@ -89,6 +97,11 @@ struct Case {
 
   explicit Case(int n)
       : domain(cube(n)),
+        stack(domain, world_rank(), world_size(), MPI_COMM_WORLD),
+        h(pfc::data::field_from_inbox<double>(domain,
+                                              stack.fft().get_inbox_bounds())) {}
+  Case(int nx, int ny, int nz)
+      : domain(box(nx, ny, nz)),
         stack(domain, world_rank(), world_size(), MPI_COMM_WORLD),
         h(pfc::data::field_from_inbox<double>(domain,
                                               stack.fft().get_inbox_bounds())) {}
@@ -444,6 +457,104 @@ TEST_CASE("3-D re-entrant honeycomb is 3-D, connected, and percolating",
   REQUIRE(m.percolate_solid_z);
   REQUIRE(m.solid_frac > 0.08);
   REQUIRE(m.solid_frac < 0.40);
+}
+
+TEST_CASE("Yang A3 graph matches Table 1, cell box, shift, and ledger",
+          "[inverse][yang][geometry]") {
+  using Y = pfc::apps::inverse::YangA3;
+  REQUIRE_THAT(Y::H_over_L(), WithinAbs(7.74 / 3.78, 1.0e-12));
+  REQUIRE_THAT(Y::theta_deg, WithinAbs(45.0, 1.0e-12));
+  REQUIRE_THAT(Y::t_over_L(), WithinAbs(0.80 / 3.78, 1.0e-12));
+  REQUIRE_THAT(Y::Lx(), WithinAbs(2.0 * Y::L_mm * Y::sin_th(), 1.0e-12));
+  REQUIRE_THAT(Y::Lz(), WithinAbs(2.0 * (Y::H_mm - Y::dz()), 1.0e-12));
+  REQUIRE(Y::Lz() < Y::H_mm + 2.0 * Y::dz() - 1.0);
+  REQUIRE(2.0 * Y::L_mm * Y::cos_th() < Y::H_mm);
+  REQUIRE(Y::t_mm < Y::L_mm * Y::sin_th());
+  REQUIRE(Y::wang_rel_density() > Y::density_gate_lo);
+  REQUIRE(Y::wang_rel_density() < Y::density_gate_hi);
+  REQUIRE(Y::published_rel_density > Y::density_gate_lo);
+  REQUIRE(Y::published_rel_density < Y::density_gate_hi);
+  const auto s = pfc::apps::inverse::yang_a3_skeleton();
+  REQUIRE_FALSE(pfc::apps::inverse::yang_has_through_pillar(s));
+  bool shifted_layer = false;
+  bool story0 = false;
+  for (const auto &e : s) {
+    if (e.layer == 1 && e.kind == 'H' &&
+        std::abs(e.ay - 0.5 * Y::Ly()) < 1.0e-9 &&
+        std::abs(e.ax - 0.5 * Y::Lx()) < 1.0e-9)
+      shifted_layer = true;
+    if (e.layer == 0 && e.kind == 'H' && std::abs(e.ax) < 1.0e-9 &&
+        std::abs(e.ay) < 1.0e-9)
+      story0 = true;
+  }
+  REQUIRE(shifted_layer);
+  REQUIRE(story0);
+  const auto led = pfc::apps::inverse::yang_member_ledger(s);
+  REQUIRE(led.n_H_drawn == 16);
+  REQUIRE(led.n_L_drawn == 32);
+  REQUIRE(led.n_H_source == 4);
+  REQUIRE(led.n_L_source == 16);
+  REQUIRE(led.n_H_unique == 4);
+  REQUIRE(led.n_L_unique >= 8);
+  REQUIRE(led.n_xz_layers == 2);
+  REQUIRE(led.n_yz_layers == 2);
+}
+
+TEST_CASE("Yang A3 members are square prisms, not cylinders",
+          "[inverse][yang][geometry]") {
+  using Y = pfc::apps::inverse::YangA3;
+  const double half = 0.5 * Y::t_mm;
+  pfc::apps::inverse::YangSeg zseg{0, 0, 0, 0, 0, Y::H_mm, 0, 'H', 'x'};
+  const double c = 0.8 * half;
+  REQUIRE(pfc::apps::inverse::yang_in_square_prism(c, c, 0.5 * Y::H_mm, zseg,
+                                                   half));
+  REQUIRE_FALSE(
+      pfc::apps::inverse::yang_in_cylinder(c, c, 0.5 * Y::H_mm, zseg, half));
+  REQUIRE_FALSE(pfc::apps::inverse::yang_in_square_prism(
+      1.1 * half, 0.0, 0.5 * Y::H_mm, zseg, half));
+}
+
+TEST_CASE("Yang A3 voxel density sits in the predeclared gate",
+          "[inverse][yang][geometry]") {
+  if (world_size() != 1) {
+    SKIP("manufacturability helper is dense/single-rank");
+  }
+  using Y = pfc::apps::inverse::YangA3;
+  constexpr int nx = 32;
+  const int nz = Y::nz_for_nx(nx);
+  Case cs(nx, nx, nz);
+  pfc::apps::inverse::fill_yang_a3(cs.h, nx, nx, nz);
+  const auto loc = cs.h.local_size();
+  double zvar = 0.0, yvar = 0.0, xvar = 0.0;
+  for (int k = 0; k < loc[2]; ++k)
+    for (int j = 0; j < loc[1]; ++j)
+      for (int i = 0; i < loc[0]; ++i) {
+        const double v = cs.h(i, j, k);
+        zvar = std::max(zvar, std::abs(v - cs.h(i, j, 0)));
+        yvar = std::max(yvar, std::abs(v - cs.h(i, 0, k)));
+        xvar = std::max(xvar, std::abs(v - cs.h(0, j, k)));
+      }
+  REQUIRE(zvar > 0.5);
+  REQUIRE(yvar > 0.5);
+  REQUIRE(xvar > 0.5);
+  const auto m = pfc::apps::inverse::measure_manufacturability(cs.h, nx, nx, nz);
+  std::cout << "yang_a3_density_gate vf=" << m.solid_frac
+            << " wang=" << Y::wang_rel_density()
+            << " published=" << Y::published_rel_density << " nz=" << nz
+            << " perc=" << m.percolate_solid_x << m.percolate_solid_y
+            << m.percolate_solid_z << " ncomp=" << m.n_solid_components
+            << '\n';
+  INFO("solid_frac=" << m.solid_frac << " wang=" << Y::wang_rel_density()
+                     << " published=" << Y::published_rel_density
+                     << " nz=" << nz << " perc=" << m.percolate_solid_x
+                     << m.percolate_solid_y << m.percolate_solid_z
+                     << " ncomp=" << m.n_solid_components);
+  REQUIRE(m.solid_frac > Y::density_gate_lo);
+  REQUIRE(m.solid_frac < Y::density_gate_hi);
+  REQUIRE(m.n_solid_components == 1);
+  REQUIRE(m.percolate_solid_x);
+  REQUIRE(m.percolate_solid_y);
+  REQUIRE(m.percolate_solid_z);
 }
 
 TEST_CASE("Rotating-cube seed is 3-D, binary, and periodically connected",
