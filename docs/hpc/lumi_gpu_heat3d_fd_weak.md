@@ -146,7 +146,32 @@ Fused diagnostics (jobs 22162115–20), ms:
 
 Border fell 0.127 → 0.094 ms. Inner+border is still 0.456 vs 0.381 full
 RHS. Mode 2 critical path remains post+inner+wait+border+update ≈
-0.92 ms, so overlap is not a production default. Next software lever is
-a separate pack/MPI stream so `start()` does not sit in front of the
-interior kernel; do not extend node count to hide a constant split tax
-while per-rank face size is fixed.
+0.92 ms, so overlap is not a production default.
+
+### Two-stream interior (not admitted; `dev-g`)
+
+SHA `ec4d74ec`, binary
+`6fe3b2804bf3acdabd026f894849d69df7a0a794c2ae6217f7c4a9198b680ecf`.
+Interior launches first on `hipStreamNonBlocking`; pack/MPI stay on the
+default stream. `standard-g` was Priority-blocked; these runs used
+`dev-g` (no CCD `mask_cpu`). Checksum HEX unchanged.
+
+Clean median `wall_step`:
+
+| nodes | ov=0 | ov=1 | ov=2 | jobs |
+| ----: | ---: | ---: | ---: | ---- |
+|     2 | 0.948 | **0.865** | 0.904 | 22162296 / 97 / 22162310 |
+|     4 | 1.703 | **0.898** | 0.901 | 22162334 / 35 / 22162356 |
+
+2-node overlap-1 is 8.8% faster than blocking on the same partition.
+4-node blocking 1.703 ms is uniform across ranks (not a single
+straggler); overlap hides that allocation's communication. Do not treat
+`dev-g` 4-node blocking as the #25 0.941 ms point.
+
+Mode 1 Waitall exposed wait fell 0.419 → 0.241 ms once inner left the
+default stream (job 22162311). Mode 2 `MPI_Testall` (job 22162357)
+exposed wait 0.538 ms and is not the better 2-stream policy.
+
+Keep the default blocking until a `standard-g` CPU-bound A/B replicates
+the 2-node win. Then re-run the 1–16 weak ladder with overlap-1 as a
+held-out comparison, not by silently replacing the admitted curve.
