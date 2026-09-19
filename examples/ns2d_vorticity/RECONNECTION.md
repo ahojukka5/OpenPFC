@@ -174,9 +174,10 @@ longest X track agree between resolutions to the printed digits.
 
 ## \(\eta=0.0025\)
 
-Not used for a reconnection claim. #24: 512² `--cfl 0.4` was
-timestep-limited; 256² is spatially under-resolved. A reconnection
-rate there would be numerically unresolved.
+Not used for a reconnection claim **in this #26 note**. Scaling
+at \(\eta=0.0025\) on the frozen stage-2 window lives in
+`SCALING.md` (issue #38). #24: 512² `--cfl 0.4` was
+timestep-limited; the #38 ladder used `--cfl 0.2`.
 
 ## Literature (applicability)
 
