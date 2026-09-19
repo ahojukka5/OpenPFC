@@ -1,0 +1,37 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "openpfc_issue": 55,
+  "research_issue": "ahojukka5/research#484",
+  "question": "Does a 2-D plane-strain finite-strain forward path with P22=0 report a tangent Poisson that matches FD of the same shipped F22(F11)?",
+  "kinematics": {
+    "F33": 1.0,
+    "stress": "first-Piola-Kirchhoff",
+    "strain": "logarithmic",
+    "nu_t": "-d ln F22 / d ln F11",
+    "not_small_strain_CH": true
+  },
+  "lame_stiff": {"lambda": 0.5769230769230769, "mu": 0.3846153846153846},
+  "lame_compliant": {"lambda": 0.01136363636363636, "mu": 0.04545454545454546},
+  "plane_strain_small_nu": 0.4285714285714285,
+  "all_converged": true,
+  "all_stable": true,
+  "rungs": [
+    {"kind": "homogeneous-neo-hookean", "F11": 1.001, "F22": 0.9995716296183986, "P11": 0.001097962522869145, "P22": 2.775557561562891e-16, "nu_t": 0.4287813004142365, "residual": 2.775557561562891e-16, "newton_iters": 3, "converged": true, "stable": true},
+    {"kind": "homogeneous-neo-hookean", "F11": 1.05, "F22": 0.9790599418655053, "P11": 0.05272587188070105, "P22": 1.110223024625157e-16, "nu_t": 0.4389665657584522, "residual": 1.110223024625157e-16, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "homogeneous-neo-hookean", "F11": 1.1, "F22": 0.9590430874577024, "P11": 0.1014812434963631, "P22": 1.110223024625157e-16, "nu_t": 0.4491653671231176, "residual": 1.110223024625157e-16, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "homogeneous-neo-hookean", "F11": 1.2, "F22": 0.9214954383794538, "P11": 0.1893737682839289, "P22": 1.110223024625157e-16, "nu_t": 0.4689980287331337, "residual": 1.110223024625157e-16, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "laminate-neo-hookean", "F11": 1.001, "F22": 0.9997302846145825, "P11": 0.0005994559786275354, "P22": -9.71445146547012e-17, "nu_t": 0.2699319711789974, "residual": 4.718447854656915e-16, "newton_iters": 3, "converged": true, "stable": true},
+    {"kind": "laminate-neo-hookean", "F11": 1.05, "F22": 0.9868136705697744, "P11": 0.02881608936678481, "P22": 2.775557561562891e-17, "nu_t": 0.2742953478894922, "residual": 1.110223024625157e-16, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "laminate-neo-hookean", "F11": 1.1, "F22": 0.9742045682318046, "P11": 0.05551654780343359, "P22": -5.502542865798432e-15, "nu_t": 0.2785889546272281, "residual": 1.111610803405938e-14, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "laminate-neo-hookean", "F11": 1.2, "F22": 0.9505378269073699, "P11": 0.1037857970496872, "P22": 6.245004513516506e-17, "nu_t": 0.2867210360568169, "residual": 1.110223024625157e-16, "newton_iters": 5, "converged": true, "stable": true},
+    {"kind": "homogeneous-stvk", "F11": 1.001, "F22": 0.9995711223176814, "P11": 0.00110054999999998, "P22": 3.414313993058588e-16, "nu_t": 0.4297975821379925, "residual": 3.414313993058588e-16, "newton_iters": 3, "converged": true, "stable": true},
+    {"kind": "homogeneous-stvk", "F11": 1.05, "F22": 0.9777890511615625, "P11": 0.05913461538461541, "P22": 1.01771617296183e-17, "nu_t": 0.4942099365218813, "residual": 1.01771617296183e-17, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "homogeneous-stvk", "F11": 1.1, "F22": 0.953939201417155, "P11": 0.1269230769232038, "P22": 2.565501670029758e-13, "nu_t": 0.5698587128868983, "residual": 2.565501670029758e-13, "newton_iters": 3, "converged": true, "stable": true},
+    {"kind": "homogeneous-stvk", "F11": 1.2, "F22": 0.9007933011676993, "P11": 0.2901098901099004, "P22": 1.813897754213606e-14, "nu_t": 0.7605633803922629, "residual": 1.813897754213606e-14, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "laminate-stvk", "F11": 1.001, "F22": 0.999729974735698, "P11": 0.0006008558333337822, "P22": 4.365125804465223e-15, "nu_t": 0.2705525931997381, "residual": 8.388820209624588e-15, "newton_iters": 3, "converged": true, "stable": true},
+    {"kind": "laminate-stvk", "F11": 1.05, "F22": 0.9860391501900783, "P11": 0.03228511072261242, "P22": 1.435152267030617e-14, "nu_t": 0.3075114460359936, "residual": 2.869286817888272e-14, "newton_iters": 4, "converged": true, "stable": true},
+    {"kind": "laminate-stvk", "F11": 1.1, "F22": 0.9711018367210307, "P11": 0.06929487179493525, "P22": 1.282732619880591e-13, "nu_t": 0.3499383363734359, "residual": 2.565501670029758e-13, "newton_iters": 5, "converged": true, "stable": true},
+    {"kind": "laminate-stvk", "F11": 1.2, "F22": 0.9380212785281096, "P11": 0.1583882783882835, "P22": 9.083657493718148e-15, "nu_t": 0.4526395296512865, "residual": 1.813897754213606e-14, "newton_iters": 5, "converged": true, "stable": true}
+  ],
+  "interpretation": "Homogeneous neo-Hookean and StVK uniaxial paths with P22=0 converge; small-strain nu_t matches lambda/(lambda+2 mu). A two-material y-laminate (E,nu)= (1,0.3) and (0.1,0.1) has a distinct nu_t from the stiff homogeneous cell. This is not small-strain C_H and not inverse design."
+}

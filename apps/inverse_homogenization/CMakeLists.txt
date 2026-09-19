@@ -28,7 +28,14 @@ endfunction()
 inverse_homogenization_cpu_executable(openpfc_homogenize src/homogenize.cpp)
 inverse_homogenization_cpu_executable(openpfc_inverse_homogenize
                                       src/inverse_homogenize.cpp)
-install(TARGETS openpfc_homogenize openpfc_inverse_homogenize DESTINATION bin)
+add_executable(openpfc_finite_strain_forward src/finite_strain_forward.cpp)
+target_include_directories(openpfc_finite_strain_forward PRIVATE
+                           ${INVERSE_HOMOGENIZATION_INCLUDE_DIR})
+set_target_properties(openpfc_finite_strain_forward PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON)
+install(TARGETS openpfc_homogenize openpfc_inverse_homogenize
+                openpfc_finite_strain_forward DESTINATION bin)
 
 if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
   function(inverse_homogenization_hip_executable target)
@@ -111,6 +118,11 @@ if(INVERSE_HOMOGENIZATION_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
   set_tests_properties(inverse-homogenization-ac-smoke PROPERTIES
     PASS_REGULAR_EXPRESSION "INVERSE_CHECKSUM"
     TIMEOUT 180)
+  add_test(NAME inverse-homogenization-finite-strain-smoke
+           COMMAND $<TARGET_FILE:openpfc_finite_strain_forward>)
+  set_tests_properties(inverse-homogenization-finite-strain-smoke PROPERTIES
+    PASS_REGULAR_EXPRESSION "FINITE_STRAIN_CHECKSUM"
+    TIMEOUT 60)
 
   find_package(Catch2 QUIET)
   if(TARGET Catch2::Catch2)
@@ -120,5 +132,17 @@ if(INVERSE_HOMOGENIZATION_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     add_test(NAME inverse-homogenization-ac-tests
              COMMAND test_inverse_homogenization)
     set_tests_properties(inverse-homogenization-ac-tests PROPERTIES TIMEOUT 600)
+    add_executable(test_finite_strain_forward
+                   tests/test_finite_strain_forward.cpp)
+    target_include_directories(test_finite_strain_forward PRIVATE
+                               ${INVERSE_HOMOGENIZATION_INCLUDE_DIR})
+    target_link_libraries(test_finite_strain_forward PRIVATE Catch2::Catch2)
+    set_target_properties(test_finite_strain_forward PROPERTIES
+      CXX_STANDARD 20
+      CXX_STANDARD_REQUIRED ON)
+    add_test(NAME inverse-homogenization-finite-strain-tests
+             COMMAND test_finite_strain_forward)
+    set_tests_properties(inverse-homogenization-finite-strain-tests
+                         PROPERTIES TIMEOUT 60)
   endif()
 endif()

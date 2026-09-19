@@ -37,6 +37,31 @@ What is **not** claimed: grey linear \(C(h)\) cannot produce \(\nu<0\);
 SIMP from noise did not enter the rotating-square basin; coupled dendrite
 device Green is issue #157, not this app. Catalog stays closed.
 
+## Finite-strain forward ladder (issue #55)
+
+Research [#484](https://github.com/ahojukka5/research/issues/484) needs a
+finite-strain Poisson along a loading path. That is **not** the
+small-strain \(C_H\) from `openpfc_homogenize`.
+
+`openpfc_finite_strain_forward` runs the frozen 2-D plane-strain ladder:
+
+1. compressible neo-Hookean and St.\ Venant--Kirchhoff
+   \(P=\partial W/\partial F\);
+2. homogeneous uniaxial \(F_{11}\) with transverse relaxation \(P_{22}=0\);
+3. two-material \(y\)-laminate (stiff \(E=1,\nu=0.3\);
+   compliant \(E=0.1,\nu=0.1\));
+4. tangent \(\nu_t=-\mathrm{d}\ln F_{22}/\mathrm{d}\ln F_{11}\) by finite
+   difference of the same shipped \(F_{22}(F_{11})\);
+5. Newton residual / \(J>0\) stability.
+
+Catch2 `inverse-homogenization-finite-strain-tests` calls those shipped
+functions. Inverse design is out of scope until this ladder stays green.
+
+```bash
+./apps/inverse_homogenization/openpfc_finite_strain_forward \
+  --evidence apps/inverse_homogenization/evidence/2026-09-19-finite-strain-forward-55.json
+```
+
 ## Reuse
 
 The elliptic solve is `EigenstrainMicroelasticity` in

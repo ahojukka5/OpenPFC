@@ -9,6 +9,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **2-D finite-strain forward ladder** (issue
+  [#55](https://github.com/ahojukka5/OpenPFC/issues/55)). Plane-strain
+  neo-Hookean / St.\ Venant--Kirchhoff \(P=\partial W/\partial F\),
+  uniaxial \(F_{11}\) with \(P_{22}=0\), and tangent
+  \(\nu_t=-\mathrm{d}\ln F_{22}/\mathrm{d}\ln F_{11}\) by finite
+  difference of the same shipped path. Does not reuse small-strain
+  \(C_H\). Catch2 drives `relax_transverse` /
+  `laminate_uniaxial` / `run_declared_ladder`. Not inverse design.
 - **r2c complex-outbox selector** (issue #45). Enumerate legal HeFFTe
   `split_world()` complex process grids (uneven boxes allowed) and pick
   the layout with the fewest distributed reshapes, then imbalance,
