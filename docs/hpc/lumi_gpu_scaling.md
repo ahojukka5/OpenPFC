@@ -334,7 +334,10 @@ transpose tax is paid by four ranks. First off-node (16 GCD / 2 nodes,
 job **22165047**) is **873 ms** (48%): 1.78× the 8 GCD on-node step.
 Inbox stays `768³`; MaxRSS ≈ 7.5 GiB/rank; `AllocTRES mem=960G`. The
 drop is the Slingshot all-to-all, not local rocFFT. 32 GCD
-`768×768×24576` tests whether that interconnect tax then flattens.
+`768×768×24576` (job **22165128**) is **1146 ms** (36%): 1.31× the
+16 GCD step. The interconnect tax is **not** flattening after the
+first off-node hop. 64 GCD tests whether the peer-count drip then
+levels off; stop there unless that point is mechanistically new.
 
 ## How to read a point
 
