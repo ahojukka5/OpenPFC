@@ -37,6 +37,27 @@ What is **not** claimed: grey linear \(C(h)\) cannot produce \(\nu<0\);
 SIMP from noise did not enter the rotating-square basin; coupled dendrite
 device Green is issue #157, not this app. Catalog stays closed.
 
+## Convergence (issue #59)
+
+`--steps` / `--max-steps` is a **ceiling**, not success. SIMP and
+`lambda-reg` interpolate over `--continuation-steps` (default 300) and
+then freeze. After freeze, three metrics must hold together for
+`--conv-window` (20) consecutive iterates, then a
+`--verify-convergence-steps` (100) hold with the same frozen problem:
+
+* post-projection design RMS \(\lVert h_{k+1}-h_k\rVert_2/\sqrt{N}<10^{-4}\)
+  (not the pre-projection `step_rms`);
+* \(\lvert J_{k+1}-J_k\rvert/\max(1,\lvert J_k\rvert)<10^{-6}\);
+* \(\lVert C_H^{k+1}-C_H^k\rVert_F /
+  \max(\lVert C_H^k\rVert_F,\varepsilon)<10^{-4}\).
+
+CSV records the window, candidate/verified flags, binary morphology-change
+fraction, and `termination` = `CONVERGED` | `MAX_STEPS` |
+`ELASTICITY_FAILURE`. The final accepted `h` is always snapshotted.
+
+Job 22162138 (300 fixed steps) still had `step_rms≈0.019` on the last
+iterate, so those animations were cut while the design was moving.
+
 ## Finite-strain forward ladder (issue #55)
 
 Research [#484](https://github.com/ahojukka5/research/issues/484) needs a
