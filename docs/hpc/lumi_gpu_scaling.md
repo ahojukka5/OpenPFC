@@ -304,8 +304,35 @@ binary `f77bb73a…`, jobs **22165163** / **22165164**): `p2p_plined`
 Job **22166458** is **not** an off-node reshape A/B. A leaked
 `HEAT3D_SPECTRAL_HIP_BIN` pointed at `c4e2f667…`, which does not
 parse `HEAT3D_RESHAPE_ALG`; the four sequential 16 GCD 768³ runs are
-repeat `p2p_plined` noise (~48 ms ±2%). The rerun with a hardcoded
-override-capable binary is job **22166715**.
+repeat `p2p_plined` noise (~48 ms ±2%).
+
+Held-out off-node reshape A/B (job **22166715**, `dev-g`, 2 nodes,
+hardcoded binary `fba65f33…`, banner confirms `reshape=`). Same 768³
+16 GCD strong protocol as 22162465. Barriered median `wall_step`:
+
+| algorithm | median `wall_step` |
+|-----------|-------------------:|
+| `p2p_plined` (production) | 48.2 ms |
+| `alltoall` | 53.8 ms (**+12%**) |
+| `alltoallv` | 50.4 ms (+5%) |
+| `p2p` | 63.2 ms (**+31%**) |
+
+Checksum HEX `0x1.7785970621a73p+3` on all four. Production
+`p2p_plined` wins on-node *and* off-node. Do not add a
+scale-dependent reshape policy.
+
+On-node `use_reorder` / `gpu_aware` A/B (job **22166716**, 8 GCD
+768³, same binary, banner confirms the flags):
+
+| setting | median `wall_step` |
+|---------|-------------------:|
+| production (`use_reorder=1`, GPU-aware) | 75.9 ms |
+| `HEAT3D_USE_REORDER=0` | 77.7 ms |
+| `HEAT3D_GPU_AWARE=0` | 503 ms (**6.6×**) |
+
+HEX `0x1.77859706219b1p+3` on all three (matches 22165163). Keep
+rocFFT reorder and GPU-aware MPI. Host-staged HeFFTe is not a
+production option.
 
 Cubic weak scaling at constant *cell count* is not constant FFT work
 for 1D z-slabs: 8 GCD `1536³` (job 22162696) OOM'd because the in-plane
