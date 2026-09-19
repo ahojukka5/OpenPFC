@@ -244,9 +244,54 @@ inline dim3 for_each_interior_block(int nx, int ny, int nz) {
 #endif
 }
 
-inline void check_for_each_interior_device_launch(gpuStream_t stream) {
+inline void check_for_each_interior_device_launch(gpuStream_t stream,
+                                                  bool sync = true) {
   GPU_CHECK(::pfc::gpuGetLastError());
-  GPU_CHECK(::pfc::gpuStreamSynchronize(stream));
+  if (sync) {
+    GPU_CHECK(::pfc::gpuStreamSynchronize(stream));
+  }
+}
+
+/**
+ * @brief Owned-cell box kernel: `ix ∈ [i0, i0+ni)` (same for y, z).
+ *
+ * Interior overlap uses `[hw, n-hw)`. Border uses the six owned slabs
+ * that complement that box. Coordinates are owned-core indices.
+ */
+template <class Model, class G>
+__global__ void
+for_each_owned_box_device_kernel(Model model, ::pfc::gpu::FDGradientDevicePOD eval,
+                                 double *du_padded, double t, int i0, int j0,
+                                 int k0, int ni, int nj, int nk) {
+  const int ix = i0 + static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  const int iy = j0 + static_cast<int>(blockIdx.y * blockDim.y + threadIdx.y);
+  const int iz = k0 + static_cast<int>(blockIdx.z * blockDim.z + threadIdx.z);
+  if (ix >= i0 + ni || iy >= j0 + nj || iz >= k0 + nk) {
+    return;
+  }
+  G g = ::pfc::gpu::evaluate_fd_grad<G>(eval, ix, iy, iz);
+  const double inc = model.rhs(t, g);
+
+  const std::ptrdiff_t c = static_cast<std::ptrdiff_t>(ix + eval.hw) +
+                           static_cast<std::ptrdiff_t>(iy + eval.hw) * eval.sy +
+                           static_cast<std::ptrdiff_t>(iz + eval.hw) * eval.sz;
+  du_padded[c] = inc;
+}
+
+template <class Model, class G>
+inline void launch_owned_box_device(const Model &model,
+                                    const ::pfc::gpu::FDGradientDevicePOD &eval,
+                                    double *du_padded, double t, int i0, int j0,
+                                    int k0, int ni, int nj, int nk,
+                                    gpuStream_t stream, bool sync) {
+  if (ni <= 0 || nj <= 0 || nk <= 0) {
+    return;
+  }
+  const dim3 block = for_each_interior_block(ni, nj, nk);
+  const dim3 grid = for_each_interior_grid(ni, nj, nk, block);
+  for_each_owned_box_device_kernel<Model, G><<<grid, block, 0, stream>>>(
+      model, eval, du_padded, t, i0, j0, k0, ni, nj, nk);
+  check_for_each_interior_device_launch(stream, sync);
 }
 
 } // namespace detail
@@ -393,6 +438,67 @@ inline void for_each_interior_device(const Model &model,
                                      int nz, gpuStream_t stream = nullptr) {
   for_each_interior_device<Model, G>(model, eval.pod(), du_padded, t, nx, ny, nz,
                                      stream);
+}
+
+/**
+ * @brief Halo-independent owned interior: `[hw, n-hw)` per axis.
+ *
+ * Safe to launch after Faces `start()` and before `finish()`. No-op when any
+ * owned extent is `<= 2*hw`. Set @p sync false so the host can enter MPI
+ * while the kernel runs.
+ */
+template <class Model, class G>
+inline void for_each_inner_device(const Model &model,
+                                  const ::pfc::gpu::FDGradientDevice<G> &eval,
+                                  double *du_padded, double t, int nx, int ny,
+                                  int nz, int hw, gpuStream_t stream = nullptr,
+                                  bool sync = true) {
+  if (hw < 0 || nx <= 2 * hw || ny <= 2 * hw || nz <= 2 * hw) {
+    return;
+  }
+  detail::launch_owned_box_device<Model, G>(model, eval.pod(), du_padded, t, hw, hw,
+                                            hw, nx - 2 * hw, ny - 2 * hw,
+                                            nz - 2 * hw, stream, sync);
+}
+
+/**
+ * @brief Owned boundary shell that needs remote halo values (exactly once).
+ *
+ * Complements `for_each_inner_device`. Falls back to the full owned region
+ * when the inner box is empty. Default @p sync true so the shell is done
+ * before the solution update.
+ */
+template <class Model, class G>
+inline void for_each_border_device(const Model &model,
+                                   const ::pfc::gpu::FDGradientDevice<G> &eval,
+                                   double *du_padded, double t, int nx, int ny,
+                                   int nz, int hw, gpuStream_t stream = nullptr,
+                                   bool sync = true) {
+  if (hw < 0 || nx <= 0 || ny <= 0 || nz <= 0) {
+    return;
+  }
+  if (nx <= 2 * hw || ny <= 2 * hw || nz <= 2 * hw) {
+    for_each_interior_device<Model, G>(model, eval, du_padded, t, nx, ny, nz,
+                                       stream);
+    return;
+  }
+  const auto pod = eval.pod();
+  // Match CPU `for_each_border`: ±x full yz; ±y with x interior; ±z with xy
+  // interior. Last launch honors @p sync.
+  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, 0, 0, 0, hw,
+                                            ny, nz, stream, false);
+  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, nx - hw, 0, 0,
+                                            hw, ny, nz, stream, false);
+  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, 0, 0,
+                                            nx - 2 * hw, hw, nz, stream, false);
+  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, ny - hw, 0,
+                                            nx - 2 * hw, hw, nz, stream, false);
+  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, hw, 0,
+                                            nx - 2 * hw, ny - 2 * hw, hw, stream,
+                                            false);
+  detail::launch_owned_box_device<Model, G>(model, pod, du_padded, t, hw, hw,
+                                            nz - hw, nx - 2 * hw, ny - 2 * hw, hw,
+                                            stream, sync);
 }
 
 } // namespace pfc::sim::gpu

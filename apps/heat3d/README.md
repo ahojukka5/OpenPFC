@@ -94,7 +94,7 @@ Per-binary drivers (live in `src/cpu/`):
   ```
 
   Halo, gradient evaluator, and per-cell sweep are three visible primitives composed by the user. `halo.exchange()` is the blocking one-shot; `pfc::gradient::evaluate(grad, idx)` keeps the inner loop dimension-agnostic; `pfc::data::Field::operator[]` is used for element access. The spectral twin still bundles those concerns through `pfc::sim::DuField`.
-- **[`src/hip/heat3d_fd_hip.cpp`](src/hip/heat3d_fd_hip.cpp)** — HIP twin of compact FD. `FDGPUStack<HIPSpace>` owns the padded device field and `HaloExchange<HIPSpace>`; each step is `halo.exchange()` / `heat3d::fd_rhs_hip` (`for_each_interior_device`) / `heat3d::euler_axpy_hip`. Built when `OpenPFC_ENABLE_HIP` is on.
+- **[`src/hip/heat3d_fd_hip.cpp`](src/hip/heat3d_fd_hip.cpp)** — HIP twin of compact FD. `FDGPUStack<HIPSpace>` owns the padded device field and `HaloExchange<HIPSpace>`. Default step is blocking `halo.exchange()` / `heat3d::fd_rhs_hip` / `heat3d::euler_axpy_hip`. `HEAT3D_HALO_OVERLAP=1` posts Faces MPI, computes the halo-independent interior, then `finish()` + boundary shell (`=2` also pumps `MPI_Testall`). Default stays blocking until a clean production A/B justifies otherwise. Built when `OpenPFC_ENABLE_HIP` is on.
 - **[`src/hip/heat3d_spectral_hip.cpp`](src/hip/heat3d_spectral_hip.cpp)** — HIP twin of implicit-Euler spectral. `HIPSpectralStack` + `SpectralHeatPropagatorHIP`. Built when `OpenPFC_ENABLE_HIP_SPECTRAL` is on. CTest `heat3d-spectral-hip-smoke` looks for `HEAT3D_SPECTRAL_HIP_CHECKSUM`. LUMI submit: `docs/lumi_slurm/submit_heat3d_spectral_hip_scaling.sh`.
 - **[`src/cpu/heat3d_fd_manual.cpp`](src/cpu/heat3d_fd_manual.cpp)** — **laboratory-style** 2nd-order central FD driver. The hot loop reads:
 

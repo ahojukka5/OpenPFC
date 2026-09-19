@@ -22,6 +22,16 @@ namespace heat3d {
 void fd_rhs_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
                 double *du_padded, double t, int nx, int ny, int nz);
 
+/// Halo-independent owned interior. @p sync false leaves the kernel in flight.
+void fd_rhs_inner_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
+                      double *du_padded, double t, int nx, int ny, int nz, int hw,
+                      bool sync = true);
+
+/// Owned boundary shell after halo completion.
+void fd_rhs_border_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
+                       double *du_padded, double t, int nx, int ny, int nz, int hw,
+                       bool sync = true);
+
 void euler_axpy_hip(double *u, const double *du, double dt, std::size_t n);
 
 } // namespace heat3d

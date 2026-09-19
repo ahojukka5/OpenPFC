@@ -48,6 +48,22 @@ void fd_rhs_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
       model, eval, du_padded, t, nx, ny, nz);
 }
 
+void fd_rhs_inner_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
+                      double *du_padded, double t, int nx, int ny, int nz, int hw,
+                      bool sync) {
+  HeatDeviceModel model;
+  pfc::sim::gpu::for_each_inner_device<HeatDeviceModel, HeatGrads>(
+      model, eval, du_padded, t, nx, ny, nz, hw, nullptr, sync);
+}
+
+void fd_rhs_border_hip(const pfc::gpu::FDGradientDevice<HeatGrads> &eval,
+                       double *du_padded, double t, int nx, int ny, int nz, int hw,
+                       bool sync) {
+  HeatDeviceModel model;
+  pfc::sim::gpu::for_each_border_device<HeatDeviceModel, HeatGrads>(
+      model, eval, du_padded, t, nx, ny, nz, hw, nullptr, sync);
+}
+
 void euler_axpy_hip(double *u, const double *du, double dt, std::size_t n) {
   if (n == 0) {
     return;
