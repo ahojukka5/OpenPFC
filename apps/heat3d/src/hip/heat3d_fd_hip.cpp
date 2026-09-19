@@ -13,13 +13,13 @@
  * `HEAT3D_REQUIRE_INTERIOR=nx,ny,nz` fails closed unless every rank's owned
  * interior matches. `HEAT3D_DIAG_TIMING=1` adds HIP-event / blocking-halo
  * attribution and must not replace the clean barriered `wall_step`.
- * `HEAT3D_HALO_OVERLAP` selects the device timestep: `1` (default on
- * more than one rank) launches the interior stencil on a non-blocking
- * compute stream, posts Faces MPI on the default stream, then `finish()`
- * + boundary; `0` is blocking `exchange()`; `2` additionally pumps
- * `MPI_Testall` until the interior event completes. A single rank has no
- * MPI halo, so the default falls back to blocking; an explicit `1` or `2`
- * still runs the split.
+ * `HEAT3D_HALO_OVERLAP` selects the device timestep via
+ * `pfc::comm::GpuHaloOverlap`: `1` (default on more than one rank) is
+ * Waitall (interior on a non-blocking compute stream, Faces pack/MPI on
+ * the default stream, then `finish()` + boundary); `0` is blocking
+ * `exchange()`; `2` is Testall (`MPI_Testall` until the interior event
+ * completes). A single rank has no MPI halo, so the default falls back
+ * to blocking; an explicit `1` or `2` still runs the split.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP)
@@ -55,12 +55,14 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/decomposition/decomposition_neighbors.hpp>
+#include <openpfc/kernel/decomposition/halo_overlap.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/kernel/profiling/profiling.hpp>
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 #include <openpfc/runtime/gpu/comm_halo_exchange_gpu.hpp>
 #include <openpfc/runtime/gpu/fd_gpu_stack.hpp>
+#include <openpfc/runtime/gpu/halo_overlap_gpu.hpp>
 
 namespace {
 
@@ -171,18 +173,6 @@ struct HipEvent {
   HipEvent &operator=(const HipEvent &) = delete;
 };
 
-/// Non-blocking so default-stream pack/MPI does not drain the interior kernel.
-struct HipStream {
-  hipStream_t s{};
-  HipStream() {
-    hip_check(hipStreamCreateWithFlags(&s, hipStreamNonBlocking),
-              "hipStreamCreateWithFlags");
-  }
-  ~HipStream() { hipStreamDestroy(s); }
-  HipStream(const HipStream &) = delete;
-  HipStream &operator=(const HipStream &) = delete;
-};
-
 int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
   pfc::runtime::gpu::bind_local_device(MPI_COMM_WORLD);
   const int overlap = halo_overlap_mode(nproc);
@@ -270,8 +260,7 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
               << " gpu_aware=" << (halo.uses_gpu_aware_mpi() ? 1 : 0)
               << " contiguous=" << (halo.uses_contiguous_device_mpi() ? 1 : 0)
               << " ranks=" << nproc << " fd_order=" << cfg.fd_order
-              << " halo_overlap=" << overlap
-              << std::endl;
+              << " halo_overlap=" << overlap << std::endl;
     std::ofstream plc("fd_placement.txt");
     plc << "rank host gpu rx ry rz offnode_faces\n";
     for (int r = 0; r < nproc; ++r) {
@@ -326,47 +315,25 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
       bord1 = std::make_unique<HipEvent>();
     }
   }
-  std::unique_ptr<HipEvent> inner_done;
-  std::unique_ptr<HipStream> compute;
+  std::unique_ptr<pfc::comm::GpuHaloOverlap> overlap_helper;
   if (overlap != 0) {
-    compute = std::make_unique<HipStream>();
+    overlap_helper = std::make_unique<pfc::comm::GpuHaloOverlap>(
+        pfc::comm::halo_overlap_mode_from_int(overlap));
   }
-  if (overlap == 2) {
-    inner_done = std::make_unique<HipEvent>();
-  }
-
-  auto pump_until_inner = [&] {
-    bool gpu_done = false;
-    for (;;) {
-      if (!gpu_done) {
-        const hipError_t q = hipEventQuery(inner_done->e);
-        if (q == hipSuccess) {
-          gpu_done = true;
-        } else if (q != hipErrorNotReady) {
-          hip_check(q, "inner_done query");
-        }
-      }
-      const bool mpi_done = halo.progress();
-      if (gpu_done && mpi_done) {
-        break;
-      }
-    }
-  };
 
   double t = 0.0;
   auto overlap_rhs = [&] {
-    heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, /*sync=*/false,
-                             compute->s);
-    if (overlap == 2) {
-      hip_check(hipEventRecord(inner_done->e, compute->s), "inner_done record");
-    }
-    halo.start();
-    if (overlap == 2) {
-      pump_until_inner();
-    }
-    halo.finish();
-    heat3d::fd_rhs_border_hip(grad, du.data(), t, nx, ny, nz, hw, /*sync=*/true);
-    du.note_device_write();
+    overlap_helper->rhs(
+        halo,
+        [&](pfc::gpuStream_t stream) {
+          heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw,
+                                   /*sync=*/false, stream);
+        },
+        [&] {
+          heat3d::fd_rhs_border_hip(grad, du.data(), t, nx, ny, nz, hw,
+                                    /*sync=*/true);
+          du.note_device_write();
+        });
   };
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -404,19 +371,19 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
           t_upd.push_back(static_cast<double>(upd_ms) * 1.0e-3);
         }
       } else if (diag && overlap != 0) {
+        const pfc::gpuStream_t compute = overlap_helper->compute_stream();
         hip_check(hipDeviceSynchronize(), "diag pre-overlap sync");
-        hip_check(hipEventRecord(inner0->e, compute->s), "inner0");
-        heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, false,
-                                 compute->s);
-        hip_check(hipEventRecord(inner1->e, compute->s), "inner1");
+        hip_check(hipEventRecord(inner0->e, compute), "inner0");
+        heat3d::fd_rhs_inner_hip(grad, du.data(), t, nx, ny, nz, hw, false, compute);
+        hip_check(hipEventRecord(inner1->e, compute), "inner1");
         if (overlap == 2) {
-          hip_check(hipEventRecord(inner_done->e, compute->s), "inner_done record");
+          overlap_helper->record_inner_done();
         }
         const double p0 = MPI_Wtime();
         halo.start();
         const double post_s = MPI_Wtime() - p0;
         if (overlap == 2) {
-          pump_until_inner();
+          overlap_helper->pump(halo);
         }
         const double w0 = MPI_Wtime();
         halo.finish();
@@ -489,8 +456,8 @@ int run_heat3d_fd_hip(const heat3d::RunConfig &cfg, int rank, int nproc) {
                 << " update_minmax=" << gmin[2] << "," << gmax[2] << std::endl;
     }
     if (overlap != 0 && !t_wait.empty()) {
-      const double ol[4] = {median_of(t_post), median_of(t_wait),
-                            median_of(t_inner), median_of(t_border)};
+      const double ol[4] = {median_of(t_post), median_of(t_wait), median_of(t_inner),
+                            median_of(t_border)};
       double omax[4] = {0.0, 0.0, 0.0, 0.0};
       MPI_Allreduce(ol, omax, 4, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
       if (rank == 0) {
