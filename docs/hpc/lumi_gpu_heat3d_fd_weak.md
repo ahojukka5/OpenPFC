@@ -97,3 +97,25 @@ weak-scaling runs on `HEAT3D_HALO_OVERLAP=0` until a clean production
 A/B on this protocol justifies changing the default. Overlap modes `1`
 (interior during `Waitall`) and `2` (`MPI_Testall` progress) must not
 replace the clean barriered `wall_step`.
+
+### Overlap A/B (not admitted; six-launch border)
+
+Same protocol, SHA `2174c960`, binary
+`cef9b6099bf910707f76b73c4afb72bd7eaac846b2b79d1cedc668aeb49209a2`.
+`HEAT3D_HIP_CHECKSUM_HEX` bitwise identical on all jobs
+(`sum_u=0x1.7785970621d7cp+3`, `sumsq_u=0x1.4ac44f14c882ep-1`).
+
+Clean median `wall_step`:
+
+| nodes | ov=0 | ov=1 | ov=2 | jobs |
+| ----: | ---: | ---: | ---: | ---- |
+|     2 | 0.907 | 0.945 | 0.960 | 22161584 / 86 / 87 |
+|     4 | 0.937 | 0.950 | 0.961 | 22161588 / 89 / 90 |
+
+Diagnostic `HEAT3D_OVERLAP` (ms, max rank-local median; jobs
+22161679–84). Blocking halo/RHS/update match the admitted #25 split.
+Mode 1 exposed wait ≈ inner kernel (H-progress-2: GPU-aware `Waitall`
+does not complete while the default-stream interior kernel runs).
+Mode 2 `MPI_Testall` drops exposed wait to ~0.060 ms, but six thin
+border launches cost ~0.127 ms versus ~0.381 ms for the full RHS, so
+clean wall stays worse than blocking.
