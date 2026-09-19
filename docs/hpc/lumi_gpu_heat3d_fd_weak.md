@@ -202,8 +202,12 @@ Overlap-1 is 0.944 ms (91% vs \(T_1=0.859\) ms); blocking is 1.146 ms.
 fixed face count, so the remaining limit is off-node topology, not a
 node-count drip. Weak efficiency vs overlap-1 \(T_1\): 1.00 / 1.00 /
 0.99 / 0.99 / 0.98 / 0.97 / 0.91 / 0.89. HEX checksum unchanged
-(`sum_u=0x1.7785970621d7cp+3`). Do not submit 256 nodes. Do not
-replace the admitted blocking table.
+(`sum_u=0x1.7785970621d7cp+3`). Diagnostic `HEAT3D_OVERLAP` on the
+same production binary (not headline): 8-node three-face exposed wait
+0.289 ms (job 22167570) vs 64-node four-face 0.322 ms (22167571);
+post stays 0.149 ms. The extra face is exposed MPI, not interior
+work. Do not submit 256 nodes. Do not replace the admitted blocking
+table.
 
 ### Persistent MPI (A6; not implemented)
 
