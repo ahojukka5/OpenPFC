@@ -997,11 +997,17 @@ def write_status_markdown(
             "when close competitors remain queued. This file is overwritten "
             "on harvest; raw run directories are never modified.\n\n"
         )
+        proto_hdr = " | ".join(PROTOCOLS)
         f.write(
-            "| nodes | completed/requested | best | T_best | spread | "
-            "unresolved | PENDING | RUNNING | FAILED |\n"
+            "| nodes | completed/requested | %s | best | T_best | "
+            "spread | unresolved | PENDING | RUNNING | FAILED |\n"
+            % proto_hdr
         )
-        f.write("|------:|--------------------:|------|-------:|-------:|-----------|--------:|--------:|-------:|\n")
+        f.write(
+            "|------:|--------------------:|%s|------|-------:|-------:"
+            "-----------|--------:|--------:|-------:|\n"
+            % "|".join(["-------:"] * len(PROTOCOLS))
+        )
         for spec in expected_wave1():
             _ = spec
         for nodes in WAVE1_NODES:
@@ -1036,22 +1042,32 @@ def write_status_markdown(
                 elif st in ("FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"):
                     failed += 1
             at = [r for r in scale_rows if int(r.get("nodes") or 0) == nodes]
+            med_by_proto = {
+                str(r["reshape"]): r["wall_step_s_median"] for r in at
+            }
+            proto_meds = [str(med_by_proto.get(p, "")) for p in PROTOCOLS]
             at.sort(key=lambda r: (float(r["wall_step_s_median"]), str(r["reshape"])))
             best = at[0]["reshape"] if at else ""
             tbest = at[0]["wall_step_s_median"] if at else ""
+            # Repeat spread of the elected protocol, not the gap across protocols.
             spread = ""
-            if at:
-                lo = float(at[0]["wall_step_s_median"])
-                hi = max(float(r["wall_step_s_median"]) for r in at)
-                if lo > 0:
-                    spread = "%.2f%%" % (100.0 * (hi - lo) / lo)
+            if best:
+                walls = [
+                    float(r["wall_step_s"])
+                    for r in group
+                    if str(r.get("reshape")) == best
+                    and classify_row(r) == "valid_measurement"
+                ]
+                if len(walls) > 1 and min(walls) > 0:
+                    spread = "%.2f%%" % (100.0 * (max(walls) - min(walls)) / min(walls))
             unresolved = ranking_unresolved(alloc_by_nodes.get(nodes, []), n_complete)
             f.write(
-                "| %d | %d/%d | `%s` | %s | %s | %s | %d | %d | %d |\n"
+                "| %d | %d/%d | %s | `%s` | %s | %s | %s | %d | %d | %d |\n"
                 % (
                     nodes,
                     n_complete,
                     WAVE1_REPEATS,
+                    " | ".join(proto_meds),
                     best,
                     tbest,
                     spread,

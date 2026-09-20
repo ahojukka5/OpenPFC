@@ -114,6 +114,8 @@ def test_status_marks_single_allocation_unresolved(tmp_path):
     status = (tmp_path / "results" / "status.md").read_text()
     assert "136" in status
     assert "yes_repeats_incomplete" in status
+    assert "p2p_plined" in status.splitlines()[4]
+    assert "alltoall" in status
     order_csv = (tmp_path / "results" / "order.csv").read_text()
     assert "protocol_index" in order_csv
     assert "alltoall" in order_csv
