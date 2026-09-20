@@ -27,6 +27,10 @@
 #   CONV_MODE=qual sbatch ...   32x32x61, short continuation, machinery check
 #   CONV_MODE=64   sbatch ...   64x64x121, same target as job 22162138
 #   CONV_MODE=128  sbatch ...   128x128x242
+# Capacity 22178399/22178400: 128×128×242 is faster on 16 GCD (~2.2–3.8 s/step)
+# than 32 GCD (~2.6–4.7 s/step). Submit 128 with:
+#   CONV_MODE=128 sbatch --account=project_462001245 --nodes=2 --ntasks=16 \
+#     --ntasks-per-node=8 --gpus-per-node=8 --time=2-00:00:00 ...
 #   RESTART_DIR=/path/to/checkpoint CONV_MODE=64 sbatch ...
 
 set -euo pipefail
@@ -59,7 +63,7 @@ mkdir -p "${OUT}/fields" /scratch/project_462001245/juaho/logs
   echo "src ${SRC}"
   echo "revision $(git -C "${SRC}" rev-parse HEAD)"
   echo "dirty $(git -C "${SRC}" status --porcelain | wc -l)"
-  echo "mode ${MODE}"
+  echo "mode ${MODE} ntasks ${SLURM_NTASKS} nodes ${SLURM_JOB_NUM_NODES}"
 } | tee "${OUT}/provenance.txt"
 
 if [[ ! -f "${BUILD}/CMakeCache.txt" ]]; then
@@ -116,7 +120,7 @@ RESTART_ARGS=()
 if [[ -n "${RESTART_DIR:-}" ]]; then
   RESTART_ARGS+=(--restart="${RESTART_DIR}")
 fi
-srun --ntasks=8 --gpus-per-node=8 "${BIN}" \
+srun --ntasks="${SLURM_NTASKS}" --gpus-per-node="${SLURM_GPUS_PER_NODE:-8}" "${BIN}" \
   "${COMMON[@]}" "${GRID[@]}" "${STOP[@]}" \
   --run-id="inv3d_${MODE}" \
   --csv="${OUT}/history.csv" \
