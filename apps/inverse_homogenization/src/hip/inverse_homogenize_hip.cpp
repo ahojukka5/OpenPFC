@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <ios>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -30,6 +31,7 @@
 
 #include <inverse_homogenization/auxetic_geometry.hpp>
 #include <inverse_homogenization/field_output.hpp>
+#include <inverse_homogenization/inverse_checkpoint.hpp>
 #include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/material_report.hpp>
@@ -124,6 +126,9 @@ struct Config {
   double ch_dt{0.2};
   std::string load_bin{};
   std::string C_target_file{};
+  std::string checkpoint_dir{};
+  std::string restart_dir{};
+  int stop_after{0};
   pfc::apps::inverse::FieldOutputConfig fields{};
 };
 
@@ -134,6 +139,8 @@ void usage(std::ostream &os, const char *exe) {
      << "  --C-target-file=PATH 6x6 Voigt text\n"
      << "  --init rotating-squares|noise|uniform|spinodal|yang-a3\n"
      << "  --load-bin=PATH Fortran float64 brick --csv --dump-dir\n"
+     << "  --checkpoint-dir --restart  continue the same frozen problem\n"
+     << "  --stop-after=N              checkpoint running state and exit\n"
      << "  --continuation-steps --max-steps|--steps --conv-window\n"
      << "  --verify-convergence-steps --tol-design --tol-objective --tol-tensor\n";
 }
@@ -260,6 +267,12 @@ bool parse_args(int argc, char **argv, Config &cfg) {
       cfg.fields.dir = std::string(val);
     else if (key == "dump-every")
       ok = parse_int(val, cfg.fields.every) && cfg.fields.every > 0;
+    else if (key == "checkpoint-dir")
+      cfg.checkpoint_dir = std::string(val);
+    else if (key == "restart")
+      cfg.restart_dir = std::string(val);
+    else if (key == "stop-after")
+      ok = parse_int(val, cfg.stop_after) && cfg.stop_after >= 0;
     else
       return false;
     if (!ok) return false;
@@ -433,6 +446,10 @@ int run(int argc, char **argv, int rank, int nproc) {
       usage(std::cerr, argc >= 1 ? argv[0] : "openpfc_inverse_homogenize_hip");
     return 2;
   }
+  if (cfg.checkpoint_dir.empty() && !cfg.restart_dir.empty())
+    cfg.checkpoint_dir = cfg.restart_dir;
+  if (cfg.checkpoint_dir.empty() && !cfg.fields.dir.empty())
+    cfg.checkpoint_dir = cfg.fields.dir + "/checkpoint";
   int rc = 0;
   const pfc::Domain domain = pfc::domain::create(
       pfc::GridSize({cfg.nx, cfg.ny, cfg.nz}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
@@ -521,6 +538,8 @@ int run(int argc, char **argv, int rank, int nproc) {
 
   if (rank == 0 && !cfg.fields.dir.empty())
     std::filesystem::create_directories(cfg.fields.dir);
+  if (rank == 0 && !cfg.checkpoint_dir.empty())
+    std::filesystem::create_directories(cfg.checkpoint_dir);
   MPI_Barrier(MPI_COMM_WORLD);
 
   const auto box = fft.get_inbox_bounds();
@@ -549,8 +568,10 @@ int run(int argc, char **argv, int rank, int nproc) {
                  "dC_rel morph_frac step_rms grad_rms simp lambda_reg frozen "
                  "window candidate verify ms conv\n";
     if (!cfg.csv.empty()) {
-      csv.open(cfg.csv);
-      csv << pfc::apps::inverse::kInverseCsvHeader << '\n';
+      const bool resume =
+          !cfg.restart_dir.empty() && std::filesystem::exists(cfg.csv);
+      csv.open(cfg.csv, resume ? std::ios::app : std::ios::out);
+      if (!resume) csv << pfc::apps::inverse::kInverseCsvHeader << '\n';
     }
   }
 
@@ -570,7 +591,6 @@ int run(int argc, char **argv, int rank, int nproc) {
     ++n_snap;
     last_dumped = step;
   };
-  dump(0, false);
 
   const double simp0 = cfg.simp;
   const double simp1 = (cfg.simp_end > 0.0) ? cfg.simp_end : cfg.simp;
@@ -592,13 +612,133 @@ int run(int argc, char **argv, int rank, int nproc) {
   pfc::apps::Voigt6 C_prev{};
   double J_prev = 0.0;
   bool have_prev = false;
+  int start_s = 0;
+
+  pfc::apps::inverse::FieldOutputConfig ckpt_fields;
+  ckpt_fields.dir = cfg.checkpoint_dir;
+  ckpt_fields.every = 1;
+  pfc::apps::inverse::FieldSnapshotWriter ckpt_snap(
+      ckpt_fields, "ckpt", {cfg.nx, cfg.ny, cfg.nz},
+      {box.high[0] - box.low[0] + 1, box.high[1] - box.low[1] + 1,
+       box.high[2] - box.low[2] + 1},
+      {box.low[0], box.low[1], box.low[2]}, cfg.dx, rank, MPI_COMM_WORLD);
+
+  auto write_ckpt = [&](int next_step,
+                        pfc::apps::inverse::TerminationReason why =
+                            pfc::apps::inverse::TerminationReason::Running) {
+    if (cfg.checkpoint_dir.empty()) return true;
+    pfc::apps::inverse::InverseCheckpoint ck;
+    pfc::apps::inverse::capture_problem(ck, cfg, spec.C_target, spec.W);
+    ck.nx = cfg.nx;
+    ck.ny = cfg.ny;
+    ck.nz = cfg.nz;
+    pfc::apps::inverse::capture_tracker(ck, tracker, next_step);
+    ck.have_prev = have_prev ? 1 : 0;
+    ck.n_snap = n_snap;
+    ck.last_dumped = last_dumped;
+    ck.termination = static_cast<int>(why);
+    ck.J_prev = J_prev;
+    pfc::apps::inverse::store_voigt6(ck.C_prev, C_prev);
+    const auto root = std::filesystem::path(cfg.checkpoint_dir);
+    const auto gen = pfc::apps::inverse::checkpoint_generation_name(next_step);
+    int ready = 1;
+    if (rank == 0)
+      ready = pfc::apps::inverse::prepare_checkpoint_staging(root) ? 1 : 0;
+    MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (!ready) {
+      if (rank == 0) std::cerr << "checkpoint: failed to prepare staging\n";
+      return false;
+    }
+    const auto staging =
+        pfc::apps::inverse::checkpoint_staging_dir(root).string();
+    ckpt_snap.set_directory(staging);
+    ckpt_snap.write_named("h.bin", h);
+    ckpt_snap.write_named("h_prev.bin", h_prev);
+    if (rank == 0) {
+      ready = pfc::apps::inverse::checkpoint_field_sizes_match(staging, ck);
+      ready = ready &&
+              pfc::apps::inverse::write_checkpoint_file(staging + "/state.txt", ck);
+      ready = ready && pfc::apps::inverse::write_dump_steps(
+                           staging + "/dump_steps.txt", snap.steps());
+      ready = ready && pfc::apps::inverse::publish_checkpoint_generation(root, gen);
+      if (!ready) std::cerr << "checkpoint: failed to publish " << gen << '\n';
+    }
+    MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    return ready != 0;
+  };
+
+  if (!cfg.restart_dir.empty()) {
+    pfc::apps::inverse::InverseCheckpoint ck;
+    std::string bundle;
+    std::vector<int> dump_steps;
+    int ok = 1;
+    if (rank == 0) {
+      bundle =
+          pfc::apps::inverse::resolve_checkpoint_bundle(cfg.restart_dir).string();
+      if (bundle.empty()) {
+        ok = 0;
+      } else {
+        std::ifstream in(bundle + "/state.txt");
+        if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
+            !pfc::apps::inverse::checkpoint_matches_problem(
+                ck, cfg, spec.C_target, spec.W) ||
+            !pfc::apps::inverse::checkpoint_is_restartable(ck, cfg.steps))
+          ok = 0;
+        else if (ck.last_dumped > ck.next_step ||
+                 !pfc::apps::inverse::read_dump_steps(bundle + "/dump_steps.txt",
+                                                      dump_steps, ck.n_snap,
+                                                      ck.last_dumped))
+          ok = 0;
+      }
+    }
+    MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    int n_bundle = static_cast<int>(bundle.size());
+    MPI_Bcast(&n_bundle, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    bundle.resize(static_cast<std::size_t>(n_bundle));
+    if (n_bundle > 0)
+      MPI_Bcast(bundle.data(), n_bundle, MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&ck, static_cast<int>(sizeof(ck)), MPI_BYTE, 0, MPI_COMM_WORLD);
+    int n_dump = static_cast<int>(dump_steps.size());
+    MPI_Bcast(&n_dump, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    dump_steps.resize(static_cast<std::size_t>(std::max(0, n_dump)));
+    if (n_dump > 0)
+      MPI_Bcast(dump_steps.data(), n_dump, MPI_INT, 0, MPI_COMM_WORLD);
+    if (!ok) {
+      if (rank == 0)
+        std::cerr << "restart: unreadable or mismatched " << cfg.restart_dir << '\n';
+      return 2;
+    }
+    snap.restore_steps(std::move(dump_steps));
+    if (!pfc::apps::inverse::load_fortran_bin(bundle + "/h.bin", cfg.nx, cfg.ny,
+                                              cfg.nz, h) ||
+        !pfc::apps::inverse::load_fortran_bin(bundle + "/h_prev.bin", cfg.nx,
+                                              cfg.ny, cfg.nz, h_prev)) {
+      if (rank == 0) std::cerr << "restart: missing h.bin / h_prev.bin\n";
+      return 2;
+    }
+    h.note_host_write();
+    h_prev.note_host_write();
+    pfc::apps::inverse::apply_tracker(ck, tracker);
+    tracker.cfg.max_steps = cfg.steps;
+    start_s = ck.next_step;
+    have_prev = ck.have_prev != 0;
+    n_snap = ck.n_snap;
+    last_dumped = ck.last_dumped;
+    J_prev = ck.J_prev;
+    pfc::apps::inverse::fill_voigt6(C_prev, ck.C_prev);
+    if (rank == 0)
+      std::cout << "restart next_step " << start_s << " quiet "
+                << tracker.quiet_count << " candidate "
+                << (tracker.candidate ? 1 : 0) << '\n';
+  }
+  if (cfg.restart_dir.empty()) dump(0, false);
 
   pfc::apps::inverse::InverseStepReport last{};
   auto reason = pfc::apps::inverse::TerminationReason::Running;
-  int n_done = 0;
+  int n_done = start_s;
   const auto gs = h.global_size();
   const double n_global = static_cast<double>(gs[0]) * gs[1] * gs[2];
-  for (int s = 0; s < cfg.steps; ++s) {
+  for (int s = start_s; s < cfg.steps; ++s) {
     const double t =
         pfc::apps::inverse::continuation_fraction(s, cfg.continuation_steps);
     spec.simp_p = simp0 + t * (simp1 - simp0);
@@ -689,10 +829,25 @@ int run(int argc, char **argv, int rank, int nproc) {
     if (reason != pfc::apps::inverse::TerminationReason::Running) {
       pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
       h.note_host_write();
+      if (!write_ckpt(n_done, reason)) {
+        rc = 2;
+        break;
+      }
       if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) rc = 1;
       break;
     }
     dump(s + 1, false);
+    if (!write_ckpt(n_done)) {
+      rc = 2;
+      break;
+    }
+    if (cfg.stop_after > 0 && n_done >= cfg.stop_after) break;
+  }
+  if (rc == 2) return rc;
+  if (cfg.stop_after > 0 &&
+      reason == pfc::apps::inverse::TerminationReason::Running) {
+    if (rank == 0) std::cout << "STOP_AFTER steps_done " << n_done << '\n';
+    return rc;
   }
   const int certified_step = std::max(0, n_done - 1);
   dump(certified_step, true);
