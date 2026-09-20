@@ -134,12 +134,12 @@ jobs:
           retention-days: 7
 
       - name: Upload unified documentation artifact
-        if: success()
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v5
         with:
           name: documentation-html
           path: site
-          retention-days: 7
+          retention-days: 1
 
   deploy-pages:
     name: Deploy documentation
