@@ -104,8 +104,14 @@ matched residual is therefore the 2-cycle mechanism; turning
 normalization off is not a production replacement.
 
 CPU and HIP now shrink large elastic gradients and leave small ones
-physical (`elastic_gradient_scale`). Running 64/128 jobs keep the old
-amplifying `normalize=1` as exploratory evidence.
+physical (`elastic_gradient_scale`). Job 22180165 on the late witness
+matches 22179446. Job 22180202 (spinodal, continuation 40, 200 steps,
+same binary) never develops \(C_{12}<0\) and greys to 0.79; no
+convergence candidate. Amplifying \(1/\lVert g_{\mathrm{el}}\rVert\) is
+both the two-cycle and the force that was producing auxetic \(C_{12}\).
+The cap is a descent-direction fix, not a production replacement.
+Running 64/128 jobs keep the old amplifying `normalize=1` as
+exploratory evidence.
 
 ## Finite-strain forward ladder (issue #55)
 

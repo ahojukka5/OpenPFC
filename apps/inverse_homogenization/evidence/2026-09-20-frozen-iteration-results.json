@@ -91,5 +91,21 @@
     "outputs": "/scratch/project_462001245/juaho/inverse-homogenization/frozen74n0_22179446",
     "interpretation": "Unnormalized flow is monotonic descent and kills the period-2 cycle, but greys out (0.50 to 0.67) and leaves the auxetic basin. Not a drop-in production replacement. The 2-cycle is from amplifying a small elastic residual; the remedy is to shrink large ||g_el|| without amplifying small ||g_el||."
   },
-  "production_note": "Do not change the frozen Yang A3 target or loosen tolerances. Running 64/128 jobs keep --normalize=1 as exploratory evidence of the production path."
+  "scale_cap": {
+    "sha": "d2599315c33b8a3e332543372c8729278f2ada47",
+    "rule": "elastic_gradient_scale = min(1, 1/el_rms) when normalize=1",
+    "frozen_witness_job": 22180165,
+    "frozen_witness_matches_normalize_0_job": 22179446,
+    "continuation_job": 22180202,
+    "continuation_termination": "MAX_STEPS",
+    "continuation_steps": 40,
+    "max_steps": 200,
+    "last_grey": 0.78808594,
+    "last_nu_eff": 0.223981,
+    "last_design_rms": 0.000252925,
+    "last_dC_rel": 0.000402278,
+    "candidate": 0,
+    "interpretation": "At the late frozen witness the cap equals normalize=0 (el_rms<1): no 2-cycle, greys, leaves auxetic basin. A fresh spinodal continuation with the cap never develops C12<0 and greys to 0.79. Amplifying 1/||g_el|| is both the 2-cycle mechanism and the force that was producing auxetic C12. The cap is a correct descent-direction fix, not a production replacement until a binarizing descent direction exists."
+  },
+  "production_note": "Do not change the frozen Yang A3 target or loosen tolerances. Running 64/128 jobs keep --normalize=1 as exploratory evidence of the amplifying path."
 }
