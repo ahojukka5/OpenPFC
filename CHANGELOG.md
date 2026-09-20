@@ -60,6 +60,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature
   schema, train/held-out split records, and regret tests. Does not time
   held-out families or change production policy.
+- **HeFFTe topology-crossover campaign tooling** (issue
+  [#106](https://github.com/ahojukka5/OpenPFC/issues/106)). Randomized
+  protocol order, dense node counts around the #61 ranking changes, and
+  placement metadata collection. Does not change the production reshape
+  default.
 - **2-D MHD conference visualization package**
   (`examples/ns2d_vorticity`, issue
   [#71](https://github.com/ahojukka5/OpenPFC/issues/71)). Evidence
