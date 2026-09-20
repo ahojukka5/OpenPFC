@@ -1,0 +1,50 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "issue": 74,
+  "evidence_class": "numerical_experiment_protocol",
+  "status": "frozen_before_experiment",
+  "question": "Does reducing the explicit timestep reduce late frozen-problem oscillation?",
+  "binary_source": "eae1e4ccbbd52054e3af23871dfb69af221f5797",
+  "baseline_job": 22175193,
+  "initial_field": "conv_22175193/fields/inv3d_qual_h_0038.bin",
+  "initial_absolute_step": 190,
+  "interpretation": "Fresh frozen-problem trajectories from the same field, not exact checkpoint restarts",
+  "grid": [32, 32, 61],
+  "dx": 1,
+  "target_file": "2026-09-19-yang-a3-oracle-ev002.txt",
+  "E_solid": 1.0,
+  "nu_solid": 0.3,
+  "E_void": 0.002,
+  "nu_void": 0.3,
+  "volume_target": 0.2575865186,
+  "lambda_volume": 1.0,
+  "lambda_reg": 0.2,
+  "epsilon": 2.0,
+  "simp": 2.0,
+  "normalize": 1,
+  "project_volume": 1,
+  "max_delta": 0.04,
+  "n_el_iter": 400,
+  "convergence": {
+    "continuation_steps": 0,
+    "design_tolerance": 0.0001,
+    "objective_tolerance": 0.000001,
+    "tensor_tolerance": 0.0001,
+    "window": 20,
+    "verification_hold": 100
+  },
+  "arms": [
+    {"dt": 0.04, "max_steps": 160},
+    {"dt": 0.02, "max_steps": 320},
+    {"dt": 0.01, "max_steps": 640}
+  ],
+  "comparison": "Compare common artificial time through 6.36 and report work separately; terminal accepted state s has time s*dt",
+  "diagnostics": ["design_rms", "dJ_rel", "dC_rel", "J", "grey", "one_step_field_rms", "two_step_field_rms", "termination", "wall_seconds"],
+  "falsification": "If oscillation persists at smaller dt, reject timestep reduction as a sufficient remedy in this tested range",
+  "limitations": [
+    "Smaller updates alone are not convergence",
+    "A 6.36 artificial-time trajectory may still drift slowly",
+    "Normalized elastic gradient plus unscaled regularization is not assumed to be descent for the logged total objective",
+    "No claim of fixed-domain resolution refinement while the existing ladder keeps dx=1"
+  ]
+}
