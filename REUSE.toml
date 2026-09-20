@@ -22,7 +22,7 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
-    "docs/report/**",
+    "examples/ns2d_vorticity/figures/**",
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
