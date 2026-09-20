@@ -62,7 +62,21 @@ prescribed volume 0.258; largest piece is 26% of the solid. Uniform n0
 800–3360) all have **4** components and no x-percolation; y-percolation
 appears only at 3360. Solid fraction 0.133→0.162; largest piece stays
 ~26%. The thresh solid is not coarsening toward n0 CONVERGED. Evidence:
-`2026-09-20-128-topology-series.json`. Not CONVERGED.
+`2026-09-20-128-topology-series.json`. Dump 0043 (step 3440) is still
+four components, no x-percolation, yz percolation. Not CONVERGED.
+
+`h>0.5` periodic comparison (not a mesh-refinement ranking):
+
+| field | ncomp | perc | solid |
+|-------|-------|------|-------|
+| n0 128 CONVERGED | 2 | xyz | 0.210 |
+| #103 128 steps 800–3440 | 4 | z then yz | 0.133–0.163 |
+| 128 amp MAX_STEPS | 50 | xyz | |
+| 256 amp cycle even | 3453 | xyz | 0.222 |
+
+The #103 128 thresh solid is stuck between n0 CONVERGED (two
+components, xyz) and the amplifying fragment shower. 256 dump
+topology is job **22192739** (`debug` CPU, dump 0013, not CONVERGED).
 
 r3 **22185871** (`dev-g`, stop-after 4500) is RUNNING. r4 **22191420**
 is **afterany** r3 (`dev-g`, 5000, TimeLimit 2h50) so a wall-clock on
