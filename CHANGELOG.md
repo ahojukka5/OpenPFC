@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Fail-closed `--key=value` CLI** (`pfc::utils::CliOptions` in
+  `include/openpfc/frontend/utils/cli_options.hpp`). Standalone drivers
+  parse named flags without a per-app copy of the same class; unknown
+  keys are an error after the driver has queried every option it
+  understands ([#66](https://github.com/ahojukka5/OpenPFC/issues/66)).
 - **Inverse-homogenization convergence protocol** (issue
   [#59](https://github.com/ahojukka5/OpenPFC/issues/59)). After
   `--continuation-steps` the SIMP/regularization problem is frozen.
@@ -98,6 +103,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
+- **Dendrite and Vlasov CLI drivers** use `pfc::utils::CliOptions`. The
+  duplicated app-local `Options` headers are gone (issue #66).
 - **Heat3D HIP default halo overlap** (issue #48).
   `HEAT3D_HALO_OVERLAP` defaults to `1` after a clean `standard-g` A/B
   on the issue #25 protocol (1–16 nodes) plus 32- and 64-node

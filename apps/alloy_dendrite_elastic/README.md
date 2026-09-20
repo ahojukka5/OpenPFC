@@ -949,7 +949,7 @@ Energy-balance CSV (job **22045158**):
 | `include/alloy_dendrite/step.hpp` | The four-stage explicit step, the anisotropy of equation (1), and the elastic hook. Explains why the conserved variable is `P(phi) U`. |
 | `include/alloy_dendrite/diagnostics.hpp` | Every measurement, defined operationally: conservation, planar front, `k_eff`, tip position and radius, the append-only CSV sink. |
 | `include/alloy_dendrite/cases.hpp` | `run_planar` and `run_dendrite<Dim>`, shared by the drivers and the tests. |
-| `include/alloy_dendrite/cli.hpp` | `--key=value` parsing that rejects unknown keys. |
+| `openpfc/frontend/utils/cli_options.hpp` | Library `--key=value` parsing that rejects unknown keys (`pfc::utils::CliOptions`). |
 | `include/alloy_dendrite/elasticity.hpp` | Equations (5)-(7) wired onto the FD stack: the layout contract between the padded FD field and the HeFFTe inbox, the eigenstrain assembly, the macroscopic-strain condition, and the `lambda_el` calibration. |
 | `include/alloy_dendrite/material.hpp` | Al-4.5 wt% Cu in SI with provenance, and the arithmetic that turns it into the dimensionless inputs of (5)-(7). Every value is cited or derived next to its use; values that are representative rather than assessed say so. |
 | `include/alloy_dendrite/field_output.hpp` | Raw-brick snapshots plus a JSON manifest, correct at any rank count. |

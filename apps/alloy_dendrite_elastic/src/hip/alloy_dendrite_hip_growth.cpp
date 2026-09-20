@@ -34,7 +34,7 @@
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 
-#include <alloy_dendrite/cli.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 #include <alloy_dendrite/device_elasticity_hip.hpp>
 #include <alloy_dendrite/device_stepper_hip.hpp>
 #include <alloy_dendrite/diagnostics.hpp>
@@ -264,7 +264,7 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
 }
 
 int run_cli(int argc, char **argv, int rank, int nproc) {
-  alloy_dendrite::Options opt(argc, argv);
+  pfc::utils::CliOptions opt(argc, argv);
   if (opt.help()) {
     if (rank == 0) {
       std::cout << "Usage: " << argv[0]
