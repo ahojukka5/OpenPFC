@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the issue #61 HeFFTe protocol tournament tooling."""
 
+import csv
 import json
 import os
 import subprocess
@@ -213,3 +214,32 @@ def test_batch_refuses_wrong_or_missing_account(account):
     proc = _run(["bash", str(batch)], env, str(ROOT))
     assert proc.returncode == 2
     assert "refusing tournament job billed" in proc.stderr_text
+
+
+@pytest.mark.parametrize("first_step", [0, 1])
+@pytest.mark.parametrize("warmup,expected", [(1, 1.55), (2, 3.0)])
+def test_collector_cli_uses_absolute_warmup_steps(tmp_path, first_step, warmup, expected):
+    proto = _run_tree(tmp_path, "trimmed", 768, 1, "p2p_plined", 1.0)
+    profile = _profile(1.0)
+    frames = [{"scalars": [step, 0, value], "regions": {}}
+              for step, value in enumerate([99.0, 0.1, 3.0]) if step >= first_step]
+    profile["ranks"][0]["frames"] = frames
+    profile["ranks"][0]["n_frames"] = len(frames)
+    profile["total_frames"] = len(frames)
+    _write(proto / "timing_profile.json", json.dumps(profile))
+    output = tmp_path / "collected.csv"
+    subprocess.run([sys.executable, str(ROOT / "apps/heat3d/scripts/heffte_protocol_tournament.py"),
+                    "--collect", str(tmp_path), "--warmup", str(warmup),
+                    "--out", str(output)], check=True)
+    with output.open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 1 and rows[0]["admit"] == "ok"
+    assert float(rows[0]["wall_step_s"]) == pytest.approx(expected)
+
+
+def test_legacy_unlabelled_profile_uses_frame_positions():
+    profile = {"frame_metric_names": ["wall_step"], "ranks": [
+        {"frames": [{"scalars": [99.0]}, {"scalars": [0.1]}, {"scalars": [3.0]}]}]}
+    median, spread = t.wall_step_stats(profile, 1)
+    assert median == pytest.approx(1.55)
+    assert spread == pytest.approx(2.9)

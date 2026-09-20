@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Filter HeFFTe timing warmup by absolute step labels (#86), so profiles
+  already trimmed by the executable do not lose a second warmup frame.
+
 - Remove all parity-class displacement gauges from the centered periodic
   finite-strain grid solver (#76). Even-grid homogeneous Newton solves no
   longer depend on roundoff lifting a singular Jacobian. Gauge projection
