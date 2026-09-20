@@ -67,6 +67,7 @@ SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
-path = ["apps/inverse_homogenization/evidence/unnormalized-control/**"]
+path = ["apps/inverse_homogenization/evidence/unnormalized-control/**",
+        "apps/inverse_homogenization/evidence/unnormalized-converged/**"]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"

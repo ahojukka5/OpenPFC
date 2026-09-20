@@ -1,0 +1,58 @@
+{
+  "schema": "openpfc-inverse-converged-evidence/v1",
+  "optimization_job": 22179764,
+  "account": "project_462001245",
+  "nodes": 1,
+  "gcds": 8,
+  "wall_time": "01:45:48",
+  "binary_source": "eae1e4ccbbd52054e3af23871dfb69af221f5797",
+  "binary_sha256": "b24e5a24e3da2f1edb36c27c307a6dfc6086896dc903ff2824fc481ba860a297",
+  "driver_source": "a3681a91d8b9ba91cf9df27fa2158d3faf611fb2",
+  "driver_sha256": "1c8f08a5fd0d04f8d5f618265802896ba253ef5cb615febdc22a30b2e3fa3fcd",
+  "audit_source": "eebb9aff5f8714b53c224147513bfb97b299144e",
+  "initial_field": "../unnormalized-control/initial_h190.bin.gz",
+  "initial_uncompressed_sha256": "316a0cecd31cfaa7111edf4ac42e32b275226c9e7a1e1d5538d159af246e9ed5",
+  "frozen_target": "../unnormalized-control/target.txt",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "material_evaluation": {
+    "job": 22180840,
+    "account": "project_462001245",
+    "nodes": 1,
+    "gcds": 8,
+    "wall_time": "00:00:40",
+    "binary_source": "6deeb76cc23be832db3aa33f3215b3ba14bd414e",
+    "binary_sha256": "b7659d22ff8ef5dd338d6e2c53b680bcd8a50254ff69206d8a084d964a7e7b5a",
+    "field_identity_verified": true,
+    "termination": "MAX_STEPS",
+    "accepted_step": 0,
+    "original_accepted_step": 1693
+  },
+  "build_qualification_jobs": [
+    22178197,
+    22180409,
+    22180463,
+    22180872
+  ],
+  "replay": [
+    "Build pinned source through scripts/build.sh --machine=lumi --with-rocm --account=project_462001245 --build-dir=OUTSIDE_REPOSITORY.",
+    "Decompress ../unnormalized-control/initial_h190.bin.gz and copy ../unnormalized-control/target.txt. Rewrite only executable, input and output paths in command.json; preserve every numerical option, MPI count, and dump-every=1.",
+    "Run command.json arguments on8GCD with account245 to regenerate full omitted trajectory.",
+    "python3.11 apps/inverse_homogenization/scripts/audit_converged_hold.py RUN_DIRECTORY VERIFIED.json",
+    "Build endpoint-report source separately, then replay material-evaluation-command.txt with paths remapped to that executable, target and archived exact final field. This one-state diagnostic evaluation does not rerun the optimization certificate."
+  ],
+  "omitted": "Full1694-snapshot trajectory and executables are regenerated from pinned source, frozen inputs, command, runtime modules and build recipe. No promise of bitwise identity across toolchain/hardware changes.",
+  "sha256": {
+    "command.json": "a2247408f501510d2aa1dca362e7092a190a914100ba1ce391514bf1992bcd2c",
+    "h_final.bin.gz": "1566d47504787217734e3e9c66cceab2bd533acc2d157d98ed8a059521109384",
+    "h_thresh.bin.gz": "d943439d92fcfd2ad0bf152fef0648a6448d18402cbf8ad93d1c5928932c3b6e",
+    "history.csv.gz": "792a2eaea4dd6fb8457e6d64d684b6b8b8edb99e3efe690ed14dd27c8a0806d8",
+    "material-evaluation-command.txt": "276d7b66b50507671061473f42e87f7737ac1fb7d343b07f393dc6ce20c47cc8",
+    "material-reports.json": "8c405d1e88b2a3a77a7584d50a68c2b764d1db977d1a4c632584773051142137",
+    "material-run.log.gz": "7792842a80a4d1c7ccd0e0e0451c57ecc0d366c0717589d28fa6b6f3e1556d22",
+    "material-verified.json": "df981d91b0706b6c0c30356c2e40b13bc13505f12d9a85661c0d215ad78d8e1c",
+    "modules.txt": "776ac039c87b5cd9dc283ecec7cd36ae81cece638631a36e52d8ca7440924212",
+    "verified.json": "8b35ffa424e8cb227fe493f488b0fcd1206d367c3464476db562118589814711",
+    "README.md": "644d32d28887ec774fa8e7f64b94ec4b689571c0560aa6b28145c9dba6cd376d"
+  },
+  "audit_sha256": "4bc0443a3e20fd640a14bb64ddc6345f1bb278dfd24c15dfe8689ac249f66502"
+}
