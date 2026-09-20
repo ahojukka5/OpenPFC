@@ -42,6 +42,17 @@ export HEAT3D_HALO_BIN=/path/to/23_halo_microtiming
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh halo
 ```
 
+Issue `#108` FD-order × halo-overlap weak scaling (account
+`project_462001245`, separate scratch tree):
+[FD-order scaling](../hpc/fd_order_scaling.md).
+
+```bash
+export HEAT3D_HIP_BIN=/path/to/heat3d_fd_hip
+./docs/lumi_slurm/submit_fd_order_scaling.sh check
+./docs/lumi_slurm/submit_fd_order_scaling.sh clean
+./docs/lumi_slurm/submit_fd_order_scaling.sh diag
+```
+
 3D spectral HIP twin (`heat3d_spectral_hip`, implicit Euler, 2 FFTs/step):
 
 ```bash
