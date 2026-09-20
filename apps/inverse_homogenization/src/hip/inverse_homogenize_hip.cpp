@@ -626,6 +626,7 @@ int run(int argc, char **argv, int rank, int nproc) {
   auto write_ckpt = [&](int next_step) {
     if (cfg.checkpoint_dir.empty()) return;
     pfc::apps::inverse::InverseCheckpoint ck;
+    pfc::apps::inverse::capture_problem(ck, cfg, spec.C_target, spec.W);
     ck.nx = cfg.nx;
     ck.ny = cfg.ny;
     ck.nz = cfg.nz;
@@ -654,8 +655,8 @@ int run(int argc, char **argv, int rank, int nproc) {
     if (rank == 0) {
       std::ifstream in(cfg.restart_dir + "/state.txt");
       if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
-          !pfc::apps::inverse::checkpoint_matches_problem(ck, cfg.nx, cfg.ny, cfg.nz,
-                                                          cfg.continuation_steps))
+          !pfc::apps::inverse::checkpoint_matches_problem(ck, cfg, spec.C_target,
+                                                          spec.W))
         ok = 0;
     }
     MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);

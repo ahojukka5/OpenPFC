@@ -78,8 +78,19 @@ identity and does not call \(\mathrm{pow}(h,0)\). Before #60 the HIP
 path set `spec.simp_p` but did not apply the transformation, so earlier
 HIP SIMP-continuation claims need qualification.
 
-Job 22162138 (300 fixed steps) still had `step_rms≈0.019` on the last
+Job 22162138 (300 fixed steps) still had `step_rms≈0.019` at the last
 iterate, so those animations were cut while the design was moving.
+
+## Checkpoint / restart (issue #72)
+
+`--checkpoint-dir` writes `h.bin`, `h_prev.bin`, and `state.txt` after
+each accepted iterate. `--restart=DIR` continues the same frozen
+problem. Schema 2 fingerprints the target \(C\), phase moduli, SIMP /
+regularization endpoints, step/projection, window, and tolerances.
+`--max-steps` is a run budget and may change; any other mismatch is
+rejected. Schema 1 files do not load. HIP restart equivalence (job
+22178478, schema 1) remains admitted for iterate metrics; production
+walltime recovery should use schema 2.
 
 ## Finite-strain forward ladder (issue #55)
 

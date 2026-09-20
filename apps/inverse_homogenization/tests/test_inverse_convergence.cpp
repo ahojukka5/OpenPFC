@@ -24,6 +24,7 @@ int main(int argc, char *argv[]) { return Catch::Session().run(argc, argv); }
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 using pfc::apps::inverse::apply_tracker;
+using pfc::apps::inverse::capture_problem;
 using pfc::apps::inverse::capture_tracker;
 using pfc::apps::inverse::checkpoint_matches_problem;
 using pfc::apps::inverse::continuation_fraction;
@@ -278,21 +279,48 @@ TEST_CASE("copy_design_buffer restores a trailing in-place update",
   REQUIRE(h[0] == 0.1);
 }
 
-TEST_CASE("checkpoint text round-trips tracker and C_H", "[inverse-conv][72]") {
-  struct Tiny6 {
-    double a[6][6]{};
-    double &operator()(int i, int j) { return a[i][j]; }
-    double operator()(int i, int j) const { return a[i][j]; }
-  };
+struct DummyInvCfg {
+  int nx{64}, ny{64}, nz{121};
+  int continuation_steps{300};
+  int conv_window{20};
+  int verify_steps{100};
+  int normalize{1};
+  int project_volume{1};
+  int n_el_iter{400};
+  double dx{1.0};
+  double E_solid{1.0}, nu_solid{0.3}, E_void{0.002}, nu_void{0.3};
+  double volume{0.2576};
+  double lambda_volume{1.0};
+  double lambda_reg{0.05};
+  double lambda_reg_end{0.2};
+  double simp{1.0};
+  double simp_end{2.0};
+  double epsilon{2.0};
+  double dt{0.04};
+  double max_delta{0.04};
+  double tol_design{1e-4};
+  double tol_objective{1e-6};
+  double tol_tensor{1e-4};
+};
+
+struct Tiny6 {
+  double a[6][6]{};
+  double &operator()(int i, int j) { return a[i][j]; }
+  double operator()(int i, int j) const { return a[i][j]; }
+};
+
+TEST_CASE("checkpoint text round-trips tracker, C_H and problem id",
+          "[inverse-conv][72]") {
+  DummyInvCfg cfg;
+  Tiny6 Ct{};
+  Tiny6 W{};
+  Ct(0, 0) = 0.04342;
+  Ct(0, 1) = -0.00854;
+  W(0, 0) = 1.0;
   InverseCheckpoint ck;
-  ck.nx = 64;
-  ck.ny = 64;
-  ck.nz = 121;
+  capture_problem(ck, cfg, Ct, W);
   ck.next_step = 40;
-  ck.continuation_steps = 300;
   ck.max_steps = 5000;
-  ck.conv_window = 20;
-  ck.verify_steps = 100;
   ck.quiet_count = 7;
   ck.verify_left = 12;
   ck.candidate = 1;
@@ -318,12 +346,61 @@ TEST_CASE("checkpoint text round-trips tracker and C_H", "[inverse-conv][72]") {
   fill_voigt6(C2, got.C_prev);
   REQUIRE_THAT(C2(0, 0), WithinAbs(0.04, 1e-15));
   REQUIRE_THAT(C2(0, 1), WithinAbs(-0.008, 1e-15));
+  Tiny6 Ct2{};
+  fill_voigt6(Ct2, got.C_target);
+  REQUIRE_THAT(Ct2(0, 0), WithinAbs(0.04342, 1e-15));
   ConvergenceTracker tr;
   apply_tracker(got, tr);
   REQUIRE(tr.candidate);
   REQUIRE(tr.quiet_count == 7);
-  REQUIRE(checkpoint_matches_problem(got, 64, 64, 121, 300));
-  REQUIRE_FALSE(checkpoint_matches_problem(got, 32, 64, 121, 300));
+  REQUIRE_THAT(tr.cfg.tol_design, WithinAbs(1e-4, 1e-18));
+  REQUIRE(checkpoint_matches_problem(got, cfg, Ct, W));
+  DummyInvCfg other = cfg;
+  other.nx = 32;
+  REQUIRE_FALSE(checkpoint_matches_problem(got, other, Ct, W));
+}
+
+TEST_CASE("checkpoint rejects a changed frozen problem", "[inverse-conv][72]") {
+  DummyInvCfg cfg;
+  Tiny6 Ct{};
+  Tiny6 W{};
+  Ct(0, 0) = 0.04;
+  W(0, 0) = 1.0;
+  InverseCheckpoint ck;
+  capture_problem(ck, cfg, Ct, W);
+  ck.next_step = 10;
+  ck.max_steps = 100;
+  ck.have_prev = 1;
+  std::istringstream in(format_checkpoint_text(ck));
+  InverseCheckpoint got;
+  REQUIRE(read_checkpoint_text(in, got));
+  REQUIRE(checkpoint_matches_problem(got, cfg, Ct, W));
+  got.max_steps = 9999;
+  REQUIRE(checkpoint_matches_problem(got, cfg, Ct, W));
+  Tiny6 Ct2 = Ct;
+  Ct2(0, 0) = 0.05;
+  REQUIRE_FALSE(checkpoint_matches_problem(got, cfg, Ct2, W));
+  DummyInvCfg nrm = cfg;
+  nrm.normalize = 0;
+  REQUIRE_FALSE(checkpoint_matches_problem(got, nrm, Ct, W));
+  DummyInvCfg tol = cfg;
+  tol.tol_design = 1e-3;
+  REQUIRE_FALSE(checkpoint_matches_problem(got, tol, Ct, W));
+  DummyInvCfg lr = cfg;
+  lr.lambda_reg_end = 0.5;
+  REQUIRE_FALSE(checkpoint_matches_problem(got, lr, Ct, W));
+  DummyInvCfg sm = cfg;
+  sm.simp_end = 3.0;
+  REQUIRE_FALSE(checkpoint_matches_problem(got, sm, Ct, W));
+}
+
+TEST_CASE("checkpoint text rejects schema 1 and a bad magic line",
+          "[inverse-conv][72]") {
+  InverseCheckpoint ck;
+  std::istringstream old_schema("OPENPFC_INVERSE_CHECKPOINT 1\nnx 8\n");
+  REQUIRE_FALSE(read_checkpoint_text(old_schema, ck));
+  std::istringstream in("NOT_A_CHECKPOINT 2\n");
+  REQUIRE_FALSE(read_checkpoint_text(in, ck));
 }
 
 TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]") {
@@ -349,8 +426,3 @@ TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]
   REQUIRE(got.cfg.max_steps == 5000);
 }
 
-TEST_CASE("checkpoint text rejects a bad magic line", "[inverse-conv][72]") {
-  InverseCheckpoint ck;
-  std::istringstream in("NOT_A_CHECKPOINT 1\n");
-  REQUIRE_FALSE(read_checkpoint_text(in, ck));
-}

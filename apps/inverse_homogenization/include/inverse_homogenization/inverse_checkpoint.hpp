@@ -9,13 +9,17 @@
  *
  * A restart continues the same mathematical optimization: incoming design
  * `h`, previous accepted `h_prev`, absolute iterate index, continuation
- * freeze, tracker window/hold, and previous `J` / `C_H`. It does not
- * reset convergence history or unfreeze SIMP / `lambda_reg`. Grid size
- * and continuation length identify the frozen problem; `--max-steps` is
- * a run budget and may stay at the original scientific ceiling after a
- * walltime restart.
+ * freeze, tracker window/hold, previous `J` / `C_H`, and an explicit
+ * problem fingerprint (target tensor, moduli, SIMP/regularization
+ * endpoints, step/projection, tolerances). It does not reset convergence
+ * history or unfreeze SIMP / `lambda_reg`. `--max-steps` is a run budget
+ * and may change after a walltime restart; everything else that defines
+ * the frozen inverse must match or the restart is rejected.
  */
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <istream>
 #include <ostream>
@@ -27,7 +31,7 @@
 
 namespace pfc::apps::inverse {
 
-inline constexpr int kInverseCheckpointSchema = 1;
+inline constexpr int kInverseCheckpointSchema = 2;
 inline constexpr std::string_view kInverseCheckpointMagic =
     "OPENPFC_INVERSE_CHECKPOINT";
 
@@ -46,8 +50,27 @@ struct InverseCheckpoint {
   int have_prev{0};
   int n_snap{0};
   int last_dumped{-1};
+  int normalize{1};
+  int project_volume{0};
+  int n_el_iter{0};
+  double dx{1.0};
+  double E_solid{0.0}, nu_solid{0.0}, E_void{0.0}, nu_void{0.0};
+  double volume{0.0};
+  double lambda_volume{0.0};
+  double lambda_reg{0.0};
+  double lambda_reg_end{0.0};
+  double simp{0.0};
+  double simp_end{0.0};
+  double epsilon{0.0};
+  double dt{0.0};
+  double max_delta{0.0};
+  double tol_design{0.0};
+  double tol_objective{0.0};
+  double tol_tensor{0.0};
   double J_prev{0.0};
   double C_prev[36]{};
+  double C_target[36]{};
+  double W[36]{};
 };
 
 template <typename Tensor> inline void store_voigt6(double *out, const Tensor &C) {
@@ -60,11 +83,24 @@ template <typename Tensor> inline void fill_voigt6(Tensor &C, const double *in) 
     for (int j = 0; j < 6; ++j) C(i, j) = in[6 * i + j];
 }
 
+inline bool same_real(double a, double b) {
+  return std::abs(a - b) <= 1.0e-12 * (1.0 + std::max(std::abs(a), std::abs(b)));
+}
+
+inline bool same_voigt(const double *a, const double *b) {
+  for (int i = 0; i < 36; ++i)
+    if (!same_real(a[i], b[i])) return false;
+  return true;
+}
+
 inline void apply_tracker(const InverseCheckpoint &ck, ConvergenceTracker &tr) {
   tr.cfg.continuation_steps = ck.continuation_steps;
   tr.cfg.max_steps = ck.max_steps;
   tr.cfg.conv_window = ck.conv_window;
   tr.cfg.verify_steps = ck.verify_steps;
+  tr.cfg.tol_design = ck.tol_design;
+  tr.cfg.tol_objective = ck.tol_objective;
+  tr.cfg.tol_tensor = ck.tol_tensor;
   tr.quiet_count = ck.quiet_count;
   tr.verify_left = ck.verify_left;
   tr.candidate = ck.candidate != 0;
@@ -82,13 +118,86 @@ inline void capture_tracker(InverseCheckpoint &ck, const ConvergenceTracker &tr,
   ck.verify_left = tr.verify_left;
   ck.candidate = tr.candidate ? 1 : 0;
   ck.verified = tr.verified ? 1 : 0;
+  ck.tol_design = tr.cfg.tol_design;
+  ck.tol_objective = tr.cfg.tol_objective;
+  ck.tol_tensor = tr.cfg.tol_tensor;
 }
 
+template <typename Cfg, typename Tensor>
+inline void capture_problem(InverseCheckpoint &ck, const Cfg &cfg,
+                            const Tensor &C_target, const Tensor &W) {
+  ck.nx = cfg.nx;
+  ck.ny = cfg.ny;
+  ck.nz = cfg.nz;
+  ck.continuation_steps = cfg.continuation_steps;
+  ck.dx = cfg.dx;
+  ck.E_solid = cfg.E_solid;
+  ck.nu_solid = cfg.nu_solid;
+  ck.E_void = cfg.E_void;
+  ck.nu_void = cfg.nu_void;
+  ck.volume = cfg.volume;
+  ck.lambda_volume = cfg.lambda_volume;
+  ck.lambda_reg = cfg.lambda_reg;
+  ck.lambda_reg_end =
+      (cfg.lambda_reg_end >= 0.0) ? cfg.lambda_reg_end : cfg.lambda_reg;
+  ck.simp = cfg.simp;
+  ck.simp_end = (cfg.simp_end > 0.0) ? cfg.simp_end : cfg.simp;
+  ck.epsilon = cfg.epsilon;
+  ck.dt = cfg.dt;
+  ck.max_delta = cfg.max_delta;
+  ck.normalize = cfg.normalize;
+  ck.project_volume = cfg.project_volume;
+  ck.n_el_iter = cfg.n_el_iter;
+  ck.conv_window = cfg.conv_window;
+  ck.verify_steps = cfg.verify_steps;
+  ck.tol_design = cfg.tol_design;
+  ck.tol_objective = cfg.tol_objective;
+  ck.tol_tensor = cfg.tol_tensor;
+  store_voigt6(ck.C_target, C_target);
+  store_voigt6(ck.W, W);
+}
+
+[[nodiscard]] inline bool
+checkpoint_matches_problem(const InverseCheckpoint &ck,
+                           const InverseCheckpoint &want) {
+  return ck.nx == want.nx && ck.ny == want.ny && ck.nz == want.nz &&
+         ck.continuation_steps == want.continuation_steps &&
+         ck.normalize == want.normalize &&
+         ck.project_volume == want.project_volume &&
+         ck.n_el_iter == want.n_el_iter && ck.conv_window == want.conv_window &&
+         ck.verify_steps == want.verify_steps && same_real(ck.dx, want.dx) &&
+         same_real(ck.E_solid, want.E_solid) &&
+         same_real(ck.nu_solid, want.nu_solid) &&
+         same_real(ck.E_void, want.E_void) &&
+         same_real(ck.nu_void, want.nu_void) &&
+         same_real(ck.volume, want.volume) &&
+         same_real(ck.lambda_volume, want.lambda_volume) &&
+         same_real(ck.lambda_reg, want.lambda_reg) &&
+         same_real(ck.lambda_reg_end, want.lambda_reg_end) &&
+         same_real(ck.simp, want.simp) && same_real(ck.simp_end, want.simp_end) &&
+         same_real(ck.epsilon, want.epsilon) && same_real(ck.dt, want.dt) &&
+         same_real(ck.max_delta, want.max_delta) &&
+         same_real(ck.tol_design, want.tol_design) &&
+         same_real(ck.tol_objective, want.tol_objective) &&
+         same_real(ck.tol_tensor, want.tol_tensor) &&
+         same_voigt(ck.C_target, want.C_target) && same_voigt(ck.W, want.W);
+}
+
+template <typename Cfg, typename Tensor>
 [[nodiscard]] inline bool checkpoint_matches_problem(const InverseCheckpoint &ck,
-                                                     int nx, int ny, int nz,
-                                                     int continuation_steps) {
-  return ck.nx == nx && ck.ny == ny && ck.nz == nz &&
-         ck.continuation_steps == continuation_steps;
+                                                     const Cfg &cfg,
+                                                     const Tensor &C_target,
+                                                     const Tensor &W) {
+  InverseCheckpoint want{};
+  capture_problem(want, cfg, C_target, W);
+  return checkpoint_matches_problem(ck, want);
+}
+
+inline void write_voigt_line(std::ostream &os, std::string_view key,
+                             const double *v) {
+  os << key;
+  for (int i = 0; i < 36; ++i) os << ' ' << std::setprecision(17) << v[i];
+  os << '\n';
 }
 
 inline bool write_checkpoint_text(std::ostream &os, const InverseCheckpoint &ck) {
@@ -106,11 +215,34 @@ inline bool write_checkpoint_text(std::ostream &os, const InverseCheckpoint &ck)
   os << "have_prev " << ck.have_prev << '\n';
   os << "n_snap " << ck.n_snap << '\n';
   os << "last_dumped " << ck.last_dumped << '\n';
-  os << "J_prev " << std::setprecision(17) << ck.J_prev << '\n';
-  os << "C_prev";
-  for (double v : ck.C_prev) os << ' ' << std::setprecision(17) << v;
-  os << '\n';
+  os << "normalize " << ck.normalize << '\n';
+  os << "project_volume " << ck.project_volume << '\n';
+  os << "n_el_iter " << ck.n_el_iter << '\n';
+  os << std::setprecision(17);
+  os << "dx " << ck.dx << '\n';
+  os << "E_solid " << ck.E_solid << "\nnu_solid " << ck.nu_solid << '\n';
+  os << "E_void " << ck.E_void << "\nnu_void " << ck.nu_void << '\n';
+  os << "volume " << ck.volume << '\n';
+  os << "lambda_volume " << ck.lambda_volume << '\n';
+  os << "lambda_reg " << ck.lambda_reg << '\n';
+  os << "lambda_reg_end " << ck.lambda_reg_end << '\n';
+  os << "simp " << ck.simp << "\nsimp_end " << ck.simp_end << '\n';
+  os << "epsilon " << ck.epsilon << "\ndt " << ck.dt << '\n';
+  os << "max_delta " << ck.max_delta << '\n';
+  os << "tol_design " << ck.tol_design << '\n';
+  os << "tol_objective " << ck.tol_objective << '\n';
+  os << "tol_tensor " << ck.tol_tensor << '\n';
+  os << "J_prev " << ck.J_prev << '\n';
+  write_voigt_line(os, "C_prev", ck.C_prev);
+  write_voigt_line(os, "C_target", ck.C_target);
+  write_voigt_line(os, "W", ck.W);
   return static_cast<bool>(os);
+}
+
+inline bool read_voigt36(std::istream &in, double *out) {
+  for (int i = 0; i < 36; ++i)
+    if (!(in >> out[i])) return false;
+  return true;
 }
 
 [[nodiscard]] inline bool read_checkpoint_text(std::istream &in,
@@ -123,49 +255,98 @@ inline bool write_checkpoint_text(std::ostream &os, const InverseCheckpoint &ck)
   ck = InverseCheckpoint{};
   ck.schema = schema;
   std::string key;
-  bool saw_c = false;
+  std::uint64_t seen = 0;
+  auto mark = [&](unsigned bit) {
+    const std::uint64_t m = 1ull << bit;
+    if (seen & m) return false;
+    seen |= m;
+    return true;
+  };
   while (in >> key) {
     if (key == "nx") {
-      if (!(in >> ck.nx)) return false;
+      if (!mark(0) || !(in >> ck.nx)) return false;
     } else if (key == "ny") {
-      if (!(in >> ck.ny)) return false;
+      if (!mark(1) || !(in >> ck.ny)) return false;
     } else if (key == "nz") {
-      if (!(in >> ck.nz)) return false;
+      if (!mark(2) || !(in >> ck.nz)) return false;
     } else if (key == "next_step") {
-      if (!(in >> ck.next_step) || ck.next_step < 0) return false;
+      if (!mark(3) || !(in >> ck.next_step) || ck.next_step < 0) return false;
     } else if (key == "continuation_steps") {
-      if (!(in >> ck.continuation_steps)) return false;
+      if (!mark(4) || !(in >> ck.continuation_steps)) return false;
     } else if (key == "max_steps") {
-      if (!(in >> ck.max_steps)) return false;
+      if (!mark(5) || !(in >> ck.max_steps)) return false;
     } else if (key == "conv_window") {
-      if (!(in >> ck.conv_window)) return false;
+      if (!mark(6) || !(in >> ck.conv_window)) return false;
     } else if (key == "verify_steps") {
-      if (!(in >> ck.verify_steps)) return false;
+      if (!mark(7) || !(in >> ck.verify_steps)) return false;
     } else if (key == "quiet_count") {
-      if (!(in >> ck.quiet_count)) return false;
+      if (!mark(8) || !(in >> ck.quiet_count)) return false;
     } else if (key == "verify_left") {
-      if (!(in >> ck.verify_left)) return false;
+      if (!mark(9) || !(in >> ck.verify_left)) return false;
     } else if (key == "candidate") {
-      if (!(in >> ck.candidate)) return false;
+      if (!mark(10) || !(in >> ck.candidate)) return false;
     } else if (key == "verified") {
-      if (!(in >> ck.verified)) return false;
+      if (!mark(11) || !(in >> ck.verified)) return false;
     } else if (key == "have_prev") {
-      if (!(in >> ck.have_prev)) return false;
+      if (!mark(12) || !(in >> ck.have_prev)) return false;
     } else if (key == "n_snap") {
-      if (!(in >> ck.n_snap) || ck.n_snap < 0) return false;
+      if (!mark(13) || !(in >> ck.n_snap) || ck.n_snap < 0) return false;
     } else if (key == "last_dumped") {
-      if (!(in >> ck.last_dumped)) return false;
+      if (!mark(14) || !(in >> ck.last_dumped)) return false;
+    } else if (key == "normalize") {
+      if (!mark(15) || !(in >> ck.normalize)) return false;
+    } else if (key == "project_volume") {
+      if (!mark(16) || !(in >> ck.project_volume)) return false;
+    } else if (key == "n_el_iter") {
+      if (!mark(17) || !(in >> ck.n_el_iter)) return false;
+    } else if (key == "dx") {
+      if (!mark(18) || !(in >> ck.dx)) return false;
+    } else if (key == "E_solid") {
+      if (!mark(19) || !(in >> ck.E_solid)) return false;
+    } else if (key == "nu_solid") {
+      if (!mark(20) || !(in >> ck.nu_solid)) return false;
+    } else if (key == "E_void") {
+      if (!mark(21) || !(in >> ck.E_void)) return false;
+    } else if (key == "nu_void") {
+      if (!mark(22) || !(in >> ck.nu_void)) return false;
+    } else if (key == "volume") {
+      if (!mark(23) || !(in >> ck.volume)) return false;
+    } else if (key == "lambda_volume") {
+      if (!mark(24) || !(in >> ck.lambda_volume)) return false;
+    } else if (key == "lambda_reg") {
+      if (!mark(25) || !(in >> ck.lambda_reg)) return false;
+    } else if (key == "lambda_reg_end") {
+      if (!mark(26) || !(in >> ck.lambda_reg_end)) return false;
+    } else if (key == "simp") {
+      if (!mark(27) || !(in >> ck.simp)) return false;
+    } else if (key == "simp_end") {
+      if (!mark(28) || !(in >> ck.simp_end)) return false;
+    } else if (key == "epsilon") {
+      if (!mark(29) || !(in >> ck.epsilon)) return false;
+    } else if (key == "dt") {
+      if (!mark(30) || !(in >> ck.dt)) return false;
+    } else if (key == "max_delta") {
+      if (!mark(31) || !(in >> ck.max_delta)) return false;
+    } else if (key == "tol_design") {
+      if (!mark(32) || !(in >> ck.tol_design)) return false;
+    } else if (key == "tol_objective") {
+      if (!mark(33) || !(in >> ck.tol_objective)) return false;
+    } else if (key == "tol_tensor") {
+      if (!mark(34) || !(in >> ck.tol_tensor)) return false;
     } else if (key == "J_prev") {
-      if (!(in >> ck.J_prev)) return false;
+      if (!mark(35) || !(in >> ck.J_prev)) return false;
     } else if (key == "C_prev") {
-      for (double &v : ck.C_prev)
-        if (!(in >> v)) return false;
-      saw_c = true;
+      if (!mark(36) || !read_voigt36(in, ck.C_prev)) return false;
+    } else if (key == "C_target") {
+      if (!mark(37) || !read_voigt36(in, ck.C_target)) return false;
+    } else if (key == "W") {
+      if (!mark(38) || !read_voigt36(in, ck.W)) return false;
     } else {
       return false;
     }
   }
-  return saw_c && ck.nx > 0 && ck.ny > 0 && ck.nz > 0;
+  constexpr std::uint64_t kRequired = (1ull << 39) - 1ull;
+  return seen == kRequired && ck.nx > 0 && ck.ny > 0 && ck.nz > 0;
 }
 
 [[nodiscard]] inline std::string
