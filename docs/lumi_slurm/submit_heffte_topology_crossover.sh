@@ -12,6 +12,8 @@
 #     ./submit_heffte_topology_crossover.sh wave1
 #   ./submit_heffte_topology_crossover.sh collect
 #   ./submit_heffte_topology_crossover.sh analyze
+#   ./submit_heffte_topology_crossover.sh harvest
+#   ./submit_heffte_topology_crossover.sh descriptors
 #
 # Optional: ACCOUNT, PARTITION, NODES (comma list), REPEATS, DRY_RUN=1,
 #           OPENPFC_SCALING_ROOT, HEAT3D_STEPS, HEAT3D_WARMUP, HEAT3D_DT
@@ -48,9 +50,9 @@ if ! account_allowed "${ACCOUNT}"; then
 fi
 
 case "${MODE}" in
-  check|wave1|collect|analyze) ;;
+  check|wave1|collect|analyze|harvest|descriptors) ;;
   *)
-    echo "usage: $0 check|wave1|collect|analyze" >&2
+    echo "usage: $0 check|wave1|collect|analyze|harvest|descriptors" >&2
     exit 1
     ;;
 esac
@@ -69,6 +71,16 @@ fi
 if [[ "${MODE}" == "analyze" ]]; then
   python3 "${PY}" --analyze "${CAMPAIGN_ROOT}/results/runs.csv" \
     --out "${CAMPAIGN_ROOT}/results"
+  exit 0
+fi
+if [[ "${MODE}" == "harvest" ]]; then
+  python3 "${PY}" --harvest "${CAMPAIGN_ROOT}" \
+    --out "${CAMPAIGN_ROOT}/results"
+  exit 0
+fi
+if [[ "${MODE}" == "descriptors" ]]; then
+  python3 "${PY}" --descriptors \
+    --out "${SCRIPT_DIR}/../hpc/heffte_topology_crossover_descriptors.csv"
   exit 0
 fi
 

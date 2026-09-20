@@ -16,6 +16,10 @@ per-allocation values.
         --collect DIR --out CSV
     python3 apps/heat3d/scripts/heffte_topology_crossover.py \\
         --analyze CSV --out DIR
+    python3 apps/heat3d/scripts/heffte_topology_crossover.py \\
+        --descriptors --out CSV
+    python3 apps/heat3d/scripts/heffte_topology_crossover.py \\
+        --harvest DIR --out DIR
 """
 
 from __future__ import print_function
@@ -27,9 +31,20 @@ import os
 import random
 import re
 import statistics
+import subprocess
 import sys
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+from heffte_comm_plan import (  # noqa: E402
+    COMM_MODELS,
+    DESCRIPTOR_FIELDS,
+    descriptor_rows,
+    write_csv as write_descriptor_csv,
+)
 
 PROTOCOLS = ("p2p_plined", "p2p", "alltoallv", "alltoall")
 GCDS_PER_NODE = 8
@@ -397,11 +412,12 @@ def collect_protocol(
             admit_flag = "reject"
             reason = "inbox_%s_expected_%s" % (inbox_xyz, expected_local)
             wall = None
-    reshape = banner.get("reshape") or admit.get("banner_reshape") or proto
-    if admit_flag == "ok" and reshape != proto:
+    banner_reshape = banner.get("reshape") or admit.get("banner_reshape") or ""
+    if admit_flag == "ok" and banner_reshape and banner_reshape != proto:
         admit_flag = "reject"
-        reason = "banner_reshape_%s_expected_%s" % (reshape, proto)
+        reason = "banner_reshape_%s_expected_%s" % (banner_reshape, proto)
         wall = None
+    reshape = proto
     placement = _placement_summary(run_dir)
     return {
         "issue": "106",
@@ -460,11 +476,57 @@ def collect_root(root: str, warmup: int) -> List[Dict[str, Any]]:
             continue
         for proto in PROTOCOLS:
             proto_dir = os.path.join(run, proto)
-            if not os.path.isdir(proto_dir):
+            if os.path.isdir(proto_dir):
+                row = collect_protocol(run, proto_dir, proto, warmup)
+                if row is not None:
+                    rows.append(row)
                 continue
-            row = collect_protocol(run, proto_dir, proto, warmup)
-            if row is not None:
-                rows.append(row)
+            meta = _meta_map(os.path.join(run, "run_meta.txt"))
+            admit = _meta_map(os.path.join(run, "admit.txt"))
+            rows.append(
+                {
+                    "issue": "106",
+                    "family": meta.get("family", FAMILY_PRIMARY),
+                    "job": meta.get("job", name),
+                    "account": meta.get("account", ""),
+                    "nodes": meta.get("nodes", ""),
+                    "ranks": meta.get("ntasks", ""),
+                    "partition": meta.get("partition", ""),
+                    "repeat": meta.get("repeat", ""),
+                    "protocol_seed": meta.get("protocol_seed", ""),
+                    "protocol_order": meta.get("protocols")
+                    or meta.get("protocol_order")
+                    or "",
+                    "protocol_index": "",
+                    "Nx": meta.get("Nx", ""),
+                    "Ny": meta.get("Ny", ""),
+                    "Nz": meta.get("Nz", ""),
+                    "local_inbox": "",
+                    "inbox_xyz": "",
+                    "outbox_xyz": "",
+                    "real_grid": "",
+                    "complex_grid": "",
+                    "reshape": proto,
+                    "use_pencils": "",
+                    "use_reorder": "",
+                    "use_gpu_aware": "",
+                    "admit": "missing",
+                    "reason": admit.get("reason") or "protocol_dir_absent",
+                    "revision": meta.get("revision", ""),
+                    "dirty": meta.get("dirty", ""),
+                    "bin_sha256": meta.get("bin_sha256", ""),
+                    "heffte_module": meta.get("heffte_module", ""),
+                    "mpi_module": meta.get("mpi_module", ""),
+                    "wall_step_s": "",
+                    "wall_step_spread_s": "",
+                    "checksum": "",
+                    "n_hosts": "",
+                    "nid_min": "",
+                    "nid_max": "",
+                    "xname_cabinets": "",
+                    "scratch": run,
+                }
+            )
     return rows
 
 
@@ -597,7 +659,7 @@ def analyze(
 
     alloc_rows: List[Dict[str, Any]] = []
     for job, group in sorted(by_job.items()):
-        if len(group) < 2:
+        if len(group) < len(PROTOCOLS):
             continue
         ranked = sorted(group, key=lambda r: (float(r["wall_step_s"]), str(r["reshape"])))
         winner = ranked[0]
@@ -770,6 +832,270 @@ def write_markdown(
         f.write("\n")
 
 
+ORDER_FIELDS = (
+    "job",
+    "nodes",
+    "repeat",
+    "protocol_seed",
+    "protocol_order",
+    "protocol_index",
+    "reshape",
+    "admit",
+    "reason",
+    "wall_step_s",
+    "checksum_ok",
+)
+
+
+def expected_wave1(family: int = FAMILY_PRIMARY) -> List[Dict[str, Any]]:
+    rows = []
+    for nodes in WAVE1_NODES:
+        for repeat in range(1, WAVE1_REPEATS + 1):
+            seed, algs = protocol_order(family, nodes, repeat)
+            name = "h3d106-%d-%dn-r%d" % (family, nodes, repeat)
+            rows.append(
+                {
+                    "name": name,
+                    "nodes": nodes,
+                    "repeat": repeat,
+                    "ranks": nodes * GCDS_PER_NODE,
+                    "seed": seed,
+                    "protocols": algs,
+                }
+            )
+    return rows
+
+
+def _slurm_table(kind: str) -> Dict[str, Dict[str, str]]:
+    """Map job name -> {jobid, state} from squeue or sacct. Empty if unavailable."""
+    out: Dict[str, Dict[str, str]] = {}
+    try:
+        if kind == "squeue":
+            cmd = [
+                "squeue",
+                "-u",
+                os.environ.get("USER", "juaho"),
+                "-A",
+                "project_462001245",
+                "-h",
+                "-o",
+                "%i|%j|%T",
+            ]
+        else:
+            cmd = [
+                "sacct",
+                "-X",
+                "-S",
+                "2026-09-20",
+                "-u",
+                os.environ.get("USER", "juaho"),
+                "-A",
+                "project_462001245",
+                "-n",
+                "-P",
+                "--format=JobID,JobName,State",
+            ]
+        proc = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return out
+    if proc.returncode != 0:
+        return out
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split("|")
+        if len(parts) < 3:
+            continue
+        jobid, name, state = parts[0], parts[1], parts[2].split()[0]
+        if not name.startswith("h3d106-"):
+            continue
+        prev = out.get(name)
+        if prev is None or kind == "squeue":
+            out[name] = {"job": jobid, "state": state}
+    return out
+
+
+def classify_row(row: Dict[str, Any]) -> str:
+    admit = str(row.get("admit") or "")
+    if admit == "ok" and row.get("wall_step_s"):
+        return "valid_measurement"
+    if admit == "ok":
+        return "completed_no_wall"
+    if admit == "missing":
+        return "missing_protocol"
+    if admit == "reject":
+        reason = str(row.get("reason") or "")
+        if "banner" in reason:
+            return "invalid_protocol_banner"
+        return "rejected"
+    return "unknown"
+
+
+def order_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for row in rows:
+        cs = str(row.get("checksum") or "")
+        checksum_ok = ""
+        if cs:
+            checksum_ok = "no" if ("nan" in cs.lower() or "inf" in cs.lower()) else "yes"
+        out.append(
+            {
+                "job": row.get("job", ""),
+                "nodes": row.get("nodes", ""),
+                "repeat": row.get("repeat", ""),
+                "protocol_seed": row.get("protocol_seed", ""),
+                "protocol_order": row.get("protocol_order", ""),
+                "protocol_index": row.get("protocol_index", ""),
+                "reshape": row.get("reshape", ""),
+                "admit": row.get("admit", ""),
+                "reason": row.get("reason", ""),
+                "wall_step_s": row.get("wall_step_s", ""),
+                "checksum_ok": checksum_ok,
+            }
+        )
+    return out
+
+
+def ranking_unresolved(alloc_at_nodes: Sequence[Dict[str, Any]], n_complete: int) -> str:
+    if n_complete < WAVE1_REPEATS:
+        return "yes_repeats_incomplete"
+    close = 0
+    winners = []
+    for row in alloc_at_nodes:
+        winners.append(str(row.get("winner") or ""))
+        ratio = _parse_float(str(row.get("winner_ratio") or ""))
+        if ratio is not None and ratio < 1.05:
+            close += 1
+    if len(set(winners)) > 1:
+        return "yes_winners_disagree"
+    if close:
+        return "yes_winner_second_within_5pct"
+    return "no"
+
+
+def write_status_markdown(
+    path: str,
+    rows: Sequence[Dict[str, Any]],
+    scale_rows: Sequence[Dict[str, Any]],
+    alloc_rows: Sequence[Dict[str, Any]],
+    slurm: Dict[str, Dict[str, str]],
+) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    by_nodes: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_nodes[int(row.get("nodes") or 0)].append(row)
+    alloc_by_nodes: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for row in alloc_rows:
+        alloc_by_nodes[int(row.get("nodes") or 0)].append(row)
+    with open(path, "w") as f:
+        f.write("# Issue #106 campaign status\n\n")
+        f.write(
+            "Generated harvest. Do not declare a winner from one allocation "
+            "when close competitors remain queued. This file is overwritten "
+            "on harvest; raw run directories are never modified.\n\n"
+        )
+        f.write(
+            "| nodes | completed/requested | best | T_best | spread | "
+            "unresolved | PENDING | RUNNING | FAILED |\n"
+        )
+        f.write("|------:|--------------------:|------|-------:|-------:|-----------|--------:|--------:|-------:|\n")
+        for spec in expected_wave1():
+            _ = spec
+        for nodes in WAVE1_NODES:
+            group = [r for r in by_nodes.get(nodes, []) if str(r.get("reshape"))]
+            ok_jobs = {
+                str(r.get("job"))
+                for r in group
+                if classify_row(r) == "valid_measurement"
+            }
+            n_complete = 0
+            for repeat in range(1, WAVE1_REPEATS + 1):
+                name = "h3d106-%d-%dn-r%d" % (FAMILY_PRIMARY, nodes, repeat)
+                live = slurm.get(name, {})
+                # completed if 4 valid protocol measurements exist for that repeat
+                n_ok = sum(
+                    1
+                    for r in group
+                    if str(r.get("repeat")) == str(repeat)
+                    and classify_row(r) == "valid_measurement"
+                )
+                if n_ok >= len(PROTOCOLS):
+                    n_complete += 1
+                _ = live
+            pending = running = failed = 0
+            for repeat in range(1, WAVE1_REPEATS + 1):
+                name = "h3d106-%d-%dn-r%d" % (FAMILY_PRIMARY, nodes, repeat)
+                st = (slurm.get(name) or {}).get("state", "")
+                if st == "PENDING":
+                    pending += 1
+                elif st == "RUNNING":
+                    running += 1
+                elif st in ("FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"):
+                    failed += 1
+            at = [r for r in scale_rows if int(r.get("nodes") or 0) == nodes]
+            at.sort(key=lambda r: (float(r["wall_step_s_median"]), str(r["reshape"])))
+            best = at[0]["reshape"] if at else ""
+            tbest = at[0]["wall_step_s_median"] if at else ""
+            spread = ""
+            if at:
+                lo = float(at[0]["wall_step_s_median"])
+                hi = max(float(r["wall_step_s_median"]) for r in at)
+                if lo > 0:
+                    spread = "%.2f%%" % (100.0 * (hi - lo) / lo)
+            unresolved = ranking_unresolved(alloc_by_nodes.get(nodes, []), n_complete)
+            f.write(
+                "| %d | %d/%d | `%s` | %s | %s | %s | %d | %d | %d |\n"
+                % (
+                    nodes,
+                    n_complete,
+                    WAVE1_REPEATS,
+                    best,
+                    tbest,
+                    spread,
+                    unresolved,
+                    pending,
+                    running,
+                    failed,
+                )
+            )
+        f.write("\nCounts are allocation-level. Protocol rows that failed or are ")
+        f.write("still missing stay in `runs.csv`; they are never dropped.\n")
+        _ = ok_jobs
+
+
+def harvest(root: str, out_dir: str, warmup: int) -> int:
+    os.makedirs(out_dir, exist_ok=True)
+    rows = collect_root(root, warmup)
+    runs_csv = os.path.join(out_dir, "runs.csv")
+    write_csv(runs_csv, RUN_FIELDS, rows)
+    scale, alloc = analyze(rows)
+    write_csv(os.path.join(out_dir, "scaling.csv"), SCALE_FIELDS, scale)
+    write_csv(os.path.join(out_dir, "allocations.csv"), ALLOC_FIELDS, alloc)
+    write_csv(os.path.join(out_dir, "order.csv"), ORDER_FIELDS, order_rows(rows))
+    notes = crossover_notes(scale, alloc)
+    write_markdown(os.path.join(out_dir, "scaling.md"), scale, alloc, notes)
+    slurm = {}
+    slurm.update(_slurm_table("sacct"))
+    slurm.update(_slurm_table("squeue"))
+    write_status_markdown(
+        os.path.join(out_dir, "status.md"), rows, scale, alloc, slurm
+    )
+    n_ok = sum(1 for r in rows if classify_row(r) == "valid_measurement")
+    n_fail = sum(1 for r in rows if classify_row(r) in ("rejected", "invalid_protocol_banner"))
+    n_miss = sum(1 for r in rows if classify_row(r) == "missing_protocol")
+    print("harvest rows=%d valid=%d rejected=%d missing=%d" % (
+        len(rows), n_ok, n_fail, n_miss
+    ))
+    print("wrote %s" % os.path.join(out_dir, "status.md"))
+    for n in notes:
+        print(n)
+    _ = COMM_MODELS
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--check", action="store_true")
@@ -780,6 +1106,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--collect")
     p.add_argument("--analyze")
+    p.add_argument("--harvest")
+    p.add_argument("--descriptors", action="store_true")
     p.add_argument("--out")
     p.add_argument("--warmup", type=int, default=1)
     args = p.parse_args(argv)
@@ -794,6 +1122,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         print(protocol_order_colon(args.family, args.nodes, args.repeat))
         return 0
+    if args.descriptors:
+        if not args.out:
+            print("--descriptors requires --out CSV", file=sys.stderr)
+            return 2
+        rows = descriptor_rows(WAVE1_NODES, args.family)
+        write_descriptor_csv(args.out, rows)
+        print("wrote %d descriptor rows to %s" % (len(rows), args.out))
+        return 0
+    if args.harvest:
+        if not args.out:
+            print("--harvest requires --out DIR", file=sys.stderr)
+            return 2
+        return harvest(args.harvest, args.out, args.warmup)
     if args.collect:
         if not args.out:
             print("--collect requires --out CSV", file=sys.stderr)
@@ -810,6 +1151,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         scale, alloc = analyze(rows)
         write_csv(os.path.join(args.out, "scaling.csv"), SCALE_FIELDS, scale)
         write_csv(os.path.join(args.out, "allocations.csv"), ALLOC_FIELDS, alloc)
+        write_csv(os.path.join(args.out, "order.csv"), ORDER_FIELDS, order_rows(rows))
         notes = crossover_notes(scale, alloc)
         write_markdown(os.path.join(args.out, "scaling.md"), scale, alloc, notes)
         print("wrote %s" % os.path.join(args.out, "scaling.csv"))

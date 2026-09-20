@@ -151,11 +151,13 @@ def test_collect_keeps_per_allocation_order_and_placement(tmp_path):
     _run_tree(tmp_path, "a", 128, "alltoall", 1.8, order=order, seed=11)
     _run_tree(tmp_path, "a", 128, "p2p_plined", 1.6, order=order, seed=11)
     rows = t.collect_root(str(tmp_path), warmup=1)
-    assert len(rows) == 2
+    assert len(rows) == 4
     by_proto = {r["reshape"]: r for r in rows}
     assert by_proto["p2p_plined"]["protocol_order"] == order
     assert by_proto["alltoall"]["protocol_index"] == "0"
     assert by_proto["p2p_plined"]["protocol_index"] == "1"
+    assert by_proto["p2p_plined"]["admit"] == "ok"
+    assert by_proto["p2p"]["admit"] == "missing"
     assert by_proto["p2p_plined"]["n_hosts"] == "2"
     assert by_proto["p2p_plined"]["nid_min"] == "5000"
     assert "1000" in by_proto["p2p_plined"]["xname_cabinets"]
@@ -163,10 +165,20 @@ def test_collect_keeps_per_allocation_order_and_placement(tmp_path):
 
 def test_analyze_keeps_allocation_winners(tmp_path):
     order = "p2p:alltoallv:alltoall:p2p_plined"
-    _run_tree(tmp_path, "j1", 128, "p2p_plined", 1.66, order=order, seed=3)
-    _run_tree(tmp_path, "j1", 128, "alltoallv", 1.99, order=order, seed=3)
-    _run_tree(tmp_path, "j2", 136, "p2p_plined", 1.70, order=order, seed=4)
-    _run_tree(tmp_path, "j2", 136, "alltoallv", 1.68, order=order, seed=4)
+    for proto, wall in (
+        ("p2p", 2.4),
+        ("alltoallv", 1.99),
+        ("alltoall", 1.80),
+        ("p2p_plined", 1.66),
+    ):
+        _run_tree(tmp_path, "j1", 128, proto, wall, order=order, seed=3)
+    for proto, wall in (
+        ("p2p", 2.5),
+        ("alltoallv", 1.68),
+        ("alltoall", 1.72),
+        ("p2p_plined", 1.70),
+    ):
+        _run_tree(tmp_path, "j2", 136, proto, wall, order=order, seed=4)
     rows = t.collect_root(str(tmp_path), warmup=1)
     scale, alloc = t.analyze(rows)
     assert len(alloc) == 2
@@ -181,8 +193,9 @@ def test_analyze_keeps_allocation_winners(tmp_path):
 def test_reject_wrong_banner(tmp_path):
     _run_tree(tmp_path, "bad", 128, "alltoall", 0.4, reshape="p2p_plined")
     rows = t.collect_root(str(tmp_path), warmup=1)
-    assert rows[0]["admit"] == "reject"
-    assert rows[0]["wall_step_s"] == ""
+    by_proto = {r["reshape"]: r for r in rows}
+    assert by_proto["alltoall"]["admit"] == "reject"
+    assert by_proto["alltoall"]["wall_step_s"] == ""
 
 
 @pytest.mark.parametrize("account", ["project_462001120", "project_462001519"])
