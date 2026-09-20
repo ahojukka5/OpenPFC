@@ -29,6 +29,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Blocked HeFFTe selector regret scaffold** (issue
+  [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature
+  schema, train/held-out split records, and regret tests. Does not time
+  held-out families or change production policy.
 - **2-D MHD conference visualization package**
   (`examples/ns2d_vorticity`, issue
   [#71](https://github.com/ahojukka5/OpenPFC/issues/71)). Evidence
