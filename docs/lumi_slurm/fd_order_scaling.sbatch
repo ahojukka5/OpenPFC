@@ -146,7 +146,10 @@ halo_face_bytes=$((6 * 256 * 256 * halo_width * 8))
 } | tee "${RUNDIR}/run_meta.txt"
 
 set +e
-srun "${SRUN_BIND[@]}" \
+# sbatch --export=NONE is inherited by srun unless overridden. Job
+# 22186610 then lost LD_LIBRARY_PATH (libfabric.so.1) and died 127,
+# the same class as HeFFTe tournament job 22175215.
+srun --export=ALL "${SRUN_BIND[@]}" \
   "${HEAT3D_HIP_BIN}" "${NX}" "${NY}" "${NZ}" "${STEPS}" "${DT}" "${FD_ORDER}" \
   2>&1 | tee "${RUNDIR}/run.log"
 SRUN_RC="${PIPESTATUS[0]}"
