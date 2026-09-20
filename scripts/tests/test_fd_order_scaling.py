@@ -185,6 +185,18 @@ def test_submit_refuses_unrelated_account(account):
     assert account in proc.stderr_text
 
 
+def test_timed_protocol_lengthens_cheap_rungs():
+    assert t.timed_protocol(1) == (5005, 50)
+    assert t.timed_protocol(8) == (5005, 50)
+    assert t.timed_protocol(32) == (3005, 50)
+    assert t.timed_protocol(128) == (805, 20)
+    assert t.timed_protocol(512) == (205, 10)
+    assert t.timed_protocol(1024) == (105, 5)
+    assert t.repeats_for_nodes(1) == 3
+    assert t.repeats_for_nodes(8) == 3
+    assert t.repeats_for_nodes(32) == 3
+
+
 def test_submit_dry_run_clean_and_diag(tmp_path):
     env = os.environ.copy()
     env["ACCOUNT"] = "project_462001245"
@@ -203,7 +215,10 @@ def test_submit_dry_run_clean_and_diag(tmp_path):
     assert "OPENPFC_FD_PROC_GRID=2x2x2" in proc.stdout_text
     assert "OPENPFC_FD_PROC_GRID=2,2,2" not in proc.stdout_text
     assert "h3d108c-fd2-1n-r1" in proc.stdout_text
+    assert "HEAT3D_STEPS=5005" in proc.stdout_text
+    assert "HEAT3D_WARMUP=50" in proc.stdout_text
     assert "h3d108c-fd20-128n-r1" in proc.stdout_text
+    assert "HEAT3D_STEPS=805" in proc.stdout_text
     assert "HEAT3D_DIAG_TIMING" not in proc.stdout_text
     diag = _run(["bash", str(SUBMIT), "diag"], env, str(ROOT))
     assert diag.returncode == 0, diag.stderr_text + diag.stdout_text
@@ -213,6 +228,11 @@ def test_submit_dry_run_clean_and_diag(tmp_path):
 
 
 def test_sbatch_overrides_inherited_export_none():
+    text = BATCH.read_text()
+    assert "srun --export=ALL" in text
+    assert "libfabric.so.1" in text
+    assert "fd_placement.txt -ef" in text
+    assert "recovered_missing_admit" not in text
     text = BATCH.read_text()
     assert "srun --export=ALL" in text
     assert "libfabric.so.1" in text

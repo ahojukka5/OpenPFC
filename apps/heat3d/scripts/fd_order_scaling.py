@@ -28,7 +28,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 ORDERS = (2, 4, 8, 12, 20)
 NODE_LADDER = (1, 8, 32, 128, 512, 1024)
 DIAG_NODES = (8, 128, 1024)
-REPEAT_NODES = (128, 512, 1024)
+# Clean repeats at every scale: 1/8/32-node jobs finish in seconds, so
+# three allocations are cheaper than arguing from a single millisecond
+# median. 1024-node stays at three; do not add a fourth.
+REPEAT_NODES = NODE_LADDER
 GCDS_PER_NODE = 8
 INTERIOR = 256
 ISSUE = "108"
@@ -204,6 +207,25 @@ def ladder() -> List[Tuple[int, int, int, int, str, int]]:
         grid = "%dx%dx%d" % (gx, gy, gz)
         out.append((nodes, nx, ny, nz, grid, ranks))
     return out
+
+
+def timed_protocol(nodes: int) -> Tuple[int, int]:
+    """Return (steps, warmup) for a node count.
+
+    Heat3D FD wall/step is 1--8 ms. Extra timed steps cost almost nothing
+    next to queue and launch, but the schema-v4 JSON grows with ranks ×
+    frames. Cap so a profile stays around the 1024-node 105-step size
+    (~440 MB). Headline metric is still the median after warmup.
+    """
+    if nodes <= 8:
+        return 5005, 50
+    if nodes <= 32:
+        return 3005, 50
+    if nodes <= 128:
+        return 805, 20
+    if nodes <= 512:
+        return 205, 10
+    return 105, 5
 
 
 def repeats_for_nodes(nodes: int, override: Optional[int] = None) -> int:
@@ -464,7 +486,8 @@ def collect_run(run: str, warmup: int) -> Optional[Dict[str, Any]]:
         admit_flag, reason, checksum, decomp, prof
     )
     if os.path.isfile(prof) and admit_flag == "ok":
-        wall = wall_step_from_profile(prof, warmup)
+        run_warmup = _parse_int(meta.get("warmup")) or warmup
+        wall = wall_step_from_profile(prof, run_warmup)
     local = decomp.get("local_min") or meta.get("require_interior") or ""
     expected = "%dx%dx%d" % (INTERIOR, INTERIOR, INTERIOR)
     if local and local != expected and "x" in local:
@@ -900,6 +923,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--check", action="store_true")
     p.add_argument("--ladder", action="store_true")
     p.add_argument("--geometry", action="store_true")
+    p.add_argument("--timed-protocol", type=int, metavar="NODES")
+    p.add_argument("--repeats", type=int, metavar="NODES")
     p.add_argument("--collect")
     p.add_argument("--analyze")
     p.add_argument("--harvest")
@@ -910,6 +935,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return check()
     if args.ladder:
         return print_ladder()
+    if args.timed_protocol is not None:
+        steps, warm = timed_protocol(args.timed_protocol)
+        print("%d %d" % (steps, warm))
+        return 0
+    if args.repeats is not None:
+        print(repeats_for_nodes(args.repeats))
+        return 0
     if args.geometry:
         if not args.out:
             print("--geometry requires --out CSV", file=sys.stderr)
