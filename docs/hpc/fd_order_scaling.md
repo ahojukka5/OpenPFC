@@ -31,7 +31,10 @@ halo overlap. One rank/GCD. I/O off. `dt=0.01`, 105 steps,
 | 1024 | 8192 | `16x16x32` | `4096×4096×8192` |
 
 Grids are exported as `OPENPFC_FD_PROC_GRID=gx x gy x gz` because
-`sbatch --export` splits on commas.
+`sbatch --export` splits on commas. The batch script then calls
+`srun --export=ALL` so module-loaded `LD_LIBRARY_PATH` reaches the
+ranks. Without that override, `--export=NONE` is inherited and the
+binary dies 127 on `libfabric.so.1` (job 22186610).
 
 ## Orders
 

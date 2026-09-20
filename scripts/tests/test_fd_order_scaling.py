@@ -212,6 +212,12 @@ def test_submit_dry_run_clean_and_diag(tmp_path):
     assert "h3d108d-fd2-1n-r1" not in diag.stdout_text
 
 
+def test_sbatch_overrides_inherited_export_none():
+    text = BATCH.read_text()
+    assert "srun --export=ALL" in text
+    assert "libfabric.so.1" in text
+
+
 @pytest.mark.parametrize("account", ["project_462001519", ""])
 def test_batch_refuses_wrong_or_missing_account(account):
     env = os.environ.copy()
