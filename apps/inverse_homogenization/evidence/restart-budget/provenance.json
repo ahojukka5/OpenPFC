@@ -1,0 +1,16 @@
+{
+  "source_revision": "f0be42aa65e7e92dc38951e3f33831af5328683c",
+  "binary_sha256": "bb2bd222135813d5430759c717cc4da581de2de2e1798916f8584fa9d549e5a7",
+  "driver_sha256": "80368f5373df691f41749f6a279e41449a2db837b3285ec3ce2dd716486fc741",
+  "driver_path": "apps/inverse_homogenization/scripts/replay_checkpoint_state.py",
+  "job": 22182245,
+  "account": "project_462001245",
+  "nodes": 1,
+  "gcds": 8,
+  "elapsed": "00:02:12",
+  "raw_sha256": "da8d6422849035fd8f6d8c4019008800db1c973ef9e53237335c1cc25496b4fa",
+  "target_source": "1b3f2d2591efdd468725bfd089d1727265587e76",
+  "target_path": "apps/inverse_homogenization/evidence/unnormalized-control/target.txt",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "scope": "Exhausted-budget rejection plus unchanged valid restart fields/hold; not publication fault qualification"
+}
