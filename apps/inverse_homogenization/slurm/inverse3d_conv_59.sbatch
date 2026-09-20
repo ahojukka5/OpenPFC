@@ -31,8 +31,9 @@
 
 set -euo pipefail
 
-SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-inv-ckpt}"
-BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-ckpt72}"
+# Do not inherit SRC_DIR/BUILD_DIR from other campaigns (job 22178248).
+SRC="${INVERSE_SRC:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-inv-ckpt}"
+BUILD="${INVERSE_BUILD:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-ckpt72}"
 OUT="${OUT_DIR:-/scratch/project_462001245/juaho/inverse-homogenization/conv_${SLURM_JOB_ID}}"
 MODE="${CONV_MODE:-64}"
 CT="${SRC}/apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt"
