@@ -17,9 +17,21 @@ Issue: [#108](https://github.com/ahojukka5/OpenPFC/issues/108).
 ## Frozen weak-scaling protocol
 
 Keep exactly `256³` owned interior cells / GCD. Production two-stream
-halo overlap. One rank/GCD. I/O off. `dt=0.01`, 105 steps,
-`HEAT3D_WARMUP=5`. Process grids follow the admitted FD-2 construction
-(double the smallest axis, z then y then x on ties):
+halo overlap. One rank/GCD. I/O off. `dt=0.01`. Wall/step is 1--8 ms,
+so cheap rungs run enough timed steps for a stable median; the JSON
+profile is capped near the 1024-node 105-step size (~440 MB):
+
+| nodes | steps | warmup | timed | clean repeats |
+|------:|------:|-------:|------:|--------------:|
+| 1 | 5005 | 50 | 4955 | 3 |
+| 8 | 5005 | 50 | 4955 | 3 |
+| 32 | 3005 | 50 | 2955 | 3 |
+| 128 | 805 | 20 | 785 | 3 |
+| 512 | 205 | 10 | 195 | 3 |
+| 1024 | 105 | 5 | 100 | 3 |
+
+Process grids follow the admitted FD-2 construction (double the
+smallest axis, z then y then x on ties):
 
 | nodes | ranks | proc grid | global |
 |------:|------:|-----------|--------|
@@ -59,7 +71,8 @@ Do not mix with the #25 FD-2 tree or with issue #106.
 ## First wave
 
 Clean production matrix: every declared order × the node ladder.
-Independent repeats (3) at 128, 512, and 1024 nodes. Component
+Independent repeats (3) at every node count — 1/8/32-node jobs are
+milliseconds per step, so extra allocations are cheap. Component
 diagnostics (`HEAT3D_DIAG_TIMING=1`) only at 8, 128, and 1024 nodes.
 
 ## Submit

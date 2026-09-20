@@ -104,8 +104,8 @@ if [[ -z "${OPENPFC_REVISION:-}" ]]; then
   exit 2
 fi
 export OPENPFC_DIRTY="${OPENPFC_DIRTY:-unknown}"
-export HEAT3D_STEPS="${HEAT3D_STEPS:-105}"
-export HEAT3D_WARMUP="${HEAT3D_WARMUP:-5}"
+# Per-node defaults come from fd_order_scaling.py --timed-protocol.
+# HEAT3D_STEPS / HEAT3D_WARMUP still override every rung when set.
 export HEAT3D_DT="${HEAT3D_DT:-0.01}"
 export HEAT3D_REQUIRE_INTERIOR="${HEAT3D_REQUIRE_INTERIOR:-256x256x256}"
 export HEAT3D_HIP_BIN
@@ -160,11 +160,16 @@ repeats_for() {
     echo "${REPEATS}"
     return
   fi
-  if (( nodes == 128 || nodes == 512 || nodes == 1024 )); then
-    echo 3
-  else
-    echo 1
+  python3 "${PY}" --repeats "${nodes}"
+}
+
+timed_for() {
+  local nodes="$1"
+  if [[ -n "${HEAT3D_STEPS:-}" && -n "${HEAT3D_WARMUP:-}" ]]; then
+    echo "${HEAT3D_STEPS} ${HEAT3D_WARMUP}"
+    return
   fi
+  python3 "${PY}" --timed-protocol "${nodes}"
 }
 
 walltime_for_nodes() {
@@ -186,6 +191,8 @@ submit_one() {
   local nz="$5"
   local grid="$6"
   local repeat="$7"
+  local steps="$8"
+  local warmup="$9"
   local ntasks=$((nodes * 8))
   local job_name="${PREFIX}-fd${order}-${nodes}n-r${repeat}"
   local time_lim
@@ -194,8 +201,8 @@ submit_one() {
   local diag="${HEAT3D_DIAG_TIMING:-}"
   local export_list="NONE"
   export_list+=",HEAT3D_HIP_BIN=${HEAT3D_HIP_BIN}"
-  export_list+=",HEAT3D_STEPS=${HEAT3D_STEPS}"
-  export_list+=",HEAT3D_WARMUP=${HEAT3D_WARMUP}"
+  export_list+=",HEAT3D_STEPS=${steps}"
+  export_list+=",HEAT3D_WARMUP=${warmup}"
   export_list+=",HEAT3D_DT=${HEAT3D_DT}"
   export_list+=",HEAT3D_FD_ORDER=${order}"
   export_list+=",HEAT3D_REQUIRE_INTERIOR=${HEAT3D_REQUIRE_INTERIOR}"
@@ -258,9 +265,13 @@ python3 "${PY}" --ladder | while read -r nodes nx ny nz grid ranks; do
     if [[ "${MODE}" == "clean" ]]; then
       nrep="$(repeats_for "${nodes}")"
     fi
+    proto="$(timed_for "${nodes}")"
+    steps="${proto%% *}"
+    warmup="${proto##* }"
     r=1
     while (( r <= nrep )); do
-      submit_one "${order}" "${nodes}" "${nx}" "${ny}" "${nz}" "${grid}" "${r}"
+      submit_one "${order}" "${nodes}" "${nx}" "${ny}" "${nz}" "${grid}" "${r}" \
+        "${steps}" "${warmup}"
       r=$((r + 1))
     done
   done
