@@ -59,6 +59,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
                                         src/hip/homogenize_hip.cpp)
   inverse_homogenization_hip_executable(openpfc_inverse_homogenize_hip
                                         src/hip/inverse_homogenize_hip.cpp)
+  target_link_libraries(openpfc_inverse_homogenize_hip PRIVATE nlohmann_json::nlohmann_json)
   install(TARGETS openpfc_homogenize_hip openpfc_inverse_homogenize_hip
           DESTINATION bin)
   message(STATUS "openpfc_homogenize_hip / openpfc_inverse_homogenize_hip (HIP Green) enabled")
@@ -141,7 +142,8 @@ if(INVERSE_HOMOGENIZATION_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
   if(TARGET Catch2::Catch2)
     inverse_homogenization_cpu_executable(test_inverse_homogenization
                                           tests/test_inverse_homogenization.cpp)
-    target_link_libraries(test_inverse_homogenization PRIVATE Catch2::Catch2)
+    target_link_libraries(test_inverse_homogenization PRIVATE Catch2::Catch2
+                          nlohmann_json::nlohmann_json)
     add_test(NAME inverse-homogenization-ac-tests
              COMMAND test_inverse_homogenization)
     set_tests_properties(inverse-homogenization-ac-tests PROPERTIES TIMEOUT 600)

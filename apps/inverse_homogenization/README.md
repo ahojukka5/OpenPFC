@@ -256,3 +256,26 @@ bricks plus an XDMF sidecar. Size later grids from `HIP_MEM
 bytes_per_cell` in the HIP driver log, not from `sacct` MaxRSS.
 Do not call a grey morphology auxetic unless `nu_eff` / `nu_xy` is
 negative. The default seed is rotating-squares.
+
+### HIP endpoint material records
+
+With `--dump-dir`, the HIP inverse driver also writes
+`h_final_material.json` and `h_thresh_material.json` beside the exact accepted
+`h_final.bin` and its strict `h>0.5` thresholded field. Each record identifies
+the accepted step, termination reason, grid and spacing. `MAX_STEPS` remains
+nonconvergence, even when the endpoint elasticity solves succeed.
+
+The records preserve all 36 raw unpenalized stiffness entries. Diagnostics use
+an explicitly separate symmetric tensor, the existing `diagnose_stiffness`
+implementation, engineering-Voigt order `[xx, yy, zz, yz, xz, xy]`, and
+engineering shear strain. Compliance-based `nu_xy` means transverse y response
+under uniaxial x stress; all six ordered axis pairs are reported. These replace
+the isotropic `C12/(C11+C12)` shortcut for anisotropic material assessment.
+The compliance and Poisson fields are null unless all six solves converge,
+the tensor is finite, positive definite and invertible, and compliance
+normalization is defined. Per-load iterations and residuals remain available
+for rejected diagnostics. This flag certifies neither inverse convergence nor
+physical validation of a material model.
+
+Both tensors were already computed by the driver; reporting adds no elasticity
+solve and changes no iterate, scientific target or convergence tolerance.
