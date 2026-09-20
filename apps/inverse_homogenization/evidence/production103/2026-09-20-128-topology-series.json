@@ -115,6 +115,27 @@
       "dump_index": 43,
       "step": 3440,
       "file": "production128_h_0043.bin"
+    },
+    {
+      "grid": [
+        128,
+        128,
+        242
+      ],
+      "vol_mean": 0.2575865185999788,
+      "solid_frac": 0.16382416023695764,
+      "nsolid": 649551,
+      "grey_0.1_0.9": 0.6612006573637655,
+      "ncomp": 4,
+      "largest_frac_of_solid": 0.2651154412817469,
+      "perc": {
+        "x": false,
+        "y": true,
+        "z": true
+      },
+      "dump_index": 44,
+      "step": 3520,
+      "file": "production128_h_0044.bin"
     }
   ],
   "comparator": {
@@ -128,5 +149,5 @@
       "perc_xyz": true
     }
   },
-  "interpretation": "h>0.5 topology along the #103 128 run. ncomp is 4 from step 800 through 3360. x never percolates. y appears only at 3360. solid_frac 0.133 to 0.162; largest piece stays ~26%. Not coarsening toward n0 CONVERGED (ncomp=2, xyz). Not CONVERGED."
+  "interpretation": "h>0.5 topology along the #103 128 run. ncomp is 4 from dump 10 through 44 (step 3520). x never percolates. solid_frac last 0.164; largest piece 0.265 of solid. Not coarsening toward n0 CONVERGED (ncomp=2, xyz). Not CONVERGED."
 }
