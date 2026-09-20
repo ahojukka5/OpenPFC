@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string>
 
+#include <inverse_homogenization/inverse_checkpoint.hpp>
 #include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/simp_penalty.hpp>
 
@@ -22,16 +23,24 @@ int main(int argc, char *argv[]) { return Catch::Session().run(argc, argv); }
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
+using pfc::apps::inverse::apply_tracker;
+using pfc::apps::inverse::capture_tracker;
+using pfc::apps::inverse::checkpoint_matches_problem;
 using pfc::apps::inverse::continuation_fraction;
 using pfc::apps::inverse::ConvergenceConfig;
 using pfc::apps::inverse::ConvergenceMetrics;
 using pfc::apps::inverse::ConvergenceTracker;
 using pfc::apps::inverse::copy_design_buffer;
+using pfc::apps::inverse::fill_voigt6;
+using pfc::apps::inverse::format_checkpoint_text;
+using pfc::apps::inverse::InverseCheckpoint;
 using pfc::apps::inverse::is_terminal;
 using pfc::apps::inverse::make_metrics;
 using pfc::apps::inverse::params_frozen;
+using pfc::apps::inverse::read_checkpoint_text;
 using pfc::apps::inverse::relative_norm_change;
 using pfc::apps::inverse::relative_objective_change;
+using pfc::apps::inverse::store_voigt6;
 using pfc::apps::inverse::termination_name;
 using pfc::apps::inverse::TerminationReason;
 
@@ -267,4 +276,81 @@ TEST_CASE("copy_design_buffer restores a trailing in-place update",
   h[0] = 0.5;
   copy_design_buffer(certified, h, 4);
   REQUIRE(h[0] == 0.1);
+}
+
+TEST_CASE("checkpoint text round-trips tracker and C_H", "[inverse-conv][72]") {
+  struct Tiny6 {
+    double a[6][6]{};
+    double &operator()(int i, int j) { return a[i][j]; }
+    double operator()(int i, int j) const { return a[i][j]; }
+  };
+  InverseCheckpoint ck;
+  ck.nx = 64;
+  ck.ny = 64;
+  ck.nz = 121;
+  ck.next_step = 40;
+  ck.continuation_steps = 300;
+  ck.max_steps = 5000;
+  ck.conv_window = 20;
+  ck.verify_steps = 100;
+  ck.quiet_count = 7;
+  ck.verify_left = 12;
+  ck.candidate = 1;
+  ck.have_prev = 1;
+  ck.n_snap = 5;
+  ck.last_dumped = 39;
+  ck.J_prev = 0.123456789;
+  Tiny6 C{};
+  C(0, 0) = 0.04;
+  C(0, 1) = -0.008;
+  store_voigt6(ck.C_prev, C);
+  std::istringstream in(format_checkpoint_text(ck));
+  InverseCheckpoint got;
+  REQUIRE(read_checkpoint_text(in, got));
+  REQUIRE(got.next_step == 40);
+  REQUIRE(got.quiet_count == 7);
+  REQUIRE(got.verify_left == 12);
+  REQUIRE(got.candidate == 1);
+  REQUIRE(got.n_snap == 5);
+  REQUIRE(got.last_dumped == 39);
+  REQUIRE_THAT(got.J_prev, WithinAbs(0.123456789, 1e-15));
+  Tiny6 C2{};
+  fill_voigt6(C2, got.C_prev);
+  REQUIRE_THAT(C2(0, 0), WithinAbs(0.04, 1e-15));
+  REQUIRE_THAT(C2(0, 1), WithinAbs(-0.008, 1e-15));
+  ConvergenceTracker tr;
+  apply_tracker(got, tr);
+  REQUIRE(tr.candidate);
+  REQUIRE(tr.quiet_count == 7);
+  REQUIRE(checkpoint_matches_problem(got, 64, 64, 121, 300));
+  REQUIRE_FALSE(checkpoint_matches_problem(got, 32, 64, 121, 300));
+}
+
+TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]") {
+  ConvergenceTracker tr;
+  tr.cfg.continuation_steps = 300;
+  tr.cfg.max_steps = 5000;
+  tr.cfg.conv_window = 20;
+  tr.cfg.verify_steps = 100;
+  tr.quiet_count = 20;
+  tr.candidate = true;
+  tr.verify_left = 47;
+  tr.verified = false;
+  InverseCheckpoint ck;
+  capture_tracker(ck, tr, 412);
+  ConvergenceTracker got;
+  apply_tracker(ck, got);
+  REQUIRE(ck.next_step == 412);
+  REQUIRE(got.quiet_count == 20);
+  REQUIRE(got.candidate);
+  REQUIRE(got.verify_left == 47);
+  REQUIRE_FALSE(got.verified);
+  REQUIRE(got.cfg.continuation_steps == 300);
+  REQUIRE(got.cfg.max_steps == 5000);
+}
+
+TEST_CASE("checkpoint text rejects a bad magic line", "[inverse-conv][72]") {
+  InverseCheckpoint ck;
+  std::istringstream in("NOT_A_CHECKPOINT 1\n");
+  REQUIRE_FALSE(read_checkpoint_text(in, ck));
 }
