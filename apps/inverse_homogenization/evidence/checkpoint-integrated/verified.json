@@ -1,0 +1,724 @@
+{
+  "binary_sha256": "ab2cf66726beafaa6a51a6061d431079ae96c47566adc2891353e4f2b18b42c2",
+  "driver_sha256": "4c4aa3c30ada964f5a3a729d84411f200d6e21a60a3a10710b108199760f7e04",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "ranks": 8,
+  "cases": [
+    {
+      "name": "hold",
+      "cut": 50,
+      "saved_state": {
+        "OPENPFC_INVERSE_CHECKPOINT": "3",
+        "nx": "8",
+        "ny": "8",
+        "nz": "8",
+        "next_step": "50",
+        "continuation_steps": "0",
+        "max_steps": "500",
+        "conv_window": "20",
+        "verify_steps": "100",
+        "quiet_count": "49",
+        "verify_left": "71",
+        "candidate": "1",
+        "verified": "0",
+        "have_prev": "1",
+        "n_snap": "51",
+        "last_dumped": "50",
+        "termination": "0",
+        "normalize": "0",
+        "project_volume": "1",
+        "n_el_iter": "400",
+        "dx": "1",
+        "E_solid": "1",
+        "nu_solid": "0.29999999999999999",
+        "E_void": "0.002",
+        "nu_void": "0.29999999999999999",
+        "volume": "1",
+        "lambda_volume": "1",
+        "lambda_reg": "0.20000000000000001",
+        "lambda_reg_end": "0.20000000000000001",
+        "simp": "2",
+        "simp_end": "2",
+        "epsilon": "2",
+        "dt": "0.040000000000000001",
+        "max_delta": "0.040000000000000001",
+        "tol_design": "0.0001",
+        "tol_objective": "9.9999999999999995e-07",
+        "tol_tensor": "0.0001",
+        "J_prev": "3.673623282422871",
+        "C_prev": "1.3461538461538409 0.57692307692307554 0.57692307692307554 0 0 0 0.57692307692307554 1.3461538461538409 0.57692307692307554 0 0 0 0.57692307692307554 0.57692307692307554 1.3461538461538409 0 0 0 0 0 0 0.38461538461538336 0 0 0 0 0 0 0.38461538461538336 0 0 0 0 0 0 0.38461538461538336",
+        "C_target": "0.043419814777999999 -0.0085380624430000003 0.014196005669000001 5.0106997077000002e-19 -2.3331637282999998e-19 -6.9064618458000002e-07 -0.0085380624430000003 0.043419814777999999 0.014196005669000001 1.1094561064e-19 1.1906142528e-19 -6.9064618458000002e-07 0.014196005669000001 0.014196005669000001 0.089238208383999998 5.2509728877000001e-20 1.6052480304000001e-19 4.1979431444999999e-09 5.0106997077000002e-19 1.1094561064e-19 5.2509728877000001e-20 0.012395774125 -1.5323860571000001e-08 -5.8735912231999996e-20 -2.3331637282999998e-19 1.1906142528e-19 1.6052480304000001e-19 -1.5323860571000001e-08 0.012395774125 1.7475994166e-19 -6.9064618458000002e-07 -6.9064618458000002e-07 4.1979431444999999e-09 -5.8735912231999996e-20 1.7475994166e-19 0.0052654983726999997",
+        "W": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+      },
+      "last_row": {
+        "step": "120",
+        "J": "3.67362",
+        "J_tensor": "3.67362",
+        "J_volume": "1.2326e-32",
+        "J_reg": "4.43734e-32",
+        "volume": "1",
+        "grey": "0",
+        "C11": "1.34615",
+        "C12": "0.576923",
+        "nu_eff": "0.3",
+        "C_fro": "2.80664",
+        "design_rms": "5.55112e-16",
+        "dJ_rel": "3.02215e-15",
+        "dC_rel": "1.71732e-15",
+        "morph_frac": "0",
+        "step_rms": "0.04",
+        "grad_rms": "15.181",
+        "simp_p": "2",
+        "lambda_reg": "0.2",
+        "frozen": "1",
+        "conv_window": "120",
+        "candidate": "1",
+        "verified": "1",
+        "ms": "13.0257",
+        "elasticity": "1",
+        "termination": "CONVERGED"
+      },
+      "overlap_rows": 71,
+      "identical_fields": [
+        {
+          "file": "h_final.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "h_thresh.bin",
+          "sha256": "05db1543dd4c49926866352bc24cc053df8dda793005b1b5d71d5861c36d32b0"
+        },
+        {
+          "file": "hold_h_0000.bin",
+          "sha256": "05db1543dd4c49926866352bc24cc053df8dda793005b1b5d71d5861c36d32b0"
+        },
+        {
+          "file": "hold_h_0001.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0002.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0003.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0004.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0005.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0006.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0007.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0008.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0009.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0010.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0011.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0012.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0013.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0014.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0015.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0016.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0017.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0018.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0019.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0020.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0021.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0022.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0023.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0024.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0025.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0026.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0027.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0028.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0029.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0030.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0031.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0032.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0033.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0034.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0035.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0036.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0037.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0038.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0039.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0040.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0041.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0042.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0043.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0044.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0045.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0046.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0047.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0048.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0049.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0050.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0051.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0052.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0053.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0054.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0055.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0056.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0057.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0058.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0059.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0060.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0061.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0062.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0063.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0064.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0065.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0066.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0067.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0068.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0069.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0070.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0071.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0072.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0073.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0074.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0075.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0076.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0077.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0078.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0079.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0080.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0081.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0082.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0083.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0084.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0085.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0086.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0087.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0088.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0089.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0090.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0091.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0092.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0093.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0094.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0095.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0096.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0097.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0098.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0099.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0100.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0101.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0102.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0103.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0104.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0105.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0106.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0107.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0108.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0109.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0110.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0111.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        },
+        {
+          "file": "hold_h_0112.bin",
+          "sha256": "915485bed09f4b2c4b67980b831ed77c54c798450935f56689536aa7b0353107"
+        },
+        {
+          "file": "hold_h_0113.bin",
+          "sha256": "6a46e78ab7e915df858189a1f892a239ae262ba57fa410b55504453ec546d4d0"
+        },
+        {
+          "file": "hold_h_0114.bin",
+          "sha256": "e77108fb6777be3320bd9e8d0516a4114d2c49155c83fe1e33311de590038ff8"
+        },
+        {
+          "file": "hold_h_0115.bin",
+          "sha256": "dfbfc679eb6c36b1c9afc004be5ad030b5f3324b5783c46696acc8887d7d3a1f"
+        },
+        {
+          "file": "hold_h_0116.bin",
+          "sha256": "1acd319a4b8184a94b31301ebba4696df655d1951008e3aaff67e5496475a564"
+        },
+        {
+          "file": "hold_h_0117.bin",
+          "sha256": "378e0bca28e35473a0ae10121fc0f1ab4eb6872ebd07d0305373545d877742aa"
+        },
+        {
+          "file": "hold_h_0118.bin",
+          "sha256": "e81908288975db938c6573c1d87fb0e2a9bd9747d512e134d94d073fe19bd326"
+        },
+        {
+          "file": "hold_h_0119.bin",
+          "sha256": "8eeeb38a60a74b84f1605b7158132e6381b3af7911d135b5f4c70be48d7fe8a0"
+        },
+        {
+          "file": "hold_h_0120.bin",
+          "sha256": "a85dcac211b7914e069eba3b3418604683b692b62af2cc0b2df6d4a46b5b3f3f"
+        }
+      ],
+      "terminal_rejected": true,
+      "exhausted_budgets_rejected": [
+        49,
+        50
+      ],
+      "ledger_failures_rejected": [
+        "missing",
+        "truncated",
+        "malformed"
+      ],
+      "publication_failure_preserved_previous": true,
+      "endpoint_material_reports_identical": true
+    },
+    {
+      "name": "moving",
+      "cut": 4,
+      "saved_state": {
+        "OPENPFC_INVERSE_CHECKPOINT": "3",
+        "nx": "8",
+        "ny": "8",
+        "nz": "8",
+        "next_step": "4",
+        "continuation_steps": "0",
+        "max_steps": "9",
+        "conv_window": "20",
+        "verify_steps": "100",
+        "quiet_count": "0",
+        "verify_left": "0",
+        "candidate": "0",
+        "verified": "0",
+        "have_prev": "1",
+        "n_snap": "5",
+        "last_dumped": "4",
+        "termination": "0",
+        "normalize": "0",
+        "project_volume": "1",
+        "n_el_iter": "400",
+        "dx": "1",
+        "E_solid": "1",
+        "nu_solid": "0.29999999999999999",
+        "E_void": "0.002",
+        "nu_void": "0.29999999999999999",
+        "volume": "0.25758651859999998",
+        "lambda_volume": "1",
+        "lambda_reg": "0.20000000000000001",
+        "lambda_reg_end": "0.20000000000000001",
+        "simp": "2",
+        "simp_end": "2",
+        "epsilon": "2",
+        "dt": "0.040000000000000001",
+        "max_delta": "0.040000000000000001",
+        "tol_design": "0.0001",
+        "tol_objective": "9.9999999999999995e-07",
+        "tol_tensor": "0.0001",
+        "J_prev": "0.0095647594282821241",
+        "C_prev": "0.060367026843176616 0.030263650229502333 0.027189203124557311 0 0 -7.1297421617640437e-06 0.030263650229502333 0.060367026843176616 0.027189203124557318 0 0 -7.1297421617645858e-06 0.027189203124557311 0.027189203124557318 0.099057973717516498 0 0 -4.2778453159246933e-06 0 0 0 0.022149285196029045 -5.8568880478635367e-06 0 0 0 0 -5.8568880478635367e-06 0.022149285196029045 0 -7.1297421617640437e-06 -7.1297421617645858e-06 -4.2778453159246933e-06 0 0 0.025864264243148",
+        "C_target": "0.043419814777999999 -0.0085380624430000003 0.014196005669000001 5.0106997077000002e-19 -2.3331637282999998e-19 -6.9064618458000002e-07 -0.0085380624430000003 0.043419814777999999 0.014196005669000001 1.1094561064e-19 1.1906142528e-19 -6.9064618458000002e-07 0.014196005669000001 0.014196005669000001 0.089238208383999998 5.2509728877000001e-20 1.6052480304000001e-19 4.1979431444999999e-09 5.0106997077000002e-19 1.1094561064e-19 5.2509728877000001e-20 0.012395774125 -1.5323860571000001e-08 -5.8735912231999996e-20 -2.3331637282999998e-19 1.1906142528e-19 1.6052480304000001e-19 -1.5323860571000001e-08 0.012395774125 1.7475994166e-19 -6.9064618458000002e-07 -6.9064618458000002e-07 4.1979431444999999e-09 -5.8735912231999996e-20 1.7475994166e-19 0.0052654983726999997",
+        "W": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+      },
+      "last_row": {
+        "step": "8",
+        "J": "0.00937322",
+        "J_tensor": "0.00259893",
+        "J_volume": "3.08149e-33",
+        "J_reg": "0.00677429",
+        "volume": "0.257587",
+        "grey": "0.84375",
+        "C11": "0.0619048",
+        "C12": "0.0307504",
+        "nu_eff": "0.33188",
+        "C_fro": "0.154656",
+        "design_rms": "0.00110876",
+        "dJ_rel": "2.99227e-05",
+        "dC_rel": "0.00330998",
+        "morph_frac": "0",
+        "step_rms": "0.00365136",
+        "grad_rms": "0.0912841",
+        "simp_p": "2",
+        "lambda_reg": "0.2",
+        "frozen": "1",
+        "conv_window": "0",
+        "candidate": "0",
+        "verified": "0",
+        "ms": "352.593",
+        "elasticity": "1",
+        "termination": "MAX_STEPS"
+      },
+      "overlap_rows": 5,
+      "identical_fields": [
+        {
+          "file": "h_final.bin",
+          "sha256": "8cc387726220568e69010542fe2246534fb916a6c93dd3aa2ddf99c6393b18e3"
+        },
+        {
+          "file": "h_thresh.bin",
+          "sha256": "ad7facb2586fc6e966c004d7d1d16b024f5805ff7cb47c7a85dabd8b48892ca7"
+        },
+        {
+          "file": "moving_h_0000.bin",
+          "sha256": "8fd89e22da059e78028046c77a08f90eecc3e8899a05d0f58435b9b7c25727d2"
+        },
+        {
+          "file": "moving_h_0001.bin",
+          "sha256": "ef897fe5e934affc58ac54efc647b59af9b46322151bed511dfe1ac2f87285d5"
+        },
+        {
+          "file": "moving_h_0002.bin",
+          "sha256": "d34f2933160b97b91ac859bb7bdc8351244003952e1ed8224607fac8acf8dc66"
+        },
+        {
+          "file": "moving_h_0003.bin",
+          "sha256": "3759910f8d20a5be667a6840ef5745014f938ad1bff4ccf966226b56a2035687"
+        },
+        {
+          "file": "moving_h_0004.bin",
+          "sha256": "b8c3d6a9aa86fc34a4ef8cb29eb06ca7512220989d801342efd7e6e953c61e97"
+        },
+        {
+          "file": "moving_h_0005.bin",
+          "sha256": "0224c8d127888a122c9bf2ecd13b36db336481dc667e6d3b8c47bb91317f11b5"
+        },
+        {
+          "file": "moving_h_0006.bin",
+          "sha256": "ad7e32521a38ae70e9efd50015047b76ef0864506aae43c104d4c5536a0f97f6"
+        },
+        {
+          "file": "moving_h_0007.bin",
+          "sha256": "316c3473a5bcdeb68552e5b2af86ebd43f945987cdbea9d15699bfb3132a64ed"
+        },
+        {
+          "file": "moving_h_0008.bin",
+          "sha256": "8cc387726220568e69010542fe2246534fb916a6c93dd3aa2ddf99c6393b18e3"
+        }
+      ],
+      "terminal_rejected": true,
+      "exhausted_budgets_rejected": [
+        3,
+        4
+      ],
+      "ledger_failures_rejected": [
+        "missing",
+        "truncated",
+        "malformed"
+      ],
+      "publication_failure_preserved_previous": true,
+      "endpoint_material_reports_identical": true
+    }
+  ]
+}

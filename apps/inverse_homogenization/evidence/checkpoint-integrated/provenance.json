@@ -1,0 +1,18 @@
+{
+  "source_revision": "8622c038c92be9bfbcbf64f02c5e9a312388c4b8",
+  "base": "42a9ceecb11c29f6a3c5dc7d893b6fc3070832f1",
+  "build_job": 22182769,
+  "build_result": "139/139 CTest plus Python passed",
+  "gpu_job": 22182878,
+  "account": "project_462001245",
+  "nodes": 1,
+  "gcds": 8,
+  "elapsed": "00:03:13",
+  "binary_sha256": "ab2cf66726beafaa6a51a6061d431079ae96c47566adc2891353e4f2b18b42c2",
+  "driver_sha256": "4c4aa3c30ada964f5a3a729d84411f200d6e21a60a3a10710b108199760f7e04",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "target_source": "1b3f2d2591efdd468725bfd089d1727265587e76",
+  "target_path": "apps/inverse_homogenization/evidence/unnormalized-control/target.txt",
+  "raw_sha256": "aae463d129311e1a5c3d6de01baa488e5de637845bd4876ebf70936ed5664a1a",
+  "scope": "Isolated current-master checkpoint stack integration; not rewritten parent branch or merge approval"
+}
