@@ -146,12 +146,26 @@ def collect(base):
     return raw,checks
 
 
+
+def historical_comparison(raw, current):
+    records = {}
+    for mode in ('continuous','threshold'):
+        assert raw[mode+'/exit_code.txt'].strip() == '0'
+        old = parse(raw[mode+'/run.log'])
+        new = current['resolutions']['64']['material']['final_'+mode]
+        a,b = np.array(old['stiffness']),np.array(new['stiffness'])
+        records[mode] = dict(historical=old,
+            relative_difference_from_new_final=float(np.linalg.norm(a-b)/np.linalg.norm(b)))
+    return dict(material=records,
+                interpretation='Stored normalized post-budget field versus unnormalized converged64; iteration and force normalization both differ')
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument('--live-root',type=Path)
     group.add_argument('--archive',type=Path)
     p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--historical',type=Path,help='optional historical native-consumer archive')
     args = p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
     if args.live_root:
@@ -162,6 +176,9 @@ def main():
         raw = json.loads(gzip.decompress(args.archive.read_bytes()))
     summary = reduce(raw)
     (args.output/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+    if args.historical:
+        old = json.loads(gzip.decompress(args.historical.read_bytes()))
+        (args.output/'historical-summary.json').write_text(json.dumps(historical_comparison(old,summary),indent=2)+'\n')
     print('CONVERGED_RESOLUTION_AUDIT_OK')
 
 

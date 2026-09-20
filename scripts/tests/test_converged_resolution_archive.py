@@ -15,8 +15,12 @@ ARCHIVE = ROOT/'apps/inverse_homogenization/evidence/converged-resolution'
 
 def test_actual_reducer_and_rejected_certificate(tmp_path):
     subprocess.run([sys.executable,str(SCRIPT),'--archive',str(ARCHIVE/'raw.json.gz'),
-                    '--output',str(tmp_path/'valid')],check=True)
+                    '--output',str(tmp_path/'valid'), '--historical',
+                    str(ARCHIVE.parent/'historical300/raw.json.gz')],check=True)
     assert json.loads((tmp_path/'valid/summary.json').read_text()) == json.loads((ARCHIVE/'summary.json').read_text())
+    historical = json.loads((tmp_path/'valid/historical-summary.json').read_text())
+    assert historical == json.loads((ARCHIVE.parent/'historical300/summary.json').read_text())
+    assert historical['material']['threshold']['historical']['poisson']['nu_xy'] < 0
     raw = json.loads(gzip.decompress((ARCHIVE/'raw.json.gz').read_bytes()))
     # Remove the terminal state: successful elasticity on a late iterate must
     # never stand in for completing the full verification hold.

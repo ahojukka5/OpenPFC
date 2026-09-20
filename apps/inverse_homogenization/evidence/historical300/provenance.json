@@ -1,0 +1,20 @@
+{
+  "original_source": "92d8fc5adbcc991ba1f04f24d198dc078c5fed60",
+  "original_job": 22162138,
+  "original_arm": "A",
+  "original_field": "h_final.bin, post-budget output; not certified accepted state",
+  "input_sha256": "80ecb1429c9eb1884b01302c1834eeee7fbbb8d68a59e16b3be4798013eeb73a",
+  "consumer_source": "6029d85ea68189e71ad6442476e0d463f9cf757d",
+  "consumer_binary_sha256": "5a126a6447624877875746f92efa6b4f2af908bd9b3adedd738aeee139739a96",
+  "job": 22183134,
+  "account": "project_462001245",
+  "nodes": 1,
+  "mpi_ranks": 8,
+  "elapsed": "00:00:40",
+  "comparison_archive": "ec892d63f7ec77ed0cf1515c3378b8702521fa25",
+  "comparison_path": "apps/inverse_homogenization/evidence/converged-resolution",
+  "raw_sha256": "8b74e399a4b7823b728e6eea6029cec9f33cbb992ccf484953df1f80ebd74dcf",
+  "replay": "Decompress historical-field.bin.gz; build pinned consumer through scripts/build.sh, then run exact continuous/threshold commands from raw archive with local paths and eight MPI ranks. Same E1/.002, nu.3, dx1, elasticity400.",
+  "scope": "Historical normalized 300-budget output versus unnormalized converged64; not a causal iteration-count-only comparison",
+  "reducer_sha256": "492809367479fc5b10f63ae6515993a5af5367e44e68b447b81c015eaff4a5a1"
+}
