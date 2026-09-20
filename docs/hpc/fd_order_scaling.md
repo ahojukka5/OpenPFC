@@ -74,7 +74,9 @@ Clean production matrix: every declared order × the node ladder.
 Independent repeats (3) at every node count — 1/8/32-node jobs are
 milliseconds per step, so extra allocations are cheap. 1-node and 8-node
 clean cells share one packed allocation each so the matrix does not
-trip `AssocMaxSubmitJobLimit`. Component diagnostics
+trip `AssocMaxSubmitJobLimit`. Packed export values use `:` not `,`
+because `sbatch --export` splits on commas. On `dev-g` the packed job
+does not apply the `standard-g` CPU mask. Component diagnostics
 (`HEAT3D_DIAG_TIMING=1`) only at 8, 128, and 1024 nodes.
 
 ## Submit
