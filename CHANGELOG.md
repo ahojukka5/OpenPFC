@@ -29,6 +29,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **FD-order halo-overlap scaling campaign tooling** (issue
+  [#108](https://github.com/ahojukka5/OpenPFC/issues/108)). Weak-scaling
+  ladder at 256³ interior/GCD for FD-2/4/8/12/20. Does not change
+  production FD physics.
 - **2-D MHD conference visualization package**
   (`examples/ns2d_vorticity`, issue
   [#71](https://github.com/ahojukka5/OpenPFC/issues/71)). Evidence
