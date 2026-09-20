@@ -34,6 +34,7 @@ results
 !apps/heat3d/slurm/*.sbatch
 !apps/vlasov_maxwell/slurm/*.sbatch
 !scripts/*.sbatch
+!examples/ns2d_vorticity/slurm/*.sbatch
 apps/kobayashi/slurm/builds/
 .trash
 .temp

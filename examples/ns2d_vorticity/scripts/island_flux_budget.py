@@ -41,12 +41,16 @@ def _well(p):
     return float(p.get("eig_ratio", 0.0)) >= DEGEN_CUT
 
 
-def pick_island(pts, a):
-    """Choose one X and an enclosed O from the t=0 magnetic faces."""
+def pick_island(pts, a, family="ot"):
+    """Choose one X and an enclosed O from the t=0 magnetic faces.
+
+    family="ot": prefer the a≈-0.5 OT X-family (O_min island, F=-1).
+    family="coalescence": X nearest (π,π) with an enclosed O_max,
+    the positive-island merger of the Ng flux.
+    """
     mag, xs, os_ = mt.magnetic_connectivity(pts, a)
     if not mag:
         return None, None
-    # Prefer the a≈-0.5 OT X-family (O_min island, analytic F=-1).
     cands = []
     for node in mag:
         if not node["enclosed_O"]:
@@ -58,12 +62,25 @@ def pick_island(pts, a):
         opt = os_[enc["o_index"]]
         if not _well(opt):
             continue
-        cands.append((xpt, opt, enc["delta_a"]))
+        cands.append((xpt, opt, enc["delta_a"], node))
     if not cands:
         return None, None
+    if family == "coalescence":
+        xpt, _, _, node = min(
+            cands,
+            key=lambda c: mt.periodic_dist(c[0]["x"], c[0]["y"],
+                                           math.pi, math.pi))
+        omax = [e for e in node["enclosed_O"]
+                if os_[e["o_index"]]["kind"] == mt.KIND_OMAX
+                and _well(os_[e["o_index"]])]
+        pool = omax if omax else node["enclosed_O"]
+        enc = min(pool, key=lambda e: mt.periodic_dist(
+            os_[e["o_index"]]["x"], os_[e["o_index"]]["y"],
+            0.5 * math.pi, 0.5 * math.pi))
+        return xpt, os_[enc["o_index"]]
     neg = [c for c in cands if c[0]["a"] < 0.0]
     pool = neg if neg else cands
-    xpt, opt, _ = min(pool, key=lambda c: abs(abs(c[2]) - 1.0))
+    xpt, opt, _, _ = min(pool, key=lambda c: abs(abs(c[2]) - 1.0))
     return xpt, opt
 
 
@@ -173,11 +190,12 @@ def series_from_tracks(trx, tro, times, eta, t_max):
     return {"rows": rows, "summary": summary, "eta": eta}
 
 
-def analyze_run(directory, n, eta, t_max=0.80, stride=1):
+def analyze_run(directory, n, eta, t_max=0.80, stride=1, family="ot"):
     incs = an.subsample(an.dump_increments(directory), stride)
     table = an.load_csv(os.path.join(directory, "diagnostics.csv"))
     times, frames = [], []
     a0 = None
+    pts0 = None
     for inc in incs:
         a = an.load_brick(os.path.join(directory, "a_%04d.bin" % inc), n)
         pts = mt.locate_critical_points(a)
@@ -187,7 +205,7 @@ def analyze_run(directory, n, eta, t_max=0.80, stride=1):
         if a0 is None:
             a0 = a
             pts0 = pts
-    x0, o0 = pick_island(pts0, a0)
+    x0, o0 = pick_island(pts0, a0, family=family)
     if x0 is None:
         return {"error": "no enclosed island at t=0", "dir": directory, "n": n}
     trx, tro = track_pair(frames, times, x0, o0)
@@ -200,6 +218,7 @@ def analyze_run(directory, n, eta, t_max=0.80, stride=1):
     out["n"] = n
     out["stride"] = stride
     out["t_max"] = t_max
+    out["family"] = family
     out["x0"] = {"x": x0["x"], "y": x0["y"], "a": x0["a"], "j": x0["j"]}
     out["o0"] = {"x": o0["x"], "y": o0["y"], "a": o0["a"], "j": o0["j"]}
     return out
@@ -237,9 +256,12 @@ def main():
     p.add_argument("--eta", type=float, required=True)
     p.add_argument("--t-max", type=float, default=0.80)
     p.add_argument("--stride", type=int, default=1)
+    p.add_argument("--family", default="ot",
+                   choices=("ot", "coalescence"))
     p.add_argument("--json-out", default="")
     args = p.parse_args()
-    rep = analyze_run(args.dir, args.n, args.eta, args.t_max, args.stride)
+    rep = analyze_run(args.dir, args.n, args.eta, args.t_max, args.stride,
+                      family=args.family)
     print_report(rep)
     if args.json_out:
         with open(args.json_out, "w") as fh:

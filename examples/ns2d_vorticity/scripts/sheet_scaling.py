@@ -91,7 +91,7 @@ def _window_report(rows, lo, hi):
     }
 
 
-def attach_geometry(directory, n, eta, flux_rep):
+def attach_geometry(directory, n, eta, flux_rep, t_lo=None, t_hi=None):
     if "error" in flux_rep:
         return flux_rep
     table = an.load_csv(os.path.join(directory, "diagnostics.csv"))
@@ -119,14 +119,16 @@ def attach_geometry(directory, n, eta, flux_rep):
             "sheet_ok": geo["sheet_ok"],
             "orientation_ok": geo.get("orientation_ok", False),
         })
+    scale_lo = T_SCALE_LO if t_lo is None else t_lo
+    scale_hi = T_SCALE_HI if t_hi is None else t_hi
     flux_rep["scaling_stage1"] = _window_report(
         flux_rep["rows"], T_AVG_LO, T_AVG_HI)
     flux_rep["scaling"] = _window_report(
-        flux_rep["rows"], T_SCALE_LO, T_SCALE_HI)
-    flux_rep["scaling"]["T_AVG_LO"] = T_SCALE_LO
-    flux_rep["scaling"]["T_AVG_HI"] = T_SCALE_HI
-    flux_rep["scaling"]["T_SCALE_LO"] = T_SCALE_LO
-    flux_rep["scaling"]["T_SCALE_HI"] = T_SCALE_HI
+        flux_rep["rows"], scale_lo, scale_hi)
+    flux_rep["scaling"]["T_AVG_LO"] = scale_lo
+    flux_rep["scaling"]["T_AVG_HI"] = scale_hi
+    flux_rep["scaling"]["T_SCALE_LO"] = scale_lo
+    flux_rep["scaling"]["T_SCALE_HI"] = scale_hi
     flux_rep["scaling_stage1"]["T_AVG_LO"] = T_AVG_LO
     flux_rep["scaling_stage1"]["T_AVG_HI"] = T_AVG_HI
     return flux_rep
@@ -137,14 +139,18 @@ def print_geo(rep, tag=""):
     if "error" in rep or "scaling" not in rep:
         return
     s1 = rep.get("scaling_stage1") or {}
-    if s1:
+    s = rep["scaling"]
+    ot_window = (
+        abs(float(s.get("T_SCALE_LO", T_SCALE_LO)) - T_SCALE_LO) < 1.0e-12
+        and abs(float(s.get("T_SCALE_HI", T_SCALE_HI)) - T_SCALE_HI) < 1.0e-12)
+    if s1 and ot_window:
         print("  stage1 [%.3f, %.2f]: sheet_ok %d/%d common=%s (failed first "
               "preregistration; not a scaling window)" % (
                   T_AVG_LO, T_AVG_HI, s1.get("n_sheet_ok", 0),
                   s1.get("n_avg", 0), s1.get("common_thin_sheet_interval")))
-    s = rep["scaling"]
-    print("  stage2 [%.3f, %.2f]: sheet_ok %d/%d common=%s" % (
-        T_SCALE_LO, T_SCALE_HI, s["n_sheet_ok"], s["n_avg"],
+    print("  window [%.3f, %.3f]: sheet_ok %d/%d common=%s" % (
+        s.get("T_SCALE_LO", T_SCALE_LO), s.get("T_SCALE_HI", T_SCALE_HI),
+        s["n_sheet_ok"], s["n_avg"],
         s["common_thin_sheet_interval"]))
     if s["n_sheet_ok"]:
         print("  means: Ez_X=%.4g  eta*j_X=%.4g  dF/dt=%.4g  delta=%.4g  "
@@ -169,10 +175,18 @@ def main():
     p.add_argument("--eta", type=float, required=True)
     p.add_argument("--t-max", type=float, default=0.80)
     p.add_argument("--stride", type=int, default=1)
+    p.add_argument("--family", default="ot",
+                   choices=("ot", "coalescence"))
+    p.add_argument("--t-lo", type=float, default=None,
+                   help="override the frozen scaling-window start")
+    p.add_argument("--t-hi", type=float, default=None,
+                   help="override the frozen scaling-window end")
     p.add_argument("--json-out", default="")
     args = p.parse_args()
-    flux = ifb.analyze_run(args.dir, args.n, args.eta, args.t_max, args.stride)
-    rep = attach_geometry(args.dir, args.n, args.eta, flux)
+    flux = ifb.analyze_run(args.dir, args.n, args.eta, args.t_max, args.stride,
+                           family=args.family)
+    rep = attach_geometry(args.dir, args.n, args.eta, flux,
+                          t_lo=args.t_lo, t_hi=args.t_hi)
     print_geo(rep)
     if args.json_out:
         with open(args.json_out, "w") as fh:

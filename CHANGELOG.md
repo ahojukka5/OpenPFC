@@ -29,6 +29,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Doubly-periodic magnetic-island coalescence** on the 2-D
+  incompressible MHD prototype (issue
+  [#113](https://github.com/ahojukka5/OpenPFC/issues/113), parent
+  [research#543](https://github.com/ahojukka5/research/issues/543)).
+  Literature-matched flux \(a=0.4\sin x\sin y\) plus a frozen
+  \(k=1\) streamfunction seed. Stage 0 at \(\eta=\nu=0.01\) only.
+  Cross-\(\eta\) alignment is frozen on cumulative X-point flux
+  \(p_X\in[0.05,0.10]\); the earlier raw-\(F\) bracket was withdrawn
+  before any \(\eta=0.005\) run. Stage 1 remains blocked pending the
+  raw-data common-band 128²/256² field gate.
+
 - **Blocked HeFFTe selector regret scaffold** (issue
   [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature
   schema, train/held-out split records, and regret tests. Does not time

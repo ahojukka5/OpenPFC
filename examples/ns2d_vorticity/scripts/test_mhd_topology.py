@@ -383,6 +383,106 @@ def test_misclassify_fails():
     check(p["kind"] == mt.KIND_X, "saddle is not labelled O")
 
 
+def test_coalescence_t0_topology():
+    print("\n== coalescence a = 0.4 sin x sin y at t=0 ==")
+    a = mt.sample_grid(lambda x, y: 0.4 * np.sin(x) * np.sin(y), 64)
+    pts = mt.locate_critical_points(a)
+    xs = [p for p in pts if p["kind"] == mt.KIND_X]
+    omax = [p for p in pts if p["kind"] == mt.KIND_OMAX]
+    omin = [p for p in pts if p["kind"] == mt.KIND_OMIN]
+    check(len(xs) == 4, "exactly 4 X-points, got %d" % len(xs))
+    check(len(omax) == 2, "exactly 2 O_max, got %d" % len(omax))
+    check(len(omin) == 2, "exactly 2 O_min, got %d" % len(omin))
+    px = nearest(xs, math.pi, math.pi)
+    po = nearest(omax, 0.5 * math.pi, 0.5 * math.pi)
+    check(mt.periodic_dist(px["x"], px["y"], math.pi, math.pi) < 0.05,
+          "X near (pi,pi)")
+    check(mt.periodic_dist(po["x"], po["y"], 0.5 * math.pi, 0.5 * math.pi)
+          < 0.05, "O_max near (pi/2,pi/2)")
+    check(abs(px["a"]) < 0.02, "a_X ~ 0, got %.4f" % px["a"])
+    check(abs(po["a"] - 0.4) < 0.02, "a_O ~ 0.4, got %.4f" % po["a"])
+    check(abs((po["a"] - px["a"]) - 0.4) < 0.03, "F = a_O-a_X ~ 0.4")
+    x0, o0 = ifb.pick_island(pts, a, family="coalescence")
+    check(x0 is not None and o0 is not None, "coalescence family locates X/O")
+    if x0 is not None:
+        check(mt.periodic_dist(x0["x"], x0["y"], math.pi, math.pi) < 0.1,
+              "family X is the (pi,pi) coalescence null")
+    if o0 is not None:
+        check(o0["kind"] == mt.KIND_OMAX, "family O is O_max")
+        check(abs((o0["a"] - x0["a"]) - 0.4) < 0.03,
+              "family F ~ 0.4")
+
+
+def test_coalescence_event_first_crossing():
+    print("\n== coalescence X-flux first-crossing ==")
+    import coalescence_event as ce
+
+    # Pure resistive/O-mode decay: F changes through a_O but the X-point
+    # remains at a_X=0 and Ez_X=0. This must NOT create reconnection progress.
+    decay = []
+    for i, F in enumerate([0.40, 0.36, 0.32, 0.28, 0.24]):
+        decay.append({
+            "t": 0.2 * i,
+            "F": F,
+            "a_X": 0.0,
+            "dFdt": -0.2,
+            "sheet_ok": i >= 1,
+            "R": 0.0,
+            "S_local": 50.0,
+            "delta": 0.2,
+            "L": 2.0,
+            "j_X": 0.0,
+            "B_up": 0.4,
+            "Ez_X": 0.0,
+            "eta_j_X": 0.0,
+        })
+    dsrc = {"rows": decay, "summary": {"F_first": 0.40}}
+    dout = ce.analyze(dsrc)
+    check(abs(dout["p_X_last"]) < 1.0e-14,
+          "pure O-mode decay has zero X-flux progress")
+    check(dout["raw_F_progress_last"] > 0.3,
+          "raw F changes strongly in the diffusion control")
+    check(not dout["event"]["reached"],
+          "diffusion control never enters the reconnection event")
+
+    # Reconnection case: a_X changes monotonically so the cumulative
+    # X-point flux crosses the frozen 5--10% of initial island flux bracket.
+    rows = []
+    f0 = 0.40
+    # Psi_X = a_X(0)-a_X = [0, .01, .02, .03, .04, .05] -> p_X 0..0.125.
+    for i, ax in enumerate([0.0, -0.01, -0.02, -0.03, -0.04, -0.05]):
+        rows.append({
+            "t": 0.2 * i,
+            "F": f0 - 0.01 * i,
+            "a_X": ax,
+            "dFdt": -0.05,
+            "sheet_ok": i >= 1,
+            "R": 0.1,
+            "S_local": 50.0,
+            "delta": 0.2,
+            "L": 2.0,
+            "j_X": 1.0,
+            "B_up": 0.4 + 0.01 * i,
+            "Ez_X": 0.05 if i < 5 else -0.05,
+            "eta_j_X": 0.05,
+        })
+    src = {"rows": rows, "summary": {"F_first": f0}}
+    check(ce.XFLUX_LO == 0.05, "XFLUX_LO frozen at 0.05")
+    check(ce.XFLUX_HI == 0.10, "XFLUX_HI frozen at 0.10")
+    out = ce.analyze(src)
+    check(out["transfer_sign"] > 0, "positive Ez_X sets transfer sign")
+    check(out["t_sheet_ok"] is not None, "sheet_ok exists")
+    ev = out["event"]
+    check(ev is not None and ev["n"] >= 1, "X-flux event window nonempty")
+    check(ev["common_sheet_ok"], "event contains only sheet_ok samples")
+    check(ev["t_first"] >= out["t_sheet_ok"] - 1.0e-12,
+          "event starts after sheet_ok")
+    check(ev["xflux_first"] >= ce.XFLUX_LO - 1.0e-12,
+          "event starts at frozen X-flux lower bound")
+    check(ev["xflux_last"] <= ce.XFLUX_HI + 1.0e-12,
+          "event stops at frozen X-flux upper bound")
+
+
 def main():
     test_stationary_sinxsiny()
     test_moving()
@@ -397,6 +497,8 @@ def main():
     test_ot_t0_multigraph_faces()
     test_force_free_budget_is_O_diffusion()
     test_misclassify_fails()
+    test_coalescence_t0_topology()
+    test_coalescence_event_first_crossing()
     print("\n%d failures" % len(FAILS))
     if FAILS:
         for f in FAILS:
