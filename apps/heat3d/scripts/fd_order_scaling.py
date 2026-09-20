@@ -23,7 +23,7 @@ import statistics
 import subprocess
 import sys
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 ORDERS = (2, 4, 8, 12, 20)
 NODE_LADDER = (1, 8, 32, 128, 512, 1024)
@@ -48,6 +48,8 @@ RUN_FIELDS = (
     "halo_face_bytes",
     "mode",
     "repeat",
+    "steps",
+    "warmup",
     "Nx",
     "Ny",
     "Nz",
@@ -538,6 +540,8 @@ def collect_run(run: str, warmup: int) -> Optional[Dict[str, Any]]:
         "halo_face_bytes": face_bytes,
         "mode": mode,
         "repeat": meta.get("repeat", ""),
+        "steps": meta.get("steps", ""),
+        "warmup": meta.get("warmup", ""),
         "Nx": nx or "",
         "Ny": ny or "",
         "Nz": nz or "",
@@ -601,6 +605,23 @@ def read_csv(path: str) -> List[Dict[str, str]]:
         return list(csv.DictReader(f))
 
 
+def timed_steps(row: Mapping[str, Any]) -> int:
+    steps = _parse_int(row.get("steps")) or 0
+    warm = _parse_int(row.get("warmup")) or 0
+    return max(0, steps - warm)
+
+
+def prefer_longest_protocol(
+    group: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Keep the longest timed window when a cell mixed 105- and 5005-step jobs."""
+    lengths = [timed_steps(r) for r in group]
+    if not any(lengths):
+        return list(group)
+    want = max(lengths)
+    return [r for r, n in zip(group, lengths) if n == want]
+
+
 def analyze(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     grouped: Dict[Tuple[int, int], List[Dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -618,6 +639,7 @@ def analyze(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     medians: Dict[Tuple[int, int], float] = {}
     out: List[Dict[str, Any]] = []
     for (order, nodes), group in sorted(grouped.items()):
+        group = prefer_longest_protocol(group)
         walls = [float(r["wall_step_s"]) for r in group]
         med = float(statistics.median(walls))
         medians[(order, nodes)] = med

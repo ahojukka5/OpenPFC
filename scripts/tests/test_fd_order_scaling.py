@@ -18,6 +18,7 @@ import fd_order_scaling as t  # noqa: E402
 
 SUBMIT = ROOT / "docs" / "lumi_slurm" / "submit_fd_order_scaling.sh"
 BATCH = ROOT / "docs" / "lumi_slurm" / "fd_order_scaling.sbatch"
+PACKED = ROOT / "docs" / "lumi_slurm" / "fd_order_scaling_packed.sbatch"
 
 
 def _run(args, env, cwd):
@@ -80,6 +81,7 @@ def _run_tree(tmp, job, nodes, order, wall, mode="clean", grid="2x2x2"):
                 f"Ny={ny}",
                 f"Nz={nz}",
                 "steps=105",
+                "warmup=5",
                 "dt=0.01",
                 f"fd_order={order}",
                 f"mode={mode}",
@@ -185,6 +187,19 @@ def test_submit_refuses_unrelated_account(account):
     assert account in proc.stderr_text
 
 
+def test_analyze_keeps_longest_timed_window(tmp_path):
+    short = _run_tree(tmp_path, "short", 1, 2, 0.0008)
+    longp = _run_tree(tmp_path, "long", 1, 2, 0.0009)
+    (longp / "run_meta.txt").write_text(
+        (longp / "run_meta.txt").read_text().replace("steps=105", "steps=5005")
+    )
+    rows = t.collect_root(str(tmp_path), warmup=5)
+    scale = t.analyze(rows)
+    assert len(scale) == 1
+    assert scale[0]["n_repeats"] == 1
+    assert float(scale[0]["wall_step_s_median"]) == pytest.approx(0.0009)
+
+
 def test_timed_protocol_lengthens_cheap_rungs():
     assert t.timed_protocol(1) == (5005, 50)
     assert t.timed_protocol(8) == (5005, 50)
@@ -214,7 +229,7 @@ def test_submit_dry_run_clean_and_diag(tmp_path):
     assert "--export=NONE" in proc.stdout_text
     assert "OPENPFC_FD_PROC_GRID=2x2x2" in proc.stdout_text
     assert "OPENPFC_FD_PROC_GRID=2,2,2" not in proc.stdout_text
-    assert "h3d108c-fd2-1n-r1" in proc.stdout_text
+    assert "h3d108c-pack-1n" in proc.stdout_text
     assert "HEAT3D_STEPS=5005" in proc.stdout_text
     assert "HEAT3D_WARMUP=50" in proc.stdout_text
     assert "h3d108c-fd20-128n-r1" in proc.stdout_text
@@ -222,9 +237,9 @@ def test_submit_dry_run_clean_and_diag(tmp_path):
     assert "HEAT3D_DIAG_TIMING" not in proc.stdout_text
     diag = _run(["bash", str(SUBMIT), "diag"], env, str(ROOT))
     assert diag.returncode == 0, diag.stderr_text + diag.stdout_text
-    assert "h3d108d-fd2-8n-r1" in diag.stdout_text
+    assert "h3d108d-pack-8n" in diag.stdout_text
     assert "HEAT3D_DIAG_TIMING=1" in diag.stdout_text
-    assert "h3d108d-fd2-1n-r1" not in diag.stdout_text
+    assert "h3d108d-pack-1n" not in diag.stdout_text
 
 
 def test_sbatch_overrides_inherited_export_none():
@@ -232,12 +247,10 @@ def test_sbatch_overrides_inherited_export_none():
     assert "srun --export=ALL" in text
     assert "libfabric.so.1" in text
     assert "fd_placement.txt -ef" in text
-    assert "recovered_missing_admit" not in text
-    text = BATCH.read_text()
-    assert "srun --export=ALL" in text
-    assert "libfabric.so.1" in text
-    assert "fd_placement.txt -ef" in text
-    assert "recovered_missing_admit" not in text
+    packed = PACKED.read_text()
+    assert "srun --export=ALL" in packed
+    assert "HEAT3D_CELL_GAP_S" in packed
+    assert "packed=1" in packed
 
 
 def test_recover_missing_admit_from_checksum_profile(tmp_path):
