@@ -49,11 +49,12 @@ Stop-after is operational, not scientific termination. A 128 RMS fit on the
 first resume projects quiet near 2927 and hold end near 3407, so a third
 allocation with stop-after 4500 is queued afterok of the 3000-step resume
 on both grids; that script refuses a non-RUNNING checkpoint. A CONVERGED
-checkpoint also triggers a PR #90 `--max-steps=0` material eval of the
-certified `h_final` (dx 0.5 / 0.25, not the amplifying dx=1 128 field).
-That eval is skipped if the allocation stopped RUNNING. Final
-consumers run only when the full hold passes. Preserve failures; do not
-silently reset the history.
+checkpoint also copies the native `43d0d422` `h_final_material.json` /
+`h_thresh_material.json` into campaign logs, then triggers a PR #90
+`--max-steps=0` material eval of the certified `h_final` (dx 0.5 / 0.25,
+not the amplifying dx=1 128 field). That eval is skipped if the
+allocation stopped RUNNING. Final consumers run only when the full hold
+passes. Preserve failures; do not silently reset the history.
 
 Return a genuinely converged pair or a diagnosed numerical obstruction. Do not
 claim asymptotic resolution credibility from only two grids. No larger grid
