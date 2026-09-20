@@ -399,7 +399,10 @@ at `--cfl 0.2` reaches \(t=2.50\) with `cfl_elsasser_sum=0.93`,
 (FWHM \(0.074\) vs \(0.061\)). So: late-time crash was \(\Delta t\);
 256² remains spatially under-resolved. 512²/`cfl 0.2` is a usable
 exploratory run, not a second-resolution gate. 1024² was **not**
-run. Do not go to still lower \(\eta\) in this PR.
+run in this #23 peak-current ladder. Issue #38 later admitted 1024²
+as the spatial gate for \(\eta=0.0025\) on \(t\le 0.80\)
+([`SCALING.md`](SCALING.md)). That run is not a #23 peak-current
+result. Do not go to still lower \(\eta\) from this prototype.
 
 ### Topology and candidate reconnection observables (analysis only)
 
@@ -473,11 +476,10 @@ general MHD survey:
 * Baty, arXiv:2604.02065 — physical vs spurious plasmoids in
   OT, using current/enstrophy spectra.
 
-The next research issue should measure moderate-\(S\) resistive
-reconnection on this prototype (robust X/O tracking, \(E_z\) vs
-\(\eta j\), flux difference). It must **not** hunt plasmoids by
-lowering \(\eta\) on 256²/512², and it must keep field/spectral
-convergence as a first-class gate.
+Issue #26 measured moderate-\(S\) resistive reconnection on this
+prototype. Issue #38 asked how that rate and the local sheet scale
+with \(\eta\). Neither question is reopened here. Conference
+figures: [`VISUALS.md`](VISUALS.md).
 
 ### Decision gate (issue #23)
 
@@ -493,11 +495,14 @@ cover a spatially converged \(\nu=\eta=0.0025\) ladder,
 
 Issue #26 (`RECONNECTION.md`) is the quantitative reconnection /
 topology experiment on this prototype. It does not change the
-solver. The baseline #26 decision is **current sheets but no
-demonstrated reconnection**.
+solver. The merged #27 decision is **slow, converged persistent-X
+reconnection for \(t\le 0.80\)**. Peak-current topology change is
+not demonstrated.
 
 Issue #38 (`SCALING.md`) is the follow-on resistive scaling and
 local current-sheet geometry experiment. It reuses the #26/#27
-topology machinery and does not change the solver.
+topology machinery and does not change the solver. Conference
+figures and animations for those accepted windows:
+[`VISUALS.md`](VISUALS.md).
 
 HIP is still blocked by the same pointwise `SpectralETDOps` pipeline.
