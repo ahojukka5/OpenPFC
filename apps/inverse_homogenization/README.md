@@ -96,8 +96,16 @@ of total \(J\); the unnormalized displacement has slope
 \(-5.135\times10^{-4}\). This is a local non-descent direction, not
 merely an oversized step. Evidence:
 `apps/inverse_homogenization/evidence/2026-09-20-frozen-iteration-results.json`.
-Job 22179446 reruns the `dt=0.04` arm with `--normalize=0`. Do not
-loosen tolerances or change the Yang A3 target.
+Job 22179446 (`--normalize=0`, same `h_190` / `dt=0.04` / 160 steps)
+is monotonic descent and kills the two-cycle (one-step RMS 0.00034,
+two-step 0.00068) but greys out (0.50 to 0.67) and leaves the auxetic
+basin (`C_{12}>0`). Elastic-only `1/||g_{el}||` amplification of a
+matched residual is therefore the 2-cycle mechanism; turning
+normalization off is not a production replacement.
+
+CPU and HIP now shrink large elastic gradients and leave small ones
+physical (`elastic_gradient_scale`). Running 64/128 jobs keep the old
+amplifying `normalize=1` as exploratory evidence.
 
 ## Finite-strain forward ladder (issue #55)
 

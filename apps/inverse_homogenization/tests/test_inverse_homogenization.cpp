@@ -48,8 +48,18 @@ using pfc::apps::inverse::double_well_prime;
 using pfc::apps::inverse::InverseSpec;
 using pfc::apps::inverse::PhaseFieldInverse;
 using pfc::apps::inverse::spectral_laplacian;
+using pfc::apps::inverse::elastic_gradient_scale;
 using RealField = pfc::data::Field<double>;
 using ComplexField = pfc::data::Field<std::complex<double>>;
+
+TEST_CASE("elastic gradient scale never amplifies a small residual",
+          "[inverse][74]") {
+  REQUIRE(elastic_gradient_scale(10.0, true) == 0.1);
+  REQUIRE(elastic_gradient_scale(1.0, true) == 1.0);
+  REQUIRE(elastic_gradient_scale(1.0e-3, true) == 1.0);
+  REQUIRE(elastic_gradient_scale(10.0, false) == 1.0);
+  REQUIRE(elastic_gradient_scale(0.0, true) == 1.0);
+}
 
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);

@@ -393,7 +393,7 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   out.grey_fraction = glo[2] / n_global;
   out.perimeter = std::sqrt(std::max(0.0, glo[3] / n_global));
   const double el_scale =
-      (spec.normalize_grad && el_rms > 1.0e-30) ? (1.0 / el_rms) : 1.0;
+      pfc::apps::inverse::elastic_gradient_scale(el_rms, spec.normalize_grad);
   double local_g2 = 0.0;
   for (std::size_t i = 0; i < n_local; ++i) {
     const double g_el = el_scale * gp[i];

@@ -14,7 +14,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   22178459/60/61 show that `dt=0.04/0.02/0.01` still leave a period-2
   cycle far above the design/`C_H` tolerances. Job 22178618 shows
   elastic-only RMS normalization is a local ascent of total \(J\) at
-  that witness. No target or tolerance change.
+  that witness. Job 22179446 (`normalize=0`) kills the cycle but greys
+  out. `elastic_gradient_scale` now shrinks large `||g_el||` and never
+  amplifies a small residual. No target or tolerance change.
 
 ### Added
 

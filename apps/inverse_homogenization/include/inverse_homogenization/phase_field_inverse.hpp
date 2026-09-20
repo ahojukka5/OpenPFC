@@ -66,9 +66,11 @@ struct InverseSpec {
   double mobility{1.0};
   double dt{0.1};
   bool clip{true};
-  /// RMS-normalise the *elastic* gradient only so `dt` sets that step
-  /// size. Volume and the double well are then added in physical units;
-  /// otherwise λ_r W' is crushed whenever ||g_el|| is large.
+  /// Shrink large *elastic* gradients so `dt` sets that step size.
+  /// Volume and the double well stay in physical units; otherwise
+  /// λ_r W' is crushed whenever ||g_el|| is large (job 21950094).
+  /// Never amplify a small elastic residual: 1/||g_el|| at a matched
+  /// tensor is not a descent direction for total J (issue #74).
   bool normalize_grad{true};
   /// Hard cap on |Δh| per cell after the normalised step.
   double max_abs_delta{0.05};
@@ -112,6 +114,17 @@ struct InverseStepReport {
 /// \(W'(h)=2h(1-h)(1-2h)\).
 [[nodiscard]] inline double double_well_prime(double h) noexcept {
   return 2.0 * h * (1.0 - h) * (1.0 - 2.0 * h);
+}
+
+/// Scale applied to the unnormalized elastic sensitivity.
+///
+/// Large ||g_el|| is shrunk to unit RMS. Small ||g_el|| is left
+/// physical: amplifying a matched-tensor residual by 1/||g_el|| is a
+/// local ascent of total J (jobs 22178618, 22179446).
+[[nodiscard]] inline double elastic_gradient_scale(double el_rms,
+                                                   bool normalize) noexcept {
+  if (!normalize || el_rms <= 1.0e-30) return 1.0;
+  return std::min(1.0, 1.0 / el_rms);
 }
 
 /**
@@ -249,11 +262,10 @@ public:
     out.grey_fraction = glo[2] / m_n_global;
     out.perimeter = std::sqrt(std::max(0.0, glo[3] / m_n_global));
 
-    // Normalise elasticity only. Job 21950094 stayed fully grey because
-    // RMS-normalising the *total* g crushed λ_r W'(h) to a few percent of
-    // each step. Volume and the double well keep physical units.
+    // Shrink large elastic gradients only. Job 21950094 stayed fully
+    // grey because RMS-normalising the *total* g crushed λ_r W'(h).
     const double el_scale =
-        (spec.normalize_grad && el_rms > 1.0e-30) ? (1.0 / el_rms) : 1.0;
+        elastic_gradient_scale(el_rms, spec.normalize_grad);
     double local_g2 = 0.0;
     for (std::size_t i = 0; i < m_n_local; ++i) {
       const double g_el = el_scale * gp[i];

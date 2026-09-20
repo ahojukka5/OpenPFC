@@ -78,7 +78,18 @@
   "follow_up": {
     "job": 22179446,
     "role": "same frozen 32-case as 22178459 with --normalize=0",
-    "status": "submitted"
+    "status": "COMPLETED",
+    "termination": "MAX_STEPS",
+    "tail50_design_rms_mean": 0.00038978612,
+    "tail_one_step_field_rms": 0.0003392830928252238,
+    "tail_two_step_field_rms": 0.000680141567129561,
+    "tail50_dC_rel_mean": 0.00033308666,
+    "tail50_J_mean": 0.0041346414,
+    "tail50_grey_mean": 0.6586642,
+    "last_C12": 0.00496179,
+    "final_recompute_nu_eff": 0.223381,
+    "outputs": "/scratch/project_462001245/juaho/inverse-homogenization/frozen74n0_22179446",
+    "interpretation": "Unnormalized flow is monotonic descent and kills the period-2 cycle, but greys out (0.50 to 0.67) and leaves the auxetic basin. Not a drop-in production replacement. The 2-cycle is from amplifying a small elastic residual; the remedy is to shrink large ||g_el|| without amplifying small ||g_el||."
   },
   "production_note": "Do not change the frozen Yang A3 target or loosen tolerances. Running 64/128 jobs keep --normalize=1 as exploratory evidence of the production path."
 }
