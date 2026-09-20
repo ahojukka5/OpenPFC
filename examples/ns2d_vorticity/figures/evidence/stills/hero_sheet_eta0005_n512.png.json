@@ -1,0 +1,46 @@
+{
+  "N": 512,
+  "a_levels": [
+    -1.4,
+    -1.2,
+    -0.9999999999999999,
+    -0.7999999999999998,
+    -0.5999999999999999,
+    -0.3999999999999999,
+    -0.19999999999999973,
+    2.220446049250313e-16,
+    0.20000000000000018,
+    0.40000000000000013,
+    0.6000000000000001,
+    0.8000000000000003,
+    1.0000000000000004,
+    1.2000000000000002,
+    1.4000000000000004
+  ],
+  "asset": "hero",
+  "case": "Orszag\u2013Tang",
+  "case_id": "ot512_eta0005",
+  "cfl": 0.4,
+  "data_root": "/scratch/project_462001519/juaho/mhd2d-23",
+  "eta": 0.005,
+  "issues": [
+    23,
+    26,
+    38,
+    39
+  ],
+  "j_clim": 6.5,
+  "kind": "evidence",
+  "n_frames": 1,
+  "nu": 0.005,
+  "outputs": [
+    "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/evidence/stills/hero_sheet_eta0005_n512.png"
+  ],
+  "run_dir": "ot512_nu0005_peak",
+  "spatial_convergence": "256 vs 512",
+  "t": 0.628319,
+  "t_first": 0.628319,
+  "t_last": 0.628319,
+  "timestep_convergence": "CFL 0.4 vs 0.2 at 256 (#26)",
+  "window": "accepted reconnection window"
+}
