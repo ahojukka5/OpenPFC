@@ -189,6 +189,19 @@ fi
 
 collect_placement
 
+# LUMI-G switch_g_job_postfini SIGTERMs the next HIP srun (exit 143)
+# if device contexts are still draining. Placement sruns and each
+# protocol srun need a pause before the next GPU launch. 512-node
+# jobs 22186670/22186673/22186676 lost every protocol after the first.
+drain_after_srun() {
+  local why="$1"
+  local gap="${HEAT3D_PROTOCOL_GAP_S:-90}"
+  echo "=== drain HIP after ${why} (${gap}s) ==="
+  sleep "${gap}"
+}
+
+drain_after_srun "placement"
+
 alg_allowed() {
   local a="$1"
   local x
@@ -298,6 +311,9 @@ for ALG in "${ALGS[@]}"; do
     JOB_RC=1
   fi
   INDEX=$((INDEX + 1))
+  if (( INDEX < ${#ALGS[@]} )); then
+    drain_after_srun "protocol ${ALG}"
+  fi
 done
 
 echo "=== topology crossover done rc=${JOB_RC} ==="
