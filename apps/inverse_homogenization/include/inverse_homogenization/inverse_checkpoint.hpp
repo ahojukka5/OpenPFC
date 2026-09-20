@@ -267,6 +267,52 @@ inline bool read_voigt36(std::istream &in, double *out) {
   return true;
 }
 
+/// Necessary invariants of an accepted-state tracker snapshot. Validate before
+/// applying counters: a negative remaining hold must never become convergence.
+[[nodiscard]] inline bool checkpoint_state_valid(const InverseCheckpoint &ck) {
+  const auto boolean = [](int v) { return v == 0 || v == 1; };
+  if (!boolean(ck.candidate) || !boolean(ck.verified) || !boolean(ck.have_prev) ||
+      !boolean(ck.normalize) || !boolean(ck.project_volume) ||
+      ck.nx <= 0 || ck.ny <= 0 || ck.nz <= 0 || ck.max_steps <= 0 ||
+      ck.next_step < 0 || ck.next_step > ck.max_steps ||
+      ck.continuation_steps < 0 || ck.conv_window <= 0 || ck.verify_steps < 0 ||
+      ck.quiet_count < 0 || ck.verify_left < 0 || ck.n_snap < 0 ||
+      ck.last_dumped < -1 || ck.termination < 0 || ck.termination > 3)
+    return false;
+  for (double v : {ck.dx, ck.E_solid, ck.nu_solid, ck.E_void, ck.nu_void,
+                   ck.volume, ck.lambda_volume, ck.lambda_reg, ck.lambda_reg_end,
+                   ck.simp, ck.simp_end, ck.epsilon, ck.dt, ck.max_delta,
+                   ck.tol_design, ck.tol_objective, ck.tol_tensor, ck.J_prev})
+    if (!std::isfinite(v)) return false;
+  for (int i = 0; i < 36; ++i)
+    if (!std::isfinite(ck.C_prev[i]) || !std::isfinite(ck.C_target[i]) ||
+        !std::isfinite(ck.W[i])) return false;
+  if (ck.dx <= 0 || ck.tol_design < 0 || ck.tol_objective < 0 || ck.tol_tensor < 0)
+    return false;
+  if (ck.have_prev != (ck.next_step > 0 ? 1 : 0)) return false;
+  // Step zero has no predecessor; only frozen accepted transitions are quiet.
+  const auto available = std::max<std::int64_t>(
+      0, std::int64_t(ck.next_step) - std::max(1, ck.continuation_steps));
+  if (ck.quiet_count > available) return false;
+  if (!ck.candidate) {
+    if (ck.verified || ck.verify_left != 0 || ck.quiet_count >= ck.conv_window)
+      return false;
+  } else {
+    const auto elapsed = std::int64_t(ck.quiet_count) - ck.conv_window;
+    if (elapsed < 0 || elapsed > ck.verify_steps ||
+        ck.verify_left != std::int64_t(ck.verify_steps) - elapsed ||
+        ck.verified != (ck.verify_left == 0 ? 1 : 0)) return false;
+  }
+  const auto reason = static_cast<TerminationReason>(ck.termination);
+  if ((reason == TerminationReason::Converged) != (ck.verified != 0)) return false;
+  if (reason == TerminationReason::Running && ck.next_step >= ck.max_steps)
+    return false;
+  if (reason == TerminationReason::MaxSteps && ck.next_step != ck.max_steps)
+    return false;
+  if (reason != TerminationReason::Running && ck.next_step == 0) return false;
+  return true;
+}
+
 [[nodiscard]] inline bool read_checkpoint_text(std::istream &in,
                                                InverseCheckpoint &ck) {
   std::string magic;
@@ -372,7 +418,7 @@ inline bool read_voigt36(std::istream &in, double *out) {
     }
   }
   constexpr std::uint64_t kRequired = (1ull << 40) - 1ull;
-  return seen == kRequired && ck.nx > 0 && ck.ny > 0 && ck.nz > 0;
+  return seen == kRequired && in.eof() && !in.bad() && checkpoint_state_valid(ck);
 }
 
 [[nodiscard]] inline std::string

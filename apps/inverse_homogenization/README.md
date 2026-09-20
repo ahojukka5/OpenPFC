@@ -273,3 +273,11 @@ bricks plus an XDMF sidecar. Size later grids from `HIP_MEM
 bytes_per_cell` in the HIP driver log, not from `sacct` MaxRSS.
 Do not call a grey morphology auxetic unless `nu_eff` / `nu_xy` is
 negative. The default seed is rotating-squares.
+
+Checkpoint loading validates tracker counters before restoration. A candidate
+must have exactly the remaining verification hold implied by its consecutive
+quiet-state count, and a `CONVERGED` snapshot must have completed that hold.
+Impossible flags, counters and non-finite accepted-state values are rejected;
+restarting cannot turn a negative hold counter into immediate convergence.
+This validation does not by itself qualify file publication or full-field
+restart equivalence.
