@@ -3,7 +3,7 @@
 
 /**
  * @file mhd.cpp
- * @brief CLI for 2-D incompressible visco-resistive MHD (#23).
+ * @brief CLI for 2-D incompressible visco-resistive MHD (#23, #113).
  *
  * Verification cases and the Orszag–Tang showcase are separate. A current
  * sheet in VTK is not a reconnection claim.
@@ -49,16 +49,19 @@ struct Cli {
 
 void print_usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe
-     << " [--case orszag_tang|hydro_control|force_free|alfven]\n"
+     << " [--case orszag_tang|hydro_control|force_free|alfven|"
+        "island_coalescence]\n"
      << "       [--N N] [--steps N] [--dt DT] [--cfl CFL]\n"
      << "       [--nu NU] [--eta ETA] [--dump EVERY] [--diag EVERY]\n"
      << "       [--outdir DIR] [--verify]\n"
      << "\n"
-     << "2-D incompressible visco-resistive MHD (CPU, #23).\n"
-     << "  orszag_tang    incompressible OT vortex on [0,2pi]^2\n"
-     << "  hydro_control  same velocity, a=0\n"
-     << "  force_free     magnetic eigenmode, u=0\n"
-     << "  alfven         u=B two-mode aligned state\n"
+     << "2-D incompressible visco-resistive MHD (CPU, #23/#113).\n"
+     << "  orszag_tang         incompressible OT vortex on [0,2pi]^2\n"
+     << "  hydro_control       same velocity, a=0\n"
+     << "  force_free          magnetic eigenmode, u=0\n"
+     << "  alfven              u=B two-mode aligned state\n"
+     << "  island_coalescence  Ng flux a=0.4 sin x sin y plus frozen\n"
+     << "                      streamfunction phi=0.01 (cos x - cos y)\n"
      << "  --cfl          nominal selector dt = CFL * dx (overrides --dt).\n"
      << "                 This is NOT the measured MHD CFL.\n"
      << "  measured CFL   fail-closed: dt * max(|zx|/dx + |zy|/dy) over zpm.\n"
@@ -201,6 +204,12 @@ int run(const Cli &cli, int rank, int nproc) {
                       [](double x, double y, double) {
                         return ns2d::force_free_a(x, y);
                       });
+  } else if (cli.cse == ns2d::MHDCase::island_coalescence) {
+    solver.initialize(
+        [](double x, double y, double) {
+          return ns2d::coalescence_omega(x, y);
+        },
+        [](double x, double y, double) { return ns2d::coalescence_a(x, y); });
   } else {
     solver.initialize(
         [](double x, double y, double) { return ns2d::alfven_omega(x, y); },
@@ -233,8 +242,10 @@ int run(const Cli &cli, int rank, int nproc) {
       csv.open(cli.outdir + "/diagnostics.csv");
       write_csv_header(csv);
       std::ofstream meta(cli.outdir + "/run.json");
+      const int issue =
+          cli.cse == ns2d::MHDCase::island_coalescence ? 113 : 23;
       meta << "{\n"
-           << "  \"issue\": 23,\n"
+           << "  \"issue\": " << issue << ",\n"
            << "  \"case\": \"" << ns2d::mhd_case_name(cli.cse) << "\",\n"
            << "  \"N\": " << cli.n << ",\n"
            << "  \"steps\": " << cli.steps << ",\n"
@@ -256,8 +267,19 @@ int run(const Cli &cli, int rank, int nproc) {
            << "  \"integrator\": \"IFRK4 pair\",\n"
            << "  \"dealias\": \"Orszag 2/3 on omega, a, and all N_hat\",\n"
            << "  \"lorentz\": \"+B.grad j\",\n"
-           << "  \"model\": \"2-D incompressible visco-resistive MHD\"\n"
-           << "}\n";
+           << "  \"model\": \"2-D incompressible visco-resistive MHD\"";
+      if (cli.cse == ns2d::MHDCase::island_coalescence) {
+        meta << ",\n"
+             << "  \"a0\": \"0.4 * sin(x) * sin(y)\",\n"
+             << "  \"phi0\": \"0.01 * (cos(x) - cos(y))\",\n"
+             << "  \"omega0\": \"0.01 * (cos(x) - cos(y))\",\n"
+             << "  \"coalescence_abar\": " << ns2d::coalescence_abar << ",\n"
+             << "  \"coalescence_eps\": " << ns2d::coalescence_eps << ",\n"
+             << "  \"perturbation\": \"frozen; do not retune with eta\"\n";
+      } else {
+        meta << "\n";
+      }
+      meta << "}\n";
     }
   }
 
