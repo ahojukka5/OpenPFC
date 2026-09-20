@@ -570,7 +570,9 @@ int main(int argc, char **argv) {
     double J_prev = 0.0;
     bool have_prev = false;
     int start_s = 0;
-    auto write_ckpt = [&](int next_step) {
+    auto write_ckpt = [&](int next_step,
+                           pfc::apps::inverse::TerminationReason why =
+                               pfc::apps::inverse::TerminationReason::Running) {
       if (cfg.checkpoint_dir.empty()) return;
       pfc::apps::inverse::InverseCheckpoint ck;
       pfc::apps::inverse::capture_problem(ck, cfg, spec.C_target, spec.W);
@@ -579,6 +581,7 @@ int main(int argc, char **argv) {
       ck.nz = cfg.nz;
       pfc::apps::inverse::capture_tracker(ck, tracker, next_step);
       ck.have_prev = have_prev ? 1 : 0;
+      ck.termination = static_cast<int>(why);
       ck.J_prev = J_prev;
       pfc::apps::inverse::store_voigt6(ck.C_prev, C_prev);
       const auto dense_h = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
@@ -617,7 +620,8 @@ int main(int argc, char **argv) {
           std::ifstream in(bundle + "/state.txt");
           if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
               !pfc::apps::inverse::checkpoint_matches_problem(
-                  ck, cfg, spec.C_target, spec.W))
+                  ck, cfg, spec.C_target, spec.W) ||
+              !pfc::apps::inverse::checkpoint_is_restartable(ck))
             ok = 0;
         }
       }
@@ -747,7 +751,7 @@ int main(int argc, char **argv) {
       if (reason != pfc::apps::inverse::TerminationReason::Running) {
         pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
         h.note_host_write();
-        write_ckpt(n_done);
+        write_ckpt(n_done, reason);
         if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) {
           if (rank == 0)
             std::cerr << "elasticity did not converge at step " << s << '\n';
