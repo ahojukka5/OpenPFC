@@ -21,6 +21,7 @@ Start with the [HPC operator guide](operator_guide.md).
 | Profiling output contract | [Profiling export schema](profiling_export_schema.md) |
 | LUMI-G tungsten_hip 1–8 GCD campaign | [LUMI GPU scaling](lumi_gpu_scaling.md) |
 | LUMI-G Heat3D FD weak scaling | [Heat3D FD weak](lumi_gpu_heat3d_fd_weak.md) |
+| LUMI-G FD-order halo-overlap scaling | [FD-order scaling](fd_order_scaling.md) |
 | LUMI-G HeFFTe reshape tournament | [HeFFTe protocol tournament](heffte_protocol_tournament.md) |
 | Held-out HeFFTe selector (blocked) | [HeFFTe selector regret](heffte_selector_regret.md) |
 | LUMI-G HeFFTe topology crossovers | [HeFFTe topology crossover](heffte_topology_crossover.md) |
