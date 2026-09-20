@@ -29,6 +29,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Render inverse trajectories at their physical spacing, requiring exact
+  certified terminal field identity before animation (issue #99).
+
 - Export full unpenalized HIP inverse endpoint and thresholded material
   tensors, compliance-based directional Poisson ratios and all six solve
   reports beside the exact accepted field outputs (#89). Failed diagnostics

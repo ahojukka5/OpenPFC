@@ -321,3 +321,22 @@ physical validation of a material model.
 
 Both tensors were already computed by the driver; reporting adds no elasticity
 solve and changes no iterate, scientific target or convergence tolerance.
+
+### Certified trajectory animation
+
+`render_certified_trajectory.py` consumes the HIP snapshot manifest and
+`h_final_material.json`. It requires a converged endpoint with successful
+material diagnostics, matching grid/spacing and exact terminal snapshot bytes.
+The h=0.5 isosurface uses physical spacing, periodic boundary planes and one
+fixed camera; the final frame is labelled with its certified accepted step.
+It does not synthesize intermediate designs or affine deformation.
+
+```sh
+python3.11 apps/inverse_homogenization/scripts/render_certified_trajectory.py \
+  /path/to/fields/run_manifest.json /new/movie-directory
+```
+
+Rendering requires NumPy, PyVista/VTK with offscreen OpenGL, and ffmpeg.
+`--validate-only` checks input identity without graphics dependencies. The
+output `frames.json` records field/frame/movie checksums and renderer versions.
+An animation illustrates the admitted trajectory; it is not a convergence proof.
