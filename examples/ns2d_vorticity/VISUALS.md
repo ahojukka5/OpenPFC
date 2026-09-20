@@ -99,7 +99,8 @@ $PY $NS/scripts/render_mhd_conference_frames.py --asset hero \
   --kind evidence --out-dir $FIG/generated/hero_evidence
 $PY $NS/scripts/make_mhd_conference_animation.py \
   --frames-dir $FIG/generated/hero_evidence --kind evidence \
-  --mp4 $FIG/evidence/hero_reconnection_eta0005_n512.mp4
+  --mp4 $FIG/evidence/hero_reconnection_eta0005_n512.mp4 \
+  --gif $FIG/evidence/hero_reconnection_eta0005_n512.gif
 ```
 
 ### Synchronized 3-case comparison (evidence)
@@ -146,6 +147,7 @@ not committed. Finished MP4s, paper figures, and slide stills under
 * `evidence/stills/topology_overlay_eta0005.png`
 * `evidence/scaling_R_vs_S.png` (also copied under `stills/`)
 * `evidence/hero_reconnection_eta0005_n512.mp4`
+* `evidence/hero_reconnection_eta0005_n512.gif` (short preview)
 * `evidence/comparison_three_eta.mp4`
 
 **Scientific evidence**
