@@ -159,25 +159,40 @@ inline void residual(const PixelCell &c, double F11, double F22,
   }
 }
 
-inline int n_unknowns(const PixelCell &c) { return 2 * (c.nx * c.ny - 1) + 1; }
+// A centered periodic derivative annihilates constants on each parity class
+// when the corresponding extent is even. Fix one displacement value in each
+// class, not only the global translation. Subtracting these constants changes
+// neither F_at nor the constitutive response.
+inline int gauge_anchor(const PixelCell &c, int p) {
+  const int gx = c.nx % 2 == 0 ? 2 : 1;
+  const int gy = c.ny % 2 == 0 ? 2 : 1;
+  return (p % c.nx) % gx + ((p / c.nx) % gy) * c.nx;
+}
+
+inline int n_unknowns(const PixelCell &c) {
+  const int anchors = (c.nx % 2 == 0 ? 2 : 1) * (c.ny % 2 == 0 ? 2 : 1);
+  return 2 * (c.nx * c.ny - anchors) + 1;
+}
 
 inline void pack_unknowns(const PixelCell &c, double F22, std::vector<double> &x) {
   const int N = c.nx * c.ny;
   x.resize(static_cast<std::size_t>(n_unknowns(c)));
   int k = 0;
-  for (int p = 1; p < N; ++p) x[k++] = c.ux[static_cast<std::size_t>(p)];
-  for (int p = 1; p < N; ++p) x[k++] = c.uy[static_cast<std::size_t>(p)];
+  for (const auto *u : {&c.ux, &c.uy})
+    for (int p = 0; p < N; ++p) {
+      const int anchor = gauge_anchor(c, p);
+      if (p != anchor) x[k++] = (*u)[p] - (*u)[anchor];
+    }
   x[k] = F22;
 }
 
 inline void unpack_unknowns(PixelCell &c, const std::vector<double> &x,
                             double &F22) {
   const int N = c.nx * c.ny;
-  c.ux[0] = 0.0;
-  c.uy[0] = 0.0;
   int k = 0;
-  for (int p = 1; p < N; ++p) c.ux[static_cast<std::size_t>(p)] = x[k++];
-  for (int p = 1; p < N; ++p) c.uy[static_cast<std::size_t>(p)] = x[k++];
+  for (auto *u : {&c.ux, &c.uy})
+    for (int p = 0; p < N; ++p)
+      (*u)[p] = p == gauge_anchor(c, p) ? 0.0 : x[k++];
   F22 = x[k];
 }
 
@@ -189,8 +204,9 @@ inline void pack_residual(const PixelCell &c, double F11, double F22,
   residual(c, F11, F22, rx, ry, P11, P22, valid);
   r.resize(static_cast<std::size_t>(n_unknowns(c)));
   int k = 0;
-  for (int p = 1; p < N; ++p) r[k++] = rx[static_cast<std::size_t>(p)];
-  for (int p = 1; p < N; ++p) r[k++] = ry[static_cast<std::size_t>(p)];
+  for (const auto *component : {&rx, &ry})
+    for (int p = 0; p < N; ++p)
+      if (p != gauge_anchor(c, p)) r[k++] = (*component)[p];
   r[k] = P22;
   if (!valid) {
     for (double &v : r) v = 1e3;
