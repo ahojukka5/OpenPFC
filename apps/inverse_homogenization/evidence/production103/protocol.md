@@ -45,8 +45,12 @@ successive allocations, with distinct CSV/logs and shared checkpoint/field root.
 Each allocation verifies CURRENT next_step/termination before resume; no
 automatic restart of terminal errors or scientific retuning. If walltime hits,
 inspect published checkpoint and retain only its authoritative CSV prefix.
-Stop-after is operational, not scientific termination. Final consumers run only
-when the full hold passes. Preserve failures; do not silently reset the history.
+Stop-after is operational, not scientific termination. A 128 RMS fit on the
+first resume projects quiet near 2927 and hold end near 3407, so a third
+allocation with stop-after 4500 is queued afterok of the 3000-step resume
+on both grids; that script refuses a non-RUNNING checkpoint. Final
+consumers run only when the full hold passes. Preserve failures; do not
+silently reset the history.
 
 Return a genuinely converged pair or a diagnosed numerical obstruction. Do not
 claim asymptotic resolution credibility from only two grids. No larger grid

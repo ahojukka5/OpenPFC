@@ -47,7 +47,7 @@
       "job": 22185871,
       "dependency": "afterok:22185790",
       "stop_after": 4500,
-      "reason": "Linear RMS fit needs ~1040 steps to 2.5e-5 then window 80 + hold 400; stop-after 3000 is ~40 steps short of that hold. Script refuses termination!=0."
+      "reason": "Linear RMS fit on history-02 steps 1613-1712 projects quiet ~2927 and hold end ~3407. stop-after 3000 still cuts the hold. Script refuses termination!=0."
     }
   },
   "256": {
@@ -59,6 +59,19 @@
       "phase": "continuation",
       "stop_after": 1500,
       "resume_afterok": 22185791
+    },
+    "allocation_02_queued": {
+      "job": 22185791,
+      "dependency": "afterok:22183562",
+      "stop_after": 3000,
+      "csv": "history-02.csv"
+    },
+    "allocation_03_queued": {
+      "job": 22186129,
+      "dependency": "afterok:22185791",
+      "stop_after": 4500,
+      "csv": "history-03.csv",
+      "reason": "Freeze at continuation 1197; r2 stop-after 3000 is only ~1803 frozen steps. 128 fit needs ~2210 frozen steps to hold end. Script refuses termination!=0."
     }
   },
   "interpretation": "dt=0.01 normalize=0 is already conventional (C12>0, grey ~0.78) in frozen continuation. Stop-after 1500 is operational. Resume from RUNNING CURRENT is qualified at production rank. Not Yang A3 auxetic production and not the amplifying 2-cycle."
