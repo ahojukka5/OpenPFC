@@ -20,17 +20,19 @@
 #   sbatch --account=project_462001245 ...
 # so the env does not override this file.
 #
-# SRC_DIR must be the checkout with the #63 CSV/SIMP fixes. Override if
-# this default worktree is not that branch.
+# SRC_DIR must be the checkout with the #63 CSV/SIMP fixes and #72
+# checkpoint/restart. Job 22176978 rebuilds from openpfc-conv2 (no
+# checkpoint); this default is the checkpoint worktree.
 #
 #   CONV_MODE=qual sbatch ...   32x32x61, short continuation, machinery check
 #   CONV_MODE=64   sbatch ...   64x64x121, same target as job 22162138
 #   CONV_MODE=128  sbatch ...   128x128x242
+#   RESTART_DIR=/path/to/checkpoint CONV_MODE=64 sbatch ...
 
 set -euo pipefail
 
-SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-conv2}"
-BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-conv63}"
+SRC="${SRC_DIR:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-inv-ckpt}"
+BUILD="${BUILD_DIR:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-ckpt72}"
 OUT="${OUT_DIR:-/scratch/project_462001245/juaho/inverse-homogenization/conv_${SLURM_JOB_ID}}"
 MODE="${CONV_MODE:-64}"
 CT="${SRC}/apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt"
@@ -108,11 +110,18 @@ case "${MODE}" in
 esac
 
 echo "=== HIP inverse ${MODE} ==="
+CKPT="${CHECKPOINT_DIR:-${OUT}/checkpoint}"
+RESTART_ARGS=()
+if [[ -n "${RESTART_DIR:-}" ]]; then
+  RESTART_ARGS+=(--restart="${RESTART_DIR}")
+fi
 srun --ntasks=8 --gpus-per-node=8 "${BIN}" \
   "${COMMON[@]}" "${GRID[@]}" "${STOP[@]}" \
   --run-id="inv3d_${MODE}" \
   --csv="${OUT}/history.csv" \
   --dump-dir="${OUT}/fields" \
+  --checkpoint-dir="${CKPT}" \
+  "${RESTART_ARGS[@]}" \
   | tee "${OUT}/run.log"
 
 echo "done job ${SLURM_JOB_ID}" | tee -a "${OUT}/provenance.txt"
