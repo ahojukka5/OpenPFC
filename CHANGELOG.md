@@ -20,6 +20,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   so one-GCD and full-node measurements are compared at their own scales.
   Weak efficiency now explicitly uses the smallest admitted rank count
   within each workload family and protocol.
+- Reject failed inverse checkpoint metadata writes/publication collectively,
+  check field sizes, and validate restored snapshot indices (issue #96).
+
+
 - Reject inverse checkpoint restarts whose requested iteration budget has no
   step remaining, preserving evaluated final-field semantics (issue #94).
 

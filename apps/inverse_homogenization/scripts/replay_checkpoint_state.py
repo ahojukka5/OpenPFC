@@ -86,6 +86,36 @@ def main():
             assert not list((rejected / 'fields').glob('*.bin'))
             assert checkpoint_hashes == {str(f.relative_to(split)): sha(f)
                                          for f in (split / 'checkpoint').rglob('*') if f.is_file()}
+        generation = (split / 'checkpoint' / 'CURRENT').read_text().strip()
+        ledger = split / 'checkpoint' / generation / 'dump_steps.txt'
+        ledger_bytes = ledger.read_bytes()
+        for damage, payload in [('missing', None), ('truncated', b'0\n'),
+                                ('malformed', b'0\nnot-an-index\n')]:
+            try:
+                if payload is None:
+                    ledger.unlink()
+                else:
+                    ledger.write_bytes(payload)
+                rejected = run(f'ledger_{damage}', 'ledger',
+                               [f'--restart={split / "checkpoint"}'], success=False)
+                assert 'restart: unreadable or mismatched' in (rejected / 'ledger.log').read_text()
+                assert not list((rejected / 'fields').glob('*.bin'))
+            finally:
+                ledger.write_bytes(ledger_bytes)
+        pointer = split / 'checkpoint' / 'CURRENT.tmp'
+        assert not pointer.exists()
+        pointer.symlink_to('/dev/full')
+        try:
+            rejected = run('publication', 'publication',
+                           [f'--restart={split / "checkpoint"}',
+                            f'--checkpoint-dir={split / "checkpoint"}'], success=False)
+            assert 'checkpoint: failed to publish' in (rejected / 'publication.log').read_text()
+            assert not (rejected / 'fields' / 'h_final.bin').exists()
+            assert not (rejected / 'fields' / 'h_thresh.bin').exists()
+            for relative, value in checkpoint_hashes.items():
+                assert sha(split / relative) == value
+        finally:
+            pointer.unlink()
         run('split', 'resume', [f'--restart={split / "checkpoint"}'])
         reference, resumed = rows(full / 'full.csv'), rows(split / 'resume.csv')
         assert reference[-1]['termination'] == ('CONVERGED' if name == 'hold' else 'MAX_STEPS')
@@ -106,7 +136,9 @@ def main():
         result['cases'].append({'name': name, 'cut': cut, 'saved_state': saved,
                                 'last_row': reference[-1], 'overlap_rows': len(resumed),
                                 'identical_fields': matched, 'terminal_rejected': True,
-                                'exhausted_budgets_rejected': [cut-1, cut]})
+                                'exhausted_budgets_rejected': [cut-1, cut],
+                                'ledger_failures_rejected': ['missing', 'truncated', 'malformed'],
+                                'publication_failure_preserved_previous': True})
         (args.output / 'verified.json').write_text(json.dumps(result, indent=2)+'\n')
     print('CHECKPOINT_FIELD_AND_HOLD_EQUIVALENCE_OK')
 

@@ -299,10 +299,12 @@ std::vector<double> gather_dense(const pfc::data::Field<double> &h, int nx, int 
   return g;
 }
 
-void write_raw_bin(const std::string &path, const std::vector<double> &a) {
+bool write_raw_bin(const std::string &path, const std::vector<double> &a) {
   std::ofstream f(path, std::ios::binary);
   f.write(reinterpret_cast<const char *>(a.data()),
           static_cast<std::streamsize>(a.size() * sizeof(double)));
+  f.close();
+  return static_cast<bool>(f);
 }
 
 void write_xdmf_brick(const std::string &path, const std::string &bin, int nx,
@@ -571,9 +573,9 @@ int main(int argc, char **argv) {
     bool have_prev = false;
     int start_s = 0;
     auto write_ckpt = [&](int next_step,
-                           pfc::apps::inverse::TerminationReason why =
-                               pfc::apps::inverse::TerminationReason::Running) {
-      if (cfg.checkpoint_dir.empty()) return;
+                          pfc::apps::inverse::TerminationReason why =
+                              pfc::apps::inverse::TerminationReason::Running) {
+      if (cfg.checkpoint_dir.empty()) return true;
       pfc::apps::inverse::InverseCheckpoint ck;
       pfc::apps::inverse::capture_problem(ck, cfg, spec.C_target, spec.W);
       ck.nx = cfg.nx;
@@ -592,19 +594,25 @@ int main(int argc, char **argv) {
       if (rank == 0)
         ready = pfc::apps::inverse::prepare_checkpoint_staging(root) ? 1 : 0;
       MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
-      if (!ready) return;
+      if (!ready) {
+        if (rank == 0) std::cerr << "checkpoint: failed to prepare staging\n";
+        return false;
+      }
       const auto staging =
           pfc::apps::inverse::checkpoint_staging_dir(root).string();
       if (rank == 0) {
-        write_raw_bin(staging + "/h.bin", dense_h);
-        write_raw_bin(staging + "/h_prev.bin", dense_p);
-        std::ofstream out(staging + "/state.txt");
-        pfc::apps::inverse::write_checkpoint_text(out, ck);
-        out.close();
-        if (!pfc::apps::inverse::publish_checkpoint_generation(root, gen))
-          std::cerr << "checkpoint: failed to publish " << gen << '\n';
+        ready = write_raw_bin(staging + "/h.bin", dense_h);
+        ready = write_raw_bin(staging + "/h_prev.bin", dense_p) && ready;
+        ready =
+            ready && pfc::apps::inverse::checkpoint_field_sizes_match(staging, ck);
+        ready = ready && pfc::apps::inverse::write_checkpoint_file(
+                             staging + "/state.txt", ck);
+        ready =
+            ready && pfc::apps::inverse::publish_checkpoint_generation(root, gen);
+        if (!ready) std::cerr << "checkpoint: failed to publish " << gen << '\n';
       }
-      MPI_Barrier(MPI_COMM_WORLD);
+      MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      return ready != 0;
     };
     if (!cfg.restart_dir.empty()) {
       pfc::apps::inverse::InverseCheckpoint ck;
@@ -751,7 +759,10 @@ int main(int argc, char **argv) {
       if (reason != pfc::apps::inverse::TerminationReason::Running) {
         pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
         h.note_host_write();
-        write_ckpt(n_done, reason);
+        if (!write_ckpt(n_done, reason)) {
+          rc = 2;
+          break;
+        }
         if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) {
           if (rank == 0)
             std::cerr << "elasticity did not converge at step " << s << '\n';
@@ -768,7 +779,10 @@ int main(int argc, char **argv) {
           write_raw_bin(cfg.dump_dir + name, dense);
         }
       }
-      write_ckpt(n_done);
+      if (!write_ckpt(n_done)) {
+        rc = 2;
+        break;
+      }
       if (cfg.stop_after > 0 && n_done >= cfg.stop_after) break;
     }
     if (rc != 2 && !(cfg.stop_after > 0 &&

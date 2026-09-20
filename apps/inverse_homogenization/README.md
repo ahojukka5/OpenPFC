@@ -312,3 +312,10 @@ GPU fields through an interrupted verification hold and a changing trajectory.
 A restart requires `--max-steps` strictly greater than the saved `next_step`.
 An exhausted requested budget is rejected before field restoration, so an
 unevaluated next field cannot be exported as the previous accepted material.
+
+Checkpoint metadata writes are checked through close before publishing
+`CURRENT`. A staging or publication failure exits nonzero on every rank and
+leaves the preceding published generation available. GPU restart rejects a
+missing, malformed or inconsistent snapshot-index ledger instead of resetting
+its frame identities. Field sizes are checked before publication; this is not
+a guarantee against storage hardware corruption or power loss.
