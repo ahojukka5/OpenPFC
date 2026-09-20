@@ -13,7 +13,7 @@
     "C13": 0.014196005669
   },
   "falsification": "If 128 or 256 reach CONVERGED with unpenalized C12<0 and thresh relF better than 32, resolution is a remedy. If all amplifying arms MAX_STEPS in a period-2 cycle with unpenalized C12>0, reject resolution as a sufficient remedy.",
-  "result": "All amplifying arms MAX_STEPS in a period-2 cycle. Unpenalized C12>0. Thresh is in-plane auxetic. Higher grid did not improve Yang relF (128 cycle 0.105; 128 MAX_STEPS 0.156; 256 0.38; 64 0.50).",
+  "result": "All amplifying arms MAX_STEPS in a period-2 cycle. Unpenalized C12>0. Thresh is in-plane auxetic. Higher grid did not improve Yang relF (128 cycle 0.105; 128 MAX_STEPS 0.156; 256 0.38; 64 cycle 0.495; 64 match 0.50).",
   "not_converged_auxetic_production": true,
   "do_not_retarget_yang_a3": true,
   "arms": {
@@ -55,6 +55,20 @@
       "unpen_relF": 1.8654785041334097,
       "ncomp_even_odd": [3453, 3156]
     },
+    "64_cycle_dump": {
+      "src_job": 22176978,
+      "eval_job": 22180716,
+      "sha_bin": "6deeb76c",
+      "dump": "inv3d_64_h_0144.bin",
+      "termination_of_src": "RUNNING_2cycle",
+      "thresh_C33": 0.036818780393458206,
+      "thresh_poisson_xy": -0.44249353158059834,
+      "thresh_relF": 0.49487692068139594,
+      "unpen_C12": 0.025731810297825446,
+      "unpen_relF": 1.8475369773824577,
+      "ncomp_even_odd": [29, 29],
+      "note": "Same eval as 128 cycle. C33 is cubic-ish, not Yang 0.089. Do not spend another 8 GCD re-eval; MAX_STEPS h_final still pending via 22185792."
+    },
     "64_match_MAX_STEPS": {
       "src_job": 22178472,
       "termination": "MAX_STEPS",
@@ -72,7 +86,7 @@
     }
   },
   "live": {
-    "amp64_22176978": "2-cycle toward MAX_STEPS 5000; PR90 afterok 22185792",
-    "production103": "dt=0.01 normalize=0; 128 resume 22185790 C12>0; not this amplifying problem"
+    "amp64_22176978": "2-cycle toward MAX_STEPS 5000 (~3722); PR90 afterok 22185792 copies h_final. Cycle dump 22180716 already ingested.",
+    "production103": "dt=0.01 normalize=0; 128 r2 22185790 C12>0 quiet~3036; not this amplifying problem"
   }
 }
