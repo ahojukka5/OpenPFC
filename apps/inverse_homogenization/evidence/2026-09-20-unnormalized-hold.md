@@ -32,3 +32,10 @@ controls; do not cancel them. Use project_462001245, 8 GCD, four-hour allocation
 Executable work is a small driver extension stacked on #77, isolated from its
 currently dirty synthesis files. This does not claim checkpoint equivalence or
 qualify high-resolution normalization=0 by itself.
+
+Admitted 64×64×121 and 128×128×242 `normalize=0` jobs **22180900** and
+**22180901** (`6deeb76c`, `project_462001245`) both **CONVERGED** (steps
+1374 / 1371, verified hold). SIMP and thresh `C_{12}>0`; grey ~0.358;
+two solid components, xyz percolation. Certificate true; auxetic
+production false. Compact record:
+`2026-09-20-n0fixed-64-128.json`. Do not retarget Yang A3.
