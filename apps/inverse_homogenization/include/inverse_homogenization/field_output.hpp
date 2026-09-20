@@ -54,10 +54,19 @@ public:
 
   template <typename FieldT>
   void write(const std::string &name, int idx, const FieldT &f) {
-    std::size_t n = 0;
-    const_cast<FieldT &>(f).for_each_owned(
-        [&](int i, int j, int k) { m_buf[n++] = f(i, j, k); });
+    if (!active()) return;
+    fill_owned_(f);
     write_buffer_(name, idx);
+  }
+
+  /// MPI-IO brick with an exact filename (`h_final.bin`, `h_thresh.bin`).
+  template <typename FieldT>
+  void write_named(const std::string &filename, const FieldT &f) {
+    if (!active()) return;
+    fill_owned_(f);
+    pfc::BinaryWriter w(m_cfg.dir + "/" + filename, m_comm);
+    w.set_domain(m_global, m_local, m_offset);
+    w.write(0, pfc::field::FieldView<double>(m_buf));
   }
 
   void note_step(int step) { m_steps.push_back(step); }
@@ -86,7 +95,37 @@ public:
     write_xdmf_(fields);
   }
 
+  void write_xdmf_brick(const std::string &filename, const std::string &bin_name,
+                        const char *attr) const {
+    if (!active() || m_rank != 0) return;
+    const std::string path = m_cfg.dir + "/" + filename;
+    std::FILE *fp = std::fopen(path.c_str(), "w");
+    if (fp == nullptr) return;
+    const int nx = m_global[0], ny = m_global[1], nz = m_global[2];
+    std::fprintf(
+        fp,
+        "<?xml version=\"1.0\"?>\n<Xdmf Version=\"2.0\"><Domain>"
+        "<Grid Name=\"g\" GridType=\"Uniform\">\n"
+        "<Topology TopologyType=\"3DCoRectMesh\" Dimensions=\"%d %d %d\"/>\n"
+        "<Geometry GeometryType=\"ORIGIN_DXDYDZ\">"
+        "<DataItem Dimensions=\"3\" Format=\"XML\">0 0 0</DataItem>"
+        "<DataItem Dimensions=\"3\" Format=\"XML\">%.17g %.17g %.17g"
+        "</DataItem></Geometry>\n"
+        "<Attribute Name=\"%s\" AttributeType=\"Scalar\" Center=\"Node\">"
+        "<DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" "
+        "Precision=\"8\" Format=\"Binary\" Endian=\"Little\">%s"
+        "</DataItem></Attribute>\n</Grid></Domain></Xdmf>\n",
+        nz, ny, nx, m_dx, m_dx, (nz > 1 ? m_dx : 1.0), attr, nz, ny, nx, bin_name);
+    std::fclose(fp);
+  }
+
 private:
+  template <typename FieldT> void fill_owned_(const FieldT &f) {
+    std::size_t n = 0;
+    const_cast<FieldT &>(f).for_each_owned(
+        [&](int i, int j, int k) { m_buf[n++] = f(i, j, k); });
+  }
+
   void write_xdmf_(const std::vector<std::string> &fields) const {
     if (m_steps.empty() || fields.empty()) return;
     std::vector<double> times;
@@ -103,9 +142,9 @@ private:
       }
     }
     const double dz = m_global[2] > 1 ? m_dx : 1.0;
-    pfc::io::write_xdmf_binary_series(
-        m_cfg.dir + "/" + m_run + ".xdmf", m_global[0], m_global[1], m_global[2],
-        m_dx, m_dx, dz, fields, rels, times);
+    pfc::io::write_xdmf_binary_series(m_cfg.dir + "/" + m_run + ".xdmf", m_global[0],
+                                      m_global[1], m_global[2], m_dx, m_dx, dz,
+                                      fields, rels, times);
   }
 
   void write_buffer_(const std::string &name, int idx) {

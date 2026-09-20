@@ -57,14 +57,19 @@ states, not a post-update design RMS paired with a pre-update objective:
   \max(\lVert C_H(h_{s-1})\rVert_F,\varepsilon)<10^{-4}\).
 
 \(J\) and \(C_H\) are the homogenization of that same accepted \(h_s\).
-The update to \(h_{s+1}\) happens after the row is written. The first
-iterate has no predecessor and is never quiet. The trailing one-step
-update is not in the certified pair; the verification hold is the buffer.
+The in-place Allen–Cahn update then produces a trailing candidate
+\(h_{s+1}\). On `CONVERGED`, `MAX_STEPS`, or `ELASTICITY_FAILURE` the
+driver restores \(h_s\) before writing `h_final.bin` / `h_thresh.bin`
+and before the unpenalized `FINAL_RECOMPUTE`. The declared material is
+exactly the certified accepted field. The first iterate has no
+predecessor and is never quiet. CSV volume is the accepted-state mean,
+not the post-update candidate.
 
 CPU and HIP write the same 26-column iterate schema
 (`kInverseCsvHeader`). The unpenalized final \(C_H\) is a
-`# FINAL_RECOMPUTE` comment, not a data row. Comment lines are not
-iterate records. The final accepted field is always snapshotted, even
+`# FINAL_RECOMPUTE` comment, not a data row. A `# CERTIFIED_STEP`
+comment records the iterate index. Comment lines are not iterate
+records. The final accepted field is always snapshotted, even
 between `--dump-every` points; `MAX_STEPS` is not labelled `CONVERGED`.
 
 HIP SIMP uses the same `simp_density` / `simp_chain` helpers as CPU:

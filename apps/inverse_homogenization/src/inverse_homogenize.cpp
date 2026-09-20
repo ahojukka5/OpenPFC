@@ -588,7 +588,7 @@ int main(int argc, char **argv) {
           pfc::apps::inverse::params_frozen(s, cfg.continuation_steps) ? 1 : 0;
       if (rank == 0) {
         std::cout << std::setprecision(8) << s << ' ' << last.J << ' '
-                  << last.J_tensor << ' ' << last.volume_fraction << ' '
+                  << last.J_tensor << ' ' << last.volume_accepted << ' '
                   << last.grey_fraction << ' ' << last.C11 << ' ' << last.C12 << ' '
                   << design_rms << ' ' << metrics.dJ_rel << ' ' << metrics.dC_rel
                   << ' ' << morph_frac << ' ' << last.step_rms << ' '
@@ -600,7 +600,7 @@ int main(int argc, char **argv) {
           row.J_tensor = last.J_tensor;
           row.J_volume = last.J_volume;
           row.J_reg = last.J_reg;
-          row.volume = last.volume_fraction;
+          row.volume = last.volume_accepted;
           row.grey = last.grey_fraction;
           row.C11 = last.C11;
           row.C12 = last.C12;
@@ -633,6 +633,8 @@ int main(int argc, char **argv) {
       J_prev = last.J;
       have_prev = true;
       if (reason != pfc::apps::inverse::TerminationReason::Running) {
+        pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
+        h.note_host_write();
         if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) {
           if (rank == 0)
             std::cerr << "elasticity did not converge at step " << s << '\n';
@@ -650,13 +652,12 @@ int main(int argc, char **argv) {
         }
       }
     }
-    if (!cfg.dump_dir.empty() &&
-        (cfg.dump_every <= 0 ||
-         (n_done > 0 && (n_done - 1) % std::max(1, cfg.dump_every) != 0))) {
+    const int certified_step = std::max(0, n_done - 1);
+    if (!cfg.dump_dir.empty()) {
       const auto dense_final = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
       if (rank == 0) {
         char name[64];
-        std::snprintf(name, sizeof(name), "/h_%04d.bin", std::max(0, n_done - 1));
+        std::snprintf(name, sizeof(name), "/h_%04d.bin", certified_step);
         write_raw_bin(cfg.dump_dir + name, dense_final);
       }
     }
@@ -682,8 +683,10 @@ int main(int argc, char **argv) {
                 << " C_fro " << C.symmetrized().frobenius_norm() << " elasticity "
                 << (final.all_converged() ? 1 : 0) << '\n';
       if (csv.is_open()) {
-        csv << "# FINAL_RECOMPUTE unpenalized C_H of in-memory h after the last "
-               "update; not an iterate J_tensor="
+        csv << "# CERTIFIED_STEP " << std::max(0, n_done - 1) << " termination "
+            << pfc::apps::inverse::termination_name(reason) << '\n';
+        csv << "# FINAL_RECOMPUTE unpenalized C_H of certified accepted h; "
+               "not an iterate J_tensor="
             << Jt << " C11=" << C(0, 0) << " C12=" << C(0, 1) << " nu_eff=" << nu
             << " C_fro=" << C.symmetrized().frobenius_norm()
             << " elasticity=" << (final.all_converged() ? 1 : 0) << '\n';
@@ -705,7 +708,8 @@ int main(int argc, char **argv) {
     if (rank == 0) {
       std::cout << std::setprecision(16) << "INVERSE_CHECKSUM " << last.J << '\n';
       std::cout << "termination " << pfc::apps::inverse::termination_name(reason)
-                << " steps_done " << n_done << '\n';
+                << " steps_done " << n_done << " certified_step "
+                << std::max(0, n_done - 1) << '\n';
       print_C("C_target", spec.C_target);
       print_stiffness_report("C_H_final", final.stiffness, spec.C_target, final);
       std::cout << "grey " << last.grey_fraction << '\n';

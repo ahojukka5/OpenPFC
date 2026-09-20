@@ -29,6 +29,7 @@
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <inverse_homogenization/auxetic_geometry.hpp>
+#include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
@@ -639,6 +640,37 @@ TEST_CASE("Fortran design brick load_fortran_bin matches i-fastest layout",
   REQUIRE_THAT(cs.h(1, 2, 1), WithinAbs(0.01 * 1 + 0.1 * 2 + 1.0, 1.0e-12));
   REQUIRE_THAT(cs.h(3, 0, 0), WithinAbs(0.03, 1.0e-12));
   std::remove(path.c_str());
+}
+
+TEST_CASE("restoring the pre-update copy recovers the certified design",
+          "[inverse][certified][63]") {
+  constexpr int N = 8;
+  Case cs(N);
+  fill_value(cs.h, 0.80);
+  InverseSpec spec;
+  spec.C_target = voigt_from_stiffness(Stiffness::isotropic(1.0, 0.25));
+  spec.volume_target = 0.5;
+  spec.lambda_volume = 1.0;
+  spec.lambda_reg = 0.0;
+  spec.dt = 0.05;
+  spec.normalize_grad = true;
+  spec.max_abs_delta = 0.05;
+  PhaseFieldInverse inv(cs.domain, cs.stack.fft(), phases());
+  std::vector<double> certified(cs.h.vec());
+  const auto r = inv.step(cs.h, spec);
+  REQUIRE(r.elasticity_converged);
+  REQUIRE_THAT(r.volume_accepted, WithinAbs(0.80, 1.0e-12));
+  double dh = 0.0;
+  for (std::size_t i = 0; i < cs.h.size(); ++i)
+    dh += std::abs(cs.h.data()[i] - certified[i]);
+  REQUIRE(dh > 1.0e-12);
+  pfc::apps::inverse::copy_design_buffer(certified.data(), cs.h.data(),
+                                         cs.h.size());
+  cs.h.note_host_write();
+  REQUIRE_THAT(inv.mean_value(cs.h), WithinAbs(0.80, 1.0e-12));
+  const auto again = inv.homogenizer().compute(cs.h);
+  REQUIRE_THAT(pfc::apps::tensor_mismatch(again.stiffness, spec.C_target, spec.W),
+               WithinRel(r.J_tensor, 1.0e-12));
 }
 
 TEST_CASE("3-D spinodal seed varies in z and is not an extrusion",
