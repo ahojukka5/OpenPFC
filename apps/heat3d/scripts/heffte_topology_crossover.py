@@ -697,8 +697,11 @@ def crossover_notes(
     scale_rows: Sequence[Dict[str, Any]], alloc_rows: Sequence[Dict[str, Any]]
 ) -> List[str]:
     notes: List[str] = []
+    complete_nodes = {int(r["nodes"]) for r in alloc_rows if r.get("nodes")}
     by_fam: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in scale_rows:
+        if complete_nodes and int(row["nodes"] or 0) not in complete_nodes:
+            continue
         by_fam[str(row["family"])].append(row)
     for family, rows in sorted(by_fam.items()):
         scales = sorted({int(r["nodes"]) for r in rows})
