@@ -359,13 +359,13 @@ def analyze(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             continue
         by_scale[_key_scale(row)].append(row)
 
-    medians: Dict[Tuple[str, str, int], float] = {}
+    medians: Dict[Tuple[str, str, int, int], float] = {}
     out: List[Dict[str, Any]] = []
     for key, group in sorted(by_scale.items()):
         family, reshape, nodes, ranks = key
         walls = [float(r["wall_step_s"]) for r in group]
         med = float(statistics.median(walls))
-        medians[(str(family), str(reshape), int(nodes))] = med
+        medians[(str(family), str(reshape), int(nodes), int(ranks))] = med
         jobs = ",".join(sorted({str(r.get("job") or "") for r in group}))
         nx = group[0].get("Nx")
         ny = group[0].get("Ny")
@@ -392,41 +392,42 @@ def analyze(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             }
         )
 
-    # Fill weak efficiency vs smallest admitted node count of the same
-    # family+protocol (usually 1 node / 8 GCD, not 1 GCD).
-    baseline: Dict[Tuple[str, str], Tuple[int, float]] = {}
-    for (family, reshape, nodes), med in medians.items():
+    # Use the smallest admitted rank count within each family/protocol.
+    # A one-GCD reference and a full node are distinct scales.
+    baseline: Dict[Tuple[str, str], Tuple[Tuple[int, int], float]] = {}
+    for (family, reshape, nodes, ranks), med in medians.items():
         cur = baseline.get((family, reshape))
-        if cur is None or nodes < cur[0]:
-            baseline[(family, reshape)] = (nodes, med)
+        if cur is None or (ranks, nodes) < cur[0]:
+            baseline[(family, reshape)] = ((ranks, nodes), med)
 
-    ranking_groups: Dict[Tuple[str, int], List[Tuple[str, float]]] = defaultdict(list)
+    ranking_groups: Dict[Tuple[str, int, int], List[Tuple[str, float]]] = defaultdict(list)
     for row in out:
         family = str(row["family"])
         reshape = str(row["reshape"])
         nodes = int(row["nodes"])
+        ranks = int(row["ranks"])
         med = float(row["wall_step_s_median"])
         base = baseline.get((family, reshape))
         if base and med > 0:
             row["weak_eff"] = "%.4f" % (base[1] / med)
-        plined = medians.get((family, "p2p_plined", nodes))
+        plined = medians.get((family, "p2p_plined", nodes, ranks))
         if plined and plined > 0:
             row["rel_p2p_plined"] = "%.4f" % (med / plined)
-        half = medians.get((family, reshape, nodes // 2)) if nodes >= 2 else None
-        if half and half > 0 and nodes % 2 == 0:
+        half = medians.get((family, reshape, nodes // 2, ranks // 2))
+        if half and half > 0 and nodes >= 2 and nodes % 2 == 0 and ranks % 2 == 0:
             ratio = med / half
             row["t_double"] = "%.4f" % ratio
             row["penalty_per_doubling"] = "%.4f" % (ratio - 1.0)
-        ranking_groups[(family, nodes)].append((reshape, med))
+        ranking_groups[(family, nodes, ranks)].append((reshape, med))
 
-    rank_map: Dict[Tuple[str, int, str], int] = {}
-    for (family, nodes), items in ranking_groups.items():
-        items.sort(key=lambda x: x[1])
+    rank_map: Dict[Tuple[str, int, int, str], int] = {}
+    for (family, nodes, ranks), items in ranking_groups.items():
+        items.sort(key=lambda x: (x[1], x[0]))
         for i, (reshape, _) in enumerate(items, start=1):
-            rank_map[(family, nodes, reshape)] = i
+            rank_map[(family, nodes, ranks, reshape)] = i
     for row in out:
         rnk = rank_map.get(
-            (str(row["family"]), int(row["nodes"]), str(row["reshape"]))
+            (str(row["family"]), int(row["nodes"]), int(row["ranks"]), str(row["reshape"]))
         )
         if rnk is not None:
             row["rank_at_scale"] = rnk
@@ -439,28 +440,29 @@ def crossover_notes(scale_rows: Sequence[Dict[str, Any]]) -> List[str]:
     for row in scale_rows:
         by_fam[str(row["family"])].append(row)
     for family, rows in sorted(by_fam.items()):
-        nodes = sorted({int(r["nodes"]) for r in rows})
+        scales = sorted({(int(r["ranks"]), int(r["nodes"])) for r in rows})
         winners = []
-        for n in nodes:
-            at = [r for r in rows if int(r["nodes"]) == n]
-            at.sort(key=lambda r: float(r["wall_step_s_median"]))
+        for ranks, nodes in scales:
+            at = [r for r in rows if int(r["nodes"]) == nodes
+                  and int(r["ranks"]) == ranks]
+            at.sort(key=lambda r: (float(r["wall_step_s_median"]), str(r["reshape"])))
             if at:
-                winners.append((n, str(at[0]["reshape"]), float(at[0]["wall_step_s_median"])))
+                winners.append((nodes, ranks, str(at[0]["reshape"])))
         unique = []
-        for n, alg, t in winners:
-            if not unique or unique[-1][1] != alg:
-                unique.append((n, alg, t))
-        algs = [a for _, a, _ in unique]
+        for nodes, ranks, alg in winners:
+            if not unique or unique[-1][2] != alg:
+                unique.append((nodes, ranks, alg))
+        algs = [a for _, _, a in unique]
         if len(set(algs)) == 1:
             notes.append(
-                "family %s: no crossover; %s remains fastest from %d to %d nodes"
-                % (family, algs[0], winners[0][0], winners[-1][0])
+                "family %s: no crossover; %s remains fastest from %d to %d ranks"
+                % (family, algs[0], winners[0][1], winners[-1][1])
             )
         else:
             notes.append(
-                "family %s: ranking changes: "
-                % family
-                + "; ".join("%d nodes -> %s" % (n, a) for n, a, _ in unique)
+                "family %s: ranking changes: " % family
+                + "; ".join("%d nodes / %d ranks -> %s" % (n, r, a)
+                            for n, r, a in unique)
             )
     return notes
 
@@ -472,7 +474,7 @@ def write_markdown(path: str, scale_rows: Sequence[Dict[str, Any]], notes: Seque
     with open(path, "w") as f:
         f.write("# HeFFTe protocol tournament (issue #61)\n\n")
         f.write(
-            "Medians of admitted repeats. Families are not mixed. "
+            "Medians of admitted repeats. Families are not mixed. Weak efficiency uses the smallest admitted rank count per family/protocol. "
             "Do not treat the fastest repeat as the result.\n\n"
         )
         families = sorted({str(r["family"]) for r in scale_rows})
@@ -485,7 +487,7 @@ def write_markdown(path: str, scale_rows: Sequence[Dict[str, Any]], notes: Seque
             f.write("|------:|------:|---------|--:|---------:|----:|----:|--------:|-------------:|----------:|-----:|\n")
             fam_rows = [r for r in scale_rows if str(r["family"]) == family]
             fam_rows.sort(
-                key=lambda r: (int(r["nodes"]), str(r["reshape"]))
+                key=lambda r: (int(r["nodes"]), int(r["ranks"]), str(r["reshape"]))
             )
             for r in fam_rows:
                 f.write(

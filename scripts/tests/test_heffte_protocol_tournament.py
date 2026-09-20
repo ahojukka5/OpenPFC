@@ -147,6 +147,32 @@ def test_reject_wrong_banner(tmp_path):
     assert rows[0]["wall_step_s"] == ""
 
 
+def test_one_gcd_and_full_node_are_distinct_scales():
+    rows = []
+    for nodes, ranks, times in [(1, 1, [1.0, 2.0]),
+                               (1, 8, [4.0, 3.0]),
+                               (2, 16, [8.0, 6.0])]:
+        for protocol, wall in zip(["p2p_plined", "alltoall"], times):
+            rows.append(dict(family="768", reshape=protocol, nodes=nodes,
+                             ranks=ranks, admit="ok", wall_step_s=wall))
+    scale = t.analyze(rows)
+    lookup = {(r["ranks"], r["reshape"]): r for r in scale}
+    assert {r["rank_at_scale"] for r in scale} == {1, 2}
+    for ranks in [1, 8, 16]:
+        assert float(lookup[ranks, "p2p_plined"]["rel_p2p_plined"]) == 1.0
+    assert float(lookup[1, "p2p_plined"]["weak_eff"]) == 1.0
+    assert float(lookup[8, "p2p_plined"]["weak_eff"]) == 0.25
+    assert float(lookup[8, "alltoall"]["rel_p2p_plined"]) == 0.75
+    assert lookup[8, "alltoall"]["t_double"] == ""
+    assert float(lookup[16, "alltoall"]["t_double"]) == 2.0
+    assert lookup[1, "p2p_plined"]["rank_at_scale"] == 1
+    assert lookup[8, "alltoall"]["rank_at_scale"] == 1
+    notes = t.crossover_notes(scale)
+    assert "1 nodes / 1 ranks -> p2p_plined" in notes[0]
+    assert "1 nodes / 8 ranks -> alltoall" in notes[0]
+    assert t.analyze(list(reversed(rows))) == scale
+
+
 @pytest.mark.parametrize("account", ["project_462001120", "project_462001519"])
 def test_submit_refuses_unrelated_account(account):
     env = os.environ.copy()

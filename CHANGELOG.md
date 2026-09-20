@@ -13,6 +13,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   finite-strain grid solver (#76). Even-grid homogeneous Newton solves no
   longer depend on roundoff lifting a singular Jacobian. Gauge projection
   preserves the computed deformation gradient and physical tolerances.
+- Keep rank count in HeFFTe tournament reference and ranking keys (#78),
+  so one-GCD and full-node measurements are compared at their own scales.
+  Weak efficiency now explicitly uses the smallest admitted rank count
+  within each workload family and protocol.
 
 ### Added
 
