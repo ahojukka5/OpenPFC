@@ -26,7 +26,8 @@ using pfc::apps::inverse::continuation_fraction;
 using pfc::apps::inverse::ConvergenceConfig;
 using pfc::apps::inverse::ConvergenceMetrics;
 using pfc::apps::inverse::ConvergenceTracker;
-using pfc::apps::inverse::criteria_hold;
+using pfc::apps::inverse::copy_design_buffer;
+using pfc::apps::inverse::is_terminal;
 using pfc::apps::inverse::make_metrics;
 using pfc::apps::inverse::params_frozen;
 using pfc::apps::inverse::relative_norm_change;
@@ -204,7 +205,8 @@ TEST_CASE("CSV iterate rows match the documented header width",
   REQUIRE(csv_field_count(truncated) != ncol);
   REQUIRE_FALSE(csv_is_comment_line(truncated));
   REQUIRE(csv_is_comment_line(
-      "# FINAL_RECOMPUTE unpenalized C_H of in-memory h; not an iterate"));
+      "# FINAL_RECOMPUTE unpenalized C_H of certified accepted h"));
+  REQUIRE(csv_is_comment_line("# CERTIFIED_STEP 12 termination CONVERGED"));
   std::istringstream ok(std::string(kInverseCsvHeader) + "\n" + line + "\n" +
                         "# FINAL_RECOMPUTE J_tensor=0.1 C11=0.04\n");
   REQUIRE(validate_inverse_csv(ok).empty());
@@ -246,4 +248,23 @@ TEST_CASE("SIMP p=1 is identity and skips 0^0", "[inverse-conv][63]") {
   REQUIRE(std::isfinite(simp_chain(1e-300, 3.0)));
   REQUIRE(simp_density(-0.2, 3.0) == 0.0);
   REQUIRE(simp_chain(1.2, 3.0) == 3.0);
+}
+
+TEST_CASE("terminal reasons are distinct from RUNNING", "[inverse-conv][63]") {
+  REQUIRE_FALSE(is_terminal(TerminationReason::Running));
+  REQUIRE(is_terminal(TerminationReason::Converged));
+  REQUIRE(is_terminal(TerminationReason::MaxSteps));
+  REQUIRE(is_terminal(TerminationReason::ElasticityFailure));
+}
+
+TEST_CASE("copy_design_buffer restores a trailing in-place update",
+          "[inverse-conv][63]") {
+  const double certified[4] = {0.1, 0.2, 0.8, 0.9};
+  double h[4] = {0.0, 0.0, 0.0, 0.0};
+  copy_design_buffer(certified, h, 4);
+  REQUIRE(h[0] == 0.1);
+  REQUIRE(h[3] == 0.9);
+  h[0] = 0.5;
+  copy_design_buffer(certified, h, 4);
+  REQUIRE(h[0] == 0.1);
 }

@@ -337,6 +337,7 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
                           static_cast<double>(gs[2]);
   const double vf0 = mean_value(h, comm, n_global);
   const double dv = vf0 - spec.volume_target;
+  out.volume_accepted = vf0;
   out.J_volume = spec.lambda_volume * dv * dv;
 
   const RealField *h_el = &h;
@@ -560,6 +561,7 @@ int run(int argc, char **argv, int rank, int nproc) {
   int n_snap = 0;
   int last_dumped = -1;
   auto dump = [&](int step, bool force) {
+    if (!snap.active()) return;
     if (!force && !snap.due(std::max(0, step))) return;
     if (force && last_dumped == step) return;
     snap.note_step(step);
@@ -638,7 +640,7 @@ int run(int argc, char **argv, int rank, int nproc) {
         pfc::apps::inverse::params_frozen(s, cfg.continuation_steps) ? 1 : 0;
     if (rank == 0) {
       std::cout << std::setprecision(8) << s << ' ' << last.J << ' ' << last.J_tensor
-                << ' ' << last.volume_fraction << ' ' << last.grey_fraction << ' '
+                << ' ' << last.volume_accepted << ' ' << last.grey_fraction << ' '
                 << last.C11 << ' ' << last.C12 << ' ' << nu << ' ' << design_rms
                 << ' ' << metrics.dJ_rel << ' ' << metrics.dC_rel << ' '
                 << morph_frac << ' ' << last.step_rms << ' ' << last.grad_rms << ' '
@@ -654,7 +656,7 @@ int run(int argc, char **argv, int rank, int nproc) {
         row.J_tensor = last.J_tensor;
         row.J_volume = last.J_volume;
         row.J_reg = last.J_reg;
-        row.volume = last.volume_fraction;
+        row.volume = last.volume_accepted;
         row.grey = last.grey_fraction;
         row.C11 = last.C11;
         row.C12 = last.C12;
@@ -679,17 +681,20 @@ int run(int argc, char **argv, int rank, int nproc) {
         csv.flush();
       }
     }
-    dump(s + 1, false);
     n_done = s + 1;
     C_prev = last.C;
     J_prev = last.J;
     have_prev = true;
     if (reason != pfc::apps::inverse::TerminationReason::Running) {
+      pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
+      h.note_host_write();
       if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) rc = 1;
       break;
     }
+    dump(s + 1, false);
   }
-  dump(n_done, true);
+  const int certified_step = std::max(0, n_done - 1);
+  dump(certified_step, true);
 
   const auto final = hom.compute(h);
   if (rank == 0) {
@@ -701,8 +706,10 @@ int run(int argc, char **argv, int rank, int nproc) {
               << " C_fro " << C.symmetrized().frobenius_norm() << " elasticity "
               << (final.all_converged() ? 1 : 0) << '\n';
     if (csv.is_open()) {
-      csv << "# FINAL_RECOMPUTE unpenalized C_H of in-memory h after the last "
-             "update; not an iterate J_tensor="
+      csv << "# CERTIFIED_STEP " << certified_step << " termination "
+          << pfc::apps::inverse::termination_name(reason) << '\n';
+      csv << "# FINAL_RECOMPUTE unpenalized C_H of certified accepted h; "
+             "not an iterate J_tensor="
           << Jt << " C11=" << C(0, 0) << " C12=" << C(0, 1) << " nu_eff=" << nu
           << " C_fro=" << C.symmetrized().frobenius_norm()
           << " elasticity=" << (final.all_converged() ? 1 : 0) << '\n';
@@ -714,6 +721,10 @@ int run(int argc, char **argv, int rank, int nproc) {
     hbin.data()[i] = (h.data()[i] > 0.5) ? 1.0 : 0.0;
   hbin.note_host_write();
   const auto bin = hom.compute(hbin);
+  snap.write_named("h_final.bin", h);
+  snap.write_named("h_thresh.bin", hbin);
+  snap.write_xdmf_brick("h_final.xdmf", "h_final.bin", "h");
+  snap.write_xdmf_brick("h_thresh.xdmf", "h_thresh.bin", "h");
   snap.write_manifest({"h"});
   if (rank == 0) {
     const auto &C = final.stiffness;
@@ -726,7 +737,8 @@ int run(int argc, char **argv, int rank, int nproc) {
     std::cout << "C11_bin " << Cb(0, 0) << " C12_bin " << Cb(0, 1) << " nu_bin "
               << nub << '\n';
     std::cout << "ranks " << nproc << " grid " << cfg.nx << 'x' << cfg.ny << 'x'
-              << cfg.nz << " steps_done " << n_done << " termination "
+              << cfg.nz << " steps_done " << n_done << " certified_step "
+              << certified_step << " termination "
               << pfc::apps::inverse::termination_name(reason) << '\n';
     std::ifstream status("/proc/self/status");
     std::string line;

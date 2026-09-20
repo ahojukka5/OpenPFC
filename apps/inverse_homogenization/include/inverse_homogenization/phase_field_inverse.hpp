@@ -87,6 +87,9 @@ struct InverseStepReport {
   double J_tensor{0.0};
   double J_volume{0.0};
   double J_reg{0.0};
+  /// Mean of the incoming accepted design \(h_s\) (before the update).
+  double volume_accepted{0.0};
+  /// Mean after clip / volume projection of the trailing candidate.
   double volume_fraction{0.0};
   double grad_rms{0.0};
   double step_rms{0.0};
@@ -178,6 +181,7 @@ public:
     const bool tensor_on = spec.W.max_abs() > 0.0;
     const double vf0 = mean_value(h);
     const double dv = vf0 - spec.volume_target;
+    out.volume_accepted = vf0;
     out.J_volume = spec.lambda_volume * dv * dv;
 
     if (tensor_on) {

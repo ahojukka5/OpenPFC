@@ -19,16 +19,19 @@
  * Logged row \(s\) compares consecutive **accepted** states: design RMS
  * is \(\lVert h_s-h_{s-1}\rVert_2/\sqrt{N}\) measured before the
  * Allen--Cahn update; \(J\) and \(C_H\) are evaluated on that same
- * \(h_s\). The update to \(h_{s+1}\) happens after the row is written.
- * The first iterate has no predecessor and is never quiet, so a zero
- * first-row design RMS cannot seed the window. The trailing one-step
- * update is not in the certified pair; the verification hold is the
- * buffer. Unpenalized final \(C_H\) is a `# FINAL_RECOMPUTE` comment,
- * never a truncated iterate row.
+ * \(h_s\). The in-place update produces a trailing candidate
+ * \(h_{s+1}\). On any terminal reason the driver **restores** \(h_s\)
+ * before snapshots, unpenalized \(C_H\), and thresholding, so the
+ * declared `CONVERGED` / `MAX_STEPS` / `ELASTICITY_FAILURE` field is
+ * exactly the certified accepted state. The first iterate has no
+ * predecessor and is never quiet, so a zero first-row design RMS cannot
+ * seed the window. Unpenalized final \(C_H\) is a `# FINAL_RECOMPUTE`
+ * comment, never a truncated iterate row.
  */
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <istream>
 #include <ostream>
 #include <sstream>
@@ -52,6 +55,15 @@ enum class TerminationReason {
   case TerminationReason::ElasticityFailure: return "ELASTICITY_FAILURE";
   }
   return "UNKNOWN";
+}
+
+[[nodiscard]] inline bool is_terminal(TerminationReason r) noexcept {
+  return r != TerminationReason::Running;
+}
+
+/// Copy owned design values so a trailing in-place update can be undone.
+inline void copy_design_buffer(const double *src, double *dst, std::size_t n) {
+  std::copy(src, src + n, dst);
 }
 
 struct ConvergenceConfig {

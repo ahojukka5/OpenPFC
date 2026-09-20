@@ -80,7 +80,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   the 26-column header and emit unpenalized final \(C_H\) as a
   `# FINAL_RECOMPUTE` comment. Logged row \(s\) compares accepted
   \(h_s\), \(J(h_s)\), and \(C_H(h_s)\) against the previous accepted
-  state (the first row is never quiet). Shared `simp_density` /
+  state (the first row is never quiet). CSV volume is the accepted-state
+  mean. On any terminal reason the driver restores \(h_s\) so
+  `h_final.bin` is the certified field, not the unevaluated trailing
+  candidate. Shared `simp_density` /
   `simp_chain` helpers: elasticity on \(h^p\), chain rule
   \(p h^{p-1}\), \(p=1\) skips \(0^0\), \(h\) clamped to \([0,1]\).
 - **Heat3D spectral HIP scaling submit memory** (issue #51). LUMI-G
