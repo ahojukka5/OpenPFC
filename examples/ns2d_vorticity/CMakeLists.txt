@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# Research prototype for issues #21 (NS) and #23 (MHD).
-# Not a shipped apps/ catalog entry.
+# Research prototype for issues #21 (NS), #23 (MHD), and #113
+# (island coalescence). Not a shipped apps/ catalog entry.
 
 set(_ns2d_heffte_tgt "")
 if(TARGET Heffte::Heffte)
@@ -36,6 +36,13 @@ if(OpenPFC_BUILD_TESTS)
                    --verify --N 16 --steps 8 --dt 0.05 --nu 0.1 --eta 0.1)
   set_tests_properties(mhd2d-cli-verify PROPERTIES
                        PASS_REGULAR_EXPRESSION "VERIFY PASS"
+                       TIMEOUT 120)
+  add_test(NAME mhd2d-cli-coalescence
+           COMMAND $<TARGET_FILE:mhd2d>
+                   --case island_coalescence --N 16 --steps 4 --dt 0.05
+                   --nu 0.01 --eta 0.01)
+  set_tests_properties(mhd2d-cli-coalescence PROPERTIES
+                       PASS_REGULAR_EXPRESSION "case=island_coalescence"
                        TIMEOUT 120)
   find_package(Python3 COMPONENTS Interpreter)
   if(Python3_Interpreter_FOUND)

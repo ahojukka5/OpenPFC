@@ -264,6 +264,13 @@ stage, and the reported invariant uses the variance of \(a\).
   --steps 255 --cfl 0.4 --nu 0.005 --eta 0.005 --diag 4 --dump 4 \
   --outdir /scratch/project_462001519/juaho/mhd2d-23/ot256_nu0005_peak
 
+# doubly-periodic island coalescence (issue #113). Frozen seed;
+# do not retune epsilon with eta. Stage-0 protocol:
+# examples/ns2d_vorticity/COALESCENCE.md
+./examples/ns2d_vorticity/mhd2d --case island_coalescence --N 256 \
+  --cfl 0.4 --nu 0.01 --eta 0.01 --steps 4074 --diag 40 --dump 40 \
+  --outdir /scratch/project_462001519/juaho/mhd2d-113/ic256_nu001_cfl04
+
 ./examples/ns2d_vorticity/mhd2d --case orszag_tang --N 512 \
   --steps 509 --cfl 0.4 --nu 0.005 --eta 0.005 --diag 8 --dump 8 \
   --outdir /scratch/project_462001519/juaho/mhd2d-23/ot512_nu0005_peak
@@ -504,5 +511,10 @@ local current-sheet geometry experiment. It reuses the #26/#27
 topology machinery and does not change the solver. Conference
 figures and animations for those accepted windows:
 [`VISUALS.md`](VISUALS.md).
+
+Issue #113 (`COALESCENCE.md`) is the controlled island-coalescence
+geometry test of that OT interpretation. Stage 0 freezes the
+perturbation and the flux-progress event statistic at
+\(\eta=0.01\). It does not change the solver.
 
 HIP is still blocked by the same pointwise `SpectralETDOps` pipeline.

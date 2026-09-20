@@ -343,6 +343,74 @@ TEST_CASE("u and B remain solenoidal to transform roundoff",
   REQUIRE(d.div_b_linf < 1.0e-11);
 }
 
+TEST_CASE("coalescence perturbation is frozen, divergence-free, and diagonal",
+          "[mhd][coalescence-ic]") {
+  REQUIRE_THAT(ns2d::coalescence_eps, WithinAbs(0.01, 0.0));
+  REQUIRE_THAT(ns2d::coalescence_abar, WithinAbs(0.4, 0.0));
+  const double pi = std::acos(-1.0);
+  const auto u_omax = ns2d::coalescence_u(0.5 * pi, 0.5 * pi);
+  REQUIRE_THAT(u_omax[0], WithinAbs(ns2d::coalescence_eps, 1.0e-15));
+  REQUIRE_THAT(u_omax[1], WithinAbs(ns2d::coalescence_eps, 1.0e-15));
+  const auto u_omax2 = ns2d::coalescence_u(1.5 * pi, 1.5 * pi);
+  REQUIRE_THAT(u_omax2[0], WithinAbs(-ns2d::coalescence_eps, 1.0e-15));
+  REQUIRE_THAT(u_omax2[1], WithinAbs(-ns2d::coalescence_eps, 1.0e-15));
+  const auto u_omin = ns2d::coalescence_u(0.5 * pi, 1.5 * pi);
+  REQUIRE_THAT(u_omin[0], WithinAbs(-ns2d::coalescence_eps, 1.0e-15));
+  REQUIRE_THAT(u_omin[1], WithinAbs(ns2d::coalescence_eps, 1.0e-15));
+  const auto u_omin2 = ns2d::coalescence_u(1.5 * pi, 0.5 * pi);
+  REQUIRE_THAT(u_omin2[0], WithinAbs(ns2d::coalescence_eps, 1.0e-15));
+  REQUIRE_THAT(u_omin2[1], WithinAbs(-ns2d::coalescence_eps, 1.0e-15));
+  for (double x : {0.0, pi}) {
+    for (double y : {0.0, pi}) {
+      const auto u_x = ns2d::coalescence_u(x, y);
+      REQUIRE_THAT(u_x[0], WithinAbs(0.0, 1.0e-15));
+      REQUIRE_THAT(u_x[1], WithinAbs(0.0, 1.0e-15));
+    }
+  }
+
+  MHDStack mhd(32, ns2d::MHDParams{0.01, 0.01, 0.01, +1.0});
+  mhd.solver.initialize(
+      [](double x, double y, double) { return ns2d::coalescence_omega(x, y); },
+      [](double x, double y, double) { return ns2d::coalescence_a(x, y); });
+  const double aerr = mhd.solver.linf_a_error(
+      MPI_COMM_WORLD, [](double x, double y) {
+        return ns2d::coalescence_a(x, y);
+      });
+  REQUIRE_THAT(aerr, WithinAbs(0.0, 1.0e-12));
+  const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE_THAT(d.mean_sq_j, WithinAbs(8.0 * d.a2, 1.0e-10));
+  REQUIRE(d.div_u_linf < 1.0e-11);
+  REQUIRE(d.div_b_linf < 1.0e-11);
+  REQUIRE(d.max_speed > 0.5 * ns2d::coalescence_eps);
+  REQUIRE(d.max_speed < 1.5 * ns2d::coalescence_eps);
+}
+
+TEST_CASE("unperturbed coalescence flux is a static decaying eigenmode",
+          "[mhd][coalescence-equilibrium]") {
+  const double eta = 0.1;
+  const double dt = 0.02;
+  const int steps = 10;
+  MHDStack mhd(32, ns2d::MHDParams{0.05, eta, dt, +1.0});
+  mhd.solver.initialize(
+      [](double, double, double) { return 0.0; },
+      [](double x, double y, double) { return ns2d::coalescence_a(x, y); });
+  const auto d0 = mhd.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE(d0.max_speed < 1.0e-12);
+  REQUIRE(d0.max_abs_omega < 1.0e-12);
+  mhd.solver.nonlinear_omega_from_current();
+  REQUIRE(mhd.solver.n_omega_linf(MPI_COMM_WORLD) < 1.0e-10);
+  for (int i = 0; i < steps; ++i) mhd.solver.step();
+  const double T = steps * dt;
+  const double aerr = mhd.solver.linf_a_error(
+      MPI_COMM_WORLD, [eta, T](double x, double y) {
+        return ns2d::coalescence_a_exact(x, y, eta, T);
+      });
+  const auto d = mhd.solver.diagnostics(MPI_COMM_WORLD);
+  REQUIRE_THAT(aerr, WithinAbs(0.0, 1.0e-11));
+  REQUIRE(d.max_speed < 1.0e-12);
+  REQUIRE(d.max_abs_omega < 1.0e-12);
+}
+
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   const int result = Catch::Session().run(argc, argv);

@@ -1,0 +1,57 @@
+{
+  "issue": 113,
+  "parent": "ahojukka5/research#543",
+  "case": "island_coalescence",
+  "eta": 0.01,
+  "nu": 0.01,
+  "eps": 0.01,
+  "abar": 0.4,
+  "perturbation": "phi = 0.01 * (cos(x) - cos(y))",
+  "jobs": {
+    "ic128_cfl04": 22188502,
+    "ic256_cfl04": 22188521,
+    "ic256_cfl02": 22188522,
+    "analyze_256_cfl04": 22188569,
+    "analyze_256_cfl02": 22188570
+  },
+  "data_root": "/scratch/project_462001519/juaho/mhd2d-113",
+  "binary": "/flash/project_462001519/juaho/build/openpfc-113-cpu/examples/ns2d_vorticity/mhd2d",
+  "parent_sha": "e98d8a872e40c4e13baa46627763a078a33b1f62",
+  "kind": "stage-0 evidence frames",
+  "event_alignment": {
+    "definition": "p_X = sign(Ez_X at first sheet_ok) * (a_X(0)-a_X(t)) / abs(F(0))",
+    "xflux_lo": 0.05,
+    "xflux_hi": 0.1,
+    "frozen_before_eta_0p005": true,
+    "withdrawn_raw_F_progress": [
+      0.3,
+      0.6
+    ],
+    "withdrawal_reason": "F=a_O-a_X contains resistive O-mode decay even when Ez_X=0"
+  },
+  "field_gate": {
+    "coarse_N": 128,
+    "fine_N": 256,
+    "matched_pairs": [
+      {
+        "coarse_inc": 460,
+        "fine_inc": 920,
+        "time": 9.032078879070655
+      },
+      {
+        "coarse_inc": 800,
+        "fine_inc": 1600,
+        "time": 15.707963267948966
+      }
+    ],
+    "thresholds": {
+      "a_rel_l2": 0.00001,
+      "j_rel_l2": 0.001,
+      "omega_rel_l2": 0.001,
+      "me_spectrum_rel_l2": 0.001,
+      "j_spectrum_rel_l2": 0.001,
+      "enstrophy_spectrum_rel_l2": 0.001
+    },
+    "status": "must pass before Stage 1"
+  }
+}
