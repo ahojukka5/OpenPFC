@@ -110,8 +110,17 @@ same binary) never develops \(C_{12}<0\) and greys to 0.79; no
 convergence candidate. Amplifying \(1/\lVert g_{\mathrm{el}}\rVert\) is
 both the two-cycle and the force that was producing auxetic \(C_{12}\).
 The cap is a descent-direction fix, not a production replacement.
-Running 64/128 jobs keep the old amplifying `normalize=1` as
-exploratory evidence.
+Running 64/128/256 amplifying jobs (`normalize=1`) keep that path as
+exploratory evidence. They **MAX_STEPS** in the same period-2 cycle:
+SIMP iterate \(C_{12}\) tracks Yang A3, unpenalized \(C_{12}>0\),
+\(h>0.5\) thresh is in-plane auxetic. Closest thresh Yang match is the
+128 cycle dump (job 22180716, relF 0.105, \(C_{33}=0.0892\)). Certified
+128 \(h_{\mathrm{final}}\) (22185511) is relF 0.156; 256 thresh
+(22185073) is relF 0.38 with ~3000 solid components. Higher resolution
+did not improve the oracle. n0-hold `normalize=0` **CONVERGES** to a
+grey conventional material. Evidence:
+`apps/inverse_homogenization/evidence/2026-09-20-amplifying-resolution-cycle.json`.
+Do not retarget Yang A3 or loosen tolerances.
 
 HIP `--no-tensor=1` now matches CPU: \(W=0\) skips the six elasticity
 solves and is a binarization-only step. It does not change the frozen

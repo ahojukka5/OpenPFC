@@ -1,0 +1,78 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "issue": 74,
+  "pr": 77,
+  "evidence_class": "numerical_experiment_result",
+  "status": "admitted_negative_for_resolution_killing_the_2cycle",
+  "question": "Does frozen amplifying inverse (normalize=1) CONVERGE to Yang A3 as the grid is refined 64 to 128 to 256?",
+  "account": "project_462001245",
+  "yang_a3": {
+    "C11": 0.043419814778,
+    "C33": 0.089238208384,
+    "C12": -0.008538062443,
+    "C13": 0.014196005669
+  },
+  "falsification": "If 128 or 256 reach CONVERGED with unpenalized C12<0 and thresh relF better than 32, resolution is a remedy. If all amplifying arms MAX_STEPS in a period-2 cycle with unpenalized C12>0, reject resolution as a sufficient remedy.",
+  "result": "All amplifying arms MAX_STEPS in a period-2 cycle. Unpenalized C12>0. Thresh is in-plane auxetic. Higher grid did not improve Yang relF (128 cycle 0.105; 128 MAX_STEPS 0.156; 256 0.38; 64 0.50).",
+  "not_converged_auxetic_production": true,
+  "do_not_retarget_yang_a3": true,
+  "arms": {
+    "128_cycle_dump": {
+      "src_job": 22178551,
+      "eval_job": 22180716,
+      "sha_bin": "6deeb76c",
+      "termination_of_src": "MAX_STEPS",
+      "thresh_C33": 0.08920362179770992,
+      "thresh_poisson_xy": -0.38010769043592874,
+      "thresh_relF": 0.1047031639068371,
+      "unpen_C12": 0.02540039006476688,
+      "unpen_relF": 1.755542632845883,
+      "ncomp_even_odd": [139, 141]
+    },
+    "128_amp_MAX_STEPS": {
+      "src_job": 22178551,
+      "eval_job": 22185511,
+      "h_final_sha256": "931c40c3c302a242a55c2111539d524ed0910ba57ce4249b704d7819b4b42e0d",
+      "termination": "MAX_STEPS",
+      "certified_step": 4999,
+      "simp_C12": -0.00882807,
+      "thresh_C33": 0.10438698314963325,
+      "thresh_poisson_xy": -0.34270401503177605,
+      "thresh_relF": 0.15642774850868196,
+      "unpen_C12": 0.008621710241146115,
+      "unpen_relF": 1.3452761594835045,
+      "ncomp": 50
+    },
+    "256_amp_MAX_STEPS": {
+      "src_job": 22180611,
+      "eval_job": 22185073,
+      "termination": "MAX_STEPS",
+      "certified_step": 799,
+      "thresh_C33": 0.04953296503222775,
+      "thresh_poisson_xy": -0.4254906839819959,
+      "thresh_relF": 0.37982212824015926,
+      "unpen_C12": 0.028257735418597683,
+      "unpen_relF": 1.8654785041334097,
+      "ncomp_even_odd": [3453, 3156]
+    },
+    "64_match_MAX_STEPS": {
+      "src_job": 22178472,
+      "termination": "MAX_STEPS",
+      "certified_step": 4999,
+      "thresh_relF": 0.50,
+      "ncomp": 55
+    },
+    "n0_hold_CONVERGED": {
+      "jobs": [22180900, 22180901],
+      "termination": "CONVERGED",
+      "thresh_C12": 0.0027,
+      "thresh_nu_bin": 0.06,
+      "ncomp": 2,
+      "note": "Certificate true; auxetic production false. Grey conventional."
+    }
+  },
+  "live": {
+    "amp64_22176978": "2-cycle toward MAX_STEPS 5000; PR90 afterok 22185792",
+    "production103": "dt=0.01 normalize=0; 128 resume 22185790 C12>0; not this amplifying problem"
+  }
+}
