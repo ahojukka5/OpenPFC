@@ -15,17 +15,28 @@
  * history or unfreeze SIMP / `lambda_reg`. `--max-steps` is a run budget
  * and may change after a walltime restart; everything else that defines
  * the frozen inverse must match or the restart is rejected.
+ *
+ * Drivers publish a complete generation directory (`gen_<next_step>/`
+ * with `h.bin`, `h_prev.bin`, `state.txt`, optional `dump_steps.txt`)
+ * and then atomically retarget `CURRENT`. A kill during the write leaves
+ * the previous published generation loadable.
  */
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <istream>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <vector>
 
 #include <inverse_homogenization/inverse_convergence.hpp>
 
@@ -34,6 +45,8 @@ namespace pfc::apps::inverse {
 inline constexpr int kInverseCheckpointSchema = 2;
 inline constexpr std::string_view kInverseCheckpointMagic =
     "OPENPFC_INVERSE_CHECKPOINT";
+inline constexpr std::string_view kInverseCheckpointCurrent = "CURRENT";
+inline constexpr std::string_view kInverseCheckpointStaging = ".writing";
 
 struct InverseCheckpoint {
   int schema{kInverseCheckpointSchema};
@@ -354,6 +367,129 @@ format_checkpoint_text(const InverseCheckpoint &ck) {
   std::ostringstream os;
   write_checkpoint_text(os, ck);
   return os.str();
+}
+
+[[nodiscard]] inline std::string checkpoint_generation_name(int next_step) {
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "gen_%07d", std::max(0, next_step));
+  return buf;
+}
+
+[[nodiscard]] inline std::filesystem::path
+checkpoint_staging_dir(const std::filesystem::path &root) {
+  return root / std::string(kInverseCheckpointStaging);
+}
+
+[[nodiscard]] inline bool
+checkpoint_bundle_complete(const std::filesystem::path &dir) {
+  return std::filesystem::is_regular_file(dir / "state.txt") &&
+         std::filesystem::is_regular_file(dir / "h.bin") &&
+         std::filesystem::is_regular_file(dir / "h_prev.bin");
+}
+
+[[nodiscard]] inline bool
+checkpoint_generation_name_ok(std::string_view gen) {
+  if (gen.size() < 5 || gen.rfind("gen_", 0) != 0) return false;
+  if (gen.find('/') != std::string_view::npos ||
+      gen.find('\\') != std::string_view::npos ||
+      gen.find("..") != std::string_view::npos)
+    return false;
+  return std::all_of(gen.begin() + 4, gen.end(),
+                     [](unsigned char c) { return c >= '0' && c <= '9'; });
+}
+
+inline bool write_current_pointer(const std::filesystem::path &root,
+                                  std::string_view gen) {
+  if (!checkpoint_generation_name_ok(gen)) return false;
+  std::error_code ec;
+  std::filesystem::create_directories(root, ec);
+  if (ec) return false;
+  const auto tmp = root / "CURRENT.tmp";
+  const auto dst = root / std::string(kInverseCheckpointCurrent);
+  {
+    std::ofstream out(tmp);
+    if (!out) return false;
+    out << gen << '\n';
+    if (!out) return false;
+  }
+  std::filesystem::rename(tmp, dst, ec);
+  return !ec;
+}
+
+[[nodiscard]] inline std::optional<std::string>
+read_current_pointer(const std::filesystem::path &root) {
+  std::ifstream in(root / std::string(kInverseCheckpointCurrent));
+  if (!in) return std::nullopt;
+  std::string gen;
+  if (!(in >> gen) || !checkpoint_generation_name_ok(gen)) return std::nullopt;
+  return gen;
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_checkpoint_bundle(const std::filesystem::path &root) {
+  if (const auto gen = read_current_pointer(root)) {
+    const auto dir = root / *gen;
+    if (checkpoint_bundle_complete(dir)) return dir;
+    return {};
+  }
+  if (checkpoint_bundle_complete(root)) return root;
+  return {};
+}
+
+inline bool prepare_checkpoint_staging(const std::filesystem::path &root) {
+  std::error_code ec;
+  std::filesystem::create_directories(root, ec);
+  if (ec) return false;
+  const auto staging = checkpoint_staging_dir(root);
+  std::filesystem::remove_all(staging, ec);
+  std::filesystem::create_directories(staging, ec);
+  return !ec && std::filesystem::is_directory(staging);
+}
+
+inline bool write_dump_steps(const std::filesystem::path &path,
+                             const std::vector<int> &steps) {
+  std::ofstream out(path);
+  if (!out) return false;
+  for (int s : steps) out << s << '\n';
+  return static_cast<bool>(out);
+}
+
+inline bool read_dump_steps(const std::filesystem::path &path,
+                            std::vector<int> &steps) {
+  steps.clear();
+  std::ifstream in(path);
+  if (!in) return false;
+  int s = 0;
+  while (in >> s) steps.push_back(s);
+  return in.eof();
+}
+
+inline bool publish_checkpoint_generation(const std::filesystem::path &root,
+                                          std::string_view gen) {
+  if (!checkpoint_generation_name_ok(gen)) return false;
+  const auto staging = checkpoint_staging_dir(root);
+  const auto dest = root / std::string(gen);
+  if (!checkpoint_bundle_complete(staging)) return false;
+  std::error_code ec;
+  if (std::filesystem::exists(dest, ec)) {
+    const auto cur = read_current_pointer(root);
+    if (cur && *cur == gen) return true;
+    std::filesystem::remove_all(dest, ec);
+    if (ec) return false;
+  }
+  const auto previous = read_current_pointer(root);
+  std::filesystem::rename(staging, dest, ec);
+  if (ec) return false;
+  if (!write_current_pointer(root, gen)) return false;
+  for (const auto &entry : std::filesystem::directory_iterator(root, ec)) {
+    if (ec || !entry.is_directory()) continue;
+    const auto name = entry.path().filename().string();
+    if (!checkpoint_generation_name_ok(name)) continue;
+    if (name == gen) continue;
+    if (previous && name == *previous) continue;
+    std::filesystem::remove_all(entry.path(), ec);
+  }
+  return true;
 }
 
 } // namespace pfc::apps::inverse

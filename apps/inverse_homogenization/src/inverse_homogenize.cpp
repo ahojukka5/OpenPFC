@@ -583,40 +583,60 @@ int main(int argc, char **argv) {
       pfc::apps::inverse::store_voigt6(ck.C_prev, C_prev);
       const auto dense_h = gather_dense(h, cfg.nx, cfg.ny, cfg.nz);
       const auto dense_p = gather_dense(h_prev, cfg.nx, cfg.ny, cfg.nz);
+      const auto root = std::filesystem::path(cfg.checkpoint_dir);
+      const auto gen = pfc::apps::inverse::checkpoint_generation_name(next_step);
+      int ready = 1;
+      if (rank == 0)
+        ready = pfc::apps::inverse::prepare_checkpoint_staging(root) ? 1 : 0;
+      MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      if (!ready) return;
+      const auto staging =
+          pfc::apps::inverse::checkpoint_staging_dir(root).string();
       if (rank == 0) {
-        write_raw_bin(cfg.checkpoint_dir + "/h.bin", dense_h);
-        write_raw_bin(cfg.checkpoint_dir + "/h_prev.bin", dense_p);
-        const std::string tmp = cfg.checkpoint_dir + "/state.txt.tmp";
-        const std::string dst = cfg.checkpoint_dir + "/state.txt";
-        std::ofstream out(tmp);
+        write_raw_bin(staging + "/h.bin", dense_h);
+        write_raw_bin(staging + "/h_prev.bin", dense_p);
+        std::ofstream out(staging + "/state.txt");
         pfc::apps::inverse::write_checkpoint_text(out, ck);
         out.close();
-        std::filesystem::rename(tmp, dst);
+        if (!pfc::apps::inverse::publish_checkpoint_generation(root, gen))
+          std::cerr << "checkpoint: failed to publish " << gen << '\n';
       }
       MPI_Barrier(MPI_COMM_WORLD);
     };
     if (!cfg.restart_dir.empty()) {
       pfc::apps::inverse::InverseCheckpoint ck;
+      std::string bundle;
       int ok = 1;
       if (rank == 0) {
-        std::ifstream in(cfg.restart_dir + "/state.txt");
-        if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
-            !pfc::apps::inverse::checkpoint_matches_problem(
-                ck, cfg, spec.C_target, spec.W))
+        bundle =
+            pfc::apps::inverse::resolve_checkpoint_bundle(cfg.restart_dir)
+                .string();
+        if (bundle.empty()) {
           ok = 0;
+        } else {
+          std::ifstream in(bundle + "/state.txt");
+          if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
+              !pfc::apps::inverse::checkpoint_matches_problem(
+                  ck, cfg, spec.C_target, spec.W))
+            ok = 0;
+        }
       }
       MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      int n_bundle = static_cast<int>(bundle.size());
+      MPI_Bcast(&n_bundle, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      bundle.resize(static_cast<std::size_t>(n_bundle));
+      if (n_bundle > 0)
+        MPI_Bcast(bundle.data(), n_bundle, MPI_CHAR, 0, MPI_COMM_WORLD);
       MPI_Bcast(&ck, static_cast<int>(sizeof(ck)), MPI_BYTE, 0, MPI_COMM_WORLD);
       if (!ok) {
         if (rank == 0)
           std::cerr << "restart: unreadable or mismatched " << cfg.restart_dir
                     << '\n';
         rc = 2;
-      } else if (!pfc::apps::inverse::load_fortran_bin(cfg.restart_dir + "/h.bin",
+      } else if (!pfc::apps::inverse::load_fortran_bin(bundle + "/h.bin",
                                                        cfg.nx, cfg.ny, cfg.nz, h) ||
                  !pfc::apps::inverse::load_fortran_bin(
-                     cfg.restart_dir + "/h_prev.bin", cfg.nx, cfg.ny, cfg.nz,
-                     h_prev)) {
+                     bundle + "/h_prev.bin", cfg.nx, cfg.ny, cfg.nz, h_prev)) {
         if (rank == 0) std::cerr << "restart: missing h.bin / h_prev.bin\n";
         rc = 2;
       } else {

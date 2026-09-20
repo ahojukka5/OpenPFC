@@ -11,9 +11,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
+#include <system_error>
+#include <vector>
 
 #include <inverse_homogenization/inverse_checkpoint.hpp>
 #include <inverse_homogenization/inverse_convergence.hpp>
@@ -26,8 +31,16 @@ using Catch::Matchers::WithinRel;
 using pfc::apps::inverse::apply_tracker;
 using pfc::apps::inverse::capture_problem;
 using pfc::apps::inverse::capture_tracker;
+using pfc::apps::inverse::checkpoint_generation_name;
 using pfc::apps::inverse::checkpoint_matches_problem;
+using pfc::apps::inverse::checkpoint_staging_dir;
 using pfc::apps::inverse::continuation_fraction;
+using pfc::apps::inverse::prepare_checkpoint_staging;
+using pfc::apps::inverse::publish_checkpoint_generation;
+using pfc::apps::inverse::read_current_pointer;
+using pfc::apps::inverse::read_dump_steps;
+using pfc::apps::inverse::resolve_checkpoint_bundle;
+using pfc::apps::inverse::write_dump_steps;
 using pfc::apps::inverse::ConvergenceConfig;
 using pfc::apps::inverse::ConvergenceMetrics;
 using pfc::apps::inverse::ConvergenceTracker;
@@ -424,5 +437,100 @@ TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]
   REQUIRE_FALSE(got.verified);
   REQUIRE(got.cfg.continuation_steps == 300);
   REQUIRE(got.cfg.max_steps == 5000);
+}
+
+namespace {
+
+struct ScratchDir {
+  std::filesystem::path path;
+  ScratchDir() {
+    path = std::filesystem::temp_directory_path() /
+           ("openpfc_inv_ckpt_" +
+            std::to_string(std::chrono::steady_clock::now()
+                               .time_since_epoch()
+                               .count()));
+    std::filesystem::create_directories(path);
+  }
+  ~ScratchDir() {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+};
+
+void write_dummy_bundle(const std::filesystem::path &dir) {
+  std::filesystem::create_directories(dir);
+  std::ofstream(dir / "h.bin") << "h";
+  std::ofstream(dir / "h_prev.bin") << "p";
+  std::ofstream(dir / "state.txt") << "s";
+}
+
+} // namespace
+
+TEST_CASE("incomplete staging does not replace the published generation",
+          "[inverse-conv][72]") {
+  ScratchDir tmp;
+  const auto gen1 = checkpoint_generation_name(4);
+  const auto gen2 = checkpoint_generation_name(8);
+  const auto gen3 = checkpoint_generation_name(12);
+  REQUIRE(prepare_checkpoint_staging(tmp.path));
+  write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+  REQUIRE(publish_checkpoint_generation(tmp.path, gen1));
+  REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / gen1);
+
+  REQUIRE(prepare_checkpoint_staging(tmp.path));
+  std::ofstream(checkpoint_staging_dir(tmp.path) / "h.bin") << "partial";
+  REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / gen1);
+  REQUIRE_FALSE(publish_checkpoint_generation(tmp.path, gen2));
+  REQUIRE(read_current_pointer(tmp.path) == gen1);
+
+  write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+  REQUIRE(publish_checkpoint_generation(tmp.path, gen2));
+  REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / gen2);
+  REQUIRE(std::filesystem::is_directory(tmp.path / gen1));
+
+  REQUIRE(prepare_checkpoint_staging(tmp.path));
+  write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+  REQUIRE(publish_checkpoint_generation(tmp.path, gen3));
+  REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / gen3);
+  REQUIRE(std::filesystem::is_directory(tmp.path / gen2));
+  REQUIRE_FALSE(std::filesystem::exists(tmp.path / gen1));
+}
+
+TEST_CASE("unpublished generation is ignored until CURRENT is retargeted",
+          "[inverse-conv][72]") {
+  ScratchDir tmp;
+  const auto gen1 = checkpoint_generation_name(1);
+  const auto gen2 = checkpoint_generation_name(2);
+  REQUIRE(prepare_checkpoint_staging(tmp.path));
+  write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+  REQUIRE(publish_checkpoint_generation(tmp.path, gen1));
+  REQUIRE(prepare_checkpoint_staging(tmp.path));
+  write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+  std::filesystem::rename(checkpoint_staging_dir(tmp.path), tmp.path / gen2);
+  REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / gen1);
+  REQUIRE(prepare_checkpoint_staging(tmp.path));
+  write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+  REQUIRE(publish_checkpoint_generation(tmp.path, gen2));
+  REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / gen2);
+}
+
+TEST_CASE("dump_steps text round-trips the snapshot index map",
+          "[inverse-conv][72]") {
+  ScratchDir tmp;
+  const auto path = tmp.path / "dump_steps.txt";
+  const std::vector<int> want{0, 20, 40, 60};
+  REQUIRE(write_dump_steps(path, want));
+  std::vector<int> got;
+  REQUIRE(read_dump_steps(path, got));
+  REQUIRE(got == want);
+}
+
+TEST_CASE("explicit generation directory loads without a CURRENT pointer",
+          "[inverse-conv][72]") {
+  ScratchDir tmp;
+  const auto gen = tmp.path / checkpoint_generation_name(9);
+  write_dummy_bundle(gen);
+  REQUIRE(resolve_checkpoint_bundle(gen) == gen);
+  REQUIRE(resolve_checkpoint_bundle(tmp.path).empty());
 }
 

@@ -48,6 +48,12 @@ public:
 
   [[nodiscard]] bool active() const noexcept { return !m_cfg.dir.empty(); }
 
+  void set_directory(std::string dir) { m_cfg.dir = std::move(dir); }
+
+  void restore_steps(std::vector<int> steps) { m_steps = std::move(steps); }
+
+  [[nodiscard]] const std::vector<int> &steps() const noexcept { return m_steps; }
+
   [[nodiscard]] bool due(int sample) const noexcept {
     return active() && (sample % std::max(1, m_cfg.every)) == 0;
   }
