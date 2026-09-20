@@ -62,16 +62,16 @@ prescribed volume 0.258; largest piece is 26% of the solid. Uniform n0
 800–3360) all have **4** components and no x-percolation; y-percolation
 appears only at 3360. Solid fraction 0.133→0.162; largest piece stays
 ~26%. The thresh solid is not coarsening toward n0 CONVERGED. Evidence:
-`2026-09-20-128-topology-series.json`. Dump 0044 (step 3520, job
-**22193222**) is still four components, no x-percolation, yz
-percolation, solid 0.164. Not CONVERGED.
+`2026-09-20-128-topology-series.json`. Dump 0045 (step 3600, job
+**22193595**) is still four components, no x-percolation, yz
+percolation, solid 0.165. Not CONVERGED.
 
 `h>0.5` periodic comparison (not a mesh-refinement ranking):
 
 | field | ncomp | perc | solid |
 |-------|-------|------|-------|
 | n0 128 CONVERGED | 2 | xyz | 0.210 |
-| #103 128 steps 800–3520 | 4 | z then yz | 0.133–0.164 |
+| #103 128 steps 800–3600 | 4 | z then yz | 0.133–0.165 |
 | #103 256 steps 1040–1120 | 4 | z | 0.136 |
 | 128 amp MAX_STEPS | 50 | xyz | |
 | 256 amp cycle even | 3453 | xyz | 0.222 |
@@ -81,6 +81,9 @@ x-percolation on both the 128 and 256 arms, between n0 CONVERGED
 (two components, xyz) and the amplifying fragment shower. 256 dump
 topology: **22192739** (dump 0013, pointer-jump) and **22193564**
 (dumps 0013–0014, BFS; same ncomp=4, z-only). Not CONVERGED.
+256 `design_rms` is still rising during the SIMP ramp (last-50 slope
+positive, ~1.07e-4 at step 1178, freeze 1197). Evidence:
+`2026-09-20-256-rms-ramp.json`. That is not a post-freeze hold.
 
 r3 **22185871** (`dev-g`, stop-after 4500) is RUNNING. r4 **22191420**
 is **afterany** r3 (`dev-g`, 5000, TimeLimit 2h50) so a wall-clock on
