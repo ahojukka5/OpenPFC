@@ -13,7 +13,7 @@
     "C13": 0.014196005669
   },
   "falsification": "If 128 or 256 reach CONVERGED with unpenalized C12<0 and thresh relF better than 32, resolution is a remedy. If all amplifying arms MAX_STEPS in a period-2 cycle with unpenalized C12>0, reject resolution as a sufficient remedy.",
-  "result": "All amplifying arms MAX_STEPS in a period-2 cycle. Unpenalized C12>0. Thresh is in-plane auxetic. Higher grid did not improve Yang relF (128 cycle 0.105; 128 MAX_STEPS 0.156; 256 0.38; 64 cycle 0.495; 64 match 0.50).",
+  "result": "All amplifying arms MAX_STEPS in a period-2 cycle. Unpenalized C12>0. Thresh is in-plane auxetic. 64 amp MAX_STEPS thresh (eval 22191040) is the closest Yang match (relF 0.090, C33=0.0958) but is one 2-cycle phase, not CONVERGED. Higher grid did not kill the cycle (128 cycle 0.105; 128 MAX_STEPS 0.156; 256 0.38; 64 cycle 0.495; 64 match 0.50).",
   "not_converged_auxetic_production": true,
   "do_not_retarget_yang_a3": true,
   "arms": {
@@ -27,7 +27,10 @@
       "thresh_relF": 0.1047031639068371,
       "unpen_C12": 0.02540039006476688,
       "unpen_relF": 1.755542632845883,
-      "ncomp_even_odd": [139, 141]
+      "ncomp_even_odd": [
+        139,
+        141
+      ]
     },
     "128_amp_MAX_STEPS": {
       "src_job": 22178551,
@@ -53,7 +56,10 @@
       "thresh_relF": 0.37982212824015926,
       "unpen_C12": 0.028257735418597683,
       "unpen_relF": 1.8654785041334097,
-      "ncomp_even_odd": [3453, 3156]
+      "ncomp_even_odd": [
+        3453,
+        3156
+      ]
     },
     "64_cycle_dump": {
       "src_job": 22176978,
@@ -66,27 +72,52 @@
       "thresh_relF": 0.49487692068139594,
       "unpen_C12": 0.025731810297825446,
       "unpen_relF": 1.8475369773824577,
-      "ncomp_even_odd": [29, 29],
-      "note": "Same eval as 128 cycle. C33 is cubic-ish, not Yang 0.089. Do not spend another 8 GCD re-eval; MAX_STEPS h_final still pending via 22185792."
+      "ncomp_even_odd": [
+        29,
+        29
+      ],
+      "note": "Mid-run even/odd dumps. C33 cubic-ish. Superseded for Yang ranking by 64_amp_MAX_STEPS thresh relF 0.090."
     },
     "64_match_MAX_STEPS": {
       "src_job": 22178472,
       "termination": "MAX_STEPS",
       "certified_step": 4999,
-      "thresh_relF": 0.50,
+      "thresh_relF": 0.5,
       "ncomp": 55
     },
     "n0_hold_CONVERGED": {
-      "jobs": [22180900, 22180901],
+      "jobs": [
+        22180900,
+        22180901
+      ],
       "termination": "CONVERGED",
       "thresh_C12": 0.0027,
       "thresh_nu_bin": 0.06,
       "ncomp": 2,
       "note": "Certificate true; auxetic production false. Grey conventional."
+    },
+    "64_amp_MAX_STEPS": {
+      "src_job": 22176978,
+      "eval_job": 22191040,
+      "sha_bin": "6deeb76c",
+      "h_final_sha256": "6f257bf09228f9c7b31337534dc4b1d10054e0132c4ac144c54fd3429e6cdde5",
+      "termination": "MAX_STEPS",
+      "certified_step": 4999,
+      "simp_C12": -0.008221,
+      "thresh_C11": 0.04476912811823613,
+      "thresh_C33": 0.09576233683120342,
+      "thresh_C12": -0.013662271204057896,
+      "thresh_poisson_xy": -0.38444935238086764,
+      "thresh_relF": 0.09030789633016308,
+      "unpen_C12": 0.017147771447631174,
+      "unpen_relF": 1.3582577779293559,
+      "inverse_converged": false,
+      "tensors": "2026-09-20-64-amp-max-steps-tensors.json",
+      "note": "Closest thresh Yang match on the amplifying ladder; not CONVERGED; unpen conventional."
     }
   },
   "live": {
-    "amp64_22176978": "2-cycle toward MAX_STEPS 5000 (~3722); PR90 afterok 22185792 copies h_final. Cycle dump 22180716 already ingested.",
-    "production103": "dt=0.01 normalize=0; 128 r2 22185790 C12>0 quiet~3036; not this amplifying problem"
+    "amp64_22176978": "COMPLETED MAX_STEPS 4999; eval 22191040 ingested.",
+    "production103": "dt=0.01 normalize=0; 128 r3 22185871 RUNNING C12>0 quiet~4100; 256 continuation; not this amplifying problem"
   }
 }

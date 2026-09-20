@@ -1,0 +1,78 @@
+{
+  "job": 22191040,
+  "account": "project_462001245",
+  "sha_bin": "6deeb76c",
+  "matlock_dir": "/scratch/project_462001245/juaho/inverse-homogenization/matlock_64final_22191040",
+  "yang_a3": {
+    "C11": 0.043419814778,
+    "C33": 0.089238208384,
+    "C12": -0.008538062443,
+    "C13": 0.014196005669
+  },
+  "unpen": {
+    "C11": 0.11834774739528141,
+    "C22": 0.11894577189920191,
+    "C33": 0.17408496165175333,
+    "C12": 0.017147771447631174,
+    "C13": 0.04027665103102175,
+    "C23": 0.03961572894033378,
+    "poisson": {
+      "xy": 0.07261145519499355,
+      "xz": 0.2148380916487137,
+      "yx": 0.07321058093320548,
+      "yz": 0.210629548685089,
+      "zx": 0.29828623648363256,
+      "zy": 0.2900497618738594
+    },
+    "relative_target_frobenius": 1.3582577779293559,
+    "inverse_converged": false,
+    "volume": 0.2575865185992123,
+    "elasticity_converged": true,
+    "termination": "RUNNING",
+    "field": "h_final.bin"
+  },
+  "thresh": {
+    "C11": 0.04476912811823613,
+    "C22": 0.04297028192499464,
+    "C33": 0.09576233683120342,
+    "C12": -0.013662271204057896,
+    "C13": 0.013979523406315808,
+    "C23": 0.01410053060382149,
+    "poisson": {
+      "xy": -0.38444935238086764,
+      "xz": 0.20257082298878057,
+      "yx": -0.3678830371732076,
+      "yz": 0.20100067675186314,
+      "zx": 0.45662359669004016,
+      "zy": 0.47348731451194104
+    },
+    "relative_target_frobenius": 0.09030789633016308,
+    "inverse_converged": false,
+    "volume": 0.23993172133264462,
+    "elasticity_converged": true,
+    "termination": "RUNNING",
+    "field": "h_thresh.bin"
+  },
+  "provenance": [
+    "job 22191040 account project_462001245 8 GCD dev-g",
+    "PR90 6deeb76c consumer of 22176978 certified h_final"
+  ],
+  "checksums": [
+    "b7659d22ff8ef5dd338d6e2c53b680bcd8a50254ff69206d8a084d964a7e7b5a  /scratch/project_462001245/juaho/inverse-homogenization/matlock_64final_22191040/inverse_hip",
+    "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8  /scratch/project_462001245/juaho/inverse-homogenization/matlock_64final_22191040/target.txt",
+    "6f257bf09228f9c7b31337534dc4b1d10054e0132c4ac144c54fd3429e6cdde5  /scratch/project_462001245/juaho/inverse-homogenization/matlock_64final_22191040/h_final.bin"
+  ],
+  "simp_iterate": {
+    "step": 4999,
+    "C11": 0.0452217,
+    "C12": -0.008221,
+    "nu_eff": -0.222185,
+    "J": 0.0047519,
+    "grey": 0.311604,
+    "dC_rel": 0.0576776,
+    "design_rms": 0.0152046,
+    "frozen": "1",
+    "termination": "MAX_STEPS",
+    "conv_window": "0"
+  }
+}
