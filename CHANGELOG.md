@@ -65,6 +65,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   protocol order, dense node counts around the #61 ranking changes, and
   placement metadata collection. Does not change the production reshape
   default.
+- **Pre-execution HeFFTe reshape descriptors and harvest status**
+  (issue [#106](https://github.com/ahojukka5/OpenPFC/issues/106)).
+  Deterministic communication tables from the OpenPFC slab/min-reshape
+  replica, candidate unfitted cost models, and a harvest command that
+  keeps rejected and missing protocol rows.
 - **2-D MHD conference visualization package**
   (`examples/ns2d_vorticity`, issue
   [#71](https://github.com/ahojukka5/OpenPFC/issues/71)). Evidence
