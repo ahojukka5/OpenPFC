@@ -72,13 +72,15 @@ percolation, solid 0.164. Not CONVERGED.
 |-------|-------|------|-------|
 | n0 128 CONVERGED | 2 | xyz | 0.210 |
 | #103 128 steps 800–3520 | 4 | z then yz | 0.133–0.164 |
+| #103 256 steps 1040–1120 | 4 | z | 0.136 |
 | 128 amp MAX_STEPS | 50 | xyz | |
 | 256 amp cycle even | 3453 | xyz | 0.222 |
 
-The #103 128 thresh solid is stuck between n0 CONVERGED (two
-components, xyz) and the amplifying fragment shower. 256 dump
-topology is job **22192739** (`debug` CPU, dump 0013, not CONVERGED);
-retry **22193038** is afternotok on `small`.
+The #103 thresh solid is stuck at four components with no
+x-percolation on both the 128 and 256 arms, between n0 CONVERGED
+(two components, xyz) and the amplifying fragment shower. 256 dump
+topology: **22192739** (dump 0013, pointer-jump) and **22193564**
+(dumps 0013–0014, BFS; same ncomp=4, z-only). Not CONVERGED.
 
 r3 **22185871** (`dev-g`, stop-after 4500) is RUNNING. r4 **22191420**
 is **afterany** r3 (`dev-g`, 5000, TimeLimit 2h50) so a wall-clock on

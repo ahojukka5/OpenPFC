@@ -1,0 +1,59 @@
+{
+  "schema": "openpfc-inverse-topology/v1",
+  "issue": 103,
+  "pr": 104,
+  "status": "running_not_converged",
+  "slurm_job": 22193564,
+  "algorithm": "periodic_6_bfs",
+  "validated_against": "dump44_ncomp4_yz",
+  "p103_256_dump0013_step1040": {
+    "path": "/scratch/project_462001245/juaho/inverse-homogenization/production103_256_22183562/fields/production256_h_0013.bin",
+    "grid": [
+      256,
+      256,
+      484
+    ],
+    "vol_mean": 0.2575865185999996,
+    "solid_frac": 0.13600606366622547,
+    "nsolid": 4314034,
+    "grey_0.1_0.9": 0.738154702935337,
+    "ncomp": 4,
+    "largest_frac_of_solid": 0.25640827123754706,
+    "perc": {
+      "x": false,
+      "y": false,
+      "z": true
+    },
+    "job": 22183562,
+    "dump_index": 13,
+    "dump_every": 80,
+    "step": 1040,
+    "phase": "continuation",
+    "note": "Continuous h dump before freeze 1197. h>0.5 solid. Not CONVERGED. Compare 256 amplifying cycle ncomp~3453 and n0 128 CONVERGED ncomp=2."
+  },
+  "p103_256_dump0014_step1120": {
+    "path": "/scratch/project_462001245/juaho/inverse-homogenization/production103_256_22183562/fields/production256_h_0014.bin",
+    "grid": [
+      256,
+      256,
+      484
+    ],
+    "vol_mean": 0.25758651860000015,
+    "solid_frac": 0.13611949573863635,
+    "nsolid": 4317632,
+    "grey_0.1_0.9": 0.7552892511541193,
+    "ncomp": 4,
+    "largest_frac_of_solid": 0.25666152187124797,
+    "perc": {
+      "x": false,
+      "y": false,
+      "z": true
+    },
+    "job": 22183562,
+    "dump_index": 14,
+    "dump_every": 80,
+    "step": 1120,
+    "phase": "continuation",
+    "note": "Continuous h dump before freeze 1197. h>0.5 solid. Not CONVERGED. Compare 256 amplifying cycle ncomp~3453 and n0 128 CONVERGED ncomp=2."
+  }
+}
