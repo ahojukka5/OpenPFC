@@ -112,3 +112,10 @@ Only after the curves exist:
   clear and reproducible on held-out points.
 
 Do not hard-code a table of benchmark sizes.
+
+Timing collection applies the warmup threshold to each frame's absolute `step`
+scalar. The HIP exporter already removes earlier steps, so the collector must
+not remove that many frames again by list position. Legacy profiles without
+step labels use zero-based frame positions and are assumed untrimmed. The
+reported within-run statistic pools retained rank/frame samples; it is not
+the slowest-rank total elapsed time printed by the executable.

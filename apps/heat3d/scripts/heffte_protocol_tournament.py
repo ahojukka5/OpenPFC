@@ -204,13 +204,19 @@ def wall_step_stats(doc: Dict[str, Any], warmup: int) -> Tuple[Optional[float], 
             if "median" in m:
                 return float(m["median"]), None
         return None, None
+    # The HIP exporter already omits absolute steps below HEAT3D_WARMUP.
+    # Filter by step labels, not by position in that potentially trimmed list.
+    step_idx = names.index("step") if "step" in names else None
     values: List[float] = []
     for rank in doc.get("ranks") or []:
         frames = rank.get("frames") or []
         for i, frame in enumerate(frames):
-            if i < warmup:
-                continue
             scalars = frame.get("scalars") or []
+            if step_idx is not None and step_idx >= len(scalars):
+                return None, None
+            step = scalars[step_idx] if step_idx is not None else i
+            if step < warmup:
+                continue
             if idx < len(scalars):
                 values.append(float(scalars[idx]))
     if not values:
