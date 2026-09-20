@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Keep `LD_LIBRARY_PATH` across `srun` in the #108 FD-order campaign
+  (`srun --export=ALL`). Job 22186610 inherited `sbatch --export=NONE`
+  and died 127 on `libfabric.so.1`.
 - Filter HeFFTe timing warmup by absolute step labels (#86), so profiles
   already trimmed by the executable do not lose a second warmup frame.
 
