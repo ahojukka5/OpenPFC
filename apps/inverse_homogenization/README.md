@@ -78,8 +78,50 @@ identity and does not call \(\mathrm{pow}(h,0)\). Before #60 the HIP
 path set `spec.simp_p` but did not apply the transformation, so earlier
 HIP SIMP-continuation claims need qualification.
 
-Job 22162138 (300 fixed steps) still had `step_rms≈0.019` on the last
+Job 22162138 (300 fixed steps) still had `step_rms≈0.019` at the last
 iterate, so those animations were cut while the design was moving.
+
+## Checkpoint / restart (issue #72)
+
+`--checkpoint-dir` publishes a complete generation (`gen_<next_step>/`
+with `h.bin`, `h_prev.bin`, `state.txt`, and HIP `dump_steps.txt`) and
+then atomically retargets `CURRENT`. A walltime kill during the write
+leaves the previous published generation loadable. `--restart=DIR` reads
+`CURRENT` (or an explicit generation directory). Schema 3 fingerprints
+the target \(C\), phase moduli, SIMP / regularization endpoints,
+step/projection, window, and tolerances, and records whether the bundle
+is a running or terminal state. `--max-steps` is a run budget and may
+change; any other mismatch is rejected. `CONVERGED` / `MAX_STEPS` /
+`ELASTICITY_FAILURE` bundles are terminal snapshots and are
+not continuation restarts. Schema 1 and schema 2 files do not load.
+The replay entrypoint checks changing fields and interruption inside an active
+verification hold; `--cpu` selects the CPU executable's output contract.
+Keep each allocation's CSV under a distinct name. The checkpoint's next-step
+index defines the retained prefix of an interrupted allocation; append-only
+CSV files can contain a repeated or incomplete trailing row after a kill.
+The `CURRENT` generation is the restart authority, not the newest CSV row.
+No fsync/power-loss or different-rank equivalence guarantee is claimed.
+
+Checkpoint loading validates tracker counters before restoration. A candidate
+must have exactly the remaining verification hold implied by its consecutive
+quiet-state count, and a `CONVERGED` snapshot must have completed that hold.
+Impossible flags, counters and non-finite accepted-state values are rejected;
+restarting cannot turn a negative hold counter into immediate convergence.
+This validation does not by itself qualify file publication or full-field
+restart equivalence.
+The `scripts/replay_checkpoint_state.py` field and hold replay compares actual
+GPU fields through an interrupted verification hold and a changing trajectory.
+
+A restart requires `--max-steps` strictly greater than the saved `next_step`.
+An exhausted requested budget is rejected before field restoration, so an
+unevaluated next field cannot be exported as the previous accepted material.
+
+Checkpoint metadata writes are checked through close before publishing
+`CURRENT`. A staging or publication failure exits nonzero on every rank and
+leaves the preceding published generation available. GPU restart rejects a
+missing, malformed or inconsistent snapshot-index ledger instead of resetting
+its frame identities. Field sizes are checked before publication; this is not
+a guarantee against storage hardware corruption or power loss.
 
 ## Finite-strain forward ladder (issue #55)
 

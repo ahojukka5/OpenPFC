@@ -20,6 +20,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   so one-GCD and full-node measurements are compared at their own scales.
   Weak efficiency now explicitly uses the smallest admitted rank count
   within each workload family and protocol.
+- Reject failed inverse checkpoint metadata writes/publication collectively,
+  check field sizes, and validate restored snapshot indices (issue #96).
+
+
+- Reject inverse checkpoint restarts whose requested iteration budget has no
+  step remaining, preserving evaluated final-field semantics (issue #94).
 
 ### Added
 
@@ -33,6 +39,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   parse named flags without a per-app copy of the same class; unknown
   keys are an error after the driver has queried every option it
   understands ([#66](https://github.com/ahojukka5/OpenPFC/issues/66)).
+- **Inverse homogenization checkpoint problem fingerprint** (issue
+  [#72](https://github.com/ahojukka5/OpenPFC/issues/72)). Schema 3
+  `state.txt` records the target tensor, moduli, SIMP/regularization
+  endpoints, step/projection, window, tolerances, and whether the
+  bundle is running or terminal. A restart with a different frozen
+  problem, or from a `CONVERGED` / `MAX_STEPS` / `ELASTICITY_FAILURE`
+  snapshot, is rejected. `--max-steps` remains a run budget. Drivers
+  publish `gen_<next_step>/` then atomically retarget `CURRENT`,
+  retaining the previous complete generation. HIP stores
+  `dump_steps.txt` in the same bundle so a restarted manifest keeps the
+  original time/index mapping.
+
 - **Inverse-homogenization convergence protocol** (issue
   [#59](https://github.com/ahojukka5/OpenPFC/issues/59)). After
   `--continuation-steps` the SIMP/regularization problem is frozen.
@@ -104,6 +122,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `for_each_border` slabs.
 
 ### Fixed
+
+- Reject inconsistent inverse checkpoint tracker state before restoring the
+  convergence window or verification hold (#91).
 
 - **Inverse-homogenization CSV / accepted-state / SIMP** (issue
   [#63](https://github.com/ahojukka5/OpenPFC/issues/63)). HIP no longer
