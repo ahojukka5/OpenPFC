@@ -23,7 +23,7 @@ set -euo pipefail
 # rebuilt fd-halo-overlap because the login shell leaked those variables).
 SRC="${INVERSE_SRC:-/pfs/lustref1/flash/project_462001519/juaho/wt/openpfc-inv-ckpt}"
 BUILD="${INVERSE_BUILD:-/flash/project_462001519/juaho/build/openpfc-lumi-inv-ckpt72}"
-OUT="${OUT_DIR:-/scratch/project_462001245/juaho/inverse-homogenization/restart_${SLURM_JOB_ID}}"
+OUT="${INVERSE_OUT:-/scratch/project_462001245/juaho/inverse-homogenization/restart_${SLURM_JOB_ID}}"
 CT="${SRC}/apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt"
 BIN="${BUILD}/apps/inverse_homogenization/openpfc_inverse_homogenize_hip"
 
