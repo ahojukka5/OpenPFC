@@ -25,6 +25,7 @@ set -euo pipefail
 MODE="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SBATCH="${SCRIPT_DIR}/fd_order_scaling.sbatch"
+PACKED_SBATCH="${SCRIPT_DIR}/fd_order_scaling_packed.sbatch"
 PY="${SCRIPT_DIR}/../../apps/heat3d/scripts/fd_order_scaling.py"
 
 ALLOWED_ACCOUNTS="project_462001245"
@@ -174,13 +175,20 @@ timed_for() {
 
 walltime_for_nodes() {
   local nodes="$1"
-  if (( nodes <= 32 )); then
+  if (( nodes <= 8 )); then
+    echo "01:00:00"
+  elif (( nodes <= 32 )); then
     echo "00:30:00"
   elif (( nodes <= 128 )); then
     echo "01:00:00"
   else
     echo "01:30:00"
   fi
+}
+
+pack_nodes() {
+  local nodes="$1"
+  (( nodes <= 8 ))
 }
 
 submit_one() {
@@ -222,7 +230,7 @@ submit_one() {
   if [[ -n "${diag}" ]]; then
     export_list+=",HEAT3D_DIAG_TIMING=${diag}"
   fi
-  echo "submit mode=${MODE} fd_order=${order} nodes=${nodes} ${nx}x${ny}x${nz} grid=${grid} repeat=${repeat} account=${ACCOUNT}"
+  echo "submit mode=${MODE} fd_order=${order} nodes=${nodes} ${nx}x${ny}x${nz} grid=${grid} repeat=${repeat} steps=${steps} warmup=${warmup} account=${ACCOUNT}"
   if [[ "${DRY_RUN}" == "1" ]]; then
     echo sbatch --account="${ACCOUNT}" --partition="${PARTITION}" \
       --nodes="${nodes}" --ntasks="${ntasks}" --ntasks-per-node=8 \
@@ -247,6 +255,75 @@ submit_one() {
     "${SBATCH}"
 }
 
+submit_packed() {
+  local nodes="$1"
+  local nx="$2"
+  local ny="$3"
+  local nz="$4"
+  local grid="$5"
+  local steps="$6"
+  local warmup="$7"
+  local nrep="$8"
+  local ntasks=$((nodes * 8))
+  local job_name="${PREFIX}-pack-${nodes}n"
+  local time_lim
+  time_lim="$(walltime_for_nodes "${nodes}")"
+  local keep="${HEAT3D_KEEP_OVERRIDES:-0}"
+  local diag="${HEAT3D_DIAG_TIMING:-}"
+  local orders="${ORDERS_FILTER:-2,4,8,12,20}"
+  local skip="${HEAT3D_PACK_SKIP:-}"
+  local export_list="NONE"
+  export_list+=",HEAT3D_HIP_BIN=${HEAT3D_HIP_BIN}"
+  export_list+=",HEAT3D_STEPS=${steps}"
+  export_list+=",HEAT3D_WARMUP=${warmup}"
+  export_list+=",HEAT3D_DT=${HEAT3D_DT}"
+  export_list+=",HEAT3D_ORDERS=${orders}"
+  export_list+=",HEAT3D_REQUIRE_INTERIOR=${HEAT3D_REQUIRE_INTERIOR}"
+  export_list+=",HEAT3D_NX=${nx}"
+  export_list+=",HEAT3D_NY=${ny}"
+  export_list+=",HEAT3D_NZ=${nz}"
+  export_list+=",OPENPFC_FD_PROC_GRID=${grid}"
+  export_list+=",OPENPFC_SCALING_ROOT=${CAMPAIGN_ROOT}"
+  export_list+=",OPENPFC_REVISION=${OPENPFC_REVISION}"
+  export_list+=",OPENPFC_DIRTY=${OPENPFC_DIRTY}"
+  export_list+=",OPENPFC_SRC=${OPENPFC_SRC}"
+  export_list+=",OPENPFC_REPEATS=${nrep}"
+  export_list+=",OPENPFC_FD_MODE=${MODE}"
+  export_list+=",OPENPFC_JOB_PREFIX=${PREFIX}"
+  if [[ -n "${skip}" ]]; then
+    export_list+=",HEAT3D_PACK_SKIP=${skip}"
+  fi
+  if [[ "${keep}" == "1" ]]; then
+    export_list+=",HEAT3D_KEEP_OVERRIDES=1"
+  fi
+  if [[ -n "${diag}" ]]; then
+    export_list+=",HEAT3D_DIAG_TIMING=${diag}"
+  fi
+  echo "submit packed mode=${MODE} nodes=${nodes} ${nx}x${ny}x${nz} grid=${grid} orders=${orders} repeats=${nrep} steps=${steps} warmup=${warmup} account=${ACCOUNT}"
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    echo sbatch --account="${ACCOUNT}" --partition="${PARTITION}" \
+      --nodes="${nodes}" --ntasks="${ntasks}" --ntasks-per-node=8 \
+      --gpus-per-node=8 --mem=0 --time="${time_lim}" \
+      --job-name="${job_name}" --output="${LOGDIR}/%x-%j.out" \
+      --export="${export_list}" "${PACKED_SBATCH}"
+    return 0
+  fi
+  mkdir -p "${LOGDIR}" "${CAMPAIGN_ROOT}/runs" "${CAMPAIGN_ROOT}/results"
+  sbatch \
+    --account="${ACCOUNT}" \
+    --partition="${PARTITION}" \
+    --nodes="${nodes}" \
+    --ntasks="${ntasks}" \
+    --ntasks-per-node=8 \
+    --gpus-per-node=8 \
+    --mem=0 \
+    --time="${time_lim}" \
+    --job-name="${job_name}" \
+    --output="${LOGDIR}/%x-%j.out" \
+    --export="${export_list}" \
+    "${PACKED_SBATCH}"
+}
+
 echo "Issue #108 FD-order ${MODE}. account=${ACCOUNT} rev=${OPENPFC_REVISION} dirty=${OPENPFC_DIRTY}"
 echo "root=${CAMPAIGN_ROOT}"
 
@@ -259,15 +336,20 @@ python3 "${PY}" --ladder | while read -r nodes nx ny nz grid ranks; do
       *) continue ;;
     esac
   fi
+  proto="$(timed_for "${nodes}")"
+  steps="${proto%% *}"
+  warmup="${proto##* }"
+  nrep=1
+  if [[ "${MODE}" == "clean" ]]; then
+    nrep="$(repeats_for "${nodes}")"
+  fi
+  if pack_nodes "${nodes}"; then
+    submit_packed "${nodes}" "${nx}" "${ny}" "${nz}" "${grid}" \
+      "${steps}" "${warmup}" "${nrep}"
+    continue
+  fi
   for order in 2 4 8 12 20; do
     want_order "${order}" || continue
-    nrep=1
-    if [[ "${MODE}" == "clean" ]]; then
-      nrep="$(repeats_for "${nodes}")"
-    fi
-    proto="$(timed_for "${nodes}")"
-    steps="${proto%% *}"
-    warmup="${proto##* }"
     r=1
     while (( r <= nrep )); do
       submit_one "${order}" "${nodes}" "${nx}" "${ny}" "${nz}" "${grid}" "${r}" \
