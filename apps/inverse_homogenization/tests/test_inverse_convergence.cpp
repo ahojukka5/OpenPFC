@@ -566,7 +566,7 @@ TEST_CASE("dump_steps text round-trips the snapshot index map",
   const std::vector<int> want{0, 20, 40, 60};
   REQUIRE(write_dump_steps(path, want));
   std::vector<int> got;
-  REQUIRE(read_dump_steps(path, got));
+  REQUIRE(read_dump_steps(path, got, 4, 60));
   REQUIRE(got == want);
 }
 
@@ -679,4 +679,65 @@ TEST_CASE("checkpoint rejects impossible counters and accepted state",
     InverseCheckpoint restored;
     REQUIRE_FALSE(read_checkpoint_text(input, restored));
   }
+}
+
+TEST_CASE("checkpoint metadata rejects delayed writes and preserves CURRENT",
+          "[inverse-conv][96]") {
+  using namespace pfc::apps::inverse;
+  ScratchDir tmp;
+  REQUIRE_FALSE(write_checkpoint_file(tmp.path, InverseCheckpoint{}));
+  REQUIRE_FALSE(write_dump_steps(tmp.path, {0, 1}));
+  if (std::filesystem::exists("/dev/full")) {
+    REQUIRE_FALSE(write_checkpoint_file("/dev/full", InverseCheckpoint{}));
+    REQUIRE_FALSE(write_dump_steps("/dev/full", {0, 1}));
+    REQUIRE(prepare_checkpoint_staging(tmp.path));
+    write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+    REQUIRE(publish_checkpoint_generation(tmp.path, "gen_1"));
+    REQUIRE(prepare_checkpoint_staging(tmp.path));
+    write_dummy_bundle(checkpoint_staging_dir(tmp.path));
+    std::filesystem::create_symlink("/dev/full", tmp.path / "CURRENT.tmp");
+    REQUIRE_FALSE(publish_checkpoint_generation(tmp.path, "gen_2"));
+    REQUIRE(read_current_pointer(tmp.path) == "gen_1");
+    REQUIRE(resolve_checkpoint_bundle(tmp.path) == tmp.path / "gen_1");
+    std::filesystem::remove(tmp.path / "CURRENT.tmp");
+    REQUIRE(write_current_pointer(tmp.path, "gen_2"));
+  }
+}
+
+TEST_CASE("snapshot ledger rejects corrupt or inconsistent restoration",
+          "[inverse-conv][96]") {
+  using namespace pfc::apps::inverse;
+  ScratchDir tmp;
+  const auto path = tmp.path / "dump_steps.txt";
+  std::vector<int> got{99};
+  REQUIRE_FALSE(read_dump_steps(path, got, 3, 2));
+  REQUIRE(got.empty());
+  for (const std::string text :
+       {"0 1", "0 1 2 3", "0 1 junk", "0 1 99999999999999999999", "0 0 2", "-1 1 2",
+        "1 0 2", "0 1 3"}) {
+    std::ofstream(path) << text;
+    REQUIRE_FALSE(read_dump_steps(path, got, 3, 2));
+    REQUIRE(got.empty());
+  }
+  std::ofstream(path) << "0 1 2\n";
+  REQUIRE(read_dump_steps(path, got, 3, 2));
+  REQUIRE(got == std::vector<int>{0, 1, 2});
+  std::ofstream(path) << "";
+  REQUIRE(read_dump_steps(path, got, 0, -1));
+  REQUIRE_FALSE(read_dump_steps(path, got, 0, 0));
+}
+
+TEST_CASE("checkpoint field sizes reject incomplete publication",
+          "[inverse-conv][96]") {
+  using namespace pfc::apps::inverse;
+  ScratchDir tmp;
+  InverseCheckpoint ck;
+  ck.nx = ck.ny = ck.nz = 1;
+  std::ofstream(tmp.path / "h.bin", std::ios::binary) << std::string(8, '\0');
+  std::ofstream(tmp.path / "h_prev.bin", std::ios::binary) << std::string(7, '\0');
+  REQUIRE_FALSE(checkpoint_field_sizes_match(tmp.path, ck));
+  std::ofstream(tmp.path / "h_prev.bin", std::ios::binary) << std::string(8, '\0');
+  REQUIRE(checkpoint_field_sizes_match(tmp.path, ck));
+  ck.nx = ck.ny = ck.nz = std::numeric_limits<int>::max();
+  REQUIRE_FALSE(checkpoint_field_sizes_match(tmp.path, ck));
 }

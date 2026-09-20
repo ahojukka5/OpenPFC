@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Reject failed inverse checkpoint metadata writes/publication collectively,
+  check field sizes, and validate restored snapshot indices (issue #96).
+
+
 - Reject inverse checkpoint restarts whose requested iteration budget has no
   step remaining, preserving evaluated final-field semantics (issue #94).
 

@@ -32,6 +32,7 @@
 #include <fstream>
 #include <iomanip>
 #include <istream>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -473,6 +474,7 @@ inline bool write_current_pointer(const std::filesystem::path &root,
     std::ofstream out(tmp);
     if (!out) return false;
     out << gen << '\n';
+    out.close();
     if (!out) return false;
   }
   std::filesystem::rename(tmp, dst, ec);
@@ -514,17 +516,55 @@ inline bool write_dump_steps(const std::filesystem::path &path,
   std::ofstream out(path);
   if (!out) return false;
   for (int s : steps) out << s << '\n';
+  out.close();
+  return static_cast<bool>(out);
+}
+
+inline bool checkpoint_field_sizes_match(const std::filesystem::path &dir,
+                                         const InverseCheckpoint &ck) {
+  std::uintmax_t bytes = sizeof(double);
+  for (int dimension : {ck.nx, ck.ny, ck.nz}) {
+    if (dimension <= 0 || bytes > std::numeric_limits<std::uintmax_t>::max() /
+                                      static_cast<std::uintmax_t>(dimension))
+      return false;
+    bytes *= static_cast<std::uintmax_t>(dimension);
+  }
+  for (const char *name : {"h.bin", "h_prev.bin"}) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(dir / name, ec);
+    if (ec || size != bytes) return false;
+  }
+  return true;
+}
+
+inline bool write_checkpoint_file(const std::filesystem::path &path,
+                                  const InverseCheckpoint &ck) {
+  std::ofstream out(path);
+  if (!out) return false;
+  write_checkpoint_text(out, ck);
+  out.close();
   return static_cast<bool>(out);
 }
 
 inline bool read_dump_steps(const std::filesystem::path &path,
-                            std::vector<int> &steps) {
+                            std::vector<int> &steps, int expected_count,
+                            int last_dumped) {
   steps.clear();
+  if (expected_count < 0 || (expected_count == 0 && last_dumped != -1)) return false;
   std::ifstream in(path);
   if (!in) return false;
-  int s = 0;
-  while (in >> s) steps.push_back(s);
-  return in.eof();
+  std::vector<int> parsed;
+  for (int i = 0; i < expected_count; ++i) {
+    int step = 0;
+    if (!(in >> step) || step < 0 || (!parsed.empty() && step <= parsed.back()))
+      return false;
+    parsed.push_back(step);
+  }
+  in >> std::ws;
+  if (!in.eof() || in.bad() || (!parsed.empty() && parsed.back() != last_dumped))
+    return false;
+  steps = std::move(parsed);
+  return true;
 }
 
 inline bool publish_checkpoint_generation(const std::filesystem::path &root,

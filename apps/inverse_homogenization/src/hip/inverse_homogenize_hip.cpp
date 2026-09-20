@@ -623,9 +623,9 @@ int run(int argc, char **argv, int rank, int nproc) {
       {box.low[0], box.low[1], box.low[2]}, cfg.dx, rank, MPI_COMM_WORLD);
 
   auto write_ckpt = [&](int next_step,
-                         pfc::apps::inverse::TerminationReason why =
-                             pfc::apps::inverse::TerminationReason::Running) {
-    if (cfg.checkpoint_dir.empty()) return;
+                        pfc::apps::inverse::TerminationReason why =
+                            pfc::apps::inverse::TerminationReason::Running) {
+    if (cfg.checkpoint_dir.empty()) return true;
     pfc::apps::inverse::InverseCheckpoint ck;
     pfc::apps::inverse::capture_problem(ck, cfg, spec.C_target, spec.W);
     ck.nx = cfg.nx;
@@ -644,22 +644,26 @@ int run(int argc, char **argv, int rank, int nproc) {
     if (rank == 0)
       ready = pfc::apps::inverse::prepare_checkpoint_staging(root) ? 1 : 0;
     MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if (!ready) return;
+    if (!ready) {
+      if (rank == 0) std::cerr << "checkpoint: failed to prepare staging\n";
+      return false;
+    }
     const auto staging =
         pfc::apps::inverse::checkpoint_staging_dir(root).string();
     ckpt_snap.set_directory(staging);
     ckpt_snap.write_named("h.bin", h);
     ckpt_snap.write_named("h_prev.bin", h_prev);
     if (rank == 0) {
-      std::ofstream out(staging + "/state.txt");
-      pfc::apps::inverse::write_checkpoint_text(out, ck);
-      out.close();
-      pfc::apps::inverse::write_dump_steps(staging + "/dump_steps.txt",
-                                           snap.steps());
-      if (!pfc::apps::inverse::publish_checkpoint_generation(root, gen))
-        std::cerr << "checkpoint: failed to publish " << gen << '\n';
+      ready = pfc::apps::inverse::checkpoint_field_sizes_match(staging, ck);
+      ready = ready &&
+              pfc::apps::inverse::write_checkpoint_file(staging + "/state.txt", ck);
+      ready = ready && pfc::apps::inverse::write_dump_steps(
+                           staging + "/dump_steps.txt", snap.steps());
+      ready = ready && pfc::apps::inverse::publish_checkpoint_generation(root, gen);
+      if (!ready) std::cerr << "checkpoint: failed to publish " << gen << '\n';
     }
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Bcast(&ready, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    return ready != 0;
   };
 
   if (!cfg.restart_dir.empty()) {
@@ -679,9 +683,11 @@ int run(int argc, char **argv, int rank, int nproc) {
                 ck, cfg, spec.C_target, spec.W) ||
             !pfc::apps::inverse::checkpoint_is_restartable(ck, cfg.steps))
           ok = 0;
-        else
-          pfc::apps::inverse::read_dump_steps(bundle + "/dump_steps.txt",
-                                              dump_steps);
+        else if (ck.last_dumped > ck.next_step ||
+                 !pfc::apps::inverse::read_dump_steps(bundle + "/dump_steps.txt",
+                                                      dump_steps, ck.n_snap,
+                                                      ck.last_dumped))
+          ok = 0;
       }
     }
     MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -822,14 +828,21 @@ int run(int argc, char **argv, int rank, int nproc) {
     if (reason != pfc::apps::inverse::TerminationReason::Running) {
       pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
       h.note_host_write();
-      write_ckpt(n_done, reason);
+      if (!write_ckpt(n_done, reason)) {
+        rc = 2;
+        break;
+      }
       if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) rc = 1;
       break;
     }
     dump(s + 1, false);
-    write_ckpt(n_done);
+    if (!write_ckpt(n_done)) {
+      rc = 2;
+      break;
+    }
     if (cfg.stop_after > 0 && n_done >= cfg.stop_after) break;
   }
+  if (rc == 2) return rc;
   if (cfg.stop_after > 0 &&
       reason == pfc::apps::inverse::TerminationReason::Running) {
     if (rank == 0) std::cout << "STOP_AFTER steps_done " << n_done << '\n';
