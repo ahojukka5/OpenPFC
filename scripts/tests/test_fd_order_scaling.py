@@ -232,6 +232,8 @@ def test_submit_dry_run_clean_and_diag(tmp_path):
     assert "h3d108c-pack-1n" in proc.stdout_text
     assert "HEAT3D_STEPS=5005" in proc.stdout_text
     assert "HEAT3D_WARMUP=50" in proc.stdout_text
+    assert "HEAT3D_ORDERS=2:20" in proc.stdout_text
+    assert "HEAT3D_ORDERS=2,20" not in proc.stdout_text
     assert "h3d108c-fd20-128n-r1" in proc.stdout_text
     assert "HEAT3D_STEPS=805" in proc.stdout_text
     assert "HEAT3D_DIAG_TIMING" not in proc.stdout_text
@@ -251,6 +253,8 @@ def test_sbatch_overrides_inherited_export_none():
     assert "srun --export=ALL" in packed
     assert "HEAT3D_CELL_GAP_S" in packed
     assert "packed=1" in packed
+    assert 'SLURM_JOB_PARTITION}" == "standard-g"' in packed
+    assert "sbatch --export splits on commas" in packed or "2:4:8:12:20" in packed
 
 
 def test_recover_missing_admit_from_checksum_profile(tmp_path):

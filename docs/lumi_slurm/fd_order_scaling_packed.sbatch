@@ -55,9 +55,11 @@ STEPS="${HEAT3D_STEPS:-5005}"
 DT="${HEAT3D_DT:-0.01}"
 MODE="${OPENPFC_FD_MODE:-clean}"
 JOBROOT="${OPENPFC_SCALING_ROOT:-/scratch/project_462001245/juaho/openpfc-scaling/fd-order-108}"
-ORDERS="${HEAT3D_ORDERS:-2,4,8,12,20}"
+ORDERS="${HEAT3D_ORDERS:-2:4:8:12:20}"
+ORDERS="${ORDERS//,/:}"
 NREP="${OPENPFC_REPEATS:-3}"
 SKIP="${HEAT3D_PACK_SKIP:-}"
+SKIP="${SKIP//,/:}"
 GAP="${HEAT3D_CELL_GAP_S:-15}"
 PREFIX="${OPENPFC_JOB_PREFIX:-h3d108c}"
 
@@ -77,7 +79,7 @@ export HEAT3D_REQUIRE_INTERIOR="${HEAT3D_REQUIRE_INTERIOR:-256x256x256}"
 PER_NODE="${SLURM_NTASKS_PER_NODE:-${NTASKS}}"
 SRUN_BIND=()
 CPU_BIND="none"
-if (( PER_NODE == 8 )); then
+if (( PER_NODE == 8 )) && [[ "${SLURM_JOB_PARTITION}" == "standard-g" ]]; then
   CPU_BIND="mask_cpu:0xfe000000000000,0xfe00000000000000,0xfe0000,0xfe000000,0xfe,0xfe00,0xfe00000000,0xfe0000000000"
   SRUN_BIND=(--cpu-bind="${CPU_BIND}")
 elif (( PER_NODE > 8 )); then
@@ -102,7 +104,7 @@ fi
 want_skip() {
   local key="$1"
   local tok
-  IFS=',' read -ra toks <<< "${SKIP}"
+  IFS=':' read -ra toks <<< "${SKIP}"
   for tok in "${toks[@]}"; do
     if [[ "${tok}" == "${key}" ]]; then
       return 0
@@ -205,11 +207,11 @@ run_cell() {
 
 echo "=== fd-order packed scaling (issue #108) job=${SLURM_JOB_ID} nodes=${SLURM_NNODES} ==="
 failed=0
-IFS=',' read -ra order_list <<< "${ORDERS}"
+IFS=':' read -ra order_list <<< "${ORDERS}"
 for order in "${order_list[@]}"; do
   r=1
   while (( r <= NREP )); do
-    key="${order}:${r}"
+    key="${order}r${r}"
     if want_skip "${key}"; then
       echo "skip packed cell fd${order}-${SLURM_NNODES}n-r${r}"
       r=$((r + 1))
