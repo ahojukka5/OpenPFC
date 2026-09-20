@@ -281,3 +281,5 @@ Impossible flags, counters and non-finite accepted-state values are rejected;
 restarting cannot turn a negative hold counter into immediate convergence.
 This validation does not by itself qualify file publication or full-field
 restart equivalence.
+The [field and hold replay](evidence/checkpoint-state/README.md) compares actual
+GPU fields through an interrupted verification hold and a changing trajectory.
