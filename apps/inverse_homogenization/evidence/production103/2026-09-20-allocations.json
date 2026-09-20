@@ -41,13 +41,17 @@
       "state": "RUNNING",
       "csv": "history-02.csv",
       "restart_from_next_step": 1500,
-      "note": "In-place CURRENT resume, same SHA/ranks/args. history-02 step 1500 C12=0.0102955 continues 1499."
+      "last_csv_step": 2197,
+      "C12": 0.00989816,
+      "design_rms": 4.66163e-05,
+      "grey": 0.751444,
+      "note": "In-place CURRENT resume, same SHA/ranks/args. C12>0 throughout. Not auxetic."
     },
     "allocation_03_queued": {
       "job": 22185871,
       "dependency": "afterok:22185790",
       "stop_after": 4500,
-      "reason": "Linear RMS fit on history-02 steps 1883-1932 projects quiet ~3036 and hold end ~3516. r2 stop-after 3000 now cuts before quiet. r3 4500 still covers the hold (~1000-step margin). Do not queue r4. Script refuses termination!=0."
+      "reason": "Linear RMS fit on history-02 steps 2148-2197 projects quiet ~3158 and hold end ~3558. r2 stop-after 3000 still cuts before quiet. r3 4500 still covers the hold (~940-step margin). Do not queue r4. Script refuses termination!=0."
     },
     "eval_if_converged": {
       "after_r2": 22186290,
@@ -77,7 +81,7 @@
       "dependency": "afterok:22185791",
       "stop_after": 4500,
       "csv": "history-03.csv",
-      "reason": "Still continuation at step ~432 (simp_p≈1.36). Freeze at 1197 (~5 h); stop-after 1500 (~7 h) fits the 24 h TimeLimit. r2 stop-after 3000 is only ~1803 frozen steps; 128 hold end needs ~2319 frozen steps (3516-1197). r3 4500 covers that. Script refuses termination!=0."
+      "reason": "Still continuation at step ~490 (simp_p≈1.41). Freeze at 1197 (~4.8 h); stop-after 1500 (~6.8 h) fits the 24 h TimeLimit. r2 stop-after 3000 is only ~1803 frozen steps; 128 hold end needs ~2361 frozen steps (3558-1197). r3 4500 covers that. Script refuses termination!=0."
     },
     "eval_if_converged": {
       "after_r2": 22186292,

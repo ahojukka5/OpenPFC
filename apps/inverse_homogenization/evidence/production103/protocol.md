@@ -46,8 +46,8 @@ Each allocation verifies CURRENT next_step/termination before resume; no
 automatic restart of terminal errors or scientific retuning. If walltime hits,
 inspect published checkpoint and retain only its authoritative CSV prefix.
 Stop-after is operational, not scientific termination. A 128 RMS fit on
-history-02 steps 1883-1932 projects quiet near 3036 and hold end near
-3516, so r2 stop-after 3000 now cuts *before* quiet. A third allocation
+history-02 steps 2148-2197 projects quiet near 3158 and hold end near
+3558, so r2 stop-after 3000 still cuts *before* quiet. A third allocation
 with stop-after 4500 is queued afterok of the 3000-step resume on both
 grids; that script refuses a non-RUNNING checkpoint. Do not queue a
 fourth allocation from this fit. A CONVERGED checkpoint also copies the
