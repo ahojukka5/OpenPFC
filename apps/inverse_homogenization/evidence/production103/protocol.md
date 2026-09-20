@@ -35,8 +35,8 @@ SHA590a350fae0cc8d27511b415aeb1337bea72724fe0c8d8c814127b90ea674fa6.
 Canonical build22183109 passes139/139 plusPython; replay22183155 passes CPU2
 and HIP8-rank field/history/active-hold equivalence and fault checks. Actual
 same-rank production restart must retain immutable arguments and checkpoint
-history. No different-rank equivalence claimed. Hosted PR102 remains pending;
-using this locally qualified pinned executable does not assert merge approval.
+history. No different-rank equivalence claimed. PR #102 is merged; this
+protocol still pins executable `43d0d422` rather than floating with master.
 
 128:2nodes16GCD,256:16nodes128GCD, accountproject_462001245, standard-g.
 Initial allocation24h with stop-after1500. This puts planned interruption after
@@ -45,16 +45,18 @@ successive allocations, with distinct CSV/logs and shared checkpoint/field root.
 Each allocation verifies CURRENT next_step/termination before resume; no
 automatic restart of terminal errors or scientific retuning. If walltime hits,
 inspect published checkpoint and retain only its authoritative CSV prefix.
-Stop-after is operational, not scientific termination. A 128 RMS fit on the
-first resume projects quiet near 2927 and hold end near 3407, so a third
-allocation with stop-after 4500 is queued afterok of the 3000-step resume
-on both grids; that script refuses a non-RUNNING checkpoint. A CONVERGED
-checkpoint also copies the native `43d0d422` `h_final_material.json` /
-`h_thresh_material.json` into campaign logs, then triggers a PR #90
-`--max-steps=0` material eval of the certified `h_final` (dx 0.5 / 0.25,
-not the amplifying dx=1 128 field). That eval is skipped if the
-allocation stopped RUNNING. Final consumers run only when the full hold
-passes. Preserve failures; do not silently reset the history.
+Stop-after is operational, not scientific termination. A 128 RMS fit on
+history-02 steps 1883-1932 projects quiet near 3036 and hold end near
+3516, so r2 stop-after 3000 now cuts *before* quiet. A third allocation
+with stop-after 4500 is queued afterok of the 3000-step resume on both
+grids; that script refuses a non-RUNNING checkpoint. Do not queue a
+fourth allocation from this fit. A CONVERGED checkpoint also copies the
+native `43d0d422` `h_final_material.json` / `h_thresh_material.json`
+into campaign logs, then triggers a PR #90 `--max-steps=0` material
+eval of the certified `h_final` (dx 0.5 / 0.25, not the amplifying dx=1
+128 field). That eval is skipped if the allocation stopped RUNNING.
+Final consumers run only when the full hold passes. Preserve failures;
+do not silently reset the history.
 
 Return a genuinely converged pair or a diagnosed numerical obstruction. Do not
 claim asymptotic resolution credibility from only two grids. No larger grid

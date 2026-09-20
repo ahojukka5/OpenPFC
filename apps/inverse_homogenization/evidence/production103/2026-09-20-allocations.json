@@ -47,7 +47,7 @@
       "job": 22185871,
       "dependency": "afterok:22185790",
       "stop_after": 4500,
-      "reason": "Linear RMS fit on history-02 steps 1613-1712 projects quiet ~2927 and hold end ~3407. stop-after 3000 still cuts the hold. Script refuses termination!=0."
+      "reason": "Linear RMS fit on history-02 steps 1883-1932 projects quiet ~3036 and hold end ~3516. r2 stop-after 3000 now cuts before quiet. r3 4500 still covers the hold (~1000-step margin). Do not queue r4. Script refuses termination!=0."
     },
     "eval_if_converged": {
       "after_r2": 22186290,
@@ -77,7 +77,7 @@
       "dependency": "afterok:22185791",
       "stop_after": 4500,
       "csv": "history-03.csv",
-      "reason": "Freeze at continuation 1197; r2 stop-after 3000 is only ~1803 frozen steps. 128 fit needs ~2210 frozen steps to hold end. Script refuses termination!=0."
+      "reason": "Still continuation at step ~432 (simp_p≈1.36). Freeze at 1197 (~5 h); stop-after 1500 (~7 h) fits the 24 h TimeLimit. r2 stop-after 3000 is only ~1803 frozen steps; 128 hold end needs ~2319 frozen steps (3516-1197). r3 4500 covers that. Script refuses termination!=0."
     },
     "eval_if_converged": {
       "after_r2": 22186292,
