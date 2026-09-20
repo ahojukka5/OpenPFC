@@ -283,3 +283,7 @@ This validation does not by itself qualify file publication or full-field
 restart equivalence.
 The [field and hold replay](evidence/checkpoint-state/README.md) compares actual
 GPU fields through an interrupted verification hold and a changing trajectory.
+
+A restart requires `--max-steps` strictly greater than the saved `next_step`.
+An exhausted requested budget is rejected before field restoration, so an
+unevaluated next field cannot be exported as the previous accepted material.

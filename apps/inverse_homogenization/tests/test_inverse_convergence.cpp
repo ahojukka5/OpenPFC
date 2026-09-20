@@ -434,14 +434,31 @@ TEST_CASE("a terminal checkpoint is not restartable as continuation",
   ck.quiet_count = 120;
   ck.candidate = ck.verified = 1;
   ck.termination = static_cast<int>(TerminationReason::Converged);
-  REQUIRE_FALSE(checkpoint_is_restartable(ck));
+  REQUIRE_FALSE(checkpoint_is_restartable(ck, 5000));
   std::istringstream in(format_checkpoint_text(ck));
   InverseCheckpoint got;
   REQUIRE(read_checkpoint_text(in, got));
   REQUIRE(got.termination == static_cast<int>(TerminationReason::Converged));
-  REQUIRE_FALSE(checkpoint_is_restartable(got));
+  REQUIRE_FALSE(checkpoint_is_restartable(got, 5000));
   got.termination = static_cast<int>(TerminationReason::Running);
-  REQUIRE(checkpoint_is_restartable(got));
+  REQUIRE(checkpoint_is_restartable(got, 5000));
+}
+
+TEST_CASE("restart requires an iteration remaining in the requested budget",
+          "[inverse-conv][94]") {
+  InverseCheckpoint ck;
+  ck.next_step = 4;
+  ck.max_steps = 9;
+  ck.termination = static_cast<int>(TerminationReason::Running);
+  for (int budget : {0, 3, 4})
+    REQUIRE_FALSE(checkpoint_is_restartable(ck, budget));
+  for (int budget : {5, 9, 100})
+    REQUIRE(checkpoint_is_restartable(ck, budget));
+  for (auto reason : {TerminationReason::Converged, TerminationReason::MaxSteps,
+                      TerminationReason::ElasticityFailure}) {
+    ck.termination = static_cast<int>(reason);
+    REQUIRE_FALSE(checkpoint_is_restartable(ck, 100));
+  }
 }
 
 TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]") {

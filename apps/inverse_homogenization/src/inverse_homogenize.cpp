@@ -621,7 +621,7 @@ int main(int argc, char **argv) {
           if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
               !pfc::apps::inverse::checkpoint_matches_problem(
                   ck, cfg, spec.C_target, spec.W) ||
-              !pfc::apps::inverse::checkpoint_is_restartable(ck))
+              !pfc::apps::inverse::checkpoint_is_restartable(ck, cfg.steps))
             ok = 0;
         }
       }

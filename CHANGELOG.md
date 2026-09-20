@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Fixed
+
+- Reject inverse checkpoint restarts whose requested iteration budget has no
+  step remaining, preserving evaluated final-field semantics (issue #94).
+
 ### Added
 
 - **Inverse homogenization checkpoint problem fingerprint** (issue
