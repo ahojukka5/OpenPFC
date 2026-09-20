@@ -270,7 +270,10 @@ submit_packed() {
   time_lim="$(walltime_for_nodes "${nodes}")"
   local keep="${HEAT3D_KEEP_OVERRIDES:-0}"
   local diag="${HEAT3D_DIAG_TIMING:-}"
-  local orders="${ORDERS_FILTER:-2,4,8,12,20}"
+  local orders="${ORDERS_FILTER:-2:4:8:12:20}"
+  orders="${orders//,/:}"
+  local skip="${HEAT3D_PACK_SKIP:-}"
+  skip="${skip//,/:}"
   local skip="${HEAT3D_PACK_SKIP:-}"
   local export_list="NONE"
   export_list+=",HEAT3D_HIP_BIN=${HEAT3D_HIP_BIN}"
@@ -291,6 +294,7 @@ submit_packed() {
   export_list+=",OPENPFC_FD_MODE=${MODE}"
   export_list+=",OPENPFC_JOB_PREFIX=${PREFIX}"
   if [[ -n "${skip}" ]]; then
+    # sbatch --export splits on commas; keep skip tokens colon-separated.
     export_list+=",HEAT3D_PACK_SKIP=${skip}"
   fi
   if [[ "${keep}" == "1" ]]; then
