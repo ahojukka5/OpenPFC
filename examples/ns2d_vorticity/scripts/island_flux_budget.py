@@ -32,13 +32,19 @@ import analyze_mhd_reconnection as an
 
 DEGEN_CUT = 0.05  # eig_ratio; matches locate_critical_points default
 
+# The X/O classification threshold is geometric: below this eigenvalue ratio
+# the saddle is called degenerate and tracking stops. It is not an accuracy
+# criterion for the reconnection rate, which is witnessed independently by
+# |Ez_X - eta j_X|. Lowering it is a sensitivity study, not a new default.
 
-def _well(p):
+
+def _well(p, degen_cut=None):
+    cut = DEGEN_CUT if degen_cut is None else degen_cut
     if p is None:
         return False
-    if p["kind"] == mt.KIND_DEGEN:
+    if p["kind"] == mt.KIND_DEGEN and cut >= DEGEN_CUT:
         return False
-    return float(p.get("eig_ratio", 0.0)) >= DEGEN_CUT
+    return float(p.get("eig_ratio", 0.0)) >= cut
 
 
 def pick_island(pts, a, family="ot"):
@@ -84,7 +90,7 @@ def pick_island(pts, a, family="ot"):
     return xpt, opt
 
 
-def track_pair(frames, times, x0, o0):
+def track_pair(frames, times, x0, o0, degen_cut=None):
     tracks, _ = mt.track_points(frames, times=times, max_speed=mt.DEFAULT_CP_SPEED)
 
     def nearest_track(p0, kinds):
@@ -103,7 +109,7 @@ def track_pair(frames, times, x0, o0):
     return trx, tro
 
 
-def series_from_tracks(trx, tro, times, eta, t_max):
+def series_from_tracks(trx, tro, times, eta, t_max, degen_cut=None):
     by_t_x = {ti: p for ti, p in trx["history"]}
     by_t_o = {ti: p for ti, p in tro["history"]}
     rows = []
@@ -111,7 +117,7 @@ def series_from_tracks(trx, tro, times, eta, t_max):
         if t > t_max + 1.0e-12:
             break
         px, po = by_t_x.get(ti), by_t_o.get(ti)
-        if not _well(px) or not _well(po):
+        if not _well(px, degen_cut) or not _well(po, degen_cut):
             break
         if px["kind"] != mt.KIND_X:
             break
@@ -190,7 +196,8 @@ def series_from_tracks(trx, tro, times, eta, t_max):
     return {"rows": rows, "summary": summary, "eta": eta}
 
 
-def analyze_run(directory, n, eta, t_max=0.80, stride=1, family="ot"):
+def analyze_run(directory, n, eta, t_max=0.80, stride=1, family="ot",
+                degen_ratio=None):
     incs = an.subsample(an.dump_increments(directory), stride)
     table = an.load_csv(os.path.join(directory, "diagnostics.csv"))
     times, frames = [], []
@@ -198,7 +205,8 @@ def analyze_run(directory, n, eta, t_max=0.80, stride=1, family="ot"):
     pts0 = None
     for inc in incs:
         a = an.load_brick(os.path.join(directory, "a_%04d.bin" % inc), n)
-        pts = mt.locate_critical_points(a)
+        pts = mt.locate_critical_points(
+            a, degen_ratio=(DEGEN_CUT if degen_ratio is None else degen_ratio))
         t = float(table[inc]["time"]) if inc in table else float(inc)
         times.append(t)
         frames.append(pts)
@@ -208,10 +216,11 @@ def analyze_run(directory, n, eta, t_max=0.80, stride=1, family="ot"):
     x0, o0 = pick_island(pts0, a0, family=family)
     if x0 is None:
         return {"error": "no enclosed island at t=0", "dir": directory, "n": n}
-    trx, tro = track_pair(frames, times, x0, o0)
+    trx, tro = track_pair(frames, times, x0, o0, degen_cut=degen_ratio)
     if trx is None or tro is None:
         return {"error": "could not track X/O", "dir": directory, "n": n}
-    out = series_from_tracks(trx, tro, times, eta, t_max)
+    out = series_from_tracks(trx, tro, times, eta, t_max,
+                             degen_cut=degen_ratio)
     if out is None:
         return {"error": "too few well-conditioned samples", "dir": directory}
     out["dir"] = directory
@@ -259,9 +268,14 @@ def main():
     p.add_argument("--family", default="ot",
                    choices=("ot", "coalescence"))
     p.add_argument("--json-out", default="")
+    p.add_argument("--degen-ratio", type=float, default=None,
+                   help="X/O eigenvalue-ratio classification floor "
+                        "(default 0.05). Lowering it extends tracking into "
+                        "flatter saddles; a sensitivity study, not a new "
+                        "default. Check the Ohm residual when you do.")
     args = p.parse_args()
     rep = analyze_run(args.dir, args.n, args.eta, args.t_max, args.stride,
-                      family=args.family)
+                      family=args.family, degen_ratio=args.degen_ratio)
     print_report(rep)
     if args.json_out:
         with open(args.json_out, "w") as fh:

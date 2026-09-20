@@ -393,6 +393,52 @@ opposite of the accepted Orszag–Tang result, where \(\delta\), \(L\) and
 \(B_{\mathrm{up}}\) are nearly \(\eta\)-independent and
 \(R\sim S_{\mathrm{local}}^{-1}\).
 
+### The truncation was a classification floor, not physics
+
+Tracking stopped because `locate_critical_points` calls a saddle
+*degenerate* below an eigenvalue ratio of `degen_ratio=0.05`
+(\(\mathrm{cond}(X)=20\)). That is a geometric classification threshold,
+not an accuracy criterion for the rate: Ohm at the tracked X stays good far
+beyond it.
+
+`--degen-ratio` now exposes the floor. **The default is unchanged**, and with
+the default the analysis reproduces the truncated Stage-1 endpoint above
+exactly. Lowering it to 0.01 is a sensitivity study, controlled by the Ohm
+residual.
+
+At 0.01 both resistivities track through the whole frozen bracket, so the
+comparison can be made on the **pre-registered** window after all:
+
+| quantity | \(\eta=0.010\) | \(\eta=0.005\) | ratio |
+|---|---:|---:|---:|
+| dumps in \(p\in[0.30,0.60]\) | 32 | 27 | |
+| mean \(R\) | 0.1404 | 0.1644 | 1.17 |
+| mean \(S_{\mathrm{local}}\) | 17.16 | 47.23 | 2.75 |
+| mean \(\delta\) | 0.4257 | 0.2354 | 0.55 |
+| mean \(L\) | 0.9773 | 1.0641 | 1.09 |
+| mean \(\delta/L\) | 0.4356 | 0.2212 | 0.51 |
+| mean \(B_{\mathrm{up}}\) | 0.1767 | 0.2221 | 1.26 |
+| mean \(j_X\) | \(-0.4062\) | \(-1.6181\) | 3.98 |
+| worst Ohm relative | \(2.2\times10^{-4}\) | \(3.4\times10^{-4}\) | |
+| min \(B_{\mathrm{up}}\) in window | 0.145 | 0.213 | |
+
+The \(\eta=0.010\) column reproduces the admitted Stage-0 frozen-window
+means (\(R=0.1404\), \(S_{\mathrm{local}}=17.15\), \(L=0.9773\),
+\(B_{\mathrm{up}}=0.1767\)) to four significant figures, so the lowered
+floor changes nothing that was already admitted; it only makes the window
+reachable at \(\eta=0.005\).
+
+\(B_{\mathrm{up}}\) does not collapse inside the bracket at either
+resistivity. It does collapse later — at \(\eta=0.01\),
+\(B_{\mathrm{up}}=0.038\) and \(R=3.49\) by \(t=38\) — which is the real
+upper bound on the usable window and is independent of the conditioning
+question.
+
+On the pre-registered window, halving \(\eta\) multiplies
+\(S_{\mathrm{local}}\) by 2.75 and \(R\) by 1.17, with \(\delta\) falling
+by 0.55. The rate is essentially flat in \(S_{\mathrm{local}}\), against the
+admitted Orszag–Tang slope near \(-1.1\).
+
 ### Limits of this stage
 
 \(j_X\) is still growing steeply at the end of the window, so the interval

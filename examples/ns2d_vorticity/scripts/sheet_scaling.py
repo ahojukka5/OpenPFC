@@ -182,9 +182,14 @@ def main():
     p.add_argument("--t-hi", type=float, default=None,
                    help="override the frozen scaling-window end")
     p.add_argument("--json-out", default="")
+    p.add_argument("--degen-ratio", type=float, default=None,
+                   help="X/O eigenvalue-ratio classification floor "
+                        "(default 0.05). Lowering it extends tracking into "
+                        "flatter saddles; a sensitivity study, not a new "
+                        "default. Check the Ohm residual when you do.")
     args = p.parse_args()
     flux = ifb.analyze_run(args.dir, args.n, args.eta, args.t_max, args.stride,
-                           family=args.family)
+                           family=args.family, degen_ratio=args.degen_ratio)
     rep = attach_geometry(args.dir, args.n, args.eta, flux,
                           t_lo=args.t_lo, t_hi=args.t_hi)
     print_geo(rep)
