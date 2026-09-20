@@ -118,6 +118,6 @@
   },
   "live": {
     "amp64_22176978": "COMPLETED MAX_STEPS 4999; eval 22191040 ingested.",
-    "production103": "dt=0.01 normalize=0; 128 r3 22185871 RUNNING C12>0 quiet~4100; 256 continuation; not this amplifying problem"
+    "production103": "dt=0.01 normalize=0; 128 r3 22185871 RUNNING C12>0; late exp design_rms asymptote ~3.05e-5 above tol 2.5e-5 (OpenPFC PR #104 17a13ace); 256 continuation; not this amplifying problem"
   }
 }
