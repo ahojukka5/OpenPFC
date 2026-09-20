@@ -50,10 +50,10 @@
       "reason": "Linear RMS fit on history-02 steps 1613-1712 projects quiet ~2927 and hold end ~3407. stop-after 3000 still cuts the hold. Script refuses termination!=0."
     },
     "eval_if_converged": {
-      "after_r2": 22186248,
-      "after_r3": 22186249,
+      "after_r2": 22186290,
+      "after_r3": 22186291,
       "dx": 0.5,
-      "note": "CONVERGED-only. Ingest native 43d0d422 fields/*_material.json, then PR #90 max-steps=0. Skip RUNNING stop-after. Replaced 22186170/22186171 after script update."
+      "note": "CONVERGED-only. Submit PR #90 first; native 43d0d422 JSON ingest is best-effort. Replaced 22186248/22186249."
     }
   },
   "256": {
@@ -80,10 +80,10 @@
       "reason": "Freeze at continuation 1197; r2 stop-after 3000 is only ~1803 frozen steps. 128 fit needs ~2210 frozen steps to hold end. Script refuses termination!=0."
     },
     "eval_if_converged": {
-      "after_r2": 22186250,
-      "after_r3": 22186251,
+      "after_r2": 22186292,
+      "after_r3": 22186293,
       "dx": 0.25,
-      "note": "CONVERGED-only. Ingest native 43d0d422 fields/*_material.json, then PR #90 max-steps=0. Skip RUNNING stop-after. Replaced 22186172/22186173 after script update."
+      "note": "CONVERGED-only. Submit PR #90 first; native 43d0d422 JSON ingest is best-effort. Replaced 22186250/22186251."
     }
   },
   "interpretation": "dt=0.01 normalize=0 is already conventional (C12>0, grey ~0.78) in frozen continuation. Stop-after 1500 is operational. Resume from RUNNING CURRENT is qualified at production rank. Not Yang A3 auxetic production and not the amplifying 2-cycle."
