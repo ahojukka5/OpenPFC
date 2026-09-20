@@ -61,6 +61,16 @@ export HEAT3D_SPECTRAL_HIP_BIN=/path/to/heat3d_spectral_hip
 ./docs/lumi_slurm/submit_heffte_protocol_tournament.sh 768
 ```
 
+Issue `#106` topology-crossover follow-up (randomized protocol order,
+dense node counts, account `project_462001245`, separate scratch tree):
+[HeFFTe topology crossover](../hpc/heffte_topology_crossover.md).
+
+```bash
+export HEAT3D_SPECTRAL_HIP_BIN=/path/to/heat3d_spectral_hip
+./docs/lumi_slurm/submit_heffte_topology_crossover.sh check
+./docs/lumi_slurm/submit_heffte_topology_crossover.sh wave1
+```
+
 Files: `tungsten_hip_scaling.sbatch`, `tungsten_hip_scaling.toml`,
 `submit_tungsten_hip_scaling.sh`, `heat3d_fd_hip_scaling.sbatch`,
 `submit_heat3d_fd_hip_scaling.sh`, `heat3d_spectral_hip_scaling.sbatch`,
