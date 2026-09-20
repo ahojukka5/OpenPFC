@@ -1,0 +1,59 @@
+{
+  "source_repository": "https://github.com/ahojukka5/OpenPFC",
+  "binary_source_revision": "8c0fb7637095e84de5a3ae3e4eb4ac779dcff165",
+  "binary_sha256": "17c7cfba804f9a13a89d2a431aebc82340cfa094887212dad66757131b1d1457",
+  "numerical_driver_revisions": [
+    "07d8659e94c318c4934545d3637a2b1e6282029e",
+    "8c0fb7637095e84de5a3ae3e4eb4ac779dcff165",
+    "de6bd1165e413675e5d02dbc14a22093b79ab948",
+    "e9ebd95602cae04eb7c5e4345cc75f766b4c2698"
+  ],
+  "archive_driver_revision": "b5d94cf2432db78d2427d944497c80d2fde1b326",
+  "analysis_revision": "ae3c18184c41d7d0e8545d8a8860db2e07959b35",
+  "frozen": {
+    "steps": 20,
+    "warmup": 1,
+    "dt": 0.01,
+    "protocol_order": [
+      "p2p_plined",
+      "p2p",
+      "alltoallv",
+      "alltoall"
+    ],
+    "account": "project_462001245",
+    "rank_per_gcd": 1,
+    "gcd_per_full_node": 8,
+    "family_local_edge": [
+      512,
+      768
+    ]
+  },
+  "replay_compact": "python3.11 apps/heat3d/scripts/archive_protocol_evidence.py --replay docs/hpc/heffte-protocol-evidence",
+  "recreate_measurements": [
+    "Check out binary_source_revision in a workspace-conforming isolated worktree.",
+    "Build through scripts/build.sh --machine=lumi --with-rocm --account=project_462001245 --build-dir=<separate flash build> with the recorded LUMI/25.09, ROCm 6.4.4, HeFFTe 2.4.1 and Cray MPICH 9.0.1 stack. Original complete build log is archived; original build billed account519, never rewrite that provenance.",
+    "For each selected run use its exact archived run_meta and sbatch script from records.json.gz: Nx/Ny/Nz, tasks/nodes, steps, dt, warmup, protocol order, CPU binding and production FFT flags. Set all future submissions to project_462001245; preserve historical account as recorded evidence only.",
+    "Set HEAT3D_SPECTRAL_HIP_BIN to the newly built binary; submit the archived recipe with explicit account245 and exact recorded overrides. The scripts include the actual srun and environment commands.",
+    "Run the archive extractor on the new campaign root. Timings and binary bytes can vary with environment; scientifically equivalent replay, not bitwise timing equality, is expected."
+  ],
+  "raw_profiles": "Omitted large profiles have per-record SHA256/byte count. Exact compact CSVs consumed by analysis, original metadata/logs/admission/scripts and central order statistics are committed. Compact replay verifies artifact hashes and summary derivation; it cannot independently prove median order without regenerating profiles.",
+  "hardware": "LUMI-G AMD MI250X, one MPI rank per GCD, 8 GCDs per full node",
+  "limitations": [
+    "sequential fixed protocol order",
+    "only two allocation repetitions at large scales",
+    "one matching single-GCD reference per family",
+    "pooled rank/frame median is not MPI_MAX total elapsed time",
+    "slab global geometry Nx=Ny=family, Nz=family*ranks; local family-cube inbox",
+    "historical account519 and 105-step/warmup5 references retained but excluded from frozen cohort",
+    "profile RSS fields are zero: no measured memory claim",
+    "runtime reports multiple cray-libsci linkage warnings; preserved in raw logs; no policy change inferred"
+  ],
+  "sha256": {
+    "scaling.md": "430e67459cadc70b09e01265e6bcab3f2cd334eaf93195e3de17dbc457bb9a70",
+    "scaling.csv": "18897c55c06bed22f58caa1ca10fbb9882c328a3bab2b626d85eea2650021d89",
+    "records.json.gz": "32429dffe1a35ccfc7e0dc809ac6a888975bba5ec32de97ebf63d1a3091858bd",
+    "campaign-runs.csv": "5a1dbcd70db860ce901a862de12cb52fa51cc3e89226d36c79977490806f9e6a",
+    "all-runs.csv": "83bbe9e891424ffae0c1378576fedb04809797f2d4a41bc7035125f54cf23205",
+    "compilation.txt.gz": "ed8eb3312b0d0efd89c18d6e20c03e38aedba38bd27728af09989d6c764810a2"
+  }
+}
