@@ -53,7 +53,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--phase", choices=["all", "qualification", "0.04", "0.02", "0.01"],
                         default="all")
+    parser.add_argument("--normalize", type=int, choices=[0, 1], default=1)
+    parser.add_argument("--frozen-steps", type=int,
+                        help="separate fixed-step hold; numeric phase required")
     args = parser.parse_args()
+    if args.frozen_steps is not None and (
+            args.phase in ("all", "qualification") or args.frozen_steps < 2):
+        parser.error("--frozen-steps requires a numeric phase and at least two states")
     args.output.mkdir(parents=True, exist_ok=False)
     provenance = {
         "source_sha": args.source_sha, "binary": str(args.binary),
@@ -65,8 +71,11 @@ def main():
         "job": os.environ.get("SLURM_JOB_ID"),
         "account": os.environ.get("SLURM_JOB_ACCOUNT"),
         "ranks": 8, "gcds": 8,
-        "phase": args.phase,
-        "hypothesis": "A smaller explicit step reduces the late oscillation",
+        "phase": args.phase, "normalize": args.normalize,
+        "frozen_steps_override": args.frozen_steps,
+        "hypothesis": ("The unnormalized total-objective update meets the original certificate"
+                       if args.normalize == 0 else
+                       "A smaller explicit step reduces the late oscillation"),
         "limitations": ["fresh frozen runs, not checkpoint resumes",
                         "smaller updates alone do not prove convergence",
                         "CSV metrics have six significant digits"],
@@ -77,7 +86,7 @@ def main():
               "--nu-void=0.3", "--target=file",
               "--C-target-file=" + str(args.target),
               "--volume=0.2575865186", "--init-volume=0.2575865186",
-              "--normalize=1", "--max-delta=0.04", "--project-volume=1",
+              "--normalize=" + str(args.normalize), "--max-delta=0.04", "--project-volume=1",
               "--n-el-iter=400", "--epsilon=2", "--lambda-volume=1",
               "--tol-design=0.0001", "--tol-objective=0.000001",
               "--tol-tensor=0.0001", "--conv-window=20",
@@ -147,6 +156,7 @@ def main():
             run("qualification32", qualification)
         else:
             dt, steps = next((dt, steps) for dt, steps in arms if str(dt) == args.phase)
+            steps = args.frozen_steps if args.frozen_steps is not None else steps
             run("frozen_dt_" + str(dt), frozen + [initial, "--dt=" + str(dt),
                 "--max-steps=" + str(steps), "--dump-every=1"])
         return

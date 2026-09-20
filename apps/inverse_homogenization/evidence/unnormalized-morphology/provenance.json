@@ -1,0 +1,21 @@
+{
+  "source_revision": "6029d85ea68189e71ad6442476e0d463f9cf757d",
+  "binary_sha256": "5a126a6447624877875746f92efa6b4f2af908bd9b3adedd738aeee139739a96",
+  "job": 22181820,
+  "account": "project_462001245",
+  "nodes": 1,
+  "mpi_ranks": 8,
+  "wall_time": "00:00:31",
+  "input_hashes": {
+    "state0.bin": "316a0cecd31cfaa7111edf4ac42e32b275226c9e7a1e1d5538d159af246e9ed5",
+    "state300.bin": "83c3271af4b71e53750c38877a716fd98d016152d3324a061074fc28fc005a3f",
+    "state1693.bin": "c488298cc7647949f3e7d11c3bd0d689181271135d48c8695ccad1835ee0fffa"
+  },
+  "terminal_input": "../unnormalized-converged/h_final.bin.gz",
+  "trajectory_revision": "1b3f2d2591efdd468725bfd089d1727265587e76",
+  "trajectory_archive": "apps/inverse_homogenization/evidence/unnormalized-converged",
+  "inputs_sha256": "8d890eac73f5a181b4af4f06c2bb62f6ce4ca524a4def43693f53aecd04407cf",
+  "reduction_driver": "apps/inverse_homogenization/scripts/summarize_hold_morphology.py",
+  "reduction_sha256": "89eebc3078721a1d1d74de72fc7461a3f072ed24279e0f0bb78c8d0cd607adb2",
+  "numpy": "2.4.6"
+}

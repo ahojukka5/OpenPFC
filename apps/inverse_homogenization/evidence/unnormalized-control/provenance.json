@@ -1,0 +1,30 @@
+{
+  "cpp_source": "eae1e4ccbbd52054e3af23871dfb69af221f5797",
+  "driver_source": "a3681a91d8b9ba91cf9df27fa2158d3faf611fb2",
+  "job": 22179446,
+  "account": "project_462001245",
+  "gcds": 8,
+  "nodes": 1,
+  "dt": 0.04,
+  "steps": 160,
+  "normalize": 0,
+  "continuation_steps": 0,
+  "hard_target_unchanged": true,
+  "terminal_state": "MAX_STEPS",
+  "raw_outputs": "/scratch/project_462001245/juaho/inverse-homogenization/frozen74n0_22179446",
+  "binary_sha256": "b24e5a24e3da2f1edb36c27c307a6dfc6086896dc903ff2824fc481ba860a297",
+  "files": {
+    "h_final_160.bin.gz": "ccbd930eb434667da8297d044709b215ab66a6d1a53e021c0faca69d9c71a135",
+    "README.md": "989077394977d3a039fe981269b14f5d87a79117bf9ac35bb87d11b97606c202",
+    "history160.csv": "6d3bfc9c3e4c0df2948c9c380622926df7bf2e4cad30d08fea805cd7c291ccb7",
+    "modules.txt": "776ac039c87b5cd9dc283ecec7cd36ae81cece638631a36e52d8ca7440924212",
+    "original160-command.txt": "f98ad3c90c82dcb00f6ecf0159d0217f14f5fe12a59ffc09fb94d48930a1468e",
+    "summary160.json": "f93738ec0499abb09c78c48304dab74e437861359228f2b650291207ad64349c",
+    "target.txt": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+    "initial_h190.bin.gz": "ec44346dcd2b5ab44e4d85159c7eca492234faf9c61ba33ad99d689c6eb8c367"
+  },
+  "replay": "Decompress initial_h190.bin.gz, build eae1e4cc using scripts/build.sh with LUMI ROCm, then execute qualify_frozen_iteration.py from driver_source with --normalize=0 --phase=0.04 --frozen-steps=160 and the archived target and initial field. The full original command is original160-command.txt; change only artifact paths.",
+  "limitation": "This is the 160-state control, not convergence. Exact data archived; parallel replay can differ in floating-point roundoff. Original sbatch copied from runtime source; no claim it was committed before launch.",
+  "summary_driver": "apps/inverse_homogenization/scripts/audit_unnormalized_control.py",
+  "summary_driver_sha256": "6194841b75f94c3bb4b2b4a4eff133cee10321396f2b914bb92fe22201b1a686"
+}

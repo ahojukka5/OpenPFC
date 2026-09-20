@@ -36,7 +36,9 @@ git -C "${SOURCE_DIR}" rev-parse HEAD > "${ROOT}/driver_revision.txt"
 git -C "${SOURCE_DIR}" status --porcelain > "${ROOT}/driver_dirty.txt"
 module list 2> "${ROOT}/modules.txt"
 scontrol show job "${SLURM_JOB_ID}" > "${ROOT}/slurm.txt"
+extra=()
+if [[ -n "${FROZEN_STEPS:-}" ]]; then extra+=(--frozen-steps "${FROZEN_STEPS}"); fi
 python3 "${ROOT}/driver.py" --binary "${ROOT}/inverse_hip" \
   --source-sha "${BINARY_SOURCE_SHA}" --target "${ROOT}/target.txt" \
   --initial-field "${ROOT}/initial_h190.bin" --output "${ROOT}/results" \
-  --phase "${PHASE:-all}"
+  --phase "${PHASE:-all}" --normalize "${NORMALIZE:-1}" "${extra[@]}"

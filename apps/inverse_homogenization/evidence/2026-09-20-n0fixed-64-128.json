@@ -1,0 +1,175 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "issue": 83,
+  "pr": 84,
+  "evidence_class": "numerical_experiment_result",
+  "status": "admitted_converged_conventional",
+  "question": "Does fixed-domain normalize=0 meet the original certificate at 64 and 128?",
+  "account": "project_462001245",
+  "binary_source": "6deeb76cc23be832db3aa33f3215b3ba14bd414e",
+  "binary_sha256": "b7659d22ff8ef5dd338d6e2c53b680bcd8a50254ff69206d8a084d964a7e7b5a",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "falsification": "If 64/128 remain MAX_STEPS with design RMS >> 1e-4, high-resolution n0-hold is still slow drift. If both CONVERGE with C12>0, the certificate is true and auxetic production is false.",
+  "result": "Both CONVERGED. Unpenalized and thresh C12>0, poisson.xy\u2248+0.07 (thresh) / +0.23 (unpen). Thresh relF 0.279/0.288 vs Yang. Grey ~0.358, 2 solid components percolating xyz. Certificate true; auxetic production false. 64 and 128 tensors agree.",
+  "do_not_retarget_yang_a3": true,
+  "n064": {
+    "job": 22180900,
+    "grid": [
+      64,
+      64,
+      121
+    ],
+    "dx": 1,
+    "termination": "CONVERGED",
+    "certified_step": 1374,
+    "candidate": 1,
+    "verified": 1,
+    "simp": {
+      "C11": 0.0437134,
+      "C12": 0.00592669,
+      "nu_eff": 0.119393,
+      "J": 0.00267427,
+      "grey": 0.358304,
+      "design_rms": 8.84165e-05,
+      "dC_rel": 6.55938e-05
+    },
+    "topology": {
+      "ncomp": 2,
+      "perc": {
+        "x": true,
+        "y": true,
+        "z": true
+      },
+      "solid_frac": 0.21032815728305784
+    },
+    "h_final_sha256": "ed6aaa35441836a9239b4fd2b101eab8d1e5fd18b68d00656628dbc6b78fc3d9",
+    "h_thresh_sha256": "70d232ed21954154dd6c995165d0ba14054b61cfbe366a23d5e0d0a291e516f8",
+    "root": "/scratch/project_462001245/juaho/inverse-homogenization/n0fixed64_22180900",
+    "unpen": {
+      "C11": 0.14735766560095662,
+      "C22": 0.15741178556737806,
+      "C33": 0.23413191128558006,
+      "C12": 0.04602671792357153,
+      "C13": 0.052511269709192454,
+      "C23": 0.05526599387417619,
+      "poisson": {
+        "xy": 0.2329679246967872,
+        "xz": 0.16929374696731267,
+        "yx": 0.2480707390011742,
+        "yz": 0.18040670032049153,
+        "zx": 0.2714959725980424,
+        "zy": 0.2717038097929863
+      },
+      "relative_target_frobenius": 2.146694716503598,
+      "inverse_converged": true,
+      "elasticity_converged": true,
+      "spd": true,
+      "volume": 0.2575865185997708,
+      "accepted_step": 1374,
+      "termination": "CONVERGED"
+    },
+    "thresh": {
+      "C11": 0.04017496543368662,
+      "C22": 0.037322129064479716,
+      "C33": 0.0994019683285625,
+      "C12": 0.002697661837437356,
+      "C13": 0.003934812954501642,
+      "C23": 0.0037441896530011967,
+      "poisson": {
+        "xy": 0.07331819845911963,
+        "xz": 0.03714435303485892,
+        "yx": 0.06818088228499174,
+        "yz": 0.03468565575716229,
+        "zx": 0.09249862511159293,
+        "zy": 0.09288413840814244
+      },
+      "relative_target_frobenius": 0.27905773807460676,
+      "inverse_converged": true,
+      "elasticity_converged": true,
+      "spd": true,
+      "volume": 0.21032815728305784,
+      "accepted_step": 1374,
+      "termination": "CONVERGED"
+    }
+  },
+  "n0128": {
+    "job": 22180901,
+    "grid": [
+      128,
+      128,
+      242
+    ],
+    "dx": 0.5,
+    "termination": "CONVERGED",
+    "certified_step": 1371,
+    "candidate": 1,
+    "verified": 1,
+    "simp": {
+      "C11": 0.0437119,
+      "C12": 0.00595584,
+      "nu_eff": 0.119914,
+      "J": 0.00267448,
+      "grey": 0.358356,
+      "design_rms": 8.80128e-05,
+      "dC_rel": 6.54798e-05
+    },
+    "topology": {
+      "ncomp": 2,
+      "perc": {
+        "x": true,
+        "y": true,
+        "z": true
+      },
+      "solid_frac": 0.21034328996642562
+    },
+    "h_final_sha256": "213dfde9192eccddfb456cb507acef0325a79113ef4c06880ff1f63e72bdd5f5",
+    "h_thresh_sha256": "ad1f62de4591bca34dc44b0851e0d9ce4405327f9fcbaf7cc7d401ced61d1b6c",
+    "root": "/scratch/project_462001245/juaho/inverse-homogenization/n0fixed128_22180901",
+    "unpen": {
+      "C11": 0.14759329492513418,
+      "C22": 0.1569802483679746,
+      "C33": 0.2342077626309354,
+      "C12": 0.04605033947622596,
+      "C13": 0.052587748949343587,
+      "C23": 0.055215210985601476,
+      "poisson": {
+        "xy": 0.2337686012111847,
+        "xz": 0.16942725741326767,
+        "yx": 0.24785133115265454,
+        "yz": 0.1800991783240684,
+        "zx": 0.2714084342912298,
+        "zy": 0.2721113849479013
+      },
+      "relative_target_frobenius": 2.1463252826257477,
+      "inverse_converged": true,
+      "elasticity_converged": true,
+      "spd": true,
+      "volume": 0.257586518599816,
+      "accepted_step": 1371,
+      "termination": "CONVERGED"
+    },
+    "thresh": {
+      "C11": 0.041017911345593364,
+      "C22": 0.03839612651122333,
+      "C33": 0.10311847463141448,
+      "C12": 0.0028074440217877245,
+      "C13": 0.004040664782803531,
+      "C23": 0.0038653628672602938,
+      "poisson": {
+        "xy": 0.07377762971424572,
+        "xz": 0.036728815673441904,
+        "yx": 0.06917564807585146,
+        "yz": 0.03452082747336409,
+        "zx": 0.09294765579707573,
+        "zy": 0.09317173343486675
+      },
+      "relative_target_frobenius": 0.28770061883427667,
+      "inverse_converged": true,
+      "elasticity_converged": true,
+      "spd": true,
+      "volume": 0.21034328996642562,
+      "accepted_step": 1371,
+      "termination": "CONVERGED"
+    }
+  }
+}

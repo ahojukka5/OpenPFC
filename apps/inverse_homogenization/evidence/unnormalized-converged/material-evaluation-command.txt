@@ -1,0 +1,43 @@
+#!/bin/bash
+#SBATCH --account=project_462001245
+#SBATCH --partition=standard-g
+#SBATCH --nodes=1
+#SBATCH --ntasks=8
+#SBATCH --ntasks-per-node=8
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=7
+#SBATCH --mem=480G
+#SBATCH --time=00:30:00
+#SBATCH --job-name=inverse89-converged
+#SBATCH --output=/scratch/project_462001245/juaho/logs/%x-%j.out
+#SBATCH --error=/scratch/project_462001245/juaho/logs/%x-%j.err
+set -euo pipefail
+test "${SLURM_JOB_ACCOUNT}" = project_462001245
+module purge
+module load LUMI/25.09 partition/G cpeGNU cray-fftw lumi-CrayPath
+module use "${HOME}/privatemodules"
+module load heffte-rocm
+export LD_LIBRARY_PATH="${CRAY_LD_LIBRARY_PATH:-}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export MPICH_GPU_SUPPORT_ENABLED=1 SLURM_EXPORT_ENV=ALL OMP_NUM_THREADS=1
+unset ROCR_VISIBLE_DEVICES HIP_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES || true
+OUT=/scratch/project_462001245/juaho/inverse-homogenization/material89_converged_${SLURM_JOB_ID}
+BIN=/scratch/project_462001245/juaho/inverse-homogenization/material89-qualified-6deeb76c/inverse_hip
+mkdir -p "${OUT}/homogeneous" "${OUT}/witness"
+cp "${BIN}" "${OUT}/inverse_hip"
+cp "$0" "${OUT}/command.sbatch"
+cp /scratch/project_462001245/juaho/inverse-homogenization/frozen74_22179764/results/frozen_dt_0.04/fields/h_final.bin "${OUT}/input_h.bin"
+cp /scratch/project_462001245/juaho/inverse-homogenization/frozen74_22179764/target.txt "${OUT}/target.txt"
+sha256sum "${OUT}/inverse_hip" "${OUT}/input_h.bin" "${OUT}/target.txt" > "${OUT}/checksums.txt"
+printf 'source=6deeb76cc23be832db3aa33f3215b3ba14bd414e\njob=%s\naccount=%s\n' "${SLURM_JOB_ID}" "${SLURM_JOB_ACCOUNT}" > "${OUT}/provenance.txt"
+module -t list > "${OUT}/modules.txt" 2>&1
+srun --export=ALL --ntasks=8 --gpus-per-node=8 "${OUT}/inverse_hip" \
+ --nx=32 --ny=32 --nz=61 --dx=1 --E-solid=1 --nu-solid=0.3 \
+ --E-void=0.002 --nu-void=0.3 --target=file --C-target-file="${OUT}/target.txt" \
+ --load-bin="${OUT}/input_h.bin" --init=uniform --init-volume=0.2575865186 \
+ --volume=0.2575865186 --normalize=0 --dt=0.04 --max-delta=0.04 \
+ --simp=2 --simp-end=2 --lambda-reg=0.2 --lambda-reg-end=0.2 --epsilon=2 \
+ --continuation-steps=0 --max-steps=1 --conv-window=20 --verify-convergence-steps=100 \
+ --tol-design=0.0001 --tol-objective=0.000001 --tol-tensor=0.0001 \
+ --project-volume=1 --n-el-iter=400 --dump-every=1 --run-id=witness \
+ --csv="${OUT}/witness/history.csv" --dump-dir="${OUT}/witness" \
+ > "${OUT}/witness/run.log" 2>&1
