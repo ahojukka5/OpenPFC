@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove all parity-class displacement gauges from the centered periodic
+  finite-strain grid solver (#76). Even-grid homogeneous Newton solves no
+  longer depend on roundoff lifting a singular Jacobian. Gauge projection
+  preserves the computed deformation gradient and physical tolerances.
+
 ### Added
 
 - **Fail-closed `--key=value` CLI** (`pfc::utils::CliOptions` in

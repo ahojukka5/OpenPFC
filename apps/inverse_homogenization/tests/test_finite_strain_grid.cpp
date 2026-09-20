@@ -29,6 +29,57 @@ using pfc::apps::inverse::fs::nu_t_at;
 using pfc::apps::inverse::fs::PixelCell;
 using pfc::apps::inverse::fs::relax_transverse;
 
+TEST_CASE("periodic displacement gauge preserves deformation gradients",
+          "[finite-strain][76]") {
+  using namespace pfc::apps::inverse::fs;
+  for (int nx : {5, 6}) {
+    for (int ny : {5, 6}) {
+      CAPTURE(nx, ny);
+      PixelCell c;
+      init_cell(c, nx, ny, Model::NeoHookean);
+      for (int p = 0; p < nx * ny; ++p) {
+        c.ux[p] = 0.03 * std::sin(static_cast<double>(p)) + 0.2;
+        c.uy[p] = 0.02 * std::cos(static_cast<double>(p)) - 0.1;
+      }
+      const auto original = c;
+      std::vector<double> x;
+      pack_unknowns(c, 0.98, x);
+      double f22 = 0;
+      unpack_unknowns(c, x, f22);
+      REQUIRE(f22 == 0.98);
+      for (int j = 0; j < ny; ++j) {
+        for (int i = 0; i < nx; ++i) {
+          const auto before = F_at(original, i, j, 1.05, f22);
+          const auto after = F_at(c, i, j, 1.05, f22);
+          REQUIRE_THAT(after.a11, WithinAbs(before.a11, 1e-14));
+          REQUIRE_THAT(after.a12, WithinAbs(before.a12, 1e-14));
+          REQUIRE_THAT(after.a21, WithinAbs(before.a21, 1e-14));
+          REQUIRE_THAT(after.a22, WithinAbs(before.a22, 1e-14));
+        }
+      }
+    }
+  }
+}
+
+TEST_CASE("homogeneous periodic solves work with odd and even extents",
+          "[finite-strain][76]") {
+  const auto lame = lame_from_young_poisson(1.0, 0.3);
+  const auto homogeneous = relax_transverse(Model::NeoHookean, lame, 1.05);
+  REQUIRE(homogeneous.converged);
+  for (int nx : {5, 6}) {
+    for (int ny : {5, 6}) {
+      CAPTURE(nx, ny);
+      PixelCell c;
+      init_cell(c, nx, ny, Model::NeoHookean);
+      for (auto &L : c.lame) L = lame;
+      const auto result = homogenize_periodic_2d(c, 1.05);
+      REQUIRE(result.converged);
+      REQUIRE_THAT(result.F22, WithinAbs(homogeneous.F22, 1e-7));
+      REQUIRE_THAT(result.P22, WithinAbs(0.0, 1e-8));
+    }
+  }
+}
+
 TEST_CASE("uniform 8x8 grid recovers shipped homogeneous F22",
           "[finite-strain][484]") {
   const auto lame = lame_from_young_poisson(1.0, 0.3);
