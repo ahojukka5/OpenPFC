@@ -1,0 +1,46 @@
+{
+  "producer_source": "6deeb76cc23be832db3aa33f3215b3ba14bd414e",
+  "producer_binary_sha256": "b7659d22ff8ef5dd338d6e2c53b680bcd8a50254ff69206d8a084d964a7e7b5a",
+  "consumer_source": "6029d85ea68189e71ad6442476e0d463f9cf757d",
+  "consumer_binary_sha256": "5a126a6447624877875746f92efa6b4f2af908bd9b3adedd738aeee139739a96",
+  "initial64_sha256": "285ab60a1a6ba15d998593c4bea727fb128d5d974f2106db9bea4ea45364b8c5",
+  "initial64_origin": {
+    "source": "92d8fc5adbcc991ba1f04f24d198dc078c5fed60",
+    "job": 22162138,
+    "arm": "A",
+    "field": "h_init.bin"
+  },
+  "refiner_source": "a342b407005c778703704ee0b39fcd1faa3e9877",
+  "refiner_path": "apps/inverse_homogenization/scripts/refine_periodic_initial.py",
+  "refiner_sha256": "744345f21ed2d982d680331ccdce2657619bc173b63ccfdff038f5a9e9490152",
+  "refine_command": "python3.11 refine_periodic_initial.py initial64.bin initial128.bin --shape 64 64 121 --dx 1",
+  "account": "project_462001245",
+  "jobs": {
+    "64": {
+      "producer": 22180900,
+      "consumer": 22182461,
+      "nodes": 1,
+      "gcds": 8,
+      "elapsed": "02:17:46"
+    },
+    "128": {
+      "producer": 22180901,
+      "consumer": 22182462,
+      "nodes": 2,
+      "gcds": 16,
+      "elapsed": "02:08:35"
+    }
+  },
+  "raw_format": "gzip JSON mapping grid/producer|material/relative-path to exact text",
+  "raw_sha256": "0d99fa188fad019a4bd691da75629a76f652e1273cac1259bc1597d4f2d04275",
+  "analysis_path": "apps/inverse_homogenization/scripts/audit_converged_resolution.py",
+  "analysis_sha256": "5a75ed457a623325b128d4da15d2ac03e0607fe3191f8de173a79da58e5045e4",
+  "field_replay": "Build producer through scripts/build.sh at pinned source. Decompress initial64 and refine at pinned source; extract each producer command.sbatch/command.sh, protocol.md, target.txt and modules.txt from raw bundle. Substitute local binary/input/output paths only, retain grid, physical spacing, MPI ranks, all parameters and original stopping rules. Run each consumer command.sbatch on exact accepted output at its pinned source. Full fields and movies are regenerated, not stored in Git.",
+  "replay_expectation": "Bitwise checksums describe observed runs; a different compiler/GPU/MPI stack may only reproduce scientifically equivalent trajectories. Never admit changed stopping rules or target.",
+  "limitations": "Two grid levels, one start and stopping tolerances; no asymptotic proof or global minimum. Native voxel opening is not process manufacturability. Threshold volume differs from the constrained continuous value.",
+  "analysis_environment": {
+    "python": "3.11.13",
+    "numpy": "2.4.6",
+    "platform": "Linux-6.4.0-150600.23.73_15.0.14-cray_shasta_c-x86_64-with-glibc2.38"
+  }
+}
