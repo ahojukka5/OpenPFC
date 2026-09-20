@@ -54,7 +54,11 @@ Late exponential fits of `design_rms` (last 100/200/400) asymptote at
 3.09/3.07/3.02e-5, **above** `tol-design=2.5e-5`. `dC_rel` and `dJ_rel`
 are already below tol. `C12>0` throughout. Grey still ~0.68, so a later
 decay phase is not ruled out. Evidence:
-`2026-09-20-rms-plateau.json`.
+`2026-09-20-rms-plateau.json`. Dump 0042 (step 3360) `h>0.5` solid has
+4 periodic components, no x-percolation, solid fraction 0.162 against
+prescribed volume 0.258; largest piece is 26% of the solid. Uniform n0
+128 CONVERGED had 2 components and xyz percolation. Evidence:
+`2026-09-20-128-topology.json`. Not CONVERGED.
 
 r3 **22185871** (`dev-g`, stop-after 4500) is RUNNING. r4 **22191420**
 is **afterany** r3 (`dev-g`, 5000, TimeLimit 2h50) so a wall-clock on

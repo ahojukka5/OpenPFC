@@ -80,6 +80,7 @@
     },
     "do_not_queue_r6_unless_exp_asymptote_below_tol": true,
     "rms_plateau": "apps/inverse_homogenization/evidence/production103/2026-09-20-rms-plateau.json",
+    "topology_step3360": "apps/inverse_homogenization/evidence/production103/2026-09-20-128-topology.json",
     "eval_if_converged": {
       "after_r4": 22191421,
       "after_r5": 22192221,
@@ -123,5 +124,5 @@
       "note": "CONVERGED-only. Submit PR #90 first; native 43d0d422 JSON ingest is best-effort. Replaced 22186250/22186251."
     }
   },
-  "interpretation": "dt=0.01 normalize=0 is conventional (C12>0) in both arms. 128 late exp design_rms asymptote ~3.05e-5 is above tol; linear quiet past 5500 is that plateau, not CONVERGED. Do not loosen tol. Do not queue r6. 256 still continuation. Stop-after is operational. Not Yang A3 auxetic production and not the amplifying 2-cycle."
+  "interpretation": "dt=0.01 normalize=0 is conventional (C12>0) in both arms. 128 late exp design_rms asymptote ~3.05e-5 is above tol; linear quiet past 5500 is that plateau, not CONVERGED. Step-3360 h>0.5 solid has 4 components and no x-percolation (vs n0 CONVERGED ncomp=2 xyz). Do not loosen tol. Do not queue r6. 256 still continuation. Stop-after is operational. Not Yang A3 auxetic production and not the amplifying 2-cycle."
 }

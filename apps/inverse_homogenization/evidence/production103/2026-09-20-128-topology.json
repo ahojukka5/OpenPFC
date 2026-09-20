@@ -1,0 +1,43 @@
+{
+  "schema": "openpfc-inverse-topology/v1",
+  "issue": 103,
+  "p103_128_dump0042_step3360": {
+    "path": "/scratch/project_462001245/juaho/inverse-homogenization/production103_128_22183561/fields/production128_h_0042.bin",
+    "grid": [
+      128,
+      128,
+      242
+    ],
+    "vol_mean": 0.25758651859998943,
+    "solid_frac": 0.16245641787190082,
+    "nsolid": 644128,
+    "grey_0.1_0.9": 0.67279052734375,
+    "ncomp": 4,
+    "largest_frac_of_solid": 0.2634010631427294,
+    "perc": {
+      "x": false,
+      "y": true,
+      "z": true
+    },
+    "job": 22185871,
+    "dump_index": 42,
+    "dump_every": 80,
+    "step": 3360,
+    "note": "Continuous h dump, h>0.5 solid. Not CONVERGED. Grey still ~0.68. Compare n0128_CONVERGED ncomp=2 and 128amp_MAX_STEPS ncomp=50."
+  },
+  "pr": 104,
+  "evidence_class": "numerical_experiment_result",
+  "status": "running_not_converged",
+  "comparator": {
+    "n0128_CONVERGED": {
+      "ncomp": 2,
+      "perc_xyz": true,
+      "solid_frac": 0.21
+    },
+    "128amp_MAX_STEPS": {
+      "ncomp": 50,
+      "perc_xyz": true
+    }
+  },
+  "interpretation": "Step-3360 h>0.5 solid has 4 components, no x-percolation, largest piece 26% of solid. Closer to uniform n0 CONVERGED (ncomp=2, xyz) than to amplifying MAX_STEPS (ncomp=50). Not CONVERGED. Grey 0.67 still holds the prescribed volume 0.258 while thresh solid is 0.162."
+}
