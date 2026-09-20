@@ -1,0 +1,111 @@
+{
+  "schema": "openpfc-inverse-topology/v1",
+  "issue": 103,
+  "pr": 104,
+  "job": 22185871,
+  "status": "running_not_converged",
+  "dump_every": 80,
+  "grid": [
+    128,
+    128,
+    242
+  ],
+  "series": [
+    {
+      "grid": [
+        128,
+        128,
+        242
+      ],
+      "vol_mean": 0.25758651859999815,
+      "solid_frac": 0.13324630358987602,
+      "nsolid": 528312,
+      "grey_0.1_0.9": 0.7082514487022211,
+      "ncomp": 4,
+      "largest_frac_of_solid": 0.25591885098199546,
+      "perc": {
+        "x": false,
+        "y": false,
+        "z": true
+      },
+      "dump_index": 10,
+      "step": 800,
+      "file": "production128_h_0010.bin"
+    },
+    {
+      "grid": [
+        128,
+        128,
+        242
+      ],
+      "vol_mean": 0.2575865185999996,
+      "solid_frac": 0.14190169405346073,
+      "nsolid": 562630,
+      "grey_0.1_0.9": 0.7820497623159866,
+      "ncomp": 4,
+      "largest_frac_of_solid": 0.2586513339139399,
+      "perc": {
+        "x": false,
+        "y": false,
+        "z": true
+      },
+      "dump_index": 20,
+      "step": 1600,
+      "file": "production128_h_0020.bin"
+    },
+    {
+      "grid": [
+        128,
+        128,
+        242
+      ],
+      "vol_mean": 0.25758651860000076,
+      "solid_frac": 0.15308121610278927,
+      "nsolid": 606956,
+      "grey_0.1_0.9": 0.7393022017045454,
+      "ncomp": 4,
+      "largest_frac_of_solid": 0.2580055226408504,
+      "perc": {
+        "x": false,
+        "y": false,
+        "z": true
+      },
+      "dump_index": 30,
+      "step": 2400,
+      "file": "production128_h_0030.bin"
+    },
+    {
+      "grid": [
+        128,
+        128,
+        242
+      ],
+      "vol_mean": 0.25758651859998943,
+      "solid_frac": 0.16245641787190082,
+      "nsolid": 644128,
+      "grey_0.1_0.9": 0.67279052734375,
+      "ncomp": 4,
+      "largest_frac_of_solid": 0.2634010631427294,
+      "perc": {
+        "x": false,
+        "y": true,
+        "z": true
+      },
+      "dump_index": 42,
+      "step": 3360,
+      "file": "production128_h_0042.bin"
+    }
+  ],
+  "comparator": {
+    "n0128_CONVERGED": {
+      "ncomp": 2,
+      "perc_xyz": true,
+      "solid_frac": 0.21
+    },
+    "128amp_MAX_STEPS": {
+      "ncomp": 50,
+      "perc_xyz": true
+    }
+  },
+  "interpretation": "h>0.5 topology along the #103 128 run. ncomp is 4 from step 800 through 3360. x never percolates. y appears only at 3360. solid_frac 0.133 to 0.162; largest piece stays ~26%. Not coarsening toward n0 CONVERGED (ncomp=2, xyz). Not CONVERGED."
+}

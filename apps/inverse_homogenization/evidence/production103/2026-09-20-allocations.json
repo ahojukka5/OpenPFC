@@ -81,6 +81,7 @@
     "do_not_queue_r6_unless_exp_asymptote_below_tol": true,
     "rms_plateau": "apps/inverse_homogenization/evidence/production103/2026-09-20-rms-plateau.json",
     "topology_step3360": "apps/inverse_homogenization/evidence/production103/2026-09-20-128-topology.json",
+    "topology_series": "apps/inverse_homogenization/evidence/production103/2026-09-20-128-topology-series.json",
     "eval_if_converged": {
       "after_r4": 22191421,
       "after_r5": 22192221,

@@ -58,7 +58,11 @@ decay phase is not ruled out. Evidence:
 4 periodic components, no x-percolation, solid fraction 0.162 against
 prescribed volume 0.258; largest piece is 26% of the solid. Uniform n0
 128 CONVERGED had 2 components and xyz percolation. Evidence:
-`2026-09-20-128-topology.json`. Not CONVERGED.
+`2026-09-20-128-topology.json`. Dumps 0010/0020/0030/0042 (steps
+800–3360) all have **4** components and no x-percolation; y-percolation
+appears only at 3360. Solid fraction 0.133→0.162; largest piece stays
+~26%. The thresh solid is not coarsening toward n0 CONVERGED. Evidence:
+`2026-09-20-128-topology-series.json`. Not CONVERGED.
 
 r3 **22185871** (`dev-g`, stop-after 4500) is RUNNING. r4 **22191420**
 is **afterany** r3 (`dev-g`, 5000, TimeLimit 2h50) so a wall-clock on
