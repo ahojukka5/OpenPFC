@@ -9,6 +9,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Inverse homogenization checkpoint problem fingerprint** (issue
+  [#72](https://github.com/ahojukka5/OpenPFC/issues/72)). Schema 2
+  `state.txt` records the target tensor, moduli, SIMP/regularization
+  endpoints, step/projection, window, and tolerances. A restart with a
+  different frozen problem is rejected. `--max-steps` remains a run
+  budget.
+
 - **Inverse-homogenization convergence protocol** (issue
   [#59](https://github.com/ahojukka5/OpenPFC/issues/59)). After
   `--continuation-steps` the SIMP/regularization problem is frozen.
