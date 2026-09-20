@@ -1,0 +1,25 @@
+{
+  "source_revision": "43d0d4224340532594f2ae6f618a7e661cbd0ff9",
+  "build_job": 22183109,
+  "replay_job": 22183155,
+  "account": "project_462001245",
+  "nodes": 1,
+  "hip_ranks": 8,
+  "cpu_ranks": 2,
+  "elapsed": "00:03:24",
+  "binary_sha256": {
+    "hip": "590a350fae0cc8d27511b415aeb1337bea72724fe0c8d8c814127b90ea674fa6",
+    "cpu": "e0e658dd2a3425cecd8e24811a9389bf2eb5d6cb2b4b109d4f48fa5cf3a64056"
+  },
+  "driver_sha256": "9d8e413b3387884892be385853634472cb7ef3fc674c3266e831bd83668afa66",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "target_path": "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt",
+  "raw_sha256": "a19d5a045719563b021341462646d962edd61a18bd03d46ec452c4c8c6769168",
+  "build_result": "139/139 CTest batches plus Python pass",
+  "limitations": [
+    "same-rank replay only",
+    "no power-loss durability claim",
+    "CPU has no HIP dump ledger or endpoint material JSON",
+    "distinct CSV per allocation; checkpoint selects retained history"
+  ]
+}
