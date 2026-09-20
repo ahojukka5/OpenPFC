@@ -101,6 +101,7 @@ def main(argv=None):
         rc |= enc.main([
             "--frames-dir", hero_dir, "--kind", "evidence", "--asset", "hero",
             "--mp4", os.path.join(evidence, "hero_reconnection_eta0005_n512.mp4"),
+            "--gif", os.path.join(evidence, "hero_reconnection_eta0005_n512.gif"),
         ]) or 0
         rc |= enc.main([
             "--frames-dir", cmp_dir, "--kind", "evidence",
