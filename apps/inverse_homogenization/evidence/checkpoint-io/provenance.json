@@ -1,0 +1,16 @@
+{
+  "source_revision": "c2a702384ca5f9e1e5c2e655e50a4ed781c81185",
+  "binary_sha256": "5d0b03b1db840c036012a4ea5ed590c2cb7aeacea77383693c518a7d0eef3110",
+  "driver_sha256": "4c4aa3c30ada964f5a3a729d84411f200d6e21a60a3a10710b108199760f7e04",
+  "driver_path": "apps/inverse_homogenization/scripts/replay_checkpoint_state.py",
+  "job": 22182481,
+  "account": "project_462001245",
+  "nodes": 1,
+  "gcds": 8,
+  "elapsed": "00:03:20",
+  "raw_sha256": "0a32a65e5585ca89cc8cf75b3ecdb468ec46e76a430f30a02e1d2990c25496cf",
+  "target_source": "1b3f2d2591efdd468725bfd089d1727265587e76",
+  "target_path": "apps/inverse_homogenization/evidence/unnormalized-control/target.txt",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "scope": "Actual HIP metadata/ledger fault rejection and unchanged valid restart; not power-loss durability"
+}
