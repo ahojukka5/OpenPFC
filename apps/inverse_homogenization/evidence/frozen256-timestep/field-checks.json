@@ -1,0 +1,22 @@
+{
+  "unchanged": {
+    "final_sha256": "4296e15625cd812fdc6b10f76696418054bf3b8329b9da90f8afea922d367ded",
+    "terminal_snapshot_identical": true,
+    "strict_threshold_identical": true,
+    "minimum": 0.0,
+    "maximum": 0.9999893966695761,
+    "mean": 0.257586518599992,
+    "grey_fraction": 0.5876909996852402,
+    "threshold_fraction": 0.1770659517650762
+  },
+  "scaled": {
+    "final_sha256": "c564de5619b7f4eee59f960e8041aef468f15028d548981f1c2dfa912152981d",
+    "terminal_snapshot_identical": true,
+    "strict_threshold_identical": true,
+    "minimum": 0.005844757826402818,
+    "maximum": 1.0,
+    "mean": 0.25758651859998355,
+    "grey_fraction": 0.5508878093120481,
+    "threshold_fraction": 0.17820033554203255
+  }
+}
