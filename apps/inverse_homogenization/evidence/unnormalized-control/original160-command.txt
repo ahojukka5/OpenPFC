@@ -1,0 +1,67 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#SBATCH --account=project_462001245
+#SBATCH --partition=standard-g
+#SBATCH --nodes=1
+#SBATCH --ntasks=8
+#SBATCH --ntasks-per-node=8
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=7
+#SBATCH --mem=480G
+#SBATCH --time=00:30:00
+#SBATCH --job-name=inverse74-n0
+#SBATCH --output=/scratch/project_462001245/juaho/logs/%x-%j.out
+#SBATCH --error=/scratch/project_462001245/juaho/logs/%x-%j.err
+#
+# Issue #74: frozen 32x32x61 from the same h_190, --normalize=0.
+# Tests whether the locally descending unnormalized direction also
+# kills the period-2 cycle over the same 160-step / dt=0.04 window
+# as job 22178459. Same binary, target, volume, epsilon, SIMP, lambda.
+
+set -euo pipefail
+test "${SLURM_JOB_ACCOUNT}" = project_462001245
+module purge
+module load LUMI/25.09 partition/G cpeGNU cray-fftw lumi-CrayPath
+module use "${HOME}/privatemodules"
+module load heffte-rocm
+export LD_LIBRARY_PATH="${CRAY_LD_LIBRARY_PATH:-}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export MPICH_GPU_SUPPORT_ENABLED=1 SLURM_EXPORT_ENV=ALL OMP_NUM_THREADS=1
+unset ROCR_VISIBLE_DEVICES HIP_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES
+
+SRC=/scratch/project_462001245/juaho/inverse-homogenization/frozen74_22178459
+OUT=/scratch/project_462001245/juaho/inverse-homogenization/frozen74n0_${SLURM_JOB_ID}
+mkdir -p "${OUT}/fields"
+cp "${SRC}/inverse_hip" "${OUT}/inverse_hip"
+cp "${SRC}/target.txt" "${OUT}/target.txt"
+cp "${SRC}/initial_h190.bin" "${OUT}/initial_h190.bin"
+sha256sum "${OUT}/inverse_hip" "${OUT}/target.txt" "${OUT}/initial_h190.bin" > "${OUT}/checksums.txt"
+scontrol show job "${SLURM_JOB_ID}" > "${OUT}/slurm.txt"
+module list 2> "${OUT}/modules.txt"
+cat > "${OUT}/protocol.txt" <<'EOF'
+Issue 74 follow-up after slope job 22178618.
+Witness field: frozen74_22178459 initial_h190.bin
+Normalized (alpha 0.001/0.0005) directional slope +0.000305 (ascent).
+Unnormalized slope -0.000513 (descent).
+This arm keeps every frozen-problem parameter of 22178459 except
+--normalize=0. dt=0.04, 160 steps, continuation_steps=0, SIMP=2,
+lambda_reg=0.2. Do not loosen tolerances. Compare last-50 design_rms,
+two-step field RMS, dC_rel, grey, J against 22178459.
+EOF
+
+srun --export=ALL --ntasks=8 --gpus-per-node=8 "${OUT}/inverse_hip" \
+  --nx=32 --ny=32 --nz=61 --dx=1 \
+  --E-solid=1 --nu-solid=0.3 --E-void=0.002 --nu-void=0.3 \
+  --target=file --C-target-file="${OUT}/target.txt" \
+  --volume=0.2575865186 --init-volume=0.2575865186 \
+  --normalize=0 --max-delta=0.04 --project-volume=1 --n-el-iter=400 \
+  --epsilon=2 --lambda-volume=1 \
+  --tol-design=0.0001 --tol-objective=0.000001 --tol-tensor=0.0001 \
+  --conv-window=20 --verify-convergence-steps=100 \
+  --init=spinodal --seed=1 --simp=2 --simp-end=2 \
+  --lambda-reg=0.2 --lambda-reg-end=0.2 --continuation-steps=0 \
+  --load-bin="${OUT}/initial_h190.bin" --dt=0.04 --max-steps=160 \
+  --dump-every=1 --run-id=frozen_n0 \
+  --csv="${OUT}/history.csv" --dump-dir="${OUT}/fields" \
+  | tee "${OUT}/run.log"
+echo "done job ${SLURM_JOB_ID}" | tee -a "${OUT}/provenance.txt"

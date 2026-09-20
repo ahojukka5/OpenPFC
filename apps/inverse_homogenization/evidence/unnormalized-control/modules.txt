@@ -1,0 +1,16 @@
+
+Currently Loaded Modules:
+  1) ModuleLabel/label              (S)  12) craype/2.7.35
+  2) lumi-tools/26.06               (S)  13) cray-dsmml/0.3.1
+  3) init-lumi/0.3                  (S)  14) cray-mpich/9.0.1
+  4) LUMI/25.09                     (S)  15) cray-libsci/25.09.0
+  5) craype-x86-trento                   16) PrgEnv-gnu/8.6.0
+  6) craype-accel-amd-gfx90a             17) rocm/6.4.4
+  7) libfabric/1.22.0                    18) perftools-base/25.09.0
+  8) craype-network-ofi                  19) cpeGNU/25.09
+  9) xpmem/2.11.5-1.3_g73ade43320bc      20) cray-fftw/3.3.10.11
+ 10) partition/G                    (S)  21) lumi-CrayPath/0.1
+ 11) gcc-native/14                       22) heffte-rocm/2.4.1
+
+  Where:
+   S:  Module is Sticky, requires --force to unload or purge

@@ -1,0 +1,22 @@
+{
+  "job": 22179446,
+  "termination": "MAX_STEPS",
+  "rows": 160,
+  "final_sha256": "087d24babb7593e29a6eae55381cd890d1976841c3931e554513142c3c44ee68",
+  "mean": 0.25758651859971504,
+  "tail": {
+    "J": 0.0041346414,
+    "design_rms": 0.00038978611999999994,
+    "dJ_rel": 3.815393e-06,
+    "dC_rel": 0.0003330866599999999,
+    "grey": 0.6586641999999999
+  },
+  "tail_field_rms": {
+    "1": 0.00039113869218048206,
+    "2": 0.0007819586570651383
+  },
+  "objective_increases": 0,
+  "all_elasticity_passed": true,
+  "final_matches_last_accepted": true,
+  "frozen_inputs_match_baseline": true
+}
