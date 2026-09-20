@@ -1,0 +1,22 @@
+{
+  "producer_source": "6deeb76cc23be832db3aa33f3215b3ba14bd414e",
+  "binary_sha256": "b7659d22ff8ef5dd338d6e2c53b680bcd8a50254ff69206d8a084d964a7e7b5a",
+  "analysis_source": "40a9cd8c90396997ef92bab43ec3b065fcce4ae4",
+  "job": 22181719,
+  "account": "project_462001245",
+  "nodes": 16,
+  "gcds": 128,
+  "elapsed": "01:32:20",
+  "initial_sha256": "b257c6408247b021e61da32d181180d4984cbec1db4cff9aa3044f9f7697cd0f",
+  "refiner_source": "a342b407005c778703704ee0b39fcd1faa3e9877",
+  "initial_regeneration": "At OpenPFC ec892d63f7ec77ed0cf1515c3378b8702521fa25, replay the archived converged-resolution 128 producer from committed initial64.bin.gz and the pinned periodic refinement recipe. Take accepted step600, fields/n0fixed128_h_0030.bin (SHA4009a9b2dfc6830c87f0a4c4b53c3fd832dcb919afadf17fa7f6d091bd28b880). Apply the pinned refiner one level from128x128x242/dx.5. Exact original commands are in raw.json.gz command.sbatch and initial256.json.",
+  "replay": "Build producer source through scripts/build.sh, then replay raw command.sbatch with regenerated input and qualified binary paths. Run audit_frozen256_timestep.py --live-root OUTPUT --output AUDIT. Replay compact summary with --archive raw.json.gz --output AUDIT.",
+  "raw_sha256": "1088f955209ab0e3caad133171da6fff0cce80a29572518d2399c3ae24bf12a3",
+  "interpretation": "CONTINUE smaller timestep full-continuation temporal/resolution control; no convergence or general nonlinear stability proof",
+  "limitations": [
+    "CSV monotonicity limited to printed precision",
+    "projection/clipping effects not isolated causally",
+    "timings are one allocation, not a scaling law",
+    "native frozen endpoint is accepted but MAX_STEPS, not converged"
+  ]
+}
