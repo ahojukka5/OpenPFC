@@ -2,6 +2,7 @@
   "asset": "hero",
   "fps": 4,
   "frames_dir": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/generated/hero_evidence",
+  "gif": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/evidence/hero_reconnection_eta0005_n512.gif",
   "hold_last": 8,
   "kind": "evidence",
   "mp4": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/evidence/hero_reconnection_eta0005_n512.mp4",
