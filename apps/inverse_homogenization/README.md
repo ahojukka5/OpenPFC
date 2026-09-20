@@ -113,6 +113,11 @@ The cap is a descent-direction fix, not a production replacement.
 Running 64/128 jobs keep the old amplifying `normalize=1` as
 exploratory evidence.
 
+HIP `--no-tensor=1` now matches CPU: \(W=0\) skips the six elasticity
+solves and is a binarization-only step. It does not change the frozen
+Yang A3 target of a tensor run; it is a well/volume/regularization
+post-stage of a given field.
+
 ## Finite-strain forward ladder (issue #55)
 
 Research [#484](https://github.com/ahojukka5/research/issues/484) needs a
