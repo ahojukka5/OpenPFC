@@ -24,6 +24,8 @@ Start with the [HPC operator guide](operator_guide.md).
 | LUMI-G HeFFTe reshape tournament | [HeFFTe protocol tournament](heffte_protocol_tournament.md) |
 | Held-out HeFFTe selector (blocked) | [HeFFTe selector regret](heffte_selector_regret.md) |
 | LUMI-G HeFFTe topology crossovers | [HeFFTe topology crossover](heffte_topology_crossover.md) |
+| LUMI-G topology metadata actually exposed | [HeFFTe topology observability](heffte_topology_observability.md) |
+| #106 H1/H2/H3 decision tests | [HeFFTe pre-analysis](heffte_topology_preanalysis.md) |
 | First batch submission | [Slurm day one](../tutorials/hpc_slurm_day_one.md) |
 
 ## Site-specific guidance

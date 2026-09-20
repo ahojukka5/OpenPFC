@@ -84,6 +84,7 @@ export HEAT3D_SPECTRAL_HIP_BIN=/path/to/heat3d_spectral_hip
 ./docs/lumi_slurm/submit_heffte_topology_crossover.sh wave1
 ./docs/lumi_slurm/submit_heffte_topology_crossover.sh collect
 ./docs/lumi_slurm/submit_heffte_topology_crossover.sh analyze
+./docs/lumi_slurm/submit_heffte_topology_crossover.sh harvest
 ```
 
 Optional: `NODES=124,128`, `REPEATS=3`, `DRY_RUN=1`.
@@ -98,5 +99,25 @@ Keep per-allocation wall/step, ranking, and protocol order. Pooled
 medians are a summary. Local slope uses neighboring sampled node
 counts, not only doublings. Close (<5%) winner/second pairs stay
 inconclusive until more repeats exist.
+
+Pre-execution communication descriptors (no wall times) live in
+[`heffte_topology_crossover_descriptors.csv`](heffte_topology_crossover_descriptors.csv),
+generated from the OpenPFC slab / min-reshape replica in
+`apps/heat3d/scripts/heffte_comm_plan.py`. Candidate models are defined
+there; coefficients are not fit on this campaign yet.
+
+Observability of LUMI topology:
+[what a job can actually see](heffte_topology_observability.md).
+Frozen H1/H2/H3 decision tests:
+[pre-analysis](heffte_topology_preanalysis.md).
+
+```bash
+./docs/lumi_slurm/submit_heffte_topology_crossover.sh descriptors
+./docs/lumi_slurm/submit_heffte_topology_crossover.sh harvest
+```
+
+`harvest` writes `runs.csv` (including rejected and missing protocol
+rows), `order.csv`, `allocations.csv`, `scaling.csv`, and `status.md`.
+It does not modify raw run directories.
 
 Do not fit a production selector in this issue.
