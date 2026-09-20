@@ -140,8 +140,12 @@ inline void capture_tracker(InverseCheckpoint &ck, const ConvergenceTracker &tr,
 }
 
 [[nodiscard]] inline bool
-checkpoint_is_restartable(const InverseCheckpoint &ck) noexcept {
-  return ck.termination == static_cast<int>(TerminationReason::Running);
+checkpoint_is_restartable(const InverseCheckpoint &ck,
+                          int requested_max_steps) noexcept {
+  // h_next is not the last evaluated state. A restart must evaluate it before
+  // finalization can associate an accepted index with the exported field.
+  return ck.termination == static_cast<int>(TerminationReason::Running) &&
+         requested_max_steps > ck.next_step;
 }
 
 template <typename Cfg, typename Tensor>

@@ -678,7 +678,7 @@ int run(int argc, char **argv, int rank, int nproc) {
         if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
             !pfc::apps::inverse::checkpoint_matches_problem(
                 ck, cfg, spec.C_target, spec.W) ||
-            !pfc::apps::inverse::checkpoint_is_restartable(ck))
+            !pfc::apps::inverse::checkpoint_is_restartable(ck, cfg.steps))
           ok = 0;
         else
           pfc::apps::inverse::read_dump_steps(bundle + "/dump_steps.txt",

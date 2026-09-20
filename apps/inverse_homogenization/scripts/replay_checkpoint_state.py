@@ -76,6 +76,16 @@ def main():
         if name == 'hold':
             assert int(saved['candidate']) == 1 and 0 < int(saved['verify_left']) < 100
         (root / 'interrupted-state.json').write_text(json.dumps(saved, indent=2))
+        checkpoint_hashes = {str(f.relative_to(split)): sha(f)
+                             for f in (split / 'checkpoint').rglob('*') if f.is_file()}
+        for budget in (cut-1, cut):
+            rejected = run(f'budget_{budget}', 'budget',
+                           [f'--restart={split / "checkpoint"}', f'--max-steps={budget}'],
+                           success=False)
+            assert 'restart: unreadable or mismatched' in (rejected / 'budget.log').read_text()
+            assert not list((rejected / 'fields').glob('*.bin'))
+            assert checkpoint_hashes == {str(f.relative_to(split)): sha(f)
+                                         for f in (split / 'checkpoint').rglob('*') if f.is_file()}
         run('split', 'resume', [f'--restart={split / "checkpoint"}'])
         reference, resumed = rows(full / 'full.csv'), rows(split / 'resume.csv')
         assert reference[-1]['termination'] == ('CONVERGED' if name == 'hold' else 'MAX_STEPS')
@@ -95,7 +105,8 @@ def main():
         assert read_state(split / 'checkpoint') == terminal_before
         result['cases'].append({'name': name, 'cut': cut, 'saved_state': saved,
                                 'last_row': reference[-1], 'overlap_rows': len(resumed),
-                                'identical_fields': matched, 'terminal_rejected': True})
+                                'identical_fields': matched, 'terminal_rejected': True,
+                                'exhausted_budgets_rejected': [cut-1, cut]})
         (args.output / 'verified.json').write_text(json.dumps(result, indent=2)+'\n')
     print('CHECKPOINT_FIELD_AND_HOLD_EQUIVALENCE_OK')
 
