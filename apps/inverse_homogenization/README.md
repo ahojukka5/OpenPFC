@@ -296,3 +296,13 @@ physical validation of a material model.
 
 Both tensors were already computed by the driver; reporting adds no elasticity
 solve and changes no iterate, scientific target or convergence tolerance.
+
+### Checkpoint tracker validation
+
+Checkpoint loading validates tracker counters before restoration. A candidate
+must have exactly the remaining verification hold implied by its consecutive
+quiet-state count, and a `CONVERGED` snapshot must have completed that hold.
+Impossible flags, counters and non-finite accepted-state values are rejected;
+restarting cannot turn a negative hold counter into immediate convergence.
+This validation does not by itself qualify file publication or full-field
+restart equivalence.

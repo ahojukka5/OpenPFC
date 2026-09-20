@@ -15,6 +15,8 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -333,9 +335,9 @@ TEST_CASE("checkpoint text round-trips tracker, C_H and problem id",
   W(0, 0) = 1.0;
   InverseCheckpoint ck;
   capture_problem(ck, cfg, Ct, W);
-  ck.next_step = 40;
+  ck.next_step = 440;
   ck.max_steps = 5000;
-  ck.quiet_count = 7;
+  ck.quiet_count = 108;
   ck.verify_left = 12;
   ck.candidate = 1;
   ck.have_prev = 1;
@@ -349,8 +351,8 @@ TEST_CASE("checkpoint text round-trips tracker, C_H and problem id",
   std::istringstream in(format_checkpoint_text(ck));
   InverseCheckpoint got;
   REQUIRE(read_checkpoint_text(in, got));
-  REQUIRE(got.next_step == 40);
-  REQUIRE(got.quiet_count == 7);
+  REQUIRE(got.next_step == 440);
+  REQUIRE(got.quiet_count == 108);
   REQUIRE(got.verify_left == 12);
   REQUIRE(got.candidate == 1);
   REQUIRE(got.n_snap == 5);
@@ -366,7 +368,7 @@ TEST_CASE("checkpoint text round-trips tracker, C_H and problem id",
   ConvergenceTracker tr;
   apply_tracker(got, tr);
   REQUIRE(tr.candidate);
-  REQUIRE(tr.quiet_count == 7);
+  REQUIRE(tr.quiet_count == 108);
   REQUIRE_THAT(tr.cfg.tol_design, WithinAbs(1e-4, 1e-18));
   REQUIRE(checkpoint_matches_problem(got, cfg, Ct, W));
   DummyInvCfg other = cfg;
@@ -426,7 +428,11 @@ TEST_CASE("a terminal checkpoint is not restartable as continuation",
   Tiny6 W{};
   InverseCheckpoint ck;
   capture_problem(ck, cfg, Ct, W);
-  ck.next_step = 50;
+  ck.next_step = 420;
+  ck.max_steps = 5000;
+  ck.have_prev = 1;
+  ck.quiet_count = 120;
+  ck.candidate = ck.verified = 1;
   ck.termination = static_cast<int>(TerminationReason::Converged);
   REQUIRE_FALSE(checkpoint_is_restartable(ck));
   std::istringstream in(format_checkpoint_text(ck));
@@ -444,7 +450,7 @@ TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]
   tr.cfg.max_steps = 5000;
   tr.cfg.conv_window = 20;
   tr.cfg.verify_steps = 100;
-  tr.quiet_count = 20;
+  tr.quiet_count = 73;
   tr.candidate = true;
   tr.verify_left = 47;
   tr.verified = false;
@@ -453,7 +459,7 @@ TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]
   ConvergenceTracker got;
   apply_tracker(ck, got);
   REQUIRE(ck.next_step == 412);
-  REQUIRE(got.quiet_count == 20);
+  REQUIRE(got.quiet_count == 73);
   REQUIRE(got.candidate);
   REQUIRE(got.verify_left == 47);
   REQUIRE_FALSE(got.verified);
@@ -556,3 +562,104 @@ TEST_CASE("explicit generation directory loads without a CURRENT pointer",
   REQUIRE(resolve_checkpoint_bundle(tmp.path).empty());
 }
 
+
+
+TEST_CASE("checkpoint accepts reachable tracker histories and resumes holds",
+          "[inverse-conv][91]") {
+  using namespace pfc::apps::inverse;
+  // Enumerate all quiet/nonquiet histories through a small finite horizon,
+  // including no-hold convergence, interrupted holds and continuation freeze.
+  for (int continuation : {0, 2}) for (int window : {1, 3})
+    for (int hold : {0, 2, 3}) for (unsigned mask = 0; mask < 256; ++mask) {
+      ConvergenceTracker tr;
+      tr.cfg = {continuation, 8, window, hold};
+      for (int step = 0; step < 8; ++step) {
+        auto failed = tr;
+        ConvergenceMetrics m;
+        m.quiet = step > 0 && ((mask >> step) & 1);
+        const auto failure = failed.after_step(step, false, m);
+        const auto reason = tr.after_step(step, true, m);
+        auto roundtrip = [&](const ConvergenceTracker &state, TerminationReason why) {
+          InverseCheckpoint ck;
+          Tiny6 tensor;
+          capture_problem(ck, DummyInvCfg{}, tensor, tensor);
+          capture_tracker(ck, state, step + 1);
+          ck.have_prev = 1;
+          ck.termination = static_cast<int>(why);
+          REQUIRE(checkpoint_state_valid(ck));
+          std::istringstream input(format_checkpoint_text(ck));
+          InverseCheckpoint restored;
+          REQUIRE(read_checkpoint_text(input, restored));
+          ConvergenceTracker resumed;
+          apply_tracker(restored, resumed);
+          REQUIRE(resumed.quiet_count == state.quiet_count);
+          REQUIRE(resumed.verify_left == state.verify_left);
+          if (why == TerminationReason::Running) {
+            auto reference = state;
+            for (int next = step + 1; next < 8; ++next) {
+              ConvergenceMetrics subsequent;
+              subsequent.quiet = ((mask >> next) & 1) != 0;
+              const auto a = reference.after_step(next, true, subsequent);
+              const auto b = resumed.after_step(next, true, subsequent);
+              REQUIRE(a == b);
+              REQUIRE(reference.quiet_count == resumed.quiet_count);
+              REQUIRE(reference.verify_left == resumed.verify_left);
+              REQUIRE(reference.verified == resumed.verified);
+              if (is_terminal(a)) break;
+            }
+          }
+        };
+        roundtrip(failed, failure);
+        roundtrip(tr, reason);
+        if (is_terminal(reason)) break;
+      }
+    }
+}
+
+TEST_CASE("checkpoint rejects impossible counters and accepted state",
+          "[inverse-conv][91]") {
+  using namespace pfc::apps::inverse;
+  InverseCheckpoint valid;
+  Tiny6 tensor;
+  capture_problem(valid, DummyInvCfg{}, tensor, tensor);
+  valid.next_step = 340;
+  valid.max_steps = 5000;
+  valid.have_prev = 1;
+  valid.quiet_count = 25;
+  valid.candidate = 1;
+  valid.verify_left = 95;
+  REQUIRE(checkpoint_state_valid(valid));
+  const std::vector<std::function<void(InverseCheckpoint &)>> corruptions = {
+      [](auto &c) { c.verify_left = -1; },
+      [](auto &c) { c.verify_left = 94; },
+      [](auto &c) { c.quiet_count = 19; },
+      [](auto &c) { c.quiet_count = -1; },
+      [](auto &c) { c.next_step = 310; },
+      [](auto &c) { c.candidate = 2; },
+      [](auto &c) { c.candidate = 0; },
+      [](auto &c) { c.verified = -1; },
+      [](auto &c) { c.verified = 1; },
+      [](auto &c) { c.have_prev = 0; },
+      [](auto &c) { c.normalize = 2; },
+      [](auto &c) { c.project_volume = -1; },
+      [](auto &c) { c.conv_window = 0; },
+      [](auto &c) { c.verify_steps = -1; },
+      [](auto &c) { c.continuation_steps = -1; },
+      [](auto &c) { c.max_steps = 339; },
+      [](auto &c) { c.max_steps = 340; },
+      [](auto &c) { c.termination = 1; },
+      [](auto &c) { c.termination = 2; },
+      [](auto &c) { c.dx = 0; },
+      [](auto &c) { c.tol_design = -1; },
+      [](auto &c) { c.J_prev = std::numeric_limits<double>::infinity(); },
+      [](auto &c) { c.C_prev[35] = std::numeric_limits<double>::quiet_NaN(); },
+      [](auto &c) { c.W[2] = std::numeric_limits<double>::infinity(); }};
+  for (const auto &corrupt : corruptions) {
+    auto ck = valid;
+    corrupt(ck);
+    REQUIRE_FALSE(checkpoint_state_valid(ck));
+    std::istringstream input(format_checkpoint_text(ck));
+    InverseCheckpoint restored;
+    REQUIRE_FALSE(read_checkpoint_text(input, restored));
+  }
+}

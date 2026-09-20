@@ -117,6 +117,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Reject inconsistent inverse checkpoint tracker state before restoring the
+  convergence window or verification hold (#91).
+
 - **Inverse-homogenization CSV / accepted-state / SIMP** (issue
   [#63](https://github.com/ahojukka5/OpenPFC/issues/63)). HIP no longer
   writes a truncated extra iterate row after the loop; CPU and HIP share
