@@ -1,0 +1,29 @@
+{
+  "renderer_source": "a967843396b4f5f313e8c42ee86b78f07f3dc0ab",
+  "renderer_path": "apps/inverse_homogenization/scripts/render_certified_trajectory.py",
+  "renderer_sha256": "9156f34cd17b8914127eb7ff89dc51e2a9d89eff30bf81818ed69aec01b20d03",
+  "render_job": 22182959,
+  "failed_graphics_job": 22182930,
+  "account": "project_462001245",
+  "elapsed": "00:00:44",
+  "rendering": "CPU Mesa llvmpipe on GPU allocation; MI250X compute chip has no graphics context",
+  "producer_source": "6deeb76cc23be832db3aa33f3215b3ba14bd414e",
+  "producer_job": 22180901,
+  "field_regeneration_archive": "ec892d63f7ec77ed0cf1515c3378b8702521fa25",
+  "field_regeneration_path": "apps/inverse_homogenization/evidence/converged-resolution",
+  "accepted_step": 1371,
+  "frames": 70,
+  "physical_extent": [
+    64,
+    64,
+    121
+  ],
+  "terminal_visual_check": "Decoded final MP4 frame checked: accepted1371 CONVERGED, correct physical cell, intact geometry/labels",
+  "artifacts_sha256": {
+    "certified-trajectory.mp4": "c61aaed2aa2f6e195ec17245105a01c8e158612cd852ae2669299546e9403267",
+    "README.md": "89774fe83b9416eeb3f4d4b88b68f0ff94ca89b8f4cbcbc03abffd456eb499b5",
+    "frames.json": "f3dd08f952d724ce9ac72b3059b8d705e8812898b3901bed784a833d28a4e2ba",
+    "raw.json.gz": "f6285ff11abdc5c6ef48aef9ad5e8d9a6391fa0daeb42439501859b1090508fd",
+    "final.png": "d21c7686243a763e448a092dec049f91e1c47145928dafe62b0abb265755ea60"
+  }
+}

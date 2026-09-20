@@ -85,3 +85,8 @@ SPDX-License-Identifier = "AGPL-3.0-or-later"
 path = ["apps/inverse_homogenization/evidence/historical300/**"]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+[[annotations]]
+path = ["apps/inverse_homogenization/evidence/certified-trajectory/**"]
+SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
