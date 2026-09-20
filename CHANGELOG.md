@@ -7,6 +7,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Changed
+
+- **Frozen inverse timestep diagnosis** (issue
+  [#74](https://github.com/ahojukka5/OpenPFC/issues/74)). Jobs
+  22178459/60/61 show that `dt=0.04/0.02/0.01` still leave a period-2
+  cycle far above the design/`C_H` tolerances. Job 22178618 shows
+  elastic-only RMS normalization is a local ascent of total \(J\) at
+  that witness. No target or tolerance change.
+
 ### Added
 
 - **Fail-closed `--key=value` CLI** (`pfc::utils::CliOptions` in

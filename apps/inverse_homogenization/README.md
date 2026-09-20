@@ -81,6 +81,24 @@ HIP SIMP-continuation claims need qualification.
 Job 22162138 (300 fixed steps) still had `step_rms≈0.019` on the last
 iterate, so those animations were cut while the design was moving.
 
+## Frozen oscillation (issue #74)
+
+Reducing the explicit Allen–Cahn step on the frozen 32×32×61 problem
+does **not** produce `CONVERGED`. Jobs 22178459/60/61 (`dt=0.04/0.02/0.01`,
+matched artificial time, same `h_190`, `project_462001245`) all terminate
+`MAX_STEPS`. Last-50 one-step design RMS is 0.0149 / 0.0117 / 0.0071
+versus tolerance \(10^{-4}\). At `dt=0.04` the two-step field RMS is
+0.00061, a period-2 cycle rather than slow drift.
+
+Directional slopes on the same witness (job 22178618) show why: the
+elastic-only RMS-normalized displacement has slope \(+3.055\times10^{-4}\)
+of total \(J\); the unnormalized displacement has slope
+\(-5.135\times10^{-4}\). This is a local non-descent direction, not
+merely an oversized step. Evidence:
+`apps/inverse_homogenization/evidence/2026-09-20-frozen-iteration-results.json`.
+Job 22179446 reruns the `dt=0.04` arm with `--normalize=0`. Do not
+loosen tolerances or change the Yang A3 target.
+
 ## Finite-strain forward ladder (issue #55)
 
 Research [#484](https://github.com/ahojukka5/research/issues/484) needs a

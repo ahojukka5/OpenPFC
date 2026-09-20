@@ -1,0 +1,84 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "issue": 74,
+  "pr": 77,
+  "evidence_class": "numerical_experiment_result",
+  "status": "admitted_negative_for_dt_reduction",
+  "question": "Does reducing the explicit timestep reduce late frozen-problem oscillation?",
+  "binary_source": "eae1e4ccbbd52054e3af23871dfb69af221f5797",
+  "driver_revision": "2f12b3bda3edd74473312ea95001331710ed38eb",
+  "account": "project_462001245",
+  "partition": "standard-g",
+  "initial_field": "frozen74_22178459/initial_h190.bin",
+  "grid": [32, 32, 61],
+  "dx": 1,
+  "continuation_steps": 0,
+  "simp": 2.0,
+  "lambda_reg": 0.2,
+  "max_delta": 0.04,
+  "normalize_production": 1,
+  "falsification": "If oscillation persists at smaller dt, reject timestep reduction as a sufficient remedy in this tested range",
+  "dt_arms": [
+    {
+      "dt": 0.04,
+      "job": 22178459,
+      "max_steps": 160,
+      "termination": "MAX_STEPS",
+      "tail50_design_rms_mean": 0.01490253,
+      "tail_one_step_field_rms": 0.014904270379990005,
+      "tail_two_step_field_rms": 0.00060668463622067,
+      "tail50_dC_rel_mean": 0.07053052,
+      "tail50_J_mean": 0.0090392656,
+      "tail50_grey_mean": 0.48459772,
+      "outputs": "/scratch/project_462001245/juaho/inverse-homogenization/frozen74_22178459"
+    },
+    {
+      "dt": 0.02,
+      "job": 22178460,
+      "max_steps": 320,
+      "termination": "MAX_STEPS",
+      "tail50_design_rms_mean": 0.01170329,
+      "tail_one_step_field_rms": 0.011703402830512032,
+      "tail_two_step_field_rms": 0.0004943764857679193,
+      "tail50_dC_rel_mean": 0.05857212,
+      "tail50_J_mean": 0.0087171306,
+      "tail50_grey_mean": 0.45407626,
+      "outputs": "/scratch/project_462001245/juaho/inverse-homogenization/frozen74_22178460"
+    },
+    {
+      "dt": 0.01,
+      "job": 22178461,
+      "max_steps": 640,
+      "termination": "MAX_STEPS",
+      "tail50_design_rms_mean": 0.0071022206,
+      "tail_one_step_field_rms": 0.007103854914901406,
+      "tail_two_step_field_rms": 0.0014107740016789203,
+      "tail50_dC_rel_mean": 0.035957898,
+      "tail50_J_mean": 0.00794903,
+      "tail50_grey_mean": 0.4376668,
+      "outputs": "/scratch/project_462001245/juaho/inverse-homogenization/frozen74_22178461"
+    }
+  ],
+  "interpretation_dt": "Fourfold dt reduction cuts one-step RMS by about 2x, not 4x. All arms remain >70x the 1e-4 design tolerance. Two-step RMS << one-step RMS at dt=0.04 is a period-2 cycle, not slow monotonic drift. Timestep reduction is not a sufficient remedy in this range.",
+  "direction_test": {
+    "job": 22178557,
+    "normalize_1_delta_J": 0.00038683,
+    "normalize_0_delta_J": -0.00048592
+  },
+  "slope_test": {
+    "job": 22178618,
+    "witness_J": 0.0091886413,
+    "normalize_0_slope_alpha_0.001": -0.0005135,
+    "normalize_0_slope_alpha_0.0005": -0.0005134,
+    "normalize_1_slope_alpha_0.001": 0.0003055,
+    "normalize_1_slope_alpha_0.0005": 0.0003054,
+    "outputs": "/scratch/project_462001245/juaho/inverse-homogenization/slope74_22178618",
+    "interpretation": "Elastic-only RMS normalization is a local ascent of total J at this frozen witness. The unnormalized displacement is a local descent. This is not merely an oversized step."
+  },
+  "follow_up": {
+    "job": 22179446,
+    "role": "same frozen 32-case as 22178459 with --normalize=0",
+    "status": "submitted"
+  },
+  "production_note": "Do not change the frozen Yang A3 target or loosen tolerances. Running 64/128 jobs keep --normalize=1 as exploratory evidence of the production path."
+}
