@@ -12,6 +12,12 @@
 using json = nlohmann::json;
 using pfc::ui::from_json;
 
+TEST_CASE("from_json parses HeFFTe num_subranks", "[ui][heffte]") {
+  const json config = {{"num_subranks", 2}};
+  const auto options = from_json<heffte::plan_options>(config);
+  REQUIRE(options.get_subranks() == 2);
+}
+
 TEST_CASE("from_json parses HeFFTe reshape algorithm", "[ui][heffte]") {
   const json config = {{"reshape_algorithm", "p2p"}};
 

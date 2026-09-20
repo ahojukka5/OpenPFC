@@ -7,9 +7,9 @@
  *        Euler in Fourier space.
  *
  * @details
- * Per-method binary in the heat3d quartet
+ * Per-method binary in the heat3d lineup
  * (`heat3d_fd`, `heat3d_fd_manual`, `heat3d_spectral`,
- * `heat3d_spectral_pointwise`). The spectral propagator
+ * `heat3d_spectral_hip`, `heat3d_spectral_pointwise`). The spectral propagator
  * (`heat3d::SpectralHeatPropagator`) takes 2 FFTs/step (forward,
  * apply diagonal multiplier in k-space, inverse). No FD halo, no
  * stencil — the laboratory-style variant lives in `heat3d_fd_manual`.
