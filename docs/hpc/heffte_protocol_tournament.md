@@ -119,3 +119,6 @@ not remove that many frames again by list position. Legacy profiles without
 step labels use zero-based frame positions and are assumed untrimmed. The
 reported within-run statistic pools retained rank/frame samples; it is not
 the slowest-rank total elapsed time printed by the executable.
+
+The [frozen evidence archive](heffte-protocol-evidence/README.md) retains the
+completed observations, account/protocol exclusions and replayable reductions.
