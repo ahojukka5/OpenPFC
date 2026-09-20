@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <cmath>
 #include <set>
 #include <tuple>
+#include <vector>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -11,6 +13,7 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/field/brick_iteration.hpp>
+#include <openpfc/kernel/field/fd_stencils.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 
 using namespace pfc;
@@ -95,8 +98,8 @@ TEST_CASE("for_each_inner is a no-op when n <= 2*r", "[field][brick_iteration]")
 TEST_CASE("for_each_border covers owned-minus-inner exactly once",
           "[field][brick_iteration]") {
   bool all_regions_are_valid = true;
-  for (int n : {4, 5, 6, 8}) {
-    for (int r : {1, 2}) {
+  for (int n : {4, 5, 6, 8, 24, 32}) {
+    for (int r : {1, 2, 4, 6, 10}) {
       if (n <= 2 * r) continue;
       auto u = make_brick(n, /*hw=*/r);
       std::set<std::tuple<int, int, int>> border;
@@ -160,6 +163,105 @@ TEST_CASE("stencil over inner region only reads owned cells (no halo dependency)
     accum += xx + yy + zz;
   });
   REQUIRE(accum == Catch::Approx(0.0));
+}
+
+namespace {
+
+double apply_d2(const pfc::data::Field<double, pfc::HostSpace> &u, int i, int j,
+                int k, const pfc::field::fd::EvenCentralD2View &st) {
+  const int r = st.half_width;
+  const double inv = 1.0 / static_cast<double>(st.denom);
+  auto axis = [&](int di, int dj, int dk) {
+    double s = st.coeffs[0] * u(i, j, k);
+    for (int o = 1; o <= r; ++o) {
+      s += st.coeffs[o] * (u(i + o * di, j + o * dj, k + o * dk) +
+                           u(i - o * di, j - o * dj, k - o * dk));
+    }
+    return s * inv;
+  };
+  return axis(1, 0, 0) + axis(0, 1, 0) + axis(0, 0, 1);
+}
+
+void fill_periodic_owned_and_halo(pfc::data::Field<double, pfc::HostSpace> &u,
+                                  int r) {
+  const auto sz = u.local_size();
+  const int n = sz[0];
+  for (int k = 0; k < n; ++k) {
+    for (int j = 0; j < n; ++j) {
+      for (int i = 0; i < n; ++i) {
+        u(i, j, k) = static_cast<double>(i + 3 * j + 5 * k);
+      }
+    }
+  }
+  for (int k = -r; k < n + r; ++k) {
+    for (int j = -r; j < n + r; ++j) {
+      for (int i = -r; i < n + r; ++i) {
+        const bool halo = i < 0 || i >= n || j < 0 || j >= n || k < 0 || k >= n;
+        if (!halo) continue;
+        const int ii = (i % n + n) % n;
+        const int jj = (j % n + n) % n;
+        const int kk = (k % n + n) % n;
+        u(i, j, k) = u(ii, jj, kk);
+      }
+    }
+  }
+}
+
+} // namespace
+
+TEST_CASE("inner D2 at widths 1,2,4,6,10 does not read poisoned halo",
+          "[field][brick_iteration][fd108]") {
+  for (int r : {1, 2, 4, 6, 10}) {
+    const int n = 32;
+    auto u = make_brick(n, r);
+    pfc::field::fd::EvenCentralD2View st{};
+    REQUIRE(pfc::field::fd::lookup_even_central_d2(2 * r, &st));
+    for (int k = 0; k < n; ++k)
+      for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i)
+          u(i, j, k) = static_cast<double>(i + j + k);
+    const double nan = std::nan("");
+    for (int k = -r; k < n + r; ++k) {
+      for (int j = -r; j < n + r; ++j) {
+        for (int i = -r; i < n + r; ++i) {
+          const bool halo =
+              i < 0 || i >= n || j < 0 || j >= n || k < 0 || k >= n;
+          if (halo) u(i, j, k) = nan;
+        }
+      }
+    }
+    bool finite = true;
+    field::for_each_inner(u, r, [&](int i, int j, int k) {
+      finite &= std::isfinite(apply_d2(u, i, j, k, st));
+    });
+    REQUIRE(finite);
+  }
+}
+
+TEST_CASE("inner+border D2 matches unsplit owned stencil at #108 halo widths",
+          "[field][brick_iteration][fd108]") {
+  for (int r : {1, 2, 4, 6, 10}) {
+    const int n = 32;
+    auto u = make_brick(n, r);
+    pfc::field::fd::EvenCentralD2View st{};
+    REQUIRE(pfc::field::fd::lookup_even_central_d2(2 * r, &st));
+    fill_periodic_owned_and_halo(u, r);
+    std::vector<double> split(static_cast<std::size_t>(n * n * n), 0.0);
+    std::vector<double> unsplit(split.size(), 0.0);
+    auto lin = [n](int i, int j, int k) {
+      return static_cast<std::size_t>(i + n * (j + n * k));
+    };
+    field::for_each_inner(u, r, [&](int i, int j, int k) {
+      split[lin(i, j, k)] = apply_d2(u, i, j, k, st);
+    });
+    field::for_each_border(u, r, [&](int i, int j, int k) {
+      split[lin(i, j, k)] = apply_d2(u, i, j, k, st);
+    });
+    field::for_each_owned(u, [&](int i, int j, int k) {
+      unsplit[lin(i, j, k)] = apply_d2(u, i, j, k, st);
+    });
+    REQUIRE(split == unsplit);
+  }
 }
 
 TEST_CASE("for_each_owned_omp visits same set as serial counterpart",
