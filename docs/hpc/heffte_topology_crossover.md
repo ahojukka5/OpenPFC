@@ -121,3 +121,30 @@ rows), `order.csv`, `allocations.csv`, `scaling.csv`, and `status.md`.
 It does not modify raw run directories.
 
 Do not fit a production selector in this issue.
+
+## Harvested 768³/GCD rankings (2026-09-21)
+
+Pooled median `wall_step` in seconds for completed protocols. Compact
+table: [`heffte_topology_campaign_scaling.csv`](heffte_topology_campaign_scaling.csv).
+Per-allocation winners stay in `status.md` on scratch. Close
+winner/second pairs (<5%) are **not** a default change.
+
+| nodes | ranks | n (best) | best | T_best (s) | second | T_2/T_1 | `p2p` / best |
+|------:|------:|---------:|------|----------:|--------|--------:|-------------:|
+| 124 | 992 | 3 | `alltoall` | 2.014 | `alltoallv` | 1.001 | 1.26× |
+| 128 | 1024 | 1 | `p2p_plined` | 1.717 | `alltoall` | 1.149 | 2.53× |
+| 136 | 1088 | 3 | `alltoall` | 1.481 | `alltoallv` | 1.012 | 1.72× |
+| 264 | 2112 | 2 | `alltoall` | 1.871 | `alltoallv` | 1.018 | 2.25× |
+| 512 | 4096 | 1 | `alltoallv` | 2.079 | — | — | incomplete |
+| 528 | 4224 | 2–3 | `alltoallv` | 2.493 | `alltoall` | 1.001 | 3.09× |
+
+Collectives beat blocking `p2p` at every completed scale. `alltoall`
+versus `alltoallv` is unresolved at 124, 136, 264 and 528 nodes
+(winner/second within 2%). The 128-node `p2p_plined` win is a single
+allocation and is not a ranking. 512-node later protocols often die
+with SIGTERM 143 (`switch_g_job_postfini: Device or resource busy`)
+after the first sequential `srun`; do not treat that allocation as a
+four-protocol tournament.
+
+112/240/248/256/480/496-node jobs were still queued at harvest.
+Do not change the production reshape default from these numbers.
