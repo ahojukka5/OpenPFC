@@ -1,0 +1,39 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "issue": 103,
+  "pr": 104,
+  "evidence_class": "numerical_experiment_result",
+  "status": "running_rms_plateau_above_tol",
+  "job": 22185871,
+  "csv": [
+    "history-02.csv",
+    "history-03.csv"
+  ],
+  "snapshot_eest": "2026-09-20 20:51",
+  "last_step": 3281,
+  "last_design_rms": 3.214e-05,
+  "last_C12": 0.00946823,
+  "tol_design": 2.5e-05,
+  "C12_always_positive": true,
+  "dC_rel_below_tol": true,
+  "dJ_rel_below_tol": true,
+  "exp_fits": [
+    {"window": 100, "asymptote": 3.09e-05, "below_tol": false},
+    {"window": 200, "asymptote": 3.07e-05, "below_tol": false},
+    {"window": 400, "asymptote": 3.02e-05, "below_tol": false},
+    {"window": 800, "asymptote": 2.87e-05, "below_tol": false},
+    {
+      "window": 1779,
+      "asymptote": 1.98e-05,
+      "below_tol": true,
+      "note": "Full-span fit mixes early fast decay; SSE 100x worse. Not used as a CONVERGED forecast."
+    }
+  ],
+  "linear_last50_quiet": 5050,
+  "linear_projected_CONVERGED": 5530,
+  "r5_stop_after": 5500,
+  "r5_covers_linear_hold": false,
+  "do_not_queue_r6": true,
+  "do_not_loosen_tol": true,
+  "interpretation": "Late-window exponential fits of design_rms asymptote at 3.02e-5 to 3.09e-5, above tol-design 2.5e-5. Linear last-50 quiet receding past r5 5500 is the slope-to-zero signature of that plateau, not a reason to add allocations. Keep r4/r5 to record whether a second decay phase appears (grey still ~0.68). C12>0. Not CONVERGED."
+}

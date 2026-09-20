@@ -45,18 +45,32 @@ successive allocations, with distinct CSV/logs and shared checkpoint/field root.
 Each allocation verifies CURRENT next_step/termination before resume; no
 automatic restart of terminal errors or scientific retuning. If walltime hits,
 inspect published checkpoint and retain only its authoritative CSV prefix.
-Stop-after is operational, not scientific termination. A 128 RMS fit on
-history-02 steps 2148-2197 projects quiet near 3158 and hold end near
-3558, so r2 stop-after 3000 still cuts *before* quiet. A third allocation
-with stop-after 4500 is queued afterok of the 3000-step resume on both
-grids; that script refuses a non-RUNNING checkpoint. Do not queue a
-fourth allocation from this fit. A CONVERGED checkpoint also copies the
-native `43d0d422` `h_final_material.json` / `h_thresh_material.json`
-into campaign logs, then triggers a PR #90 `--max-steps=0` material
-eval of the certified `h_final` (dx 0.5 / 0.25, not the amplifying dx=1
-128 field). That eval is skipped if the allocation stopped RUNNING.
-Final consumers run only when the full hold passes. Preserve failures;
-do not silently reset the history.
+Stop-after is operational, not scientific termination. r2 **22185790**
+COMPLETED RUNNING at 3000 (`C12=+0.00959`, RMS 3.39e-5). Linear last-50
+quiet then receded through 3158, 4275, 4659, 5050; projected hold end
+is now ~5530, past r5 `--stop-after=5500`. That receding quiet is the
+slope-to-zero signature of an RMS plateau, not a forecast of CONVERGED.
+Late exponential fits of `design_rms` (last 100/200/400) asymptote at
+3.09/3.07/3.02e-5, **above** `tol-design=2.5e-5`. `dC_rel` and `dJ_rel`
+are already below tol. `C12>0` throughout. Grey still ~0.68, so a later
+decay phase is not ruled out. Evidence:
+`2026-09-20-rms-plateau.json`.
+
+r3 **22185871** (`dev-g`, stop-after 4500) is RUNNING. r4 **22191420**
+is **afterany** r3 (`dev-g`, 5000, TimeLimit 2h50) so a wall-clock on
+r3 still continues the chain. r5 **22192220** is afterany r4 on
+`small-g` (5500, 2h30) because `dev-g` MaxSubmit=2 is filled by r3+r4.
+Do **not** queue r6 unless the late exponential asymptote drops below
+2.5e-5. Do **not** loosen tolerances. Each resume script refuses a
+non-RUNNING checkpoint.
+
+A CONVERGED checkpoint also copies the native `43d0d422`
+`h_final_material.json` / `h_thresh_material.json` into campaign logs,
+then triggers a PR #90 `--max-steps=0` material eval of the certified
+`h_final` (dx 0.5 / 0.25, not the amplifying dx=1 128 field). That eval
+is skipped if the allocation stopped RUNNING. Final consumers run only
+when the full hold passes. Preserve failures; do not silently reset the
+history.
 
 Return a genuinely converged pair or a diagnosed numerical obstruction. Do not
 claim asymptotic resolution credibility from only two grids. No larger grid

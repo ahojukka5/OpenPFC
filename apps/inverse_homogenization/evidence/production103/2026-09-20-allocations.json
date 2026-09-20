@@ -38,26 +38,54 @@
       "job": 22185790,
       "parent": 22183561,
       "stop_after": 3000,
-      "state": "RUNNING",
+      "state": "COMPLETED",
       "csv": "history-02.csv",
-      "restart_from_next_step": 1500,
-      "last_csv_step": 2197,
-      "C12": 0.00989816,
-      "design_rms": 4.66163e-05,
-      "grey": 0.751444,
-      "note": "In-place CURRENT resume, same SHA/ranks/args. C12>0 throughout. Not auxetic."
+      "csv_termination": "RUNNING",
+      "checkpoint_termination": 0,
+      "next_step_at_stop": 3000,
+      "last_csv_step": 2999,
+      "C12": 0.0095931,
+      "design_rms": 3.39244e-05,
+      "grey": 0.700048,
+      "note": "Stop-after 3000 still RUNNING scientifically. C12>0. Not auxetic."
     },
-    "allocation_03_queued": {
+    "allocation_03": {
       "job": 22185871,
-      "dependency": "afterok:22185790",
+      "parent": 22185790,
       "stop_after": 4500,
-      "reason": "Linear RMS fit on history-02 steps 2148-2197 projects quiet ~3158 and hold end ~3558. r2 stop-after 3000 still cuts before quiet. r3 4500 still covers the hold (~940-step margin). Do not queue r4. Script refuses termination!=0."
+      "state": "RUNNING",
+      "partition": "dev-g",
+      "csv": "history-03.csv",
+      "last_csv_step": 3304,
+      "C12": 0.00945689,
+      "design_rms": 3.20518e-05,
+      "grey": 0.67708,
+      "note": "design_rms limiter. Late exp asymptote ~3.05e-5 above tol. C12>0."
     },
+    "allocation_04_queued": {
+      "job": 22191420,
+      "dependency": "afterany:22185871",
+      "stop_after": 5000,
+      "partition": "dev-g",
+      "TimeLimit": "02:50:00",
+      "reason": "Linear quiet receded past 4500. afterany so r3 TimeLimit still continues."
+    },
+    "allocation_05_queued": {
+      "job": 22192220,
+      "dependency": "afterany:22191420",
+      "stop_after": 5500,
+      "partition": "small-g",
+      "TimeLimit": "02:30:00",
+      "reason": "dev-g MaxSubmit=2 is r3+r4. Linear projected CONVERGED ~5530 is past 5500; that is the plateau signature, not a reason to queue r6. Record whether RMS levels off or a second decay appears."
+    },
+    "do_not_queue_r6_unless_exp_asymptote_below_tol": true,
+    "rms_plateau": "apps/inverse_homogenization/evidence/production103/2026-09-20-rms-plateau.json",
     "eval_if_converged": {
-      "after_r2": 22186290,
-      "after_r3": 22186291,
+      "after_r4": 22191421,
+      "after_r5": 22192221,
+      "cancelled_skip_only": [22186290, 22186291],
       "dx": 0.5,
-      "note": "CONVERGED-only. Submit PR #90 first; native 43d0d422 JSON ingest is best-effort. Replaced 22186248/22186249."
+      "note": "CONVERGED-only. Skip-only r2/r3 evals cancelled. Native 43d0d422 JSON ingest is best-effort; watchdog also ingests if termination==1."
     }
   },
   "256": {
@@ -68,7 +96,12 @@
       "state": "RUNNING",
       "phase": "continuation",
       "stop_after": 1500,
-      "resume_afterok": 22185791
+      "last_csv_step": 1089,
+      "simp_p": 1.91054,
+      "C12": 0.00931639,
+      "design_rms": 0.000104931,
+      "grey": 0.748886,
+      "note": "RMS ~1.05e-4 and slightly rising as SIMP ramps; not a frozen-hold plateau yet. C12>0. Freeze at 1197."
     },
     "allocation_02_queued": {
       "job": 22185791,
@@ -90,5 +123,5 @@
       "note": "CONVERGED-only. Submit PR #90 first; native 43d0d422 JSON ingest is best-effort. Replaced 22186250/22186251."
     }
   },
-  "interpretation": "dt=0.01 normalize=0 is already conventional (C12>0, grey ~0.78) in frozen continuation. Stop-after 1500 is operational. Resume from RUNNING CURRENT is qualified at production rank. Not Yang A3 auxetic production and not the amplifying 2-cycle."
+  "interpretation": "dt=0.01 normalize=0 is conventional (C12>0) in both arms. 128 late exp design_rms asymptote ~3.05e-5 is above tol; linear quiet past 5500 is that plateau, not CONVERGED. Do not loosen tol. Do not queue r6. 256 still continuation. Stop-after is operational. Not Yang A3 auxetic production and not the amplifying 2-cycle."
 }
