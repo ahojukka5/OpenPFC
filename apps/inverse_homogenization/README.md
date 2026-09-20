@@ -83,14 +83,17 @@ iterate, so those animations were cut while the design was moving.
 
 ## Checkpoint / restart (issue #72)
 
-`--checkpoint-dir` writes `h.bin`, `h_prev.bin`, and `state.txt` after
-each accepted iterate. `--restart=DIR` continues the same frozen
-problem. Schema 2 fingerprints the target \(C\), phase moduli, SIMP /
-regularization endpoints, step/projection, window, and tolerances.
-`--max-steps` is a run budget and may change; any other mismatch is
-rejected. Schema 1 files do not load. HIP restart equivalence (job
-22178478, schema 1) remains admitted for iterate metrics; production
-walltime recovery should use schema 2.
+`--checkpoint-dir` publishes a complete generation (`gen_<next_step>/`
+with `h.bin`, `h_prev.bin`, `state.txt`, and HIP `dump_steps.txt`) and
+then atomically retargets `CURRENT`. A walltime kill during the write
+leaves the previous published generation loadable. `--restart=DIR` reads
+`CURRENT` (or an explicit generation directory). Schema 2 fingerprints
+the target \(C\), phase moduli, SIMP / regularization endpoints,
+step/projection, window, and tolerances. `--max-steps` is a run budget
+and may change; any other mismatch is rejected. Schema 1 files do not
+load. HIP restart equivalence (job 22178478, schema 1) remains admitted
+for iterate metrics; production walltime recovery should use schema 2
+generation directories.
 
 ## Finite-strain forward ladder (issue #55)
 
