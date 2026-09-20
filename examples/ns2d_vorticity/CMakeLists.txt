@@ -47,6 +47,10 @@ if(OpenPFC_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mhd_sheet_geometry.py)
     set_tests_properties(mhd-sheet-geometry-python PROPERTIES TIMEOUT 120)
+    add_test(NAME mhd-conference-vis-python
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mhd_conference_vis.py)
+    set_tests_properties(mhd-conference-vis-python PROPERTIES TIMEOUT 120)
   endif()
 endif()
 
