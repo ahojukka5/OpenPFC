@@ -336,6 +336,69 @@ cray-python 3.11: `ALL TOPOLOGY TESTS PASSED`.
 \(\max|j|\) decays from 0.80 because that peak is O-point current,
 not a reconnection proxy.
 
-Do not proceed to \(\eta=0.005\) in this PR. Do not fit a scaling
-exponent.
+Stage 0 ends here. Stage 1 follows.
+
+## Stage-1 evidence (\(\eta=\nu=0.005\))
+
+Runs on `slurm/coalescence_stage1.sbatch`, analysis on
+`slurm/coalescence_analyze_stage1.sbatch`. Jobs 22197598 (256² CFL 0.4),
+22197600 (256² CFL 0.2), 22197599 (512² CFL 0.4); analysis 22197761,
+22197781, 22197909. Initial geometry, perturbation and the frozen
+\(\alpha_{\mathrm{lo}}/\alpha_{\mathrm{hi}}\) constants are unchanged.
+
+### The frozen bracket is not reachable at this resistivity
+
+The Stage-0 comparison interval \(p\in[0.30,0.60]\) assumed
+\(\mathrm{cond}(X)<10\). At \(\eta=0.005\) the X-point Hessian crosses
+that gate at \(p=0.298\) — the bottom of the bracket — and tracking stops
+at \(p=0.398\). The bracket was **not** retuned. Instead the
+\(\eta=0.01\) means were recomputed on the truncated window
+\(p\in[0.30,0.398]\), so both resistivities are compared over the same
+progress interval.
+
+Two controls show the truncation is not a numerical artifact of the
+comparison. Ohm's law at the tracked X holds to
+\(|E_{z,X}-\eta j_X|/|E_{z,X}|\le1.6\times10^{-4}\) throughout the window
+even where \(\mathrm{cond}(X)=11\)–\(18\), the same accuracy as
+\(\eta=0.01\) at \(\mathrm{cond}(X)\approx2.4\); the flat saddle degrades
+the X *location*, not the rate. And the growth of \(\mathrm{cond}(X)\) is
+reproduced by 512² and by CFL 0.2.
+
+### Matched-window comparison
+
+| quantity | \(\eta=0.010\) 256² | \(\eta=0.005\) 256² | \(\eta=0.005\) 512² | \(\eta=0.005\) CFL 0.2 |
+|---|---:|---:|---:|---:|
+| dumps in window | 11 | 10 | 7 | 10 |
+| mean \(R\) | 0.0803 | 0.1244 | 0.1181 | 0.1244 |
+| mean \(S_{\mathrm{local}}\) | 18.03 | 40.61 | 39.50 | 40.61 |
+| mean \(\delta\) | 0.4473 | 0.2581 | 0.2628 | 0.2581 |
+| mean \(L\) | 0.9153 | 0.9146 | 0.8919 | 0.9146 |
+| mean \(\delta/L\) | 0.4887 | 0.2822 | 0.2947 | 0.2822 |
+| mean \(B_{\mathrm{up}}\) | 0.1971 | 0.2220 | 0.2214 | 0.2220 |
+| mean \(j_X\) | \(-0.3094\) | \(-1.2267\) | \(-1.1615\) | \(-1.2267\) |
+
+CFL 0.2 reproduces CFL 0.4 to printed precision; 512² agrees with 256²
+within 5% on every entry.
+
+### Direction
+
+Halving \(\eta\) multiplies \(S_{\mathrm{local}}\) by 2.25 and multiplies
+\(R\) by 1.55. The rate **rises** with local Lundquist number over this
+window. No exponent is fitted here, as Stage 1 requires.
+
+The local geometry is not \(\eta\)-independent: \(\delta\) falls by 0.58
+at essentially unchanged \(L\) (ratio 0.999), and \(j_X\) grows by 3.96
+while \(\eta\) halves, so \(E_{z,X}=\eta j_X\) nearly doubles. This is the
+opposite of the accepted Orszag–Tang result, where \(\delta\), \(L\) and
+\(B_{\mathrm{up}}\) are nearly \(\eta\)-independent and
+\(R\sim S_{\mathrm{local}}^{-1}\).
+
+### Limits of this stage
+
+\(j_X\) is still growing steeply at the end of the window, so the interval
+covers sheet intensification rather than a quasi-steady phase. Two
+resistivities over a truncated early window do not establish a scaling law;
+they establish that the Orszag–Tang geometry/rate relation does not carry
+over. A third resistivity needs the event definition revisited first, because
+\(p\in[0.30,0.60]\) will be even less reachable at \(\eta=0.0025\).
 
