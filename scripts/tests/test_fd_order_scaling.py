@@ -218,6 +218,56 @@ def test_sbatch_overrides_inherited_export_none():
     assert "libfabric.so.1" in text
 
 
+def test_geometry_table_matches_packed_faces_and_orders():
+    rows = {int(r["fd_order"]): r for r in t.geometry_table()}
+    assert set(rows) == {2, 4, 8, 12, 20}
+    fd2 = rows[2]
+    assert fd2["halo_width"] == 1
+    assert fd2["owned_cells"] == 256 ** 3
+    assert fd2["interior_cells"] == 254 ** 3
+    assert fd2["elems_per_face"] == 256 * 256 * 1
+    assert fd2["total_face_bytes"] == 6 * 256 * 256 * 1 * 8
+    fd20 = rows[20]
+    assert fd20["halo_width"] == 10
+    assert fd20["interior_cells"] == 236 ** 3
+    assert float(fd20["relative_arith_vs_fd2"]) > 1.0
+    assert t.OVERLAP_MODEL.startswith("T_step")
+
+
+def test_harvest_keeps_failed_run(tmp_path):
+    run = tmp_path / "runs" / "h3d108c-fd2-128n-r1"
+    run.mkdir(parents=True)
+    (run / "run_meta.txt").write_text(
+        "\n".join(
+            [
+                "job=22186610",
+                "account=project_462001245",
+                "nodes=128",
+                "ntasks=1024",
+                "fd_order=2",
+                "mode=clean",
+                "repeat=1",
+                "Nx=2048",
+                "Ny=2048",
+                "Nz=4096",
+                "OPENPFC_FD_PROC_GRID=8x8x16",
+            ]
+        )
+        + "\n"
+    )
+    (run / "admit.txt").write_text("admit=reject\nreason=srun_exit_143\n")
+    (run / "run.log").write_text(
+        "libfabric.so.1: cannot open shared object file\n"
+    )
+    rc = t.harvest(str(tmp_path), str(tmp_path / "results"), warmup=5)
+    assert rc == 0
+    text = (tmp_path / "results" / "runs.csv").read_text()
+    assert "22186610" in text
+    assert "reject" in text
+    status = (tmp_path / "results" / "status.md").read_text()
+    assert "108" in status
+
+
 @pytest.mark.parametrize("account", ["project_462001519", ""])
 def test_batch_refuses_wrong_or_missing_account(account):
     env = os.environ.copy()
