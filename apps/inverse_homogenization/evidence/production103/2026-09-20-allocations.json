@@ -1,0 +1,65 @@
+{
+  "schema": "openpfc-inverse-evidence/v1",
+  "issue": 103,
+  "pr": 104,
+  "evidence_class": "numerical_experiment_result",
+  "status": "running_not_converged",
+  "question": "Do checkpointed 128/256 dt=0.01 normalize=0 controls CONVERGE after freeze?",
+  "account": "project_462001245",
+  "binary_source": "43d0d4224340532594f2ae6f618a7e661cbd0ff9",
+  "binary_sha256": "590a350fae0cc8d27511b415aeb1337bea72724fe0c8d8c814127b90ea674fa6",
+  "target_sha256": "81cec52af7d770af2244e7b6c00a7d3e96f9c6b3df921ba3badfbf3e4f75ebc8",
+  "initial128_sha256": "ecf733fbbbe8e0f831bc3daa6352090c6d1775eab82d58f4b6f28d150ff8f65f",
+  "protocol": "apps/inverse_homogenization/evidence/production103/protocol.md",
+  "do_not_call_stop_after_converged": true,
+  "not_amplifying_2cycle": true,
+  "not_auxetic_in_continuation": true,
+  "128": {
+    "root": "/scratch/project_462001245/juaho/inverse-homogenization/production103_128_22183561",
+    "ranks": 16,
+    "allocation_01": {
+      "job": 22183561,
+      "stop_after": 1500,
+      "state": "COMPLETED",
+      "last_csv_step": 1499,
+      "csv_termination": "RUNNING",
+      "checkpoint_termination": 0,
+      "next_step_at_stop": 1500,
+      "C12": 0.0102959,
+      "nu_eff": 0.220903,
+      "grey": 0.784424,
+      "design_rms": 6.48686e-05,
+      "dC_rel": 5.98873e-05,
+      "tol_design": 2.5e-05,
+      "quiet_count": 0,
+      "candidate": 0
+    },
+    "allocation_02": {
+      "job": 22185790,
+      "parent": 22183561,
+      "stop_after": 3000,
+      "state": "RUNNING",
+      "csv": "history-02.csv",
+      "restart_from_next_step": 1500,
+      "note": "In-place CURRENT resume, same SHA/ranks/args. history-02 step 1500 C12=0.0102955 continues 1499."
+    },
+    "allocation_03_queued": {
+      "job": 22185871,
+      "dependency": "afterok:22185790",
+      "stop_after": 4500,
+      "reason": "Linear RMS fit needs ~1040 steps to 2.5e-5 then window 80 + hold 400; stop-after 3000 is ~40 steps short of that hold. Script refuses termination!=0."
+    }
+  },
+  "256": {
+    "root": "/scratch/project_462001245/juaho/inverse-homogenization/production103_256_22183562",
+    "ranks": 128,
+    "allocation_01": {
+      "job": 22183562,
+      "state": "RUNNING",
+      "phase": "continuation",
+      "stop_after": 1500,
+      "resume_afterok": 22185791
+    }
+  },
+  "interpretation": "dt=0.01 normalize=0 is already conventional (C12>0, grey ~0.78) in frozen continuation. Stop-after 1500 is operational. Resume from RUNNING CURRENT is qualified at production rank. Not Yang A3 auxetic production and not the amplifying 2-cycle."
+}
