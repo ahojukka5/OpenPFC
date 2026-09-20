@@ -1,0 +1,11 @@
+{
+  "asset": "comparison",
+  "fps": 4,
+  "frames_dir": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/generated/comparison_evidence",
+  "hold_last": 8,
+  "kind": "evidence",
+  "mp4": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/evidence/comparison_three_eta.mp4",
+  "n_unique_frames": 21,
+  "note": "No field interpolation. Last frame is held for talk pacing.",
+  "window": "accepted reconnection window"
+}

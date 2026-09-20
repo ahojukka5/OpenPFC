@@ -1,0 +1,26 @@
+{
+  "N": 512,
+  "case": "Orszag\u2013Tang",
+  "case_id": "ot512_eta0005",
+  "cfl": 0.4,
+  "eta": 0.005,
+  "issues": [
+    23,
+    26,
+    38,
+    39
+  ],
+  "kind": "evidence",
+  "mean_Ez_X": 0.012088909017919097,
+  "mean_dFdt": 0.027405121371894395,
+  "n": 21,
+  "nu": 0.005,
+  "output": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/evidence/flux_budget_eta0005.png",
+  "run_dir": "/scratch/project_462001519/juaho/mhd2d-23/ot512_nu0005_peak",
+  "spatial_convergence": "256 vs 512",
+  "t": 0.785398,
+  "t_first": 0.0,
+  "t_last": 0.785398,
+  "timestep_convergence": "CFL 0.4 vs 0.2 at 256 (#26)",
+  "window": "accepted reconnection window"
+}

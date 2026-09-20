@@ -1,0 +1,58 @@
+{
+  "kind": "scaling",
+  "ols_intercept": 4.3368635825247726,
+  "ols_se": 0.02129319815251359,
+  "ols_se_meaning": "formal OLS standard error (n-2 dof); not physical",
+  "ols_slope": -1.095554907752832,
+  "output": "/pfs/lustref1/flash/project_462001519/juaho/dev/worktrees/openpfc/mhd-vis/examples/ns2d_vorticity/figures/evidence/scaling_R_vs_S.png",
+  "points": [
+    {
+      "B_up": 0.18402045981110088,
+      "L": 3.5485269112686963,
+      "L_over_delta": 7.792042920309185,
+      "N": 256,
+      "R": 0.7735853528415625,
+      "RS": 43.716156442200905,
+      "S_local": 66.74767789078096,
+      "case_id": "ot256_eta01",
+      "delta": 0.45540392263751706,
+      "eta": 0.01,
+      "j_X": 2.542121239568908,
+      "n_dumps": 10,
+      "source": "/scratch/project_462001519/juaho/mhd2d-23/ot256_nu001_cfl04/sheet_scaling.json"
+    },
+    {
+      "B_up": 0.19705805537096563,
+      "L": 3.4904635064318894,
+      "L_over_delta": 7.726828840024048,
+      "N": 512,
+      "R": 0.34034568127215387,
+      "RS": 41.69965831429117,
+      "S_local": 137.86250740525867,
+      "case_id": "ot512_eta0005",
+      "delta": 0.4517329914636787,
+      "eta": 0.005,
+      "j_X": 2.6481274205061878,
+      "n_dumps": 10,
+      "source": "/scratch/project_462001519/juaho/mhd2d-23/ot512_nu0005_peak/sheet_scaling.json"
+    },
+    {
+      "B_up": 0.20419317539821247,
+      "L": 3.467582703672979,
+      "L_over_delta": 7.7097663156860925,
+      "N": 1024,
+      "R": 0.16018538289917625,
+      "RS": 40.817552073353504,
+      "S_local": 281.01974434296756,
+      "case_id": "ot1024_eta00025",
+      "delta": 0.4497649554718571,
+      "eta": 0.0025,
+      "j_X": 2.704293109639448,
+      "n_dumps": 10,
+      "source": "/scratch/project_462001519/juaho/mhd2d-23/ot1024_nu00025_cfl02_t080/sheet_scaling.json"
+    }
+  ],
+  "t_hi": 0.7,
+  "t_lo": 0.314,
+  "window": "scaling summary"
+}
