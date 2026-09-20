@@ -67,6 +67,6 @@ SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
-path = ["docs/hpc/heffte-protocol-evidence/**"]
+path = ["docs/hpc/heffte-protocol-evidence/**", "apps/inverse_homogenization/evidence/checkpoint-state/**"]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
