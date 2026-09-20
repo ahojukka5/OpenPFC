@@ -127,3 +127,34 @@ Compare clean wall/step and weak efficiency across orders at the same
 node count. Attribute with halo bytes/rank, exposed MPI wait, interior
 and boundary kernels, and off-node faces. Look for monotone degradation,
 improved scaling at moderate/high order, or a non-monotone optimum.
+
+## Harvested production wall/step (2026-09-21)
+
+Fail-closed harvest first returned zero rows because the batch script
+copied `fd_placement.txt` onto itself under `set -e` and skipped
+`admit.txt`. The GPU jobs had already written checksums and
+`heat3d_profile.json`. Harvest job 22198421 recovered 24/25 rows from
+those artifacts (`reason=recovered_missing_admit`). Compact table:
+[`fd_order_campaign_scaling.csv`](fd_order_campaign_scaling.csv).
+
+Clean production median `wall_step` after warmup, halo overlap mode 1,
+frozen `dt=0.01`. Weak efficiency is blank: the 1-node baseline is
+still queued. Do not mix diagnostic-mode overlap timings with this
+table. Do not change production FD physics from these jobs.
+
+| order | width | 32 nodes | 128 nodes | 1024 nodes (n=3) | 1024 spread | vs FD-2 at 1024 |
+|------:|------:|---------:|----------:|-----------------:|------------:|----------------:|
+| 2 | 1 | 0.879 ms | 0.977 ms | 1.025 ms | 0.76% | 1.00× |
+| 4 | 2 | 1.620 ms | — | 1.932 ms | 0.82% | 1.89× |
+| 8 | 4 | 2.523 ms | — | 3.127 ms | 0.90% | 3.05× |
+| 12 | 6 | — | — | 4.523 ms | 0.37% | 4.41× |
+| 20 | 10 | — | — | 7.726 ms | 0.79% | 7.54× |
+
+1024-node geometry is $4096\times4096\times8192$ on 8192 ranks
+(`16\times16\times32`), local $256^3$. Jobs 22187770–22187784
+(clean) and 22187795–22187799 (diag, excluded from the table).
+Revision `0cedb257`. Where both 32- and 1024-node points exist,
+wall/step grows 17% (FD-2), 19% (FD-4) and 24% (FD-8) over that
+$32\times$ node increase.
+
+H1/H2/H3 remain open until the 1-node and 8-node baselines land.
