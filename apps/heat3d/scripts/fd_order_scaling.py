@@ -19,6 +19,7 @@ import csv
 import json
 import os
 import statistics
+import subprocess
 import sys
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -86,14 +87,88 @@ SCALE_FIELDS = (
     "jobs",
 )
 
+GEOMETRY_FIELDS = (
+    "fd_order",
+    "halo_width",
+    "owned_cells",
+    "interior_cells",
+    "boundary_cells",
+    "interior_fraction",
+    "boundary_fraction",
+    "elems_per_face",
+    "bytes_per_face",
+    "total_face_elems",
+    "total_face_bytes",
+    "halo_bytes_per_owned",
+    "d2_half_width",
+    "d2_unique_offsets",
+    "d2_naive_loads_3axis",
+    "d2_arith_ops_per_point",
+    "relative_arith_vs_fd2",
+    "interior_work_units",
+    "interior_work_per_halo_byte",
+)
+
+# EvenCentralD2: per axis, M neighbour pairs + centre, then three axes summed.
+# Naive loads count centre three times (independent apply_d2_along).
+# Unique offsets = 1 centre + 6M axial neighbours (the fused read set).
+# Arithmetic: per axis (2M adds of ±k, M+1 muls, 1 scale); 2 adds to sum axes.
+
 
 def halo_width(order: int) -> int:
     return order // 2
 
 
 def halo_face_bytes(order: int, interior: int = INTERIOR) -> int:
-    # Six packed faces of interior^2 * width * sizeof(double).
+    # Six packed Faces of interior^2 * width * sizeof(double). Corners
+    # travel on more than one face; that is the production pack.
     return 6 * interior * interior * halo_width(order) * 8
+
+
+def geometry_row(order: int, interior: int = INTERIOR) -> Dict[str, Any]:
+    w = halo_width(order)
+    owned = interior ** 3
+    inner_n = interior - 2 * w
+    interior_cells = inner_n ** 3 if inner_n > 0 else 0
+    boundary_cells = owned - interior_cells
+    elems_face = interior * interior * w
+    bytes_face = elems_face * 8
+    total_elems = 6 * elems_face
+    total_bytes = 6 * bytes_face
+    naive_loads = 3 * (1 + 2 * w)
+    unique_offsets = 1 + 6 * w
+    # per axis: 2w adds, (w+1) muls, 1 scale; plus 2 adds across axes
+    arith = 3 * (2 * w + (w + 1) + 1) + 2
+    arith2 = 3 * (2 * 1 + (1 + 1) + 1) + 2
+    return {
+        "fd_order": order,
+        "halo_width": w,
+        "owned_cells": owned,
+        "interior_cells": interior_cells,
+        "boundary_cells": boundary_cells,
+        "interior_fraction": "%.6f" % (interior_cells / float(owned)),
+        "boundary_fraction": "%.6f" % (boundary_cells / float(owned)),
+        "elems_per_face": elems_face,
+        "bytes_per_face": bytes_face,
+        "total_face_elems": total_elems,
+        "total_face_bytes": total_bytes,
+        "halo_bytes_per_owned": "%.6e" % (total_bytes / float(owned)),
+        "d2_half_width": w,
+        "d2_unique_offsets": unique_offsets,
+        "d2_naive_loads_3axis": naive_loads,
+        "d2_arith_ops_per_point": arith,
+        "relative_arith_vs_fd2": "%.4f" % (arith / float(arith2)),
+        "interior_work_units": interior_cells * arith,
+        "interior_work_per_halo_byte": (
+            "%.6e" % (interior_cells * arith / float(total_bytes))
+            if total_bytes
+            else ""
+        ),
+    }
+
+
+def geometry_table() -> List[Dict[str, Any]]:
+    return [geometry_row(o) for o in ORDERS]
 
 
 def proc_grid_for_ranks(ranks: int) -> Tuple[int, int, int]:
@@ -289,8 +364,11 @@ def collect_run(run: str, warmup: int) -> Optional[Dict[str, Any]]:
     ranks = _parse_int(meta.get("ntasks")) or (nodes * GCDS_PER_NODE)
     order = _parse_int(meta.get("fd_order")) or _parse_int(decomp.get("fd_order"))
     mode = meta.get("mode") or ("diagnostic" if meta.get("HEAT3D_DIAG_TIMING") == "1" else "clean")
-    admit_flag = admit.get("admit") or "ok"
-    reason = admit.get("reason") or "none"
+    admit_flag = admit.get("admit") or ""
+    reason = admit.get("reason") or ""
+    if not admit_flag:
+        admit_flag = "missing"
+        reason = reason or "missing_admit"
     wall = None
     prof = os.path.join(run, "timing_profile.json")
     if os.path.isfile(prof) and admit_flag == "ok":
@@ -548,12 +626,194 @@ def write_markdown(path: str, scale_rows: Sequence[Dict[str, Any]], notes: Seque
         f.write("\n")
 
 
+OVERLAP_MODEL = (
+    "T_step ≈ T_post + max(T_inner, T_network_progress) + "
+    "T_exposed_wait + T_border + T_update"
+)
+
+OVERLAP_MAP = (
+    ("T_post", "HEAT3D_OVERLAP post_s", "diag overlap jobs"),
+    ("T_inner", "HEAT3D_OVERLAP inner_s", "diag overlap jobs"),
+    ("T_exposed_wait", "HEAT3D_OVERLAP exposed_wait_s", "diag overlap jobs"),
+    ("T_border", "HEAT3D_OVERLAP border_s", "diag overlap jobs"),
+    ("T_update", "HEAT3D_DIAG update_s", "diag jobs"),
+    ("T_network_progress", "not timed; hidden iff inner_s > exposed_wait_s", "inferred"),
+    ("T_step", "timing_profile.json wall_step", "clean and diag"),
+)
+
+
+def expected_jobs() -> List[Dict[str, Any]]:
+    out = []
+    for nodes, nx, ny, nz, grid, ranks in ladder():
+        nrep = repeats_for_nodes(nodes)
+        for order in ORDERS:
+            for repeat in range(1, nrep + 1):
+                out.append(
+                    {
+                        "name": "h3d108c-fd%d-%dn-r%d" % (order, nodes, repeat),
+                        "mode": "clean",
+                        "order": order,
+                        "nodes": nodes,
+                        "repeat": repeat,
+                        "grid": grid,
+                        "ranks": ranks,
+                    }
+                )
+        if nodes in DIAG_NODES:
+            for order in ORDERS:
+                out.append(
+                    {
+                        "name": "h3d108d-fd%d-%dn-r1" % (order, nodes),
+                        "mode": "diagnostic",
+                        "order": order,
+                        "nodes": nodes,
+                        "repeat": 1,
+                        "grid": grid,
+                        "ranks": ranks,
+                    }
+                )
+    return out
+
+
+def _slurm_table() -> Dict[str, Dict[str, str]]:
+    out: Dict[str, Dict[str, str]] = {}
+    user = os.environ.get("USER", "juaho")
+    for cmd in (
+        [
+            "sacct", "-X", "-S", "2026-09-20", "-u", user,
+            "-A", "project_462001245", "-n", "-P",
+            "--format=JobID,JobName,State",
+        ],
+        [
+            "squeue", "-u", user, "-A", "project_462001245", "-h",
+            "-o", "%i|%j|%T",
+        ],
+    ):
+        try:
+            proc = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if proc.returncode != 0:
+            continue
+        for line in proc.stdout.splitlines():
+            parts = line.strip().split("|")
+            if len(parts) < 3:
+                continue
+            jobid, name, state = parts[0], parts[1], parts[2].split()[0]
+            if not name.startswith("h3d108"):
+                continue
+            out[name] = {"job": jobid, "state": state}
+    return out
+
+
+def write_status_markdown(
+    path: str,
+    rows: Sequence[Dict[str, Any]],
+    scale_rows: Sequence[Dict[str, Any]],
+    slurm: Dict[str, Dict[str, str]],
+) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    by_key: Dict[Tuple[int, int, str], List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        try:
+            order = int(row.get("fd_order") or 0)
+            nodes = int(row.get("nodes") or 0)
+        except (TypeError, ValueError):
+            continue
+        mode = str(row.get("mode") or "clean")
+        by_key[(order, nodes, mode)].append(row)
+    scale_map = {
+        (int(r["fd_order"]), int(r["nodes"])): r for r in scale_rows
+    }
+    with open(path, "w") as f:
+        f.write("# Issue #108 campaign status\n\n")
+        f.write(
+            "Clean production wall/step only in the efficiency columns. "
+            "Do not declare an order winner from one allocation.\n\n"
+        )
+        f.write(
+            "| order | nodes | clean n | wall/step | weak eff | spread | "
+            "diag | PENDING | FAILED |\n"
+        )
+        f.write("|-----:|------:|--------:|----------:|---------:|-------:|-----:|--------:|-------:|\n")
+        for order in ORDERS:
+            for nodes in NODE_LADDER:
+                want = repeats_for_nodes(nodes)
+                cleans = by_key.get((order, nodes, "clean"), [])
+                ok = [
+                    r for r in cleans
+                    if str(r.get("admit")) == "ok" and r.get("wall_step_s")
+                ]
+                n_ok = len(ok)
+                scale = scale_map.get((order, nodes))
+                wall = scale["wall_step_s_median"] if scale else ""
+                eff = scale["weak_eff"] if scale else ""
+                spread = ""
+                if scale and n_ok:
+                    lo = float(scale["wall_step_s_min"])
+                    hi = float(scale["wall_step_s_max"])
+                    if lo > 0:
+                        spread = "%.2f%%" % (100.0 * (hi - lo) / lo)
+                diags = by_key.get((order, nodes, "diagnostic"), [])
+                diag_n = sum(
+                    1 for r in diags
+                    if str(r.get("admit")) == "ok" and r.get("inner_s")
+                )
+                pending = failed = 0
+                names = [
+                    "h3d108c-fd%d-%dn-r%d" % (order, nodes, r)
+                    for r in range(1, want + 1)
+                ]
+                if nodes in DIAG_NODES:
+                    names.append("h3d108d-fd%d-%dn-r1" % (order, nodes))
+                for name in names:
+                    st = (slurm.get(name) or {}).get("state", "")
+                    if st == "PENDING":
+                        pending += 1
+                    elif st in ("FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"):
+                        failed += 1
+                f.write(
+                    "| %d | %d | %d/%d | %s | %s | %s | %d | %d | %d |\n"
+                    % (
+                        order, nodes, n_ok, want, wall, eff, spread,
+                        diag_n, pending, failed,
+                    )
+                )
+        f.write("\nRejected and missing runs stay in `runs.csv`.\n")
+
+
+def harvest(root: str, out_dir: str, warmup: int) -> int:
+    os.makedirs(out_dir, exist_ok=True)
+    rows = collect_root(root, warmup)
+    write_csv(os.path.join(out_dir, "runs.csv"), RUN_FIELDS, rows)
+    scale = analyze(rows)
+    write_csv(os.path.join(out_dir, "scaling.csv"), SCALE_FIELDS, scale)
+    notes = notes_for(scale)
+    write_markdown(os.path.join(out_dir, "scaling.md"), scale, notes)
+    slurm = _slurm_table()
+    write_status_markdown(os.path.join(out_dir, "status.md"), rows, scale, slurm)
+    n_ok = sum(1 for r in rows if str(r.get("admit")) == "ok" and r.get("wall_step_s"))
+    n_rej = sum(1 for r in rows if str(r.get("admit")) != "ok")
+    print("harvest rows=%d valid=%d rejected_or_incomplete=%d" % (
+        len(rows), n_ok, n_rej
+    ))
+    print("wrote %s" % os.path.join(out_dir, "status.md"))
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--check", action="store_true")
     p.add_argument("--ladder", action="store_true")
+    p.add_argument("--geometry", action="store_true")
     p.add_argument("--collect")
     p.add_argument("--analyze")
+    p.add_argument("--harvest")
     p.add_argument("--out")
     p.add_argument("--warmup", type=int, default=5)
     args = p.parse_args(argv)
@@ -561,6 +821,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return check()
     if args.ladder:
         return print_ladder()
+    if args.geometry:
+        if not args.out:
+            print("--geometry requires --out CSV", file=sys.stderr)
+            return 2
+        write_csv(args.out, GEOMETRY_FIELDS, geometry_table())
+        print("wrote %s" % args.out)
+        return 0
+    if args.harvest:
+        if not args.out:
+            print("--harvest requires --out DIR", file=sys.stderr)
+            return 2
+        return harvest(args.harvest, args.out, args.warmup)
     if args.collect:
         if not args.out:
             print("--collect requires --out CSV", file=sys.stderr)

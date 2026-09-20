@@ -14,6 +14,8 @@
 #     ./submit_fd_order_scaling.sh diag
 #   ./submit_fd_order_scaling.sh collect
 #   ./submit_fd_order_scaling.sh analyze
+#   ./submit_fd_order_scaling.sh harvest
+#   ./submit_fd_order_scaling.sh geometry
 #
 # Optional: ACCOUNT, PARTITION, NODES, ORDERS, REPEATS, DRY_RUN=1,
 #           OPENPFC_SCALING_ROOT
@@ -50,9 +52,9 @@ if ! account_allowed "${ACCOUNT}"; then
 fi
 
 case "${MODE}" in
-  check|clean|diag|collect|analyze) ;;
+  check|clean|diag|collect|analyze|harvest|geometry) ;;
   *)
-    echo "usage: $0 check|clean|diag|collect|analyze" >&2
+    echo "usage: $0 check|clean|diag|collect|analyze|harvest|geometry" >&2
     exit 1
     ;;
 esac
@@ -71,6 +73,16 @@ fi
 if [[ "${MODE}" == "analyze" ]]; then
   python3 "${PY}" --analyze "${CAMPAIGN_ROOT}/results/runs.csv" \
     --out "${CAMPAIGN_ROOT}/results"
+  exit 0
+fi
+if [[ "${MODE}" == "harvest" ]]; then
+  python3 "${PY}" --harvest "${CAMPAIGN_ROOT}" \
+    --out "${CAMPAIGN_ROOT}/results"
+  exit 0
+fi
+if [[ "${MODE}" == "geometry" ]]; then
+  python3 "${PY}" --geometry \
+    --out "${SCRIPT_DIR}/../hpc/fd_order_geometry.csv"
   exit 0
 fi
 

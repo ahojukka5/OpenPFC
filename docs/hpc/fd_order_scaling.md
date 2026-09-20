@@ -79,6 +79,48 @@ Clean jobs unset overlap/diagnostic knobs so the binary keeps the
 production two-stream default. Diagnostic jobs set
 `HEAT3D_KEEP_OVERRIDES=1` and `HEAT3D_DIAG_TIMING=1` only.
 
+## Geometry and overlap model (pre-measurement)
+
+Packed-face halo bytes follow the production `Connectivity::Faces` pack:
+six faces of `256² × width` doubles. Corners ride more than one face.
+
+The generated table is
+[`fd_order_geometry.csv`](fd_order_geometry.csv). Interior work counts
+are from `EvenCentralD2` (three axial applies, not a hardware FLOP
+counter).
+
+Production two-stream path (`heat3d_fd_hip` overlap mode 2):
+
+```text
+T_step ≈ T_post + max(T_inner, T_network_progress)
+         + T_exposed_wait + T_border + T_update
+```
+
+| term | diagnostic field |
+|------|------------------|
+| `T_post` | `HEAT3D_OVERLAP post_s` |
+| `T_inner` | `HEAT3D_OVERLAP inner_s` |
+| `T_exposed_wait` | `HEAT3D_OVERLAP exposed_wait_s` |
+| `T_border` | `HEAT3D_OVERLAP border_s` |
+| `T_update` | `HEAT3D_DIAG update_s` |
+| `T_network_progress` | not timed; hidden when `inner_s > exposed_wait_s` |
+| `T_step` | `wall_step` |
+
+Qualitative discrimination, no numerical winners:
+
+- **H1** (width-dominated): large-scale weak efficiency degrades
+  monotonically with order; `exposed_wait` tracks face bytes.
+- **H2** (arithmetic/overlap-dominated): some higher order keeps weak
+  efficiency at least as high as FD-2 because extra interior work hides
+  the wait.
+- **H3** (non-monotone): best large-scale efficiency sits strictly
+  between FD-2 and FD-20.
+
+```bash
+./docs/lumi_slurm/submit_fd_order_scaling.sh geometry
+./docs/lumi_slurm/submit_fd_order_scaling.sh harvest
+```
+
 ## Analysis
 
 Compare clean wall/step and weak efficiency across orders at the same
