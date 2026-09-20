@@ -143,7 +143,8 @@ versus `alltoallv` is unresolved at 124, 136, 264 and 528 nodes
 (winner/second within 2%). The 128-node `p2p_plined` win is a single
 allocation and is not a ranking. 512-node later protocols often die
 with SIGTERM 143 (`switch_g_job_postfini: Device or resource busy`)
-after the first sequential `srun`; do not treat that allocation as a
+after the first sequential `srun`. Resubmits drain HIP for 90 s after
+placement and between protocols. Do not treat a 143 allocation as a
 four-protocol tournament.
 
 112/240/248/256/480/496-node jobs were still queued at harvest.
