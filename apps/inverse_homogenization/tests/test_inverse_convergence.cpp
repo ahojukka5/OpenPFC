@@ -32,6 +32,7 @@ using pfc::apps::inverse::apply_tracker;
 using pfc::apps::inverse::capture_problem;
 using pfc::apps::inverse::capture_tracker;
 using pfc::apps::inverse::checkpoint_generation_name;
+using pfc::apps::inverse::checkpoint_is_restartable;
 using pfc::apps::inverse::checkpoint_matches_problem;
 using pfc::apps::inverse::checkpoint_staging_dir;
 using pfc::apps::inverse::continuation_fraction;
@@ -412,8 +413,29 @@ TEST_CASE("checkpoint text rejects schema 1 and a bad magic line",
   InverseCheckpoint ck;
   std::istringstream old_schema("OPENPFC_INVERSE_CHECKPOINT 1\nnx 8\n");
   REQUIRE_FALSE(read_checkpoint_text(old_schema, ck));
-  std::istringstream in("NOT_A_CHECKPOINT 2\n");
+  std::istringstream schema2("OPENPFC_INVERSE_CHECKPOINT 2\nnx 8\n");
+  REQUIRE_FALSE(read_checkpoint_text(schema2, ck));
+  std::istringstream in("NOT_A_CHECKPOINT 3\n");
   REQUIRE_FALSE(read_checkpoint_text(in, ck));
+}
+
+TEST_CASE("a terminal checkpoint is not restartable as continuation",
+          "[inverse-conv][72]") {
+  DummyInvCfg cfg;
+  Tiny6 Ct{};
+  Tiny6 W{};
+  InverseCheckpoint ck;
+  capture_problem(ck, cfg, Ct, W);
+  ck.next_step = 50;
+  ck.termination = static_cast<int>(TerminationReason::Converged);
+  REQUIRE_FALSE(checkpoint_is_restartable(ck));
+  std::istringstream in(format_checkpoint_text(ck));
+  InverseCheckpoint got;
+  REQUIRE(read_checkpoint_text(in, got));
+  REQUIRE(got.termination == static_cast<int>(TerminationReason::Converged));
+  REQUIRE_FALSE(checkpoint_is_restartable(got));
+  got.termination = static_cast<int>(TerminationReason::Running);
+  REQUIRE(checkpoint_is_restartable(got));
 }
 
 TEST_CASE("capture/apply tracker preserves window and hold", "[inverse-conv][72]") {

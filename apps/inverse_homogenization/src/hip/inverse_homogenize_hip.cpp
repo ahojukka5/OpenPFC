@@ -622,7 +622,9 @@ int run(int argc, char **argv, int rank, int nproc) {
        box.high[2] - box.low[2] + 1},
       {box.low[0], box.low[1], box.low[2]}, cfg.dx, rank, MPI_COMM_WORLD);
 
-  auto write_ckpt = [&](int next_step) {
+  auto write_ckpt = [&](int next_step,
+                         pfc::apps::inverse::TerminationReason why =
+                             pfc::apps::inverse::TerminationReason::Running) {
     if (cfg.checkpoint_dir.empty()) return;
     pfc::apps::inverse::InverseCheckpoint ck;
     pfc::apps::inverse::capture_problem(ck, cfg, spec.C_target, spec.W);
@@ -633,6 +635,7 @@ int run(int argc, char **argv, int rank, int nproc) {
     ck.have_prev = have_prev ? 1 : 0;
     ck.n_snap = n_snap;
     ck.last_dumped = last_dumped;
+    ck.termination = static_cast<int>(why);
     ck.J_prev = J_prev;
     pfc::apps::inverse::store_voigt6(ck.C_prev, C_prev);
     const auto root = std::filesystem::path(cfg.checkpoint_dir);
@@ -673,7 +676,8 @@ int run(int argc, char **argv, int rank, int nproc) {
         std::ifstream in(bundle + "/state.txt");
         if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
             !pfc::apps::inverse::checkpoint_matches_problem(
-                ck, cfg, spec.C_target, spec.W))
+                ck, cfg, spec.C_target, spec.W) ||
+            !pfc::apps::inverse::checkpoint_is_restartable(ck))
           ok = 0;
         else
           pfc::apps::inverse::read_dump_steps(bundle + "/dump_steps.txt",
@@ -818,7 +822,7 @@ int run(int argc, char **argv, int rank, int nproc) {
     if (reason != pfc::apps::inverse::TerminationReason::Running) {
       pfc::apps::inverse::copy_design_buffer(h_prev.data(), h.data(), h.size());
       h.note_host_write();
-      write_ckpt(n_done);
+      write_ckpt(n_done, reason);
       if (reason == pfc::apps::inverse::TerminationReason::ElasticityFailure) rc = 1;
       break;
     }

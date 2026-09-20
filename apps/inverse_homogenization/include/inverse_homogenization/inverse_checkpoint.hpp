@@ -14,7 +14,9 @@
  * endpoints, step/projection, tolerances). It does not reset convergence
  * history or unfreeze SIMP / `lambda_reg`. `--max-steps` is a run budget
  * and may change after a walltime restart; everything else that defines
- * the frozen inverse must match or the restart is rejected.
+ * the frozen inverse must match or the restart is rejected. A terminal
+ * `CONVERGED` / `MAX_STEPS` / `ELASTICITY_FAILURE` bundle is a certified
+ * snapshot and is not a continuation restart.
  *
  * Drivers publish a complete generation directory (`gen_<next_step>/`
  * with `h.bin`, `h_prev.bin`, `state.txt`, optional `dump_steps.txt`)
@@ -42,7 +44,7 @@
 
 namespace pfc::apps::inverse {
 
-inline constexpr int kInverseCheckpointSchema = 2;
+inline constexpr int kInverseCheckpointSchema = 3;
 inline constexpr std::string_view kInverseCheckpointMagic =
     "OPENPFC_INVERSE_CHECKPOINT";
 inline constexpr std::string_view kInverseCheckpointCurrent = "CURRENT";
@@ -63,6 +65,7 @@ struct InverseCheckpoint {
   int have_prev{0};
   int n_snap{0};
   int last_dumped{-1};
+  int termination{0};
   int normalize{1};
   int project_volume{0};
   int n_el_iter{0};
@@ -134,6 +137,11 @@ inline void capture_tracker(InverseCheckpoint &ck, const ConvergenceTracker &tr,
   ck.tol_design = tr.cfg.tol_design;
   ck.tol_objective = tr.cfg.tol_objective;
   ck.tol_tensor = tr.cfg.tol_tensor;
+}
+
+[[nodiscard]] inline bool
+checkpoint_is_restartable(const InverseCheckpoint &ck) noexcept {
+  return ck.termination == static_cast<int>(TerminationReason::Running);
 }
 
 template <typename Cfg, typename Tensor>
@@ -228,6 +236,7 @@ inline bool write_checkpoint_text(std::ostream &os, const InverseCheckpoint &ck)
   os << "have_prev " << ck.have_prev << '\n';
   os << "n_snap " << ck.n_snap << '\n';
   os << "last_dumped " << ck.last_dumped << '\n';
+  os << "termination " << ck.termination << '\n';
   os << "normalize " << ck.normalize << '\n';
   os << "project_volume " << ck.project_volume << '\n';
   os << "n_el_iter " << ck.n_el_iter << '\n';
@@ -306,6 +315,10 @@ inline bool read_voigt36(std::istream &in, double *out) {
       if (!mark(13) || !(in >> ck.n_snap) || ck.n_snap < 0) return false;
     } else if (key == "last_dumped") {
       if (!mark(14) || !(in >> ck.last_dumped)) return false;
+    } else if (key == "termination") {
+      if (!mark(39) || !(in >> ck.termination) || ck.termination < 0 ||
+          ck.termination > 3)
+        return false;
     } else if (key == "normalize") {
       if (!mark(15) || !(in >> ck.normalize)) return false;
     } else if (key == "project_volume") {
@@ -358,7 +371,7 @@ inline bool read_voigt36(std::istream &in, double *out) {
       return false;
     }
   }
-  constexpr std::uint64_t kRequired = (1ull << 39) - 1ull;
+  constexpr std::uint64_t kRequired = (1ull << 40) - 1ull;
   return seen == kRequired && ck.nx > 0 && ck.ny > 0 && ck.nz > 0;
 }
 

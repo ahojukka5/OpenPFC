@@ -10,12 +10,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ### Added
 
 - **Inverse homogenization checkpoint problem fingerprint** (issue
-  [#72](https://github.com/ahojukka5/OpenPFC/issues/72)). Schema 2
+  [#72](https://github.com/ahojukka5/OpenPFC/issues/72)). Schema 3
   `state.txt` records the target tensor, moduli, SIMP/regularization
-  endpoints, step/projection, window, and tolerances. A restart with a
-  different frozen problem is rejected. `--max-steps` remains a run
-  budget. Drivers publish `gen_<next_step>/` then atomically retarget
-  `CURRENT`, retaining the previous complete generation. HIP stores
+  endpoints, step/projection, window, tolerances, and whether the
+  bundle is running or terminal. A restart with a different frozen
+  problem, or from a `CONVERGED` / `MAX_STEPS` / `ELASTICITY_FAILURE`
+  snapshot, is rejected. `--max-steps` remains a run budget. Drivers
+  publish `gen_<next_step>/` then atomically retarget `CURRENT`,
+  retaining the previous complete generation. HIP stores
   `dump_steps.txt` in the same bundle so a restarted manifest keeps the
   original time/index mapping.
 
