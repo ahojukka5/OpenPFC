@@ -44,3 +44,4 @@ docs/latex
 scripts/mpi_inter_node_bw/mpi_inter_node_bw
 scripts/logs/
 .claude/worktrees/
+examples/ns2d_vorticity/figures/generated/

@@ -29,14 +29,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **2-D MHD conference visualization package**
+  (`examples/ns2d_vorticity`, issue
+  [#71](https://github.com/ahojukka5/OpenPFC/issues/71)). Evidence
+  animations and paper figures from the accepted #27/#39 windows;
+  late-time movie labelled as a dynamics showcase. Does not change
+  the solver or the scaling decision.
 - Render inverse trajectories at their physical spacing, requiring exact
   certified terminal field identity before animation (issue #99).
-
 - Export full unpenalized HIP inverse endpoint and thresholded material
   tensors, compliance-based directional Poisson ratios and all six solve
   reports beside the exact accepted field outputs (#89). Failed diagnostics
   remain explicit and do not imply inverse convergence.
-
 - **Fail-closed `--key=value` CLI** (`pfc::utils::CliOptions` in
   `include/openpfc/frontend/utils/cli_options.hpp`). Standalone drivers
   parse named flags without a per-app copy of the same class; unknown
