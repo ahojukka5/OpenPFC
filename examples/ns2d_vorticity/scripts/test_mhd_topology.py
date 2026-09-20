@@ -383,6 +383,68 @@ def test_misclassify_fails():
     check(p["kind"] == mt.KIND_X, "saddle is not labelled O")
 
 
+def test_coalescence_t0_topology():
+    print("\n== coalescence a = 0.4 sin x sin y at t=0 ==")
+    a = mt.sample_grid(lambda x, y: 0.4 * np.sin(x) * np.sin(y), 64)
+    pts = mt.locate_critical_points(a)
+    xs = [p for p in pts if p["kind"] == mt.KIND_X]
+    omax = [p for p in pts if p["kind"] == mt.KIND_OMAX]
+    omin = [p for p in pts if p["kind"] == mt.KIND_OMIN]
+    check(len(xs) == 4, "exactly 4 X-points, got %d" % len(xs))
+    check(len(omax) == 2, "exactly 2 O_max, got %d" % len(omax))
+    check(len(omin) == 2, "exactly 2 O_min, got %d" % len(omin))
+    px = nearest(xs, math.pi, math.pi)
+    po = nearest(omax, 0.5 * math.pi, 0.5 * math.pi)
+    check(mt.periodic_dist(px["x"], px["y"], math.pi, math.pi) < 0.05,
+          "X near (pi,pi)")
+    check(mt.periodic_dist(po["x"], po["y"], 0.5 * math.pi, 0.5 * math.pi)
+          < 0.05, "O_max near (pi/2,pi/2)")
+    check(abs(px["a"]) < 0.02, "a_X ~ 0, got %.4f" % px["a"])
+    check(abs(po["a"] - 0.4) < 0.02, "a_O ~ 0.4, got %.4f" % po["a"])
+    check(abs((po["a"] - px["a"]) - 0.4) < 0.03, "F = a_O-a_X ~ 0.4")
+    x0, o0 = ifb.pick_island(pts, a, family="coalescence")
+    check(x0 is not None and o0 is not None, "coalescence family locates X/O")
+    if x0 is not None:
+        check(mt.periodic_dist(x0["x"], x0["y"], math.pi, math.pi) < 0.1,
+              "family X is the (pi,pi) coalescence null")
+    if o0 is not None:
+        check(o0["kind"] == mt.KIND_OMAX, "family O is O_max")
+        check(abs((o0["a"] - x0["a"]) - 0.4) < 0.03,
+              "family F ~ 0.4")
+
+
+def test_coalescence_event_first_crossing():
+    print("\n== coalescence flux-progress first-crossing ==")
+    import coalescence_event as ce
+    rows = []
+    for i, F in enumerate([0.40, 0.36, 0.32, 0.28, 0.24, 0.30, 0.34]):
+        rows.append({
+            "t": 0.2 * i,
+            "F": F,
+            "dFdt": -0.2 if i < 5 else 0.3,
+            "sheet_ok": i >= 1,
+            "R": 0.1,
+            "S_local": 50.0,
+            "delta": 0.2,
+            "L": 2.0,
+            "j_X": 1.0,
+            "B_up": 0.4 + 0.02 * i,
+            "Ez_X": 0.01,
+            "eta_j_X": 0.01,
+        })
+    src = {"rows": rows, "summary": {"F_first": 0.40}}
+    check(ce.PROGRESS_LO == 0.30, "PROGRESS_LO frozen at 0.30")
+    check(ce.PROGRESS_HI == 0.60, "PROGRESS_HI frozen at 0.60")
+    out = ce.analyze(src, 0.10, 0.30)
+    check(out["transfer_sign"] > 0, "F decreases")
+    check(out["t_sheet_ok"] is not None, "sheet_ok exists")
+    check(out["sloshing_sentinel"], "rebound after transfer is flagged")
+    ev = out["event"]
+    check(ev is not None and ev["n"] >= 1, "event window nonempty")
+    check(ev["t_first"] >= out["t_sheet_ok"] - 1.0e-12,
+          "event starts after sheet_ok")
+
+
 def main():
     test_stationary_sinxsiny()
     test_moving()
@@ -397,6 +459,8 @@ def main():
     test_ot_t0_multigraph_faces()
     test_force_free_budget_is_O_diffusion()
     test_misclassify_fails()
+    test_coalescence_t0_topology()
+    test_coalescence_event_first_crossing()
     print("\n%d failures" % len(FAILS))
     if FAILS:
         for f in FAILS:
