@@ -155,10 +155,6 @@ srun --export=ALL "${SRUN_BIND[@]}" \
 SRUN_RC="${PIPESTATUS[0]}"
 set -e
 
-if [[ -f fd_placement.txt ]]; then
-  cp -f fd_placement.txt "${RUNDIR}/fd_placement.txt"
-fi
-
 ADMIT="ok"
 REASON="none"
 if (( SRUN_RC != 0 )); then
@@ -170,6 +166,16 @@ elif ! grep -q 'HEAT3D_FD_DECOMP' "${RUNDIR}/run.log"; then
 elif grep -qiE 'HEAT3D_HIP_CHECKSUM .*nan|HEAT3D_HIP_CHECKSUM .*inf' "${RUNDIR}/run.log"; then
   ADMIT="reject"
   REASON="checksum_nonfinite"
+fi
+
+# cwd is RUNDIR. GNU cp -f file file exits 1 ("same file") and, under
+# set -e, used to skip admit.txt after a successful srun (1024-node
+# jobs 22187770-84). Never copy a file onto itself.
+if [[ -f fd_placement.txt ]]; then
+  dest="${RUNDIR}/fd_placement.txt"
+  if [[ ! fd_placement.txt -ef "${dest}" ]]; then
+    cp -f fd_placement.txt "${dest}"
+  fi
 fi
 
 {

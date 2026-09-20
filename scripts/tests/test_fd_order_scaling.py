@@ -216,6 +216,44 @@ def test_sbatch_overrides_inherited_export_none():
     text = BATCH.read_text()
     assert "srun --export=ALL" in text
     assert "libfabric.so.1" in text
+    assert "fd_placement.txt -ef" in text
+    assert "recovered_missing_admit" not in text
+
+
+def test_recover_missing_admit_from_checksum_profile(tmp_path):
+    run = _run_tree(tmp_path, "no-admit", 1, 2, 0.0015)
+    (run / "admit.txt").unlink()
+    rows = t.collect_root(str(tmp_path), warmup=5)
+    assert rows[0]["admit"] == "ok"
+    assert rows[0]["reason"] == "recovered_missing_admit"
+    assert float(rows[0]["wall_step_s"]) == pytest.approx(0.0015)
+
+
+def test_scan_profile_median_matches_json_load(tmp_path):
+    path = tmp_path / "timing_profile.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "n_mpi_ranks": 1,
+                "frame_metric_names": ["step", "mpi_rank", "wall_step"],
+                "ranks": [
+                    {
+                        "mpi_rank": 0,
+                        "frames": [
+                            {"scalars": [4, 0, 9.0], "regions": {}},
+                            {"scalars": [5, 0, 0.002], "regions": {}},
+                            {"scalars": [6, 0, 0.004], "regions": {}},
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    scanned = t.wall_step_median_scan(str(path), warmup=5)
+    loaded = t.wall_step_from_profile(str(path), warmup=5)
+    assert scanned == pytest.approx(0.003)
+    assert loaded == pytest.approx(0.003)
 
 
 def test_geometry_table_matches_packed_faces_and_orders():

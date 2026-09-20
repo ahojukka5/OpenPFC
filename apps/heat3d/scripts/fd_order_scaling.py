@@ -18,6 +18,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -350,6 +351,93 @@ def wall_step_median(doc: Dict[str, Any], warmup: int) -> Optional[float]:
     return float(statistics.median(values))
 
 
+_SCALAR_ARRAY = re.compile(r'"scalars"\s*:\s*\[([^\]]*)\]')
+
+
+def _floats_from_csv(inner: str) -> List[float]:
+    nums: List[float] = []
+    for part in inner.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nums.append(float(part))
+        except ValueError:
+            pass
+    return nums
+
+
+def wall_step_median_scan(path: str, warmup: int) -> Optional[float]:
+    """Median wall_step without json.load. 1024-node profiles are ~440 MB."""
+    values: List[float] = []
+    buf: List[float] = []
+    in_scalars = False
+
+    def consume_array(nums: List[float]) -> None:
+        if len(nums) >= 3 and nums[0] >= warmup:
+            values.append(nums[2])
+
+    with open(path, "r", buffering=1024 * 1024) as handle:
+        for line in handle:
+            inline = list(_SCALAR_ARRAY.finditer(line))
+            if inline:
+                for match in inline:
+                    consume_array(_floats_from_csv(match.group(1)))
+                continue
+            stripped = line.strip().rstrip(",")
+            if '"scalars"' in line:
+                in_scalars = True
+                buf = []
+                continue
+            if not in_scalars:
+                continue
+            if stripped.startswith("]"):
+                consume_array(buf)
+                in_scalars = False
+                buf = []
+                continue
+            try:
+                buf.append(float(stripped))
+            except ValueError:
+                pass
+    if not values:
+        return None
+    return float(statistics.median(values))
+
+
+def wall_step_from_profile(path: str, warmup: int) -> Optional[float]:
+    if not os.path.isfile(path):
+        return None
+    size = os.path.getsize(path)
+    if size <= 32 * 1024 * 1024:
+        with open(path) as handle:
+            return wall_step_median(json.load(handle), warmup)
+    return wall_step_median_scan(path, warmup)
+
+
+def recover_missing_admit(
+    admit_flag: str,
+    reason: str,
+    checksum: str,
+    decomp: Dict[str, str],
+    prof: str,
+) -> Tuple[str, str]:
+    """Rebuild admit=ok when srun finished but admit.txt was never written.
+
+    The #108 batch used to `cp` fd_placement.txt onto itself under set -e,
+    so a successful Heat3D run left checksum + profile and no admit file.
+    """
+    if admit_flag and admit_flag != "missing":
+        return admit_flag, reason
+    if not checksum or "nan" in checksum.lower() or "inf" in checksum.lower():
+        return admit_flag or "missing", reason or "missing_admit"
+    if not decomp.get("proc_grid"):
+        return admit_flag or "missing", reason or "missing_admit"
+    if not os.path.isfile(prof):
+        return admit_flag or "missing", reason or "missing_admit"
+    return "ok", "recovered_missing_admit"
+
+
 def collect_run(run: str, warmup: int) -> Optional[Dict[str, Any]]:
     meta = _meta_map(os.path.join(run, "run_meta.txt"))
     log = os.path.join(run, "run.log")
@@ -371,10 +459,12 @@ def collect_run(run: str, warmup: int) -> Optional[Dict[str, Any]]:
         reason = reason or "missing_admit"
     wall = None
     prof = os.path.join(run, "timing_profile.json")
+    checksum = checksum_line(log)
+    admit_flag, reason = recover_missing_admit(
+        admit_flag, reason, checksum, decomp, prof
+    )
     if os.path.isfile(prof) and admit_flag == "ok":
-        with open(prof) as f:
-            doc = json.load(f)
-        wall = wall_step_median(doc, warmup)
+        wall = wall_step_from_profile(prof, warmup)
     local = decomp.get("local_min") or meta.get("require_interior") or ""
     expected = "%dx%dx%d" % (INTERIOR, INTERIOR, INTERIOR)
     if local and local != expected and "x" in local:
@@ -389,7 +479,6 @@ def collect_run(run: str, warmup: int) -> Optional[Dict[str, Any]]:
         wall = None
     width = halo_width(order) if order else ""
     face_bytes = halo_face_bytes(order) if order else ""
-    checksum = checksum_line(log)
     if admit_flag == "ok" and checksum and (
         "nan" in checksum.lower() or "inf" in checksum.lower()
     ):
