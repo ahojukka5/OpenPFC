@@ -32,6 +32,7 @@
 #include <inverse_homogenization/field_output.hpp>
 #include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
+#include <inverse_homogenization/material_report.hpp>
 #include <inverse_homogenization/phase_field_inverse.hpp>
 #include <inverse_homogenization/simp_penalty.hpp>
 #include <inverse_homogenization/spinodal_generator.hpp>
@@ -727,6 +728,23 @@ int run(int argc, char **argv, int rank, int nproc) {
   snap.write_xdmf_brick("h_thresh.xdmf", "h_thresh.bin", "h");
   snap.write_manifest({"h"});
   if (rank == 0) {
+    if (!cfg.fields.dir.empty()) {
+      const auto write_report = [&](const char *name, const char *field,
+                                    const pfc::apps::HomogenizationResult &result) {
+        const auto path = std::filesystem::path(cfg.fields.dir) / name;
+        std::ofstream stream(path);
+        stream << pfc::apps::inverse::material_report(field, certified_step, reason,
+                                                      {cfg.nx, cfg.ny, cfg.nz},
+                                                      cfg.dx, result, spec.C_target)
+                      .dump(2)
+               << '\n';
+        stream.close();
+        if (!stream)
+          throw std::runtime_error("cannot write material report: " + path.string());
+      };
+      write_report("h_final_material.json", "h_final.bin", final);
+      write_report("h_thresh_material.json", "h_thresh.bin", bin);
+    }
     const auto &C = final.stiffness;
     const double nu = nu_of(C(0, 0), C(0, 1));
     const auto &Cb = bin.stiffness;

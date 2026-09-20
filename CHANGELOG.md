@@ -23,6 +23,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Export full unpenalized HIP inverse endpoint and thresholded material
+  tensors, compliance-based directional Poisson ratios and all six solve
+  reports beside the exact accepted field outputs (#89). Failed diagnostics
+  remain explicit and do not imply inverse convergence.
+
 - **Fail-closed `--key=value` CLI** (`pfc::utils::CliOptions` in
   `include/openpfc/frontend/utils/cli_options.hpp`). Standalone drivers
   parse named flags without a per-app copy of the same class; unknown

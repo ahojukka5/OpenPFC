@@ -22,6 +22,8 @@
 #include <vector>
 
 #include <mpi.h>
+#include <inverse_homogenization/material_report.hpp>
+#include <limits>
 
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
@@ -701,4 +703,68 @@ TEST_CASE("Double-well derivative vanishes at the wells and at 1/2",
   REQUIRE_THAT(double_well_prime(0.5), WithinAbs(0.0, 1e-15));
   REQUIRE(double_well_prime(0.25) > 0.0);
   REQUIRE(double_well_prime(0.75) < 0.0);
+}
+
+TEST_CASE("endpoint material records preserve full tensor and failure status",
+          "[inverse][89]") {
+  using namespace pfc::apps;
+  using namespace pfc::apps::inverse;
+  HomogenizationResult result;
+  result.stiffness = voigt_from_stiffness(Stiffness::isotropic(1.0, .3));
+  result.volume_fraction = .4;
+  for (auto &r : result.reports) {
+    r.converged = true;
+    r.residual = 1.e-10;
+  }
+  const auto target = result.stiffness;
+  auto record = material_report("h_final.bin", 159, TerminationReason::MaxSteps,
+                                {32, 32, 61}, 1., result, target);
+  REQUIRE(record["diagnostics_valid"].get<bool>());
+  REQUIRE_FALSE(record["inverse_converged"].get<bool>());
+  REQUIRE(record["termination"] == "MAX_STEPS");
+  REQUIRE(record["accepted_step"] == 159);
+  REQUIRE(record["field"] == "h_final.bin");
+  for (const auto *direction : {"xy", "xz", "yx", "yz", "zx", "zy"})
+    REQUIRE(std::abs(record["poisson"][direction].get<double>() - .3) < 1.e-12);
+  // Break isotropy while preserving positive definiteness. The full compliance
+  // ratios must differ from the C12/(C11+C12) shortcut and from one another.
+  result.stiffness(0, 0) *= 2.;
+  result.stiffness(0, 1) += .01;
+  record = material_report("h_thresh.bin", 159, TerminationReason::Converged,
+                           {32, 32, 61}, .5, result, target);
+  REQUIRE(record["inverse_converged"].get<bool>());
+  REQUIRE(record["stiffness_raw"][0][1] != record["stiffness_raw"][1][0]);
+  REQUIRE(record["stiffness_symmetric"][0][1] ==
+          record["stiffness_symmetric"][1][0]);
+  REQUIRE(record["poisson"]["xy"] != record["poisson"]["yx"]);
+  const auto diagnostic = diagnose_stiffness(result.stiffness, &target);
+  REQUIRE(std::abs(record["poisson"]["xy"].get<double>() - diagnostic.nu_shortcut) >
+          .01);
+  REQUIRE(nlohmann::json::parse(record.dump()) == record);
+  result.reports[2].converged = false;
+  record = material_report("h_final.bin", 159, TerminationReason::ElasticityFailure,
+                           {32, 32, 61}, 1., result, target);
+  REQUIRE_FALSE(record["diagnostics_valid"].get<bool>());
+  REQUIRE(record["poisson"].is_null());
+  REQUIRE_FALSE(record["elasticity_solves"][2]["converged"].get<bool>());
+  result.reports[2].converged = true;
+  result.stiffness = Voigt6{};
+  record = material_report("h_final.bin", 159, TerminationReason::MaxSteps,
+                           {32, 32, 61}, 1., result, target);
+  REQUIRE_FALSE(record["diagnostics"]["invertible"].get<bool>());
+  REQUIRE(record["compliance"].is_null());
+  REQUIRE(record["poisson"].is_null());
+  for (int i = 0; i < 6; ++i) result.stiffness(i, i) = 1.;
+  result.stiffness(0, 0) = -1.;
+  record = material_report("h_final.bin", 159, TerminationReason::MaxSteps,
+                           {32, 32, 61}, 1., result, target);
+  REQUIRE(record["diagnostics"]["invertible"].get<bool>());
+  REQUIRE_FALSE(record["diagnostics"]["spd"].get<bool>());
+  REQUIRE(record["poisson"].is_null());
+  result.stiffness(0, 0) = std::numeric_limits<double>::quiet_NaN();
+  record = material_report("h_final.bin", 159, TerminationReason::MaxSteps,
+                           {32, 32, 61}, 1., result, target);
+  REQUIRE_FALSE(record["finite_stiffness"].get<bool>());
+  REQUIRE(record["stiffness_raw"][0][0].is_null());
+  REQUIRE(record["diagnostics"].is_null());
 }
