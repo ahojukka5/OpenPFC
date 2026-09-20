@@ -29,6 +29,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Doubly-periodic magnetic-island coalescence** on the 2-D
+  incompressible MHD prototype (issue
+  [#113](https://github.com/ahojukka5/OpenPFC/issues/113), parent
+  [research#543](https://github.com/ahojukka5/research/issues/543)).
+  Literature-matched flux \(a=0.4\sin x\sin y\) plus a frozen
+  \(k=1\) streamfunction seed. Stage 0 at \(\eta=\nu=0.01\) only.
+  Cross-\(\eta\) statistic frozen at flux-progress
+  \(p\in[0.30,0.60]\). Does not run \(\eta=0.005\).
 - **2-D MHD conference visualization package**
   (`examples/ns2d_vorticity`, issue
   [#71](https://github.com/ahojukka5/OpenPFC/issues/71)). Evidence

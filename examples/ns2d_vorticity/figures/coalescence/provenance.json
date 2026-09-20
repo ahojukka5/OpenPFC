@@ -1,0 +1,23 @@
+{
+  "issue": 113,
+  "parent": "ahojukka5/research#543",
+  "case": "island_coalescence",
+  "eta": 0.01,
+  "nu": 0.01,
+  "eps": 0.01,
+  "abar": 0.4,
+  "perturbation": "phi = 0.01 * (cos(x) - cos(y))",
+  "progress_lo": 0.3,
+  "progress_hi": 0.6,
+  "jobs": {
+    "ic128_cfl04": 22188502,
+    "ic256_cfl04": 22188521,
+    "ic256_cfl02": 22188522,
+    "analyze_256_cfl04": 22188569,
+    "analyze_256_cfl02": 22188570
+  },
+  "data_root": "/scratch/project_462001519/juaho/mhd2d-113",
+  "binary": "/flash/project_462001519/juaho/build/openpfc-113-cpu/examples/ns2d_vorticity/mhd2d",
+  "parent_sha": "e98d8a872e40c4e13baa46627763a078a33b1f62",
+  "kind": "stage-0 evidence frames"
+}
