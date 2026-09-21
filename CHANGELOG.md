@@ -77,7 +77,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **32-node Heat3D pencil vs slab A/B** (issue
   [#121](https://github.com/ahojukka5/OpenPFC/issues/121)). Same
   diagnostic binary and GPU-aware MPI as #119; `HEAT3D_USE_PENCILS=1`
-  vs admitted slab 22207838. Does not change production
+  vs admitted slab 22207838. Pencils keep the slab min-reshape grids
+  and are 0.5% faster. Does not change production
   `use_pencils=false`.
 - **Blocked HeFFTe selector regret scaffold** (issue
   [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature

@@ -1,0 +1,7 @@
+# OpenPFC #121 32-node Heat3D pencil vs slab A/B, diagnostic heffte-rocm-trace.
+# Same binary, GPU-aware MPI, alltoall, N=768x768x196608, 256 ranks.
+# Pencil bytes_per_timestep left empty (do not reuse slab B_mpi).
+# Slab comparator is admitted #119 job 22207838.
+kind,issue,nodes,reshape,use_pencils,gpu_aware,job,admit,wall_step_s,t_mpi_s,t_pack_s,t_fft_s,n_mpi_coll_per_step,real_grid,complex_grid
+heat3d_trace,119,32,alltoall,0,1,22207838,ok,1.4157738,0.87677882,0.2452067,0.10440583,2,1x1x256,1x256x1
+heat3d_trace,121,32,alltoall,1,1,22208300,ok,1.4081727,0.87478655,0.24610198,0.10443748,2,1x1x256,1x256x1

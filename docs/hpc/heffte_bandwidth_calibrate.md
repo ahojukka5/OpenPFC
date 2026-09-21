@@ -134,6 +134,24 @@ grids and `n_mpi_coll_per_step`; it does not reuse slab
 and pack to the slab. Do not grow the campaign if pencils are not
 clearly better.
 
+## Harvested 32-node A/B (2026-09-21)
+
+Compact table: [`heffte_pencils_ab_32n.csv`](heffte_pencils_ab_32n.csv).
+Job **22208300** admits `use_pencils=1`, `gpu_aware=1`, tracing.
+
+| | slab 22207838 | pencils 22208300 |
+|---|---:|---:|
+| wall/step (s) | 1.416 | 1.408 |
+| \(T_{\mathrm{mpi}}\) (s) | 0.877 | 0.875 |
+| \(T_{\mathrm{pack}}\) (s) | 0.245 | 0.246 |
+| \(T_{\mathrm{fft}}\) (s) | 0.104 | 0.104 |
+| `n_mpi_coll` / step | 2 | 2 |
+| real / complex grid | `1x1x256` / `1x256x1` | `1x1x256` / `1x256x1` |
+
+Pencils do not change the layout at this min-reshape size (`Ny=768`
+divides 256 ranks). Wall differs by 0.5%. Keep production slabs.
+Do not grow the campaign.
+
 Issue: [#121](https://github.com/ahojukka5/OpenPFC/issues/121).
 
 `OPENPFC_HEFFTE_TRACE` is set by the sbatch. HeFFTe writes
