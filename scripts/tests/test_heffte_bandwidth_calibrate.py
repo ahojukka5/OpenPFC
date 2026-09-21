@@ -44,6 +44,9 @@ def _clean_env():
         "OPENPFC_REVISION",
         "OPENPFC_DIRTY",
         "HEAT3D_SPECTRAL_HIP_BIN",
+        "HEAT3D_USE_PENCILS",
+        "HEAT3D_GPU_AWARE",
+        "OPENPFC_ISSUE",
         "OSU_ALLTOALL_BIN",
         "OSU_ALLTOALLV_BIN",
         "SBATCH_ACCOUNT",
@@ -142,7 +145,10 @@ def test_harvest_trace_and_osu(tmp_path):
         rows = list(csv.DictReader(handle))
     kinds = {r["kind"]: r for r in rows}
     assert kinds["heat3d_trace"]["admit"] == "ok"
+    assert kinds["heat3d_trace"]["use_pencils"] == "0"
+    assert kinds["heat3d_trace"]["gpu_aware"] == "1"
     assert float(kinds["heat3d_trace"]["t_mpi_s"]) == pytest.approx(0.10)
+    assert float(kinds["heat3d_trace"]["n_mpi_coll_per_step"]) == pytest.approx(1.0)
     assert float(kinds["heat3d_trace"]["gb_s_mpi"]) == pytest.approx(
         c.BYTES_STEP[8] / 0.10 / 1e9
     )
@@ -211,8 +217,11 @@ def test_submit_dry_run_768(tmp_path):
     assert "h3dbw-768-32n-alltoall" in proc.stdout_text
     assert "osubw-768-8n-alltoallv" in proc.stdout_text
     assert "h3dbw-768-32n-alltoallv" not in proc.stdout_text
+    assert "h3dbw-768-32n-alltoall-pencils" not in proc.stdout_text
     assert "--partition=standard-g" in proc.stdout_text
     assert "HEAT3D_RESHAPE_ALG=alltoall" in proc.stdout_text
+    assert "HEAT3D_USE_PENCILS=0" in proc.stdout_text
+    assert "HEAT3D_GPU_AWARE=1" in proc.stdout_text
     assert "HEAT3D_PROTOCOLS" not in proc.stdout_text
 
 
@@ -249,3 +258,71 @@ def test_submit_ignores_leaked_production_bin(tmp_path):
     assert "ignoring leaked HEAT3D_SPECTRAL_HIP_BIN" in proc.stderr_text
     assert "heffte-trace-heat3d" in proc.stdout_text
     assert "openpfc-lumi-rocm-e98d8a87" not in proc.stdout_text
+
+
+def test_harvest_pencils_does_not_reuse_slab_bytes(tmp_path):
+    hrun = tmp_path / "runs" / "h3dbw-768-32n-alltoall-pencils_1"
+    _write(
+        hrun / "run_meta.txt",
+        "\n".join(
+            [
+                "kind=heat3d_trace",
+                "issue=121",
+                "job=11",
+                "nodes=32",
+                "ntasks=256",
+                "reshape=alltoall",
+                "use_pencils=1",
+                "gpu_aware=1",
+                "steps=20",
+                "warmup=1",
+            ]
+        )
+        + "\n",
+    )
+    _write(
+        hrun / "run.log",
+        "HEAT3D_SPECTRAL_HIP N=768x768x196608 ranks=256 "
+        "real_grid=16x16x1 complex_grid=16x16x1 use_pencils=1 "
+        "reshape=alltoall gpu_aware=1\n",
+    )
+    body = ""
+    t = 0.0
+    for _ in range(20):
+        body += _trace_line("all2all", t, 0.20)
+        body += _trace_line("all2all", t + 0.20, 0.20)
+        body += _trace_line("packing", t + 0.40, 0.05)
+        t += 0.50
+    _write(hrun / "heffte_trace_0.log", body)
+    _write(hrun / "admit.txt", "admit=ok\nreason=none\nexpected_use_pencils=1\n")
+    rows = c.collect(str(tmp_path))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["issue"] == "121"
+    assert row["admit"] == "ok"
+    assert row["use_pencils"] == "1"
+    assert row["gpu_aware"] == "1"
+    assert row["real_grid"] == "16x16x1"
+    assert float(row["n_mpi_coll_per_step"]) == pytest.approx(2.0)
+    assert row["gb_s_mpi"] is None
+    assert row["bytes_per_timestep"] is None
+
+
+def test_submit_dry_run_pencils(tmp_path):
+    env = _clean_env()
+    env["ACCOUNT"] = "project_462001519"
+    env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
+    env["DRY_RUN"] = "1"
+    env["OPENPFC_SRC"] = str(ROOT)
+    env["OPENPFC_SCALING_ROOT"] = str(tmp_path)
+    proc = _run(["bash", str(SUBMIT), "pencils"], env, str(ROOT))
+    assert proc.returncode == 0, proc.stderr_text + proc.stdout_text
+    assert "h3dbw-768-32n-alltoall-pencils" in proc.stdout_text
+    assert "HEAT3D_USE_PENCILS=1" in proc.stdout_text
+    assert "HEAT3D_GPU_AWARE=1" in proc.stdout_text
+    assert "OPENPFC_ISSUE=121" in proc.stdout_text
+    assert "--nodes=32" in proc.stdout_text
+    assert "--partition=standard-g" in proc.stdout_text
+    assert "osubw-" not in proc.stdout_text
+    assert "h3dbw-768-1n-" not in proc.stdout_text
+    assert "HEAT3D_USE_PENCILS=0" not in proc.stdout_text

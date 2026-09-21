@@ -34,7 +34,9 @@ not the NIC. Either way do not restart 512-node Heat3D tournaments.
 - Diagnostic `heffte-rocm-trace/2.4.1` (device-sync tracing, no
   production `p2p-plined-packall` patch). Walls are **not** production
   numbers. Label `p2p_plined` rows as diagnostic.
-- Heat3D 20 steps, warmup 1, I/O off, GPU-aware MPI, slabs.
+- Heat3D 20 steps, warmup 1, I/O off, GPU-aware MPI (`gpu_aware=1`
+  required; `MPICH_GPU_SUPPORT_ENABLED=1` and `HEAT3D_GPU_AWARE=1`).
+  Default is slabs (`use_pencils=0`).
 - One protocol per `srun`. At 32 nodes run only `alltoall`.
 - OSU 7.5 `--enable-rocm`, `-d rocm`, message size = `bytes_per_peer`.
 - Account `project_462001519`. Default partition `standard-g`
@@ -115,6 +117,25 @@ collective. The #119 stop rule is met. Do not restart 128+ node Heat3D
 tournaments from this calibration. Diagnostic walls are not production
 numbers.
 
+## 32-node pencil vs slab (issue #121)
+
+Same diagnostic binary, GPU-aware MPI, 32-node `alltoall`. Comparator is
+admitted #119 slab job 22207838 (`use_pencils=0`, `gpu_aware=1`,
+`real_grid=1x1x256`). Does not change the production slab default.
+
+```bash
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh pencils
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh collect
+```
+
+Admit requires banner `use_pencils=1` and `gpu_aware=1`. Harvest records
+grids and `n_mpi_coll_per_step`; it does not reuse slab
+`bytes_per_timestep` for \(B_{\mathrm{mpi}}\). Compare wall, `T_mpi`,
+and pack to the slab. Do not grow the campaign if pencils are not
+clearly better.
+
+Issue: [#121](https://github.com/ahojukka5/OpenPFC/issues/121).
+
 `OPENPFC_HEFFTE_TRACE` is set by the sbatch. HeFFTe writes
 `heffte_trace_<rank>.log`. Collect rebuilds CSV from run directories.
 Do not commit raw traces.
@@ -123,5 +144,6 @@ Do not commit raw traces.
 
 - Production `heffte-rocm` module.
 - Production `p2p_plined` default.
+- Production `use_pencils=false`.
 - The tungsten 1200-axis trace install.
 - 128+ node Heat3D jobs.

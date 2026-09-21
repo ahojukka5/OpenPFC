@@ -74,6 +74,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   sbatch on `standard-g` at 1/2/8/32 nodes (`dev-g` MaxSubmitJobs=2).
   Admitted 8--32 node \(B_{\mathrm{mpi}}\) matches GPU OSU within 4%.
   Does not change production HeFFTe or the reshape default.
+- **32-node Heat3D pencil vs slab A/B** (issue
+  [#121](https://github.com/ahojukka5/OpenPFC/issues/121)). Same
+  diagnostic binary and GPU-aware MPI as #119; `HEAT3D_USE_PENCILS=1`
+  vs admitted slab 22207838. Does not change production
+  `use_pencils=false`.
 - **Blocked HeFFTe selector regret scaffold** (issue
   [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature
   schema, train/held-out split records, and regret tests. Does not time

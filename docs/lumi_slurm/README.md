@@ -91,6 +91,7 @@ Issue `#119` HeFFTe-trace MPI bandwidth vs GPU OSU `alltoall` (account
 ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh build
 ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh osu-build
 ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh 768
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh pencils
 ```
 
 Files: `tungsten_hip_scaling.sbatch`, `tungsten_hip_scaling.toml`,

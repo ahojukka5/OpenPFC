@@ -11,12 +11,14 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #
-# Issue #119: one Heat3D-trace protocol or one GPU OSU collective per job.
-# Diagnostic walls. Do not mix with production Heat3D tables.
+# Issue #119 / #121: one Heat3D-trace protocol or one GPU OSU collective
+# per job. Diagnostic walls. Do not mix with production Heat3D tables.
 # Submit with docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh.
 #
 # Required: RUN_KIND=heat3d|osu
 # heat3d: HEAT3D_SPECTRAL_HIP_BIN, HEAT3D_NX/NY/NZ, HEAT3D_RESHAPE_ALG
+#         GPU-aware MPI is always on (MPICH_GPU_SUPPORT_ENABLED=1 and
+#         HEAT3D_GPU_AWARE=1). HEAT3D_USE_PENCILS=0|1 (#121 A/B).
 # osu:    OSU_BIN, OSU_MSG_SIZE, OSU_KIND
 #
 # Refuse if billed to project_462001245.
@@ -118,6 +120,12 @@ if [[ "${KIND}" == "heat3d" ]]; then
   if command -v sha256sum >/dev/null 2>&1; then
     BIN_SHA="$(sha256sum "${HEAT3D_SPECTRAL_HIP_BIN}" | awk '{print $1}')"
   fi
+  EXPECTED_PENCILS="${HEAT3D_USE_PENCILS:-0}"
+  if [[ "${EXPECTED_PENCILS}" != "0" && "${EXPECTED_PENCILS}" != "1" ]]; then
+    echo "HEAT3D_USE_PENCILS must be 0 or 1 (got ${EXPECTED_PENCILS})" >&2
+    exit 2
+  fi
+  ISSUE="${OPENPFC_ISSUE:-119}"
   unset HEAT3D_USE_PENCILS HEAT3D_USE_REORDER HEAT3D_GPU_AWARE \
     HEAT3D_DIAG_TIMING HEAT3D_KEEP_OVERRIDES \
     OPENPFC_FFT_PROC_GRID OPENPFC_FFT_NODE_GRID OPENPFC_FFT_SLAB_AXIS \
@@ -126,12 +134,15 @@ if [[ "${KIND}" == "heat3d" ]]; then
   DT="${HEAT3D_DT:-0.01}"
   WARMUP="${HEAT3D_WARMUP:-1}"
   export HEAT3D_RESHAPE_ALG="${ALG}"
+  export HEAT3D_USE_PENCILS="${EXPECTED_PENCILS}"
+  export HEAT3D_GPU_AWARE=1
   export HEAT3D_PROFILE_JSON="${RUNDIR}/timing_profile.json"
   export HEAT3D_WARMUP="${WARMUP}"
   export OPENPFC_HEFFTE_TRACE="${RUNDIR}/heffte_trace"
   {
-    echo "=== heffte bandwidth calibrate (issue #119) ==="
+    echo "=== heffte bandwidth calibrate (issue #${ISSUE}) ==="
     echo "kind=heat3d_trace"
+    echo "issue=${ISSUE}"
     echo "job=${SLURM_JOB_ID}"
     echo "name=${SLURM_JOB_NAME}"
     echo "account=${ACCOUNT_NOW}"
@@ -147,6 +158,8 @@ if [[ "${KIND}" == "heat3d" ]]; then
     echo "dt=${DT}"
     echo "warmup=${WARMUP}"
     echo "reshape=${ALG}"
+    echo "use_pencils=${EXPECTED_PENCILS}"
+    echo "gpu_aware=1"
     echo "cpu-bind=${CPU_BIND}"
     echo "OPENPFC_HEFFTE_TRACE=${OPENPFC_HEFFTE_TRACE}"
     echo "HEFFTE_ROOT=${HEFFTE_ROOT:-unset}"
@@ -181,9 +194,9 @@ if [[ "${KIND}" == "heat3d" ]]; then
   elif [[ "${BANNER_ALG}" != "${ALG}" ]]; then
     ADMIT="reject"
     REASON="banner_reshape_${BANNER_ALG}_expected_${ALG}"
-  elif [[ "${BANNER_PENCILS}" != "0" ]]; then
+  elif [[ "${BANNER_PENCILS}" != "${EXPECTED_PENCILS}" ]]; then
     ADMIT="reject"
-    REASON="banner_use_pencils_${BANNER_PENCILS}"
+    REASON="banner_use_pencils_${BANNER_PENCILS}_expected_${EXPECTED_PENCILS}"
   elif [[ "${BANNER_AWARE}" != "1" ]]; then
     ADMIT="reject"
     REASON="banner_gpu_aware_${BANNER_AWARE}"
@@ -202,6 +215,8 @@ if [[ "${KIND}" == "heat3d" ]]; then
     echo "banner_use_pencils=${BANNER_PENCILS:-missing}"
     echo "banner_gpu_aware=${BANNER_AWARE:-missing}"
     echo "expected_reshape=${ALG}"
+    echo "expected_use_pencils=${EXPECTED_PENCILS}"
+    echo "expected_gpu_aware=1"
     echo "n_trace_logs=${NTRACE}"
   } | tee "${RUNDIR}/admit.txt"
   echo "=== heat3d trace done admit=${ADMIT} ==="

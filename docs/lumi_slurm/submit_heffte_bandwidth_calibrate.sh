@@ -11,10 +11,12 @@
 #   ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh osu-build
 #   HEAT3D_SPECTRAL_HIP_BIN=... OSU_ALLTOALL_BIN=... \
 #     ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh 768
+#   ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh pencils
 #   ./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh collect
 #
 # Optional: ACCOUNT, PARTITION, NODES, DRY_RUN=1, OPENPFC_SCALING_ROOT,
 #           HEAT3D_DEPENDENCY, OSU_DEPENDENCY (Slurm job ids).
+# GPU-aware MPI is always on. pencils = issue #121 32-node A/B.
 
 set -euo pipefail
 
@@ -61,9 +63,9 @@ if ! account_allowed "${ACCOUNT}"; then
 fi
 
 case "${MODE}" in
-  check|build|osu-build|768|collect) ;;
+  check|build|osu-build|768|pencils|collect) ;;
   *)
-    echo "usage: $0 check|build|osu-build|768|collect" >&2
+    echo "usage: $0 check|build|osu-build|768|pencils|collect" >&2
     exit 1
     ;;
 esac
@@ -184,8 +186,13 @@ submit_heat3d() {
   local nx="$3"
   local ny="$4"
   local nz="$5"
+  local pencils="${6:-0}"
+  local issue="${7:-119}"
   local ntasks=$((nodes * 8))
   local job_name="h3dbw-768-${nodes}n-${proto}"
+  if [[ "${pencils}" == "1" ]]; then
+    job_name="${job_name}-pencils"
+  fi
   local time_lim
   time_lim="$(walltime_for_nodes "${nodes}")"
   local extra=(
@@ -199,12 +206,12 @@ submit_heat3d() {
     --time="${time_lim}"
     --job-name="${job_name}"
     --output="${LOGDIR}/%x-%j.out"
-    --export="NONE,RUN_KIND=heat3d,HEAT3D_SPECTRAL_HIP_BIN=${HEAT3D_SPECTRAL_HIP_BIN},HEAT3D_NX=${nx},HEAT3D_NY=${ny},HEAT3D_NZ=${nz},HEAT3D_RESHAPE_ALG=${proto},HEAT3D_STEPS=20,HEAT3D_WARMUP=1,HEAT3D_DT=0.01,OPENPFC_SCALING_ROOT=${CAMPAIGN_ROOT},OPENPFC_REVISION=${OPENPFC_REVISION},OPENPFC_DIRTY=${OPENPFC_DIRTY},OPENPFC_SRC=${OPENPFC_SRC}"
+    --export="NONE,RUN_KIND=heat3d,HEAT3D_SPECTRAL_HIP_BIN=${HEAT3D_SPECTRAL_HIP_BIN},HEAT3D_NX=${nx},HEAT3D_NY=${ny},HEAT3D_NZ=${nz},HEAT3D_RESHAPE_ALG=${proto},HEAT3D_USE_PENCILS=${pencils},HEAT3D_GPU_AWARE=1,HEAT3D_STEPS=20,HEAT3D_WARMUP=1,HEAT3D_DT=0.01,OPENPFC_ISSUE=${issue},OPENPFC_SCALING_ROOT=${CAMPAIGN_ROOT},OPENPFC_REVISION=${OPENPFC_REVISION},OPENPFC_DIRTY=${OPENPFC_DIRTY},OPENPFC_SRC=${OPENPFC_SRC}"
   )
   if [[ -n "${HEAT3D_DEPENDENCY:-}" ]]; then
     extra+=(--dependency="afterok:${HEAT3D_DEPENDENCY}")
   fi
-  echo "submit heat3d nodes=${nodes} ranks=${ntasks} ${nx}x${ny}x${nz} reshape=${proto} account=${ACCOUNT} partition=${PARTITION}"
+  echo "submit heat3d nodes=${nodes} ranks=${ntasks} ${nx}x${ny}x${nz} reshape=${proto} pencils=${pencils} gpu_aware=1 account=${ACCOUNT} partition=${PARTITION}"
   if [[ "${DRY_RUN}" == "1" ]]; then
     echo sbatch "${extra[@]}" "${SBATCH}"
     return 0
@@ -251,17 +258,31 @@ submit_osu() {
   sbatch "${extra[@]}" "${SBATCH}"
 }
 
+need_osu=1
+if [[ "${MODE}" == "pencils" ]]; then
+  need_osu=0
+fi
 if [[ "${DRY_RUN}" != "1" ]]; then
   if [[ ! -x "${HEAT3D_SPECTRAL_HIP_BIN}" && -z "${HEAT3D_DEPENDENCY:-}" ]]; then
     echo "HEAT3D_SPECTRAL_HIP_BIN is not executable: ${HEAT3D_SPECTRAL_HIP_BIN}" >&2
     echo "submit build first, or set HEAT3D_DEPENDENCY" >&2
     exit 1
   fi
-  if [[ ! -x "${OSU_ALLTOALL_BIN}" && -z "${OSU_DEPENDENCY:-}" ]]; then
+  if [[ "${need_osu}" == "1" && ! -x "${OSU_ALLTOALL_BIN}" && -z "${OSU_DEPENDENCY:-}" ]]; then
     echo "OSU_ALLTOALL_BIN is not executable: ${OSU_ALLTOALL_BIN}" >&2
     echo "submit osu-build first, or set OSU_DEPENDENCY" >&2
     exit 1
   fi
+fi
+
+if [[ "${MODE}" == "pencils" ]]; then
+  echo "Issue #121 32-node pencil A/B. account=${ACCOUNT} rev=${OPENPFC_REVISION} dirty=${OPENPFC_DIRTY}"
+  echo "root=${CAMPAIGN_ROOT}"
+  echo "gpu_aware=1 HEAT3D_USE_PENCILS=1 vs admitted slab 22207838"
+  submit_heat3d 32 alltoall 768 768 196608 1 121
+  echo "Logs: ${LOGDIR}/"
+  echo "Runs: ${CAMPAIGN_ROOT}/runs/"
+  exit 0
 fi
 
 echo "Issue #119 bandwidth 768. account=${ACCOUNT} rev=${OPENPFC_REVISION} dirty=${OPENPFC_DIRTY}"
