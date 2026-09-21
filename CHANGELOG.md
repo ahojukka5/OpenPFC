@@ -56,6 +56,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   Gaussian thickness depression, completing the shipped one-factor
   design. The README no longer presents the unmatched 85-versus-140
   precursor times as an isolated ~40 % defect effect.
+- **Heat3D 1-node GPU cost matrix** at \(N=512\) and \(N=1024\)
+  (issue [#124](https://github.com/ahojukka5/OpenPFC/issues/124),
+  research [#592](https://github.com/ahojukka5/research/issues/592)).
+  Spectral, FD-2, FD-8 and FD-12 on one LUMI-G node, 8 GCDs, GPU-aware
+  slabs, 30/5/25 `wall_step`, three independent repeats. Does not
+  change production HeFFTe or FD defaults and must not be spliced onto
+  the historical `b91d2575` table. Recipe:
+  [`docs/hpc/heat3d_n3_cost.md`](docs/hpc/heat3d_n3_cost.md).
 
 - **Doubly-periodic magnetic-island coalescence** on the 2-D
   incompressible MHD prototype (issue

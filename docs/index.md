@@ -67,6 +67,7 @@ hpc/mpi_io_layout_checklist
 hpc/performance_profiling
 hpc/profiling_export_schema
 hpc/lumi_gpu_scaling
+hpc/heat3d_n3_cost
 hpc/lumi_gpu_heat3d_fd_weak
 hpc/heffte_protocol_tournament
 hpc/heffte_bandwidth_calibrate
