@@ -27,7 +27,7 @@ PY="${SCRIPT_DIR}/../../apps/heat3d/scripts/heffte_bandwidth_calibrate.py"
 
 ALLOWED_ACCOUNTS="project_462001519"
 ACCOUNT="${ACCOUNT:-project_462001519}"
-PARTITION="${PARTITION:-dev-g}"
+PARTITION="${PARTITION:-standard-g}"
 CAMPAIGN_ROOT="${OPENPFC_SCALING_ROOT:-/scratch/project_462001519/juaho/openpfc-scaling/heffte-bandwidth-calibrate}"
 LOGDIR="${OPENPFC_LOG_DIR:-/scratch/project_462001519/juaho/logs}"
 DRY_RUN="${DRY_RUN:-0}"

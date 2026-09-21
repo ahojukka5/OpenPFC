@@ -83,7 +83,7 @@ export HEAT3D_SPECTRAL_HIP_BIN=/path/to/heat3d_spectral_hip
 ```
 
 Issue `#119` HeFFTe-trace MPI bandwidth vs GPU OSU `alltoall` (account
-`project_462001519`, diagnostic `heffte-rocm-trace`, `dev-g`):
+`project_462001519`, diagnostic `heffte-rocm-trace`, `standard-g`):
 [HeFFTe bandwidth calibrate](../hpc/heffte_bandwidth_calibrate.md).
 
 ```bash
