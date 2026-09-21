@@ -66,8 +66,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **HeFFTe topology-crossover campaign tooling** (issue
   [#106](https://github.com/ahojukka5/OpenPFC/issues/106)). Randomized
   protocol order, dense node counts around the #61 ranking changes, and
-  placement metadata collection. Does not change the production reshape
-  default.
+  placement metadata collection. Both completed 128-node allocations
+  elect `p2p_plined`; r2 is job 22213995. Does not change the
+  production reshape default.
 - **Pre-execution HeFFTe reshape descriptors and harvest status**
   (issue [#106](https://github.com/ahojukka5/OpenPFC/issues/106)).
   Deterministic communication tables from the OpenPFC slab/min-reshape
