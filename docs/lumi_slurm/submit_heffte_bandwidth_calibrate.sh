@@ -73,7 +73,13 @@ if [[ "${MODE}" == "collect" ]]; then
   exit 0
 fi
 
-SRC="${OPENPFC_SRC:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+SRC="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+if [[ -n "${OPENPFC_SRC:-}" ]]; then
+  leaked="$(cd "${OPENPFC_SRC}" 2>/dev/null && pwd || true)"
+  if [[ -n "${leaked}" && "${leaked}" != "${SRC}" ]]; then
+    echo "ignoring leaked OPENPFC_SRC=${OPENPFC_SRC}; using ${SRC}" >&2
+  fi
+fi
 export OPENPFC_SRC="${SRC}"
 if command -v git >/dev/null 2>&1 &&
    git -C "${SRC}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

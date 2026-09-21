@@ -193,3 +193,18 @@ def test_submit_dry_run_768(tmp_path):
     assert "--partition=dev-g" in proc.stdout_text
     assert "HEAT3D_RESHAPE_ALG=alltoall" in proc.stdout_text
     assert "HEAT3D_PROTOCOLS" not in proc.stdout_text
+
+
+def test_submit_ignores_leaked_src(tmp_path):
+    env = os.environ.copy()
+    env["ACCOUNT"] = "project_462001519"
+    env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
+    env["OSU_ALLTOALL_BIN"] = "/bin/true"
+    env["OSU_ALLTOALLV_BIN"] = "/bin/true"
+    env["DRY_RUN"] = "1"
+    env["NODES"] = "1"
+    env["OPENPFC_SRC"] = str(tmp_path)
+    env["OPENPFC_SCALING_ROOT"] = str(tmp_path)
+    proc = _run(["bash", str(SUBMIT), "768"], env, str(ROOT))
+    assert proc.returncode == 0, proc.stderr_text + proc.stdout_text
+    assert "ignoring leaked OPENPFC_SRC" in proc.stderr_text
