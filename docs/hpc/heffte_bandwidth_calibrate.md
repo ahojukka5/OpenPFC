@@ -37,7 +37,8 @@ not the NIC. Either way do not restart 512-node Heat3D tournaments.
 - Heat3D 20 steps, warmup 1, I/O off, GPU-aware MPI, slabs.
 - One protocol per `srun`. At 32 nodes run only `alltoall`.
 - OSU 7.5 `--enable-rocm`, `-d rocm`, message size = `bytes_per_peer`.
-- Account `project_462001519`. Partition `dev-g` (MaxNodes=32). Refuse
+- Account `project_462001519`. Default partition `standard-g`
+  (`dev-g` MaxSubmitJobs=2 cannot hold the ladder). Refuse
   `project_462001245`.
 
 Bytes (comm-plan replica, `n_mpi=1`, 2 FFTs/step):
@@ -88,7 +89,7 @@ HEAT3D_DEPENDENCY=<build-job> OSU_DEPENDENCY=<osu-build-job> \
 ```
 
 If the binaries already exist, omit the dependency variables.
-Optional: `NODES=1,2`, `DRY_RUN=1`, `PARTITION=standard-g`.
+Optional: `NODES=1,2`, `DRY_RUN=1`, `PARTITION=dev-g`.
 
 `OPENPFC_HEFFTE_TRACE` is set by the sbatch. HeFFTe writes
 `heffte_trace_<rank>.log`. Collect rebuilds CSV from run directories.

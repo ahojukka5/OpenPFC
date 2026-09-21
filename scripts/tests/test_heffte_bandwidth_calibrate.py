@@ -211,7 +211,7 @@ def test_submit_dry_run_768(tmp_path):
     assert "h3dbw-768-32n-alltoall" in proc.stdout_text
     assert "osubw-768-8n-alltoallv" in proc.stdout_text
     assert "h3dbw-768-32n-alltoallv" not in proc.stdout_text
-    assert "--partition=dev-g" in proc.stdout_text
+    assert "--partition=standard-g" in proc.stdout_text
     assert "HEAT3D_RESHAPE_ALG=alltoall" in proc.stdout_text
     assert "HEAT3D_PROTOCOLS" not in proc.stdout_text
 
