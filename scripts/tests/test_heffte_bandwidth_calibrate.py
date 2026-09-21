@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Tests for the issue #119 HeFFTe-trace vs OSU bandwidth campaign."""
+
+import csv
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "apps" / "heat3d" / "scripts"))
+
+import heffte_bandwidth_calibrate as c  # noqa: E402
+
+SUBMIT = ROOT / "docs" / "lumi_slurm" / "submit_heffte_bandwidth_calibrate.sh"
+
+
+def _run(args, env, cwd):
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=env,
+        universal_newlines=True,
+    )
+    out, err = proc.communicate()
+    proc.stdout_text = out
+    proc.stderr_text = err
+    return proc
+
+
+def _write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def _trace_line(name, start, dur):
+    return "%-40s%20.12f%20.12f\n" % (name, start, dur)
+
+
+def test_check_and_ladder():
+    assert c.check() == 0
+    rows = c.ladder()
+    assert [r[0] for r in rows] == [1, 2, 8, 32]
+    assert c.HEAT3D_PROTOCOLS[32] == ("alltoall",)
+    assert c.BYTES_PEER[1] == 454164480
+    assert c.nz_for(2) == 768 * 16
+
+
+def test_osu_rate_excludes_self():
+    # 8 ranks, 100 byte/peer, 1 us alltoall.
+    assert c.osu_gb_s(1e-6, 100, 8) == pytest.approx(100 * 7 / 1e-6 / 1e9)
+
+
+def test_harvest_trace_and_osu(tmp_path):
+    hrun = tmp_path / "runs" / "h3dbw-768-8n-alltoall_1"
+    _write(
+        hrun / "run_meta.txt",
+        "\n".join(
+            [
+                "=== heffte bandwidth calibrate (issue #119) ===",
+                "kind=heat3d_trace",
+                "job=9",
+                "nodes=8",
+                "ntasks=64",
+                "reshape=alltoall",
+                "steps=20",
+                "warmup=1",
+            ]
+        )
+        + "\n",
+    )
+    _write(
+        hrun / "run.log",
+        "HEAT3D_SPECTRAL_HIP N=768x768x49152 ranks=64 use_pencils=0 "
+        "use_reorder=1 reshape=alltoall gpu_aware=1\n",
+    )
+    # 20 steps * 0.10 s MPI on the critical rank.
+    body = ""
+    t = 0.0
+    for _ in range(20):
+        body += _trace_line("all2all", t, 0.10)
+        body += _trace_line("packing", t + 0.10, 0.02)
+        body += _trace_line("fft-1d", t + 0.12, 0.03)
+        t += 0.15
+    _write(hrun / "heffte_trace_0.log", body)
+    _write(hrun / "heffte_trace_1.log", _trace_line("all2all", 0.0, 0.01))
+    _write(hrun / "admit.txt", "admit=ok\nreason=none\nexpected_reshape=alltoall\n")
+
+    orun = tmp_path / "runs" / "osubw-768-8n-alltoall_1"
+    _write(
+        orun / "run_meta.txt",
+        "\n".join(
+            [
+                "kind=osu",
+                "job=10",
+                "nodes=8",
+                "ntasks=64",
+                "osu_kind=alltoall",
+            ]
+        )
+        + "\n",
+    )
+    peer = c.BYTES_PEER[8]
+    # 1 ms alltoall at the campaign peer size.
+    _write(
+        orun / "osu.out",
+        "# Size       Avg Latency(us)\n%d                 1000.0\n" % peer,
+    )
+
+    out = tmp_path / "results"
+    assert (
+        c.main(["--harvest", str(tmp_path), "--out", str(out)]) == 0
+    )
+    with (out / "bandwidth.csv").open() as handle:
+        rows = list(csv.DictReader(handle))
+    kinds = {r["kind"]: r for r in rows}
+    assert kinds["heat3d_trace"]["admit"] == "ok"
+    assert float(kinds["heat3d_trace"]["t_mpi_s"]) == pytest.approx(0.10)
+    assert float(kinds["heat3d_trace"]["gb_s_mpi"]) == pytest.approx(
+        c.BYTES_STEP[8] / 0.10 / 1e9
+    )
+    assert kinds["osu"]["admit"] == "ok"
+    assert float(kinds["osu"]["gb_s_osu"]) == pytest.approx(
+        c.osu_gb_s(0.001, peer, 64)
+    )
+
+
+def test_reject_missing_trace(tmp_path):
+    run = tmp_path / "runs" / "h3dbw-768-1n-alltoall_1"
+    _write(
+        run / "run_meta.txt",
+        "kind=heat3d_trace\njob=1\nnodes=1\nntasks=8\nreshape=alltoall\nsteps=20\n",
+    )
+    _write(run / "run.log", "HEAT3D_SPECTRAL_HIP reshape=alltoall gpu_aware=1\n")
+    rows = c.collect(str(tmp_path))
+    assert rows[0]["admit"] == "reject"
+    assert rows[0]["reason"] == "missing_trace"
+
+
+@pytest.mark.parametrize("account", ["project_462001245", "project_462001120"])
+def test_submit_refuses_campaign_account(account):
+    env = os.environ.copy()
+    env["ACCOUNT"] = account
+    env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
+    proc = _run(["bash", str(SUBMIT), "check"], env, str(ROOT))
+    assert proc.returncode == 2
+    assert account in proc.stderr_text
+
+
+@pytest.mark.parametrize("account", ["project_462001245", ""])
+def test_batch_refuses_wrong_or_missing_account(account):
+    env = os.environ.copy()
+    env.update(
+        SLURM_JOB_ACCOUNT=account,
+        SLURM_NTASKS="8",
+        RUN_KIND="heat3d",
+        HEAT3D_SPECTRAL_HIP_BIN="/bin/true",
+        HEAT3D_NX="768",
+        HEAT3D_NY="768",
+        HEAT3D_NZ="6144",
+        HEAT3D_RESHAPE_ALG="alltoall",
+    )
+    batch = ROOT / "docs/lumi_slurm/heffte_bandwidth_calibrate.sbatch"
+    proc = _run(["bash", str(batch)], env, str(ROOT))
+    assert proc.returncode == 2
+    assert "refusing bandwidth job billed" in proc.stderr_text
+
+
+def test_submit_dry_run_768(tmp_path):
+    env = os.environ.copy()
+    env["ACCOUNT"] = "project_462001519"
+    env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
+    env["OSU_ALLTOALL_BIN"] = "/bin/true"
+    env["OSU_ALLTOALLV_BIN"] = "/bin/true"
+    env["DRY_RUN"] = "1"
+    env["OPENPFC_SRC"] = str(ROOT)
+    env["OPENPFC_SCALING_ROOT"] = str(tmp_path)
+    env["SBATCH_ACCOUNT"] = "project_462001245"
+    proc = _run(["bash", str(SUBMIT), "768"], env, str(ROOT))
+    assert proc.returncode == 0, proc.stderr_text + proc.stdout_text
+    assert "--account=project_462001519" in proc.stdout_text
+    assert "project_462001245" not in proc.stdout_text.split("--account=")[-1][:20]
+    assert "h3dbw-768-1n-p2p_plined" in proc.stdout_text
+    assert "h3dbw-768-32n-alltoall" in proc.stdout_text
+    assert "osubw-768-8n-alltoallv" in proc.stdout_text
+    assert "h3dbw-768-32n-alltoallv" not in proc.stdout_text
+    assert "--partition=dev-g" in proc.stdout_text
+    assert "HEAT3D_RESHAPE_ALG=alltoall" in proc.stdout_text
+    assert "HEAT3D_PROTOCOLS" not in proc.stdout_text

@@ -68,6 +68,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   before any \(\eta=0.005\) run. Stage 1 remains blocked pending the
   raw-data common-band 128²/256² field gate.
 
+- **HeFFTe-trace MPI vs GPU OSU bandwidth campaign** (issue
+  [#119](https://github.com/ahojukka5/OpenPFC/issues/119)). Optional
+  `OPENPFC_HEFFTE_TRACE` around `mpi_main`, diagnostic Heat3D/OSU
+  sbatch on `dev-g` at 1/2/8/32 nodes. Does not change production
+  HeFFTe or the reshape default.
 - **Blocked HeFFTe selector regret scaffold** (issue
   [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature
   schema, train/held-out split records, and regret tests. Does not time
