@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Stop submitting four-protocol sequential #106 `srun`s at 480+ nodes.
+  A 90 s HIP drain still exits 143 on the first protocol
+  (`switch_g_job_postfini`); jobs 22199235--22199237 were cancelled.
 - Filter HeFFTe timing warmup by absolute step labels (#86), so profiles
   already trimmed by the executable do not lose a second warmup frame.
 
