@@ -183,5 +183,28 @@ Weak efficiency:
 (`16\times16\times32`), local $256^3$. FD-20 512-node is n=3
 (jobs 22198927--22198929, 7.403 ms, weff 0.565). FD-8 32/128 and
 FD-12 32 are n=2. Wall/step weff is monotone in order at every
-completed scale. H1/H2/H3 remain open until diagnostic
-`exposed_wait` is admitted.
+completed scale.
+
+## Harvested diagnostic overlap (2026-09-21)
+
+Admitted `HEAT3D_DIAG_TIMING=1` jobs at 8 and 1024 nodes
+(22187785--22187789, 22187795--22187799). Compact table:
+[`fd_order_overlap_diag.csv`](fd_order_overlap_diag.csv).
+Times below are milliseconds per step.
+
+| order | face B | 8-node wait | 8-node inner | 1024 wait | 1024 inner |
+|------:|-------:|------------:|-------------:|----------:|-----------:|
+| 2 | 3.15 MB | 0.296 | 0.438 | 0.388 | 0.425 |
+| 4 | 6.29 MB | 0.410 | 0.567 | 0.739 | 0.568 |
+| 8 | 12.6 MB | 0.781 | 0.903 | 1.428 | 0.904 |
+| 12 | 18.9 MB | 1.164 | 1.328 | 2.323 | 1.331 |
+| 20 | 31.5 MB | 2.224 | 2.177 | 3.851 | 2.183 |
+
+At 1024 nodes `exposed_wait` tracks face bytes (ratios 1.00 / 1.90 /
+3.68 / 5.99 / 9.92 versus bytes 1 / 2 / 4 / 6 / 10). Interior work is
+almost independent of node count. Wait exceeds inner for FD-4 and
+above at 1024 nodes; FD-2 still hides. **H1** (width-dominated) is
+supported. **H2** is rejected: no higher order keeps weak efficiency
+with FD-2. **H3** is rejected: weff is monotone in order. Production
+`fd_order` is unchanged. 128-node diagnostics were never submitted;
+the 8 vs 1024 endpoints already decide the gate.
