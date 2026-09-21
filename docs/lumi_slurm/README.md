@@ -42,6 +42,17 @@ export HEAT3D_HALO_BIN=/path/to/23_halo_microtiming
 ./docs/lumi_slurm/submit_heat3d_fd_hip_weak.sh halo
 ```
 
+Research `#592` / OpenPFC `#124` 1-node GPU cost matrix
+(\(N=512,1024\), spectral + FD-2/8/12, three repeats):
+[Heat3D N^3 cost](../hpc/heat3d_n3_cost.md).
+
+```bash
+./docs/lumi_slurm/submit_heat3d_n3_cost.sh check
+./docs/lumi_slurm/submit_heat3d_n3_cost.sh build
+./docs/lumi_slurm/submit_heat3d_n3_cost.sh submit
+./docs/lumi_slurm/submit_heat3d_n3_cost.sh collect
+```
+
 3D spectral HIP twin (`heat3d_spectral_hip`, implicit Euler, 2 FFTs/step):
 
 ```bash
