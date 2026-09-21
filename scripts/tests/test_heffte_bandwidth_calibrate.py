@@ -34,6 +34,27 @@ def _run(args, env, cwd):
     return proc
 
 
+def _clean_env():
+    env = os.environ.copy()
+    for key in (
+        "NODES",
+        "HEAT3D_DEPENDENCY",
+        "OSU_DEPENDENCY",
+        "OPENPFC_SRC",
+        "OPENPFC_REVISION",
+        "OPENPFC_DIRTY",
+        "HEAT3D_SPECTRAL_HIP_BIN",
+        "OSU_ALLTOALL_BIN",
+        "OSU_ALLTOALLV_BIN",
+        "SBATCH_ACCOUNT",
+        "ACCOUNT",
+        "PARTITION",
+        "DRY_RUN",
+    ):
+        env.pop(key, None)
+    return env
+
+
 def _write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -145,7 +166,7 @@ def test_reject_missing_trace(tmp_path):
 
 @pytest.mark.parametrize("account", ["project_462001245", "project_462001120"])
 def test_submit_refuses_campaign_account(account):
-    env = os.environ.copy()
+    env = _clean_env()
     env["ACCOUNT"] = account
     env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
     proc = _run(["bash", str(SUBMIT), "check"], env, str(ROOT))
@@ -155,7 +176,7 @@ def test_submit_refuses_campaign_account(account):
 
 @pytest.mark.parametrize("account", ["project_462001245", ""])
 def test_batch_refuses_wrong_or_missing_account(account):
-    env = os.environ.copy()
+    env = _clean_env()
     env.update(
         SLURM_JOB_ACCOUNT=account,
         SLURM_NTASKS="8",
@@ -173,7 +194,7 @@ def test_batch_refuses_wrong_or_missing_account(account):
 
 
 def test_submit_dry_run_768(tmp_path):
-    env = os.environ.copy()
+    env = _clean_env()
     env["ACCOUNT"] = "project_462001519"
     env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
     env["OSU_ALLTOALL_BIN"] = "/bin/true"
@@ -196,7 +217,7 @@ def test_submit_dry_run_768(tmp_path):
 
 
 def test_submit_ignores_leaked_src(tmp_path):
-    env = os.environ.copy()
+    env = _clean_env()
     env["ACCOUNT"] = "project_462001519"
     env["HEAT3D_SPECTRAL_HIP_BIN"] = "/bin/true"
     env["OSU_ALLTOALL_BIN"] = "/bin/true"
@@ -211,7 +232,7 @@ def test_submit_ignores_leaked_src(tmp_path):
 
 
 def test_submit_ignores_leaked_production_bin(tmp_path):
-    env = os.environ.copy()
+    env = _clean_env()
     env["ACCOUNT"] = "project_462001519"
     env["HEAT3D_SPECTRAL_HIP_BIN"] = (
         "/flash/project_462001245/juaho/build/openpfc-lumi-rocm-e98d8a87/"
