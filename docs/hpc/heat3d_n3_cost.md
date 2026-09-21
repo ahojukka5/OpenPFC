@@ -52,3 +52,18 @@ HEAT3D_HIP_BIN=/flash/project_462001519/juaho/build/openpfc-lumi-rocm-n3-cost-59
 
 `collect` writes `docs/report/data/heat3d_n3_cost_repeats.csv` and
 `heat3d_n3_cost_summary.csv`. Ranking recompute belongs in research #592.
+
+## Admitted harvest (2026-09-21)
+
+Jobs 22209970–72, OpenPFC `040c9b6c`, HIP Release, `heffte-rocm` 2.4.1,
+dirty=0, 25 accepted frames, `gpu_aware=1`, spectral `use_pencils=0`.
+Median of three repeats, milliseconds:
+
+| \(N\) | spectral | FD-2 | FD-8 | FD-12 |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 20.77 | 0.856 | 1.821 | 2.553 |
+| 1024 | 184.4 | 6.572 | 18.32 | 24.70 |
+
+\(c(1024)/c(512)\): spectral 8.88, FD-2 7.67, FD-8 10.06, FD-12 9.68
+(\(N^3=8\), \(N^3\log N\approx 8.89\)). CV is 2.1% (spectral 512) down to
+0.04% (FD-2 512). Do not mix with `b91d2575` @tbl-cost.
