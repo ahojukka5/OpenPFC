@@ -43,6 +43,7 @@
 #include <utility>
 
 #include <openpfc/runtime/common/cpu_affinity.hpp>
+#include <openpfc/runtime/common/heffte_tracing.hpp>
 #if defined(OpenPFC_ENABLE_CUDA) || defined(OpenPFC_ENABLE_HIP)
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 #endif
@@ -81,6 +82,7 @@ template <class Body> int mpi_main(int argc, char **argv, Body &&body) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
   reset_cpu_affinity_if_single_mpi_rank(nproc);
+  maybe_init_heffte_tracing(rank);
 
   int rc = EXIT_SUCCESS;
   try {
@@ -93,6 +95,7 @@ template <class Body> int mpi_main(int argc, char **argv, Body &&body) {
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
+  maybe_finalize_heffte_tracing();
   MPI_Finalize();
   return rc;
 }
