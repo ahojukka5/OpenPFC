@@ -81,7 +81,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **FD-order halo-overlap scaling campaign tooling** (issue
   [#108](https://github.com/ahojukka5/OpenPFC/issues/108)). Weak-scaling
   ladder at 256³ interior/GCD for FD-2/4/8/12/20, including the
-  FD-20 512-node n=3 median. Does not change production FD physics.
+  FD-20 512-node n=3 median. Diagnostic `exposed_wait` at 8 and 1024
+  nodes supports H1 (width-dominated). Does not change production FD
+  physics.
 - **FD-order geometry table and harvest status** (issue
   [#108](https://github.com/ahojukka5/OpenPFC/issues/108)). Deterministic
   packed-face / interior-shell quantities from the production exchange
