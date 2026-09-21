@@ -49,6 +49,8 @@ def _clean_env():
         "SBATCH_ACCOUNT",
         "HEAT3D_REPEAT",
         "BUILD_DIR",
+        "HEFFTE_MODULE",
+        "HEFFTE_PREFIX",
     ):
         env.pop(key, None)
     return env
@@ -96,9 +98,11 @@ def test_submit_dry_run_three_repeats(tmp_path):
 def test_build_dry_run_uses_production_heffte():
     env = _clean_env()
     env["DRY_RUN"] = "1"
+    env["BUILD_DIR"] = "/flash/project_462001519/juaho/build/openpfc-lumi-rocm-heffte-trace-heat3d"
+    env["HEFFTE_MODULE"] = "heffte-rocm-trace/2.4.1"
     proc = _run(["bash", str(SUBMIT), "build"], env, ROOT)
     assert proc.returncode == 0, proc.stderr_text
-    assert "build.sh" in proc.stdout_text
+    assert "n3-cost-592" in proc.stdout_text
     assert "heffte-trace" not in proc.stdout_text
 
 
