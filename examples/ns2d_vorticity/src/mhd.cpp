@@ -43,6 +43,10 @@ struct Cli {
   double nu{0.02};
   double eta{0.02};
   double cfl{-1.0};
+  // Orszag-Tang drive amplitude: scales the initial vorticity while the
+  // flux function is held fixed, weakening the externally imposed flow
+  // relative to the magnetic field. 1.0 is the admitted case (research#591).
+  double drive{1.0};
   bool verify{false};
   std::string outdir;
 };
@@ -51,7 +55,8 @@ void print_usage(std::ostream &os, const char *exe) {
   os << "Usage: " << exe
      << " [--case orszag_tang|hydro_control|force_free|alfven]\n"
      << "       [--N N] [--steps N] [--dt DT] [--cfl CFL]\n"
-     << "       [--nu NU] [--eta ETA] [--dump EVERY] [--diag EVERY]\n"
+     << "       [--nu NU] [--eta ETA] [--drive LAMBDA]\n"
+     << "       [--dump EVERY] [--diag EVERY]\n"
      << "       [--outdir DIR] [--verify]\n"
      << "\n"
      << "2-D incompressible visco-resistive MHD (CPU, #23).\n"
@@ -122,6 +127,10 @@ std::optional<Cli> parse_cli(int argc, char **argv) {
       auto v = need("--eta");
       if (!v) return std::nullopt;
       c.eta = std::atof(std::string(*v).c_str());
+    } else if (a == "--drive") {
+      auto v = need("--drive");
+      if (!v) return std::nullopt;
+      c.drive = std::atof(std::string(*v).c_str());
     } else if (a == "--dump") {
       auto v = need("--dump");
       if (!v) return std::nullopt;
@@ -189,8 +198,11 @@ int run(const Cli &cli, int rank, int nproc) {
   ns2d::MHDSolver solver(stack, ns2d::MHDParams{cli.nu, cli.eta, dt, +1.0});
 
   if (cli.cse == ns2d::MHDCase::orszag_tang) {
+    const double drive = cli.drive;
     solver.initialize(
-        [](double x, double y, double) { return ns2d::ot_omega(x, y); },
+        [drive](double x, double y, double) {
+          return drive * ns2d::ot_omega(x, y);
+        },
         [](double x, double y, double) { return ns2d::ot_a(x, y); });
   } else if (cli.cse == ns2d::MHDCase::hydro_control) {
     solver.initialize(
@@ -241,6 +253,10 @@ int run(const Cli &cli, int rank, int nproc) {
            << "  \"dt\": " << dt << ",\n"
            << "  \"nu\": " << cli.nu << ",\n"
            << "  \"eta\": " << cli.eta << ",\n"
+           << "  \"drive\": " << cli.drive << ",\n"
+           << "  \"drive_definition\": \"orszag_tang initial vorticity is "
+              "scaled by this factor; the flux function is unchanged. 1.0 is "
+              "the admitted case (research#591).\",\n"
            << "  \"nproc\": " << nproc << ",\n"
            << "  \"cfl_nominal\": " << (dt / dx) << ",\n"
            << "  \"cfl_nominal_definition\": \"dt/dx; --cfl sets dt=CFL*dx\",\n"
