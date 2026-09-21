@@ -23,6 +23,7 @@ Start with the [HPC operator guide](operator_guide.md).
 | LUMI-G Heat3D FD weak scaling | [Heat3D FD weak](lumi_gpu_heat3d_fd_weak.md) |
 | LUMI-G FD-order halo-overlap scaling | [FD-order scaling](fd_order_scaling.md) |
 | LUMI-G HeFFTe reshape tournament | [HeFFTe protocol tournament](heffte_protocol_tournament.md) |
+| LUMI-G HeFFTe-trace vs OSU bandwidth | [HeFFTe bandwidth calibrate](heffte_bandwidth_calibrate.md) |
 | Held-out HeFFTe selector (blocked) | [HeFFTe selector regret](heffte_selector_regret.md) |
 | LUMI-G HeFFTe topology crossovers | [HeFFTe topology crossover](heffte_topology_crossover.md) |
 | LUMI-G topology metadata actually exposed | [HeFFTe topology observability](heffte_topology_observability.md) |

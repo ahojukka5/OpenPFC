@@ -82,11 +82,25 @@ export HEAT3D_SPECTRAL_HIP_BIN=/path/to/heat3d_spectral_hip
 ./docs/lumi_slurm/submit_heffte_topology_crossover.sh wave1
 ```
 
+Issue `#119` HeFFTe-trace MPI bandwidth vs GPU OSU `alltoall` (account
+`project_462001519`, diagnostic `heffte-rocm-trace`, `dev-g`):
+[HeFFTe bandwidth calibrate](../hpc/heffte_bandwidth_calibrate.md).
+
+```bash
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh check
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh build
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh osu-build
+./docs/lumi_slurm/submit_heffte_bandwidth_calibrate.sh 768
+```
+
 Files: `tungsten_hip_scaling.sbatch`, `tungsten_hip_scaling.toml`,
 `submit_tungsten_hip_scaling.sh`, `heat3d_fd_hip_scaling.sbatch`,
 `submit_heat3d_fd_hip_scaling.sh`, `heat3d_spectral_hip_scaling.sbatch`,
-`submit_heat3d_spectral_hip_scaling.sh`. Account `project_462001519`. Do not point
-these jobs at the 0.1.4 binaries or `project_462001245` scratch used below.
+`submit_heat3d_spectral_hip_scaling.sh`,
+`heffte_bandwidth_calibrate.sbatch`,
+`submit_heffte_bandwidth_calibrate.sh`. Account `project_462001519`. Do
+not point these jobs at the 0.1.4 binaries or `project_462001245`
+scratch used below.
 
 ## Layout (legacy 1024³ helpers)
 
