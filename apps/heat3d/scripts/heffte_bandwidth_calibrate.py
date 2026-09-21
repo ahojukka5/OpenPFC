@@ -3,8 +3,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Issue #119: HeFFTe-trace MPI bandwidth vs GPU OSU alltoall.
 
+Issue #121: 32-node pencil vs slab A/B on the same diagnostic binary.
+GPU-aware MPI is required (banner gpu_aware=1).
+
 Diagnostic only. Walls from the trace binary are not production numbers.
-Bytes are the admitted 768^3/GCD comm-plan replica (n_mpi=1, 2 FFTs/step).
+Bytes are the admitted 768^3/GCD comm-plan replica (n_mpi=1, 2 FFTs/step)
+for slabs. Pencil rows do not reuse those bytes.
 """
 
 import argparse
@@ -69,12 +73,17 @@ RUN_FIELDS = (
     "nodes",
     "ranks",
     "reshape",
+    "use_pencils",
+    "gpu_aware",
     "job",
     "admit",
     "wall_step_s",
     "t_mpi_s",
     "t_pack_s",
     "t_fft_s",
+    "n_mpi_coll_per_step",
+    "real_grid",
+    "complex_grid",
     "bytes_per_timestep",
     "bytes_per_peer",
     "gb_s_mpi",
@@ -179,7 +188,14 @@ def critical_trace(run: str) -> Optional[Dict[str, float]]:
     logs = find_trace_logs(run)
     if not logs:
         return None
-    ranked = [sum_buckets(parse_trace_log(log)) for log in logs]
+    ranked = []
+    for log in logs:
+        events = parse_trace_log(log)
+        buckets = sum_buckets(events)
+        buckets["n_mpi_coll"] = float(
+            sum(1 for name, _, _ in events if name in MPI_COLL)
+        )
+        ranked.append(buckets)
     return max(ranked, key=lambda b: b["mpi"] + b["pack"] + b["fft"])
 
 
@@ -232,17 +248,23 @@ def heat3d_row(run: str) -> Optional[Dict[str, Any]]:
     nodes = int(meta.get("nodes") or 0)
     ranks = int(meta.get("ntasks") or nodes * GCDS_PER_NODE)
     proto = meta.get("reshape") or admit_map.get("expected_reshape") or ""
+    expected_pencils = (
+        meta.get("use_pencils") or admit_map.get("expected_use_pencils") or "0"
+    )
     flag = admit_map.get("admit") or ""
     reason = admit_map.get("reason") or ""
+    log = os.path.join(run, "run.log")
+    banner = banner_field(log, "reshape")
+    pencils = banner_field(log, "use_pencils") or expected_pencils
+    aware = banner_field(log, "gpu_aware")
+    real_grid = banner_field(log, "real_grid")
+    complex_grid = banner_field(log, "complex_grid")
     if not flag:
-        banner = banner_field(os.path.join(run, "run.log"), "reshape")
-        pencils = banner_field(os.path.join(run, "run.log"), "use_pencils")
-        aware = banner_field(os.path.join(run, "run.log"), "gpu_aware")
         if not find_trace_logs(run):
             flag, reason = "reject", "missing_trace"
         elif proto and banner and banner != proto:
             flag, reason = "reject", "banner_reshape_%s" % banner
-        elif pencils and pencils != "0":
+        elif pencils and pencils != expected_pencils:
             flag, reason = "reject", "banner_use_pencils_%s" % pencils
         elif aware and aware != "1":
             flag, reason = "reject", "banner_gpu_aware_%s" % aware
@@ -252,11 +274,12 @@ def heat3d_row(run: str) -> Optional[Dict[str, Any]]:
                 proto = banner
     buckets = critical_trace(run)
     n_steps = int(meta.get("steps") or 20)
-    t_mpi = t_pack = t_fft = None
+    t_mpi = t_pack = t_fft = n_coll = None
     if buckets and n_steps > 0:
         t_mpi = buckets["mpi"] / n_steps
         t_pack = buckets["pack"] / n_steps
         t_fft = buckets["fft"] / n_steps
+        n_coll = buckets.get("n_mpi_coll", 0.0) / n_steps
     wall = None
     warmup = int(meta.get("warmup") or 1)
     prof = os.path.join(run, "timing_profile.json")
@@ -276,24 +299,32 @@ def heat3d_row(run: str) -> Optional[Dict[str, Any]]:
                 wall = float(statistics.median(vals))
         except (OSError, ValueError, TypeError, json.JSONDecodeError, IndexError):
             wall = None
-    bstep = BYTES_STEP.get(nodes, 0)
-    gb = (bstep / t_mpi / 1e9) if t_mpi else None
+    slab = pencils != "1"
+    bstep = BYTES_STEP.get(nodes, 0) if slab else None
+    bpeer = BYTES_PEER.get(nodes, 0) if slab else None
+    gb = (bstep / t_mpi / 1e9) if slab and bstep and t_mpi else None
     frac = (gb * 1e9 / NIC_UNI_GCD) if gb and nodes > 1 else None
+    issue = meta.get("issue") or ("121" if pencils == "1" else "119")
     return {
         "kind": "heat3d_trace",
-        "issue": "119",
+        "issue": issue,
         "family": FAMILY,
         "nodes": nodes,
         "ranks": ranks,
         "reshape": proto,
+        "use_pencils": pencils,
+        "gpu_aware": aware or meta.get("gpu_aware") or "",
         "job": meta.get("job") or "",
         "admit": flag,
         "wall_step_s": wall,
         "t_mpi_s": t_mpi,
         "t_pack_s": t_pack,
         "t_fft_s": t_fft,
+        "n_mpi_coll_per_step": n_coll,
+        "real_grid": real_grid,
+        "complex_grid": complex_grid,
         "bytes_per_timestep": bstep,
-        "bytes_per_peer": BYTES_PEER.get(nodes, 0),
+        "bytes_per_peer": bpeer,
         "gb_s_mpi": gb,
         "gb_s_osu": None,
         "frac_nic_uni_gcd": frac,
@@ -318,12 +349,17 @@ def osu_row(run: str) -> Optional[Dict[str, Any]]:
         "nodes": nodes,
         "ranks": ranks,
         "reshape": kind,
+        "use_pencils": "",
+        "gpu_aware": "1",
         "job": meta.get("job") or "",
         "admit": admit,
         "wall_step_s": None,
         "t_mpi_s": lat,
         "t_pack_s": None,
         "t_fft_s": None,
+        "n_mpi_coll_per_step": None,
+        "real_grid": "",
+        "complex_grid": "",
         "bytes_per_timestep": BYTES_STEP.get(nodes, 0),
         "bytes_per_peer": peer,
         "gb_s_mpi": None,
