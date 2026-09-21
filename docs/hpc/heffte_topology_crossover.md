@@ -132,7 +132,7 @@ winner/second pairs (<5%) are **not** a default change.
 | nodes | ranks | n (best) | best | T_best (s) | second | T_2/T_1 | `p2p` / best |
 |------:|------:|---------:|------|----------:|--------|--------:|-------------:|
 | 124 | 992 | 3 | `alltoall` | 2.014 | `alltoallv` | 1.001 | 1.26× |
-| 128 | 1024 | 1 | `p2p_plined` | 1.717 | `alltoall` | 1.149 | 2.53× |
+| 128 | 1024 | 2 | `p2p_plined` | 1.720 | `alltoall` | 1.147 | 2.52× |
 | 136 | 1088 | 3 | `alltoall` | 1.481 | `alltoallv` | 1.012 | 1.72× |
 | 264 | 2112 | 2 | `alltoall` | 1.871 | `alltoallv` | 1.018 | 2.25× |
 | 512 | 4096 | 1 | `alltoallv` | 2.079 | — | — | incomplete |
@@ -140,17 +140,20 @@ winner/second pairs (<5%) are **not** a default change.
 
 Collectives beat blocking `p2p` at every completed scale. `alltoall`
 versus `alltoallv` is unresolved at 124, 136, 264 and 528 nodes
-(winner/second within 2%). The 128-node `p2p_plined` win is a single
-allocation and is not a ranking. 512-node later protocols often die
-with SIGTERM 143 (`switch_g_job_postfini: Device or resource busy`)
-after the first sequential `srun`. Resubmits drain HIP for 90 s after
-placement and between protocols. Do not treat a 143 allocation as a
-four-protocol tournament.
+(winner/second within 2%). Both completed 128-node allocations
+(22186602, 22198879) elect `p2p_plined` with a 15% gap to
+`alltoall`. Protocol order does not explain that: r1 ran
+`p2p_plined` third, r3 fourth. Repeat 2 is job **22213995**
+(order `alltoallv:alltoall:p2p_plined:p2p`). Do not close H3 until
+that allocation finishes.
 
-112/240/248/256-node jobs may still be queued. Do not submit
-further 480/496/512-node four-protocol sequential `srun`s: a 90 s
-HIP drain still loses the first protocol to SIGTERM 143
-(`switch_g_job_postfini: Device or resource busy`). Jobs
-22199235--22199237 were cancelled after that repeat. One protocol
-per allocation, or drop that scale. Do not change the production
-reshape default from these numbers.
+The 128-node complex grid is `4x256x1`; 124 is `31x32x1` and 136 is
+`17x64x1`. That is a pre-execution descriptor jump, so a 124↔128↔136
+ranking change is **not** by itself a Slingshot-group effect (frozen
+H2 test). H1/H2 remain open.
+
+512-node later protocols often die with SIGTERM 143
+(`switch_g_job_postfini: Device or resource busy`) after the first
+sequential `srun`. Do not submit further 480+ node four-protocol
+sequential `srun`s. 240-node r1 remains queued (22186616). Do not
+change the production reshape default from these numbers.
