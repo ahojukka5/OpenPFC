@@ -147,5 +147,10 @@ after the first sequential `srun`. Resubmits drain HIP for 90 s after
 placement and between protocols. Do not treat a 143 allocation as a
 four-protocol tournament.
 
-112/240/248/256/480/496-node jobs were still queued at harvest.
-Do not change the production reshape default from these numbers.
+112/240/248/256-node jobs may still be queued. Do not submit
+further 480/496/512-node four-protocol sequential `srun`s: a 90 s
+HIP drain still loses the first protocol to SIGTERM 143
+(`switch_g_job_postfini: Device or resource busy`). Jobs
+22199235--22199237 were cancelled after that repeat. One protocol
+per allocation, or drop that scale. Do not change the production
+reshape default from these numbers.
