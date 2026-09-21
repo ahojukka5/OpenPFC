@@ -155,23 +155,33 @@ those artifacts (`reason=recovered_missing_admit`). Compact table:
 [`fd_order_campaign_scaling.csv`](fd_order_campaign_scaling.csv).
 
 Clean production median `wall_step` after warmup, halo overlap mode 1,
-frozen `dt=0.01`. Weak efficiency is blank: the 1-node baseline is
-still queued. Do not mix diagnostic-mode overlap timings with this
+frozen `dt=0.01`. Weak efficiency is versus that order's 1-node
+5005-step median. Do not mix diagnostic-mode overlap timings with this
 table. Do not change production FD physics from these jobs.
 
-| order | width | 32 nodes | 128 nodes | 1024 nodes (n=3) | 1024 spread | vs FD-2 at 1024 |
-|------:|------:|---------:|----------:|-----------------:|------------:|----------------:|
-| 2 | 1 | 0.879 ms | 0.977 ms | 1.025 ms | 0.76% | 1.00× |
-| 4 | 2 | 1.620 ms | — | 1.932 ms | 0.82% | 1.89× |
-| 8 | 4 | 2.523 ms | — | 3.127 ms | 0.90% | 3.05× |
-| 12 | 6 | — | — | 4.523 ms | 0.37% | 4.41× |
-| 20 | 10 | — | — | 7.726 ms | 0.79% | 7.54× |
+Wall/step (ms):
+
+| order | 1 n=3 | 8 n=3 | 32 | 128 | 512 n=3 | 1024 n=3 |
+|------:|------:|------:|---:|----:|--------:|---------:|
+| 2 | 0.891 | 0.893 | 0.884 n=3 | 0.974 n=3 | 1.002 | 1.025 |
+| 4 | 1.321 | 1.587 | 1.595 n=3 | 1.827 n=3 | 1.874 | 1.932 |
+| 8 | 1.844 | 2.403 | 2.479 n=2 | 2.913 n=2 | 3.060 | 3.127 |
+| 12 | 2.603 | 3.427 | 3.700 n=2 | 4.212 n=3 | 4.392 | 4.523 |
+| 20 | 4.184 | 5.728 | 6.265 n=3 | 7.120 n=3 | 7.403 | 7.726 |
+
+Weak efficiency:
+
+| order | 1 | 8 | 32 | 128 | 512 | 1024 |
+|------:|--:|--:|---:|----:|----:|-----:|
+| 2 | 1.000 | 0.997 | 1.008 | 0.914 | 0.889 | 0.869 |
+| 4 | 1.000 | 0.833 | 0.828 | 0.723 | 0.705 | 0.684 |
+| 8 | 1.000 | 0.767 | 0.744 | 0.633 | 0.603 | 0.590 |
+| 12 | 1.000 | 0.760 | 0.703 | 0.618 | 0.593 | 0.575 |
+| 20 | 1.000 | 0.730 | 0.668 | 0.588 | 0.565 | 0.542 |
 
 1024-node geometry is $4096\times4096\times8192$ on 8192 ranks
-(`16\times16\times32`), local $256^3$. Jobs 22187770–22187784
-(clean) and 22187795–22187799 (diag, excluded from the table).
-Revision `0cedb257`. Where both 32- and 1024-node points exist,
-wall/step grows 17% (FD-2), 19% (FD-4) and 24% (FD-8) over that
-$32\times$ node increase.
-
-H1/H2/H3 remain open until the 1-node and 8-node baselines land.
+(`16\times16\times32`), local $256^3$. FD-20 512-node is n=3
+(jobs 22198927--22198929, 7.403 ms, weff 0.565). FD-8 32/128 and
+FD-12 32 are n=2. Wall/step weff is monotone in order at every
+completed scale. H1/H2/H3 remain open until diagnostic
+`exposed_wait` is admitted.

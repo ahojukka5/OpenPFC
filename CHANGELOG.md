@@ -80,8 +80,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   elected-protocol repeat range, not the gap across protocols.
 - **FD-order halo-overlap scaling campaign tooling** (issue
   [#108](https://github.com/ahojukka5/OpenPFC/issues/108)). Weak-scaling
-  ladder at 256³ interior/GCD for FD-2/4/8/12/20. Does not change
-  production FD physics.
+  ladder at 256³ interior/GCD for FD-2/4/8/12/20, including the
+  FD-20 512-node n=3 median. Does not change production FD physics.
 - **FD-order geometry table and harvest status** (issue
   [#108](https://github.com/ahojukka5/OpenPFC/issues/108)). Deterministic
   packed-face / interior-shell quantities from the production exchange
