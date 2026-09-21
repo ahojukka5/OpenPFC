@@ -208,3 +208,23 @@ def test_submit_ignores_leaked_src(tmp_path):
     proc = _run(["bash", str(SUBMIT), "768"], env, str(ROOT))
     assert proc.returncode == 0, proc.stderr_text + proc.stdout_text
     assert "ignoring leaked OPENPFC_SRC" in proc.stderr_text
+
+
+def test_submit_ignores_leaked_production_bin(tmp_path):
+    env = os.environ.copy()
+    env["ACCOUNT"] = "project_462001519"
+    env["HEAT3D_SPECTRAL_HIP_BIN"] = (
+        "/flash/project_462001245/juaho/build/openpfc-lumi-rocm-e98d8a87/"
+        "apps/heat3d/heat3d_spectral_hip"
+    )
+    env["OSU_ALLTOALL_BIN"] = "/bin/true"
+    env["OSU_ALLTOALLV_BIN"] = "/bin/true"
+    env["DRY_RUN"] = "1"
+    env["NODES"] = "1"
+    env["OPENPFC_SRC"] = str(ROOT)
+    env["OPENPFC_SCALING_ROOT"] = str(tmp_path)
+    proc = _run(["bash", str(SUBMIT), "768"], env, str(ROOT))
+    assert proc.returncode == 0, proc.stderr_text + proc.stdout_text
+    assert "ignoring leaked HEAT3D_SPECTRAL_HIP_BIN" in proc.stderr_text
+    assert "heffte-trace-heat3d" in proc.stdout_text
+    assert "openpfc-lumi-rocm-e98d8a87" not in proc.stdout_text

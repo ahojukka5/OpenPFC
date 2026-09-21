@@ -169,6 +169,7 @@ if [[ "${KIND}" == "heat3d" ]]; then
   BANNER_PENCILS="$(banner_field "${RUNDIR}/run.log" use_pencils)"
   BANNER_AWARE="$(banner_field "${RUNDIR}/run.log" gpu_aware)"
   NTRACE="$(find "${RUNDIR}" -maxdepth 1 -name 'heffte_trace_*.log' | wc -l | tr -d ' ')"
+  TRACE_BANNER="$(grep -c 'heFFTe tracing enabled' "${RUNDIR}/run.log" 2>/dev/null || true)"
   ADMIT="ok"
   REASON="none"
   if (( SRUN_RC != 0 )); then
@@ -186,6 +187,9 @@ if [[ "${KIND}" == "heat3d" ]]; then
   elif [[ "${BANNER_AWARE}" != "1" ]]; then
     ADMIT="reject"
     REASON="banner_gpu_aware_${BANNER_AWARE}"
+  elif [[ "${TRACE_BANNER}" -lt 1 ]]; then
+    ADMIT="reject"
+    REASON="missing_trace_banner"
   elif (( NTRACE < 1 )); then
     ADMIT="reject"
     REASON="missing_trace"
