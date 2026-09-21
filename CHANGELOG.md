@@ -72,6 +72,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   [#119](https://github.com/ahojukka5/OpenPFC/issues/119)). Optional
   `OPENPFC_HEFFTE_TRACE` around `mpi_main`, diagnostic Heat3D/OSU
   sbatch on `standard-g` at 1/2/8/32 nodes (`dev-g` MaxSubmitJobs=2).
+  Admitted 8--32 node \(B_{\mathrm{mpi}}\) matches GPU OSU within 4%.
   Does not change production HeFFTe or the reshape default.
 - **Blocked HeFFTe selector regret scaffold** (issue
   [#107](https://github.com/ahojukka5/OpenPFC/issues/107)). Feature

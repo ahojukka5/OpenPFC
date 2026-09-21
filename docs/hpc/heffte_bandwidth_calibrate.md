@@ -91,6 +91,30 @@ HEAT3D_DEPENDENCY=<build-job> OSU_DEPENDENCY=<osu-build-job> \
 If the binaries already exist, omit the dependency variables.
 Optional: `NODES=1,2`, `DRY_RUN=1`, `PARTITION=dev-g`.
 
+## Harvested MPI vs OSU (2026-09-21)
+
+Admitted compact table:
+[`heffte_bandwidth_calibrate.csv`](heffte_bandwidth_calibrate.csv).
+Reject rows (missing traces from leaked production binaries) stay in
+the scratch harvest and are not in this file.
+
+HeFFTe-trace \(B_{\mathrm{mpi}}\) versus GPU OSU at the same
+`bytes_per_peer`:
+
+| nodes | Heat3D protocol | \(B_{\mathrm{mpi}}\) GB/s | OSU GB/s | HeFFTe/OSU |
+|------:|-----------------|--------------------------:|---------:|-----------:|
+| 1 | `p2p_plined` | 62.5 | 31.9 | on-node |
+| 2 | `p2p_plined` | 15.8 | 12.8 | 1.23 |
+| 8 | `alltoall` | 9.30 | 9.33 | 1.00 |
+| 32 | `alltoall` | 8.29 | 8.59 | 0.96 |
+
+At 8--32 nodes the MPI-only rate is within 4% of GPU OSU and 0.66--0.74
+of the 12.5 GB/s unidirectional GCD NIC share. Pack is 0.14 s versus
+MPI 0.78 s at 8 nodes: pack is real, but it is not hiding a slower
+collective. The #119 stop rule is met. Do not restart 128+ node Heat3D
+tournaments from this calibration. Diagnostic walls are not production
+numbers.
+
 `OPENPFC_HEFFTE_TRACE` is set by the sbatch. HeFFTe writes
 `heffte_trace_<rank>.log`. Collect rebuilds CSV from run directories.
 Do not commit raw traces.

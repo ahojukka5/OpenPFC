@@ -1,0 +1,19 @@
+# OpenPFC #119 admitted HeFFTe-trace MPI vs GPU OSU, Heat3D 768^3/GCD.
+# Diagnostic heffte-rocm-trace binary; walls are not production numbers.
+# B_mpi = bytes_per_timestep / T_mpi (all2all/all2allv/waitany).
+# B_osu = bytes_per_peer * (P-1) / OSU latency, -d rocm.
+# frac_nic_uni_gcd vs 12.5 GB/s (shared 25 GB/s NIC). 1-node is on-node.
+# Scratch: /scratch/project_462001519/juaho/openpfc-scaling/heffte-bandwidth-calibrate/
+kind,nodes,ranks,reshape,job,admit,wall_step_s,t_mpi_s,t_pack_s,t_fft_s,gb_s_mpi,gb_s_osu,frac_nic_uni_gcd
+heat3d_trace,1,8,p2p_plined,22207609,ok,0.51664554,0.11633573,0.091956434,0.075603168,62.462598,,
+heat3d_trace,1,8,alltoall,22207610,ok,0.60760469,0.20923321,0.094355644,0.077498066,34.729819,,
+osu,1,8,alltoall,22207631,ok,,0.09961937,,,,31.912984,
+heat3d_trace,2,16,p2p_plined,22207632,ok,0.8679153,0.45986508,0.090798382,0.074060259,15.80166,,1.2641328
+heat3d_trace,2,16,alltoall,22207681,ok,0.94620457,0.55545906,0.081800718,0.073021923,13.082209,,1.0465767
+osu,2,16,alltoall,22207683,ok,,0.2658159,,,,12.814258,1.0251407
+heat3d_trace,8,64,alltoall,22207741,ok,1.1986844,0.78118718,0.14253945,0.078520378,9.3020365,,0.74416292
+osu,8,64,alltoall,22207742,ok,,0.38335134,,,,9.3296799,0.74637439
+heat3d_trace,8,64,alltoallv,22207836,ok,1.2070531,0.78037061,0.14288318,0.078510387,9.31177,,0.7449416
+osu,8,64,alltoallv,22207837,ok,,0.39823962,,,,8.9808876,0.71847101
+heat3d_trace,32,256,alltoall,22207838,ok,1.4157738,0.87677882,0.2452067,0.10440583,8.2878732,,0.66302986
+osu,32,256,alltoall,22207839,ok,,0.42114685,,,,8.5934946,0.68747957
