@@ -35,6 +35,13 @@ NODES_FILTER="${NODES:-}"
 DEFAULT_H3D_BIN="/flash/project_462001519/juaho/build/openpfc-lumi-rocm-heffte-trace-heat3d/apps/heat3d/heat3d_spectral_hip"
 DEFAULT_OSU_PREFIX="/flash/project_462001519/juaho/opt/osu-micro-benchmarks/7.5-rocm"
 DEFAULT_OSU_COLL="${DEFAULT_OSU_PREFIX}/libexec/osu-micro-benchmarks/mpi/collective"
+# Login shells leak the production HIP tree (jobs 22205703/704 wrote no
+# traces). Keep only a binary whose path names the diagnostic install.
+if [[ -n "${HEAT3D_SPECTRAL_HIP_BIN:-}" &&
+      "${HEAT3D_SPECTRAL_HIP_BIN}" != *heffte-trace* ]]; then
+  echo "ignoring leaked HEAT3D_SPECTRAL_HIP_BIN=${HEAT3D_SPECTRAL_HIP_BIN}" >&2
+  unset HEAT3D_SPECTRAL_HIP_BIN
+fi
 HEAT3D_SPECTRAL_HIP_BIN="${HEAT3D_SPECTRAL_HIP_BIN:-${DEFAULT_H3D_BIN}}"
 OSU_ALLTOALL_BIN="${OSU_ALLTOALL_BIN:-${DEFAULT_OSU_COLL}/osu_alltoall}"
 OSU_ALLTOALLV_BIN="${OSU_ALLTOALLV_BIN:-${DEFAULT_OSU_COLL}/osu_alltoallv}"
