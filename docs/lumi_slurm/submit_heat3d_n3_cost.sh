@@ -87,6 +87,14 @@ if [[ -n "${HEAT3D_SPECTRAL_HIP_BIN:-}" &&
   echo "ignoring diagnostic HEAT3D_SPECTRAL_HIP_BIN=${HEAT3D_SPECTRAL_HIP_BIN}" >&2
   unset HEAT3D_SPECTRAL_HIP_BIN
 fi
+if [[ -n "${BUILD_DIR:-}" && "${BUILD_DIR}" != *n3-cost-592* ]]; then
+  echo "ignoring leaked BUILD_DIR=${BUILD_DIR}" >&2
+  unset BUILD_DIR
+fi
+if [[ -n "${HEFFTE_MODULE:-}" && "${HEFFTE_MODULE}" == *trace* ]]; then
+  echo "ignoring diagnostic HEFFTE_MODULE=${HEFFTE_MODULE}" >&2
+  unset HEFFTE_MODULE HEFFTE_PREFIX HEFFTE_DIR
+fi
 HEAT3D_SPECTRAL_HIP_BIN="${HEAT3D_SPECTRAL_HIP_BIN:-${DEFAULT_SPEC}}"
 HEAT3D_HIP_BIN="${HEAT3D_HIP_BIN:-${DEFAULT_FD}}"
 export HEAT3D_SPECTRAL_HIP_BIN HEAT3D_HIP_BIN
