@@ -32,6 +32,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Higher-order PFC seed-ensemble driver and $256^2$ same-$dx$ box-control
+  inputs (`apps/higher_order_pfc`, research
+  [#608](https://github.com/ahojukka5/research/issues/608)). Frozen seeds
+  `42, 7, 11, 99, 137, 256, 1024, 2024` and a mode-32 $|k|=1$ torus that
+  keeps $dx$ fixed. Diagnostics already exported the time series.
+
 - **Exact forced linear EHD oracle** (`apps/ehd_film`, OpenPFC
   [#126](https://github.com/ahojukka5/OpenPFC/issues/126), research
   [#610](https://github.com/ahojukka5/research/issues/610)). Closed-form
