@@ -91,6 +91,7 @@ path = [
     "docs/hpc/fd_order_campaign_scaling.csv",
     "docs/hpc/fd_order_geometry.csv",
     "docs/hpc/fd_order_overlap_diag.csv",
+    "docs/hpc/heffte_bandwidth_calibrate.csv",
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
