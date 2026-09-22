@@ -23,7 +23,7 @@
  * canonical demonstration whose interface is 0.76 cells wide and whose
  * driving force is 6% under the bistability ceiling is not a demonstration
  * of Allen–Cahn; it is a demonstration of two large errors cancelling. See
- * `docs/report/data/allen_cahn_resolution_margin.csv` for the measurements.
+ * `out/report/data/allen_cahn_resolution_margin.csv` for the measurements.
  */
 
 #define CATCH_CONFIG_RUNNER

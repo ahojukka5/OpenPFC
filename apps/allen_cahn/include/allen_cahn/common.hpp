@@ -28,7 +28,7 @@ namespace allen_cahn {
  *
  * The preset moved in 0.2 from `64^2, dt=9e-5, eps=0.19, F=10` to the values
  * below, for two coupled reasons measured in
- * `docs/report/data/allen_cahn_resolution_margin.csv`:
+ * `out/report/data/allen_cahn_resolution_margin.csv`:
  *
  * 1. **The old interface was sub-grid.** `eps*sqrt(2M) = 0.76` cells, so the
  *    front was pinned by the lattice rather than set by the continuum
@@ -301,7 +301,7 @@ inline std::int64_t global_area_cells(MPI_Comm comm, std::int64_t n_local) {
  * continuum physics, and every kinetic number the app reports acquires a
  * systematic error of tens of percent — measured `-32%` at 0.76 cells,
  * `+0.05%` at 1.5 and `+1.2%` at 2.0
- * (`docs/report/data/allen_cahn_resolution_margin.csv`). See
+ * (`out/report/data/allen_cahn_resolution_margin.csv`). See
  * `RunConfig::kMinInterfaceWidthCells`.
  */
 [[nodiscard]] inline double interface_width_cells(double M, double epsilon,

@@ -268,7 +268,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   top-hat FD-12 at `1e-2`; spectral at `1e-8`. Pre-issue-3 CSV
   snapshots stay as historical evidence.
 - **Applications catalog moved** to ``
-  `docs/report/` keeps CSV writers
+  `out/report/` keeps CSV writers
   and figure-regeneration scripts; narrative Quarto chapters are no
   longer in this repository ([#174](https://github.com/VTT-ProperTune/OpenPFC/issues/174)).
 
@@ -338,7 +338,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   families, \(N=32\), orders 2 and 12, \(f\in\{0.3,0.6\}\), \(n\) and
   \(2n\) steps. Max \(|\mathrm{measured}/\mathrm{predicted}-1|=5.67\times10^{-8}\),
   inside the frozen \(10^{-6}\) bound. CSV
-  `docs/report/data/heat3d_spectral_family_heldout.csv`. Does not retune
+  `out/report/data/heat3d_spectral_family_heldout.csv`. Does not retune
   rankings or cost tables.
 - **Device Green-operator elasticity** (`DeviceEigenstrainMicroelasticity`,
   issue [#157](https://github.com/VTT-ProperTune/OpenPFC/issues/157)).
@@ -358,7 +358,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   without moving \(V\); thermal and both (\(V=0.116\)) show eigenstrain
   cancellation (\(f_{\mathrm{el}}=1.40\times10^{-3}\) vs \(3.27\times10^{-3}\)
   thermal-only). CSV
-  `docs/report/data/alloy_dendrite_hip_science_22043824.csv`.
+  `out/report/data/alloy_dendrite_hip_science_22043824.csv`.
   Coupled science reports the discrete energy identity \(F=W_{*}\)
   (`el_energy`, `el_wstar`, `el_balance_rel`). LUMI-G job **22045158**
   repeats the frozen five-arm campaign: last-sample
@@ -366,7 +366,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   \(5.4\times10^{-6}\) (thermal), \(7.0\times10^{-7}\) (`both`).
   Catch2 and `openpfc_microelasticity_hip_parity` check the same
   integrals. CSV
-  `docs/report/data/alloy_dendrite_hip_science_22045158.csv`.
+  `out/report/data/alloy_dendrite_hip_science_22045158.csv`.
 - **Periodic spectrum families** for spatial-operator analysis
   (`pfc::field::spectra`, issue
   [#177](https://github.com/VTT-ProperTune/OpenPFC/issues/177),
@@ -388,25 +388,25 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   21995259, \(\mu_l/\mu_s=0.001\), `--el-iter=400`. Green solve
   qualifies (`el_nonconverged=0`, max 107 iterations). \(dV/V=-2.92\%\),
   matching the capped 21995259 row. Not the \(960^2\) science box.
-  CSV `docs/report/data/dendrite_shear_21996493.csv`.
+  CSV `out/report/data/dendrite_shear_21996493.csv`.
 - **Tungsten reserved dealias timing** (`tungsten_dealias_study --reserved`):
   \(N=128\), \(\Delta x=\pi/3\), mask on vs off, median `wall_step` after
   five warm-up steps. Job 21993461 (LUMI-C 8×16): \(r=c_{\mathrm{on}}/
   c_{\mathrm{off}}=0.997\), \(f_{\mathrm{nl}}=1\) before the mask and
   \(2/3\) after, \(|\Delta k_1|\) and \(|\Delta S_{\mathrm{peak}}|<0.4\%\).
-  CSV `docs/report/data/tungsten_dealias_reserved.csv`. Not a
+  CSV `out/report/data/tungsten_dealias_reserved.csv`. Not a
   spectral-versus-FD ranking.
 - **Heat3D CPU median `wall_step`** (`HEAT3D_CPU_WALL_STEP_MS_MEDIAN`)
   on `heat3d_fd` / `heat3d_spectral`, matching the GPU warm-up rule.
   LUMI-C equal-node control (job 21990892, 8 ranks × 16 threads,
   \(N=1024\)): spectral 5525 ms, FD-2 569 ms, FD-8 1492 ms, FD-12
-  1796 ms. CSV `docs/report/data/heat3d_method_cost_lumi_c.csv`.
+  1796 ms. CSV `out/report/data/heat3d_method_cost_lumi_c.csv`.
   Recipe: `apps/heat3d/slurm/lumi_c_control.sbatch`. Candidate for the
   operator-choice protocol, not an admitted ranking.
 - **Heat3D held-out \(N=128\) RK4** (job 21991231): orders 2 and 12 at
   \(f=0.3\) and \(0.6\). Predicted vs measured ratio is 1 to
   \(6\times10^{-8}\) relative. CSV
-  `docs/report/data/heat3d_spectral_content_heldout.csv`.
+  `out/report/data/heat3d_spectral_content_heldout.csv`.
 - **Coherent elastic Cahn–Hilliard** (`cahn_hilliard_elastic`). Same
   application, not a seventeenth catalog entry. Vegard eigenstrain
   \(\varepsilon^{*}=\varepsilon_0(c-c_{\mathrm{ref}})I\) on the existing
@@ -436,7 +436,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   (HIP job 21968269): late spontaneous dewetting wallpaper and a
   $t=85$ spontaneous-vs-defect pair. Recipe:
   `apps/thin_film/slurm/report_512.sbatch` and
-  `docs/report/figures/make_thin_film_money.py`.
+  `out/report/figures/make_thin_film_money.py`.
 - **`thin_film_fd` VTK dumps and through-rupture figures.** Rank-0
   gathered `fields[]`. Job 21980525, $256^2$: spontaneous $t=400$ has 54
   holes at $h^{*}=0.15$ (volume conserved); the spectral ETD path
@@ -447,7 +447,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   pair, and a $512^2$ single-mode vs broadband comparison. Replaces the
   $128^2$ stripe montage. Recipe:
   `apps/cahn_hilliard/slurm/report_512.sbatch` and
-  `docs/report/figures/make_cahn_hilliard_money.py`.
+  `out/report/figures/make_cahn_hilliard_money.py`.
 
 ### Added
 
@@ -459,7 +459,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   Process-parameter Cahn–Hilliard family versus rotating-square auxetic
   seed; percolation/island/opening metrics; 3-D CPU/MPI driver with
   per-step wall time (`stage8_3d.sbatch`). Report chapter
-  `docs/report/21_inverse_homogenization.qmd` (sixteenth-app exception).
+  `out/report/21_inverse_homogenization.qmd` (sixteenth-app exception).
 - **Allen–Cahn inverse homogenization** (`openpfc_inverse_homogenize`,
   issue #161 Stages 2–3). Explicit gradient flow on
   \(\tfrac12\lVert W\odot(C_H-C_{\mathrm{target}})\rVert_F^2\) with a
@@ -776,7 +776,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   a surface), and `09_ehd_film` gets the compliant-against-stiff plate at the
   instant the load lifts (the deepest either dent gets: `h_centre` 0.659 with
   radius 12.3 against 0.747 with radius 14.2, on one shared scale). Both runs
-  are in `docs/report/figures/run_field_demos.sh` and neither extends the
+  are in `out/report/figures/run_field_demos.sh` and neither extends the
   shipped preset's `t1`.
 
   Getting them needed a real change to the two applications, not just to the
@@ -795,7 +795,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - Field figures for the four application chapters that had none:
   `08_kawahara`, `13_wave2d`, `14_allen_cahn`, `15_kobayashi`, each rendered
   from a real single-rank run recorded in
-  `docs/report/figures/run_field_demos.sh`. Kawahara is one-dimensional, so
+  `out/report/figures/run_field_demos.sh`. Kawahara is one-dimensional, so
   `field_plots.py` grows a line-plot pair (`render_line_panel`,
   `render_line_comparison`) alongside the existing image renderers: a
   `512 x 1 x 1` snapshot drawn as an image is a one-pixel stripe, and the
@@ -811,7 +811,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 - Three discrepancies between what an application chapter claimed and what
   its binary actually does, found while rendering those figures and now
-  recorded in the chapters and in `docs/report/README.md` rather than left
+  recorded in the chapters and in `out/report/README.md` rather than left
   implicit. `wave2d`'s advertised observable `global_rms_u_interior` is
   always exactly zero, because the interior reduction skips `half_width`
   cells on every axis including `z` and the application is an `nz == 1`
@@ -825,7 +825,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   report should not have to rediscover them.
 - Field figures for the three crystal-selection chapters of the applications
   report, each rendered from a real single-rank run added to
-  `docs/report/figures/run_field_demos.sh`. `10_higher_order_pfc`: the two
+  `out/report/figures/run_field_demos.sh`. `10_higher_order_pfc`: the two
   noise-seeded presets at `t=400`, side by side and cropped to the central
   `64^2` cells, where the six-neighbour triangular packing of the single-mode
   `k^4` kernel and the four-neighbour square packing of the two-mode `k^8`
@@ -893,13 +893,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   Also documents a boundary-shell gap in the `FDCPUStack` +
   `pfc::sim::steppers::create` pattern (`pfc::sim::for_each_interior` skips
   a `fd_order/2`-wide shell that only `FDCPUStack::du<G>()` covers), found
-  while building this study. Data: `docs/report/data/heat3d_fd_order_convergence.csv`.
-  Figure: `docs/report/figures/heat3d_fd_order_convergence.svg`. Regression
+  while building this study. Data: `out/report/data/heat3d_fd_order_convergence.csv`.
+  Figure: `out/report/figures/heat3d_fd_order_convergence.svg`. Regression
   guard: `test_heat3d_fd_convergence.cpp` / ctest `heat3d-fd-convergence`.
 
 ### Fixed
 
-- The applications report renders. `docs/report/14_allen_cahn.qmd` contained
+- The applications report renders. `out/report/14_allen_cahn.qmd` contained
   `$R^\*$`; a backslash-escaped asterisk is invalid in math mode and LuaTeX
   stops on it with `Missing { inserted`. MathJax accepts it silently, so
   neither the HTML render nor the markdown checkers noticed -- only a PDF
@@ -922,7 +922,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   residual walks from `+17%` at the ceiling to `-65%` at a quarter of it, so
   there is no safe driving force at that resolution. Measured across
   interface width, margin and grid in
-  `docs/report/data/allen_cahn_resolution_margin.csv`.
+  `out/report/data/allen_cahn_resolution_margin.csv`.
 
   The preset is now `epsilon = 0.75`, `driving_force = 0.25`, `M = 8.0`
   unchanged, `dt = 0.005`, `256^2`: a 3.0-cell interface and `F eps^2 = 0.141`
@@ -1125,7 +1125,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - The finite-difference convergence study no longer breaks the REUSE lint. It
   wrote an SPDX header into the CSV it generates, and the linter read those
   string literals as a second, malformed license declaration for the source
-  file itself. Everything under `docs/report/` is already covered by the
+  file itself. Everything under `out/report/` is already covered by the
   `REUSE.toml` annotation and the sibling data CSVs carry a plain provenance
   comment, so the header was redundant; the generator and the committed CSV
   now carry that comment instead. Regenerating the CSV reproduces the
@@ -1140,13 +1140,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
-- `docs/report/12_heat3d.qmd` reports the measured orders of accuracy from
+- `out/report/12_heat3d.qmd` reports the measured orders of accuracy from
   `heat3d_fd_convergence_study` (2.00, 3.98, 5.96, 7.95, 9.94, 11.84 against
   design 2 to 12) in place of the monotonicity check it used to describe, and
   embeds `heat3d_fd_order_convergence.svg` -- which was committed with the
   study but never referenced from any chapter, so nothing displayed it.
 
-- Every application chapter in `docs/report/` and the app READMEs that lacked
+- Every application chapter in `out/report/` and the app READMEs that lacked
   one now carry the physical-experiment contract (`#112`). The report was
   strong on operators and weak on experiments: a reader could see `L(k)`
   without being told what object was being simulated, on what domain, from
@@ -1214,7 +1214,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   order 2 vs 4 compared directly (~1 % difference, not resolution-starved).
   See `apps/thin_film/README.md`, "Two methods, one problem".
 - Field-visualisation pipeline for the applications report
-  (`docs/report/figures/field_io.py`, `field_plots.py`,
+  (`out/report/figures/field_io.py`, `field_plots.py`,
   `make_field_figures.py`): reads OpenPFC's own field output — `.vti` (VTK
   ImageData, appended raw or base64) and headerless `.bin` MPI-IO dumps — and
   renders single-panel, time-series montage, and paired-comparison figures

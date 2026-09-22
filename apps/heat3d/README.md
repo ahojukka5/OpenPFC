@@ -111,8 +111,8 @@ Per-binary drivers (live in `src/cpu/`):
   with a single `stencil_step` lambda calling `model.rhs(0.0, HeatGrads{xx, yy, zz})`. Each stage is wrapped in `pfc::runtime::tic(timer, "...")` / `toc(timer, "...")` and `print_timing_summary(timer, 0)` prints a sorted breakdown on rank 0 at the end.
 - **[`src/cpu/heat3d_spectral.cpp`](src/cpu/heat3d_spectral.cpp)** — implicit-Euler spectral driver. Calls `heat3d::SpectralHeatPropagator::step(stack.u())` once per step (forward FFT → diagonal multiply in k-space → inverse FFT). HIP twin: `heat3d_spectral_hip`.
 - **[`src/cpu/heat3d_spectral_pointwise.cpp`](src/cpu/heat3d_spectral_pointwise.cpp)** — point-wise spectral RHS: the **spectral twin** of `heat3d_fd`. Built on `pfc::sim::stacks::SpectralCPUStack` + `pfc::sim::DuField<HeatGrads, SpectralGradient<HeatGrads>>`, so the user-facing time loop reads `du.apply(...)` / `u += dt * du` / `t += dt`; the residual is materialised by `pfc::field::SpectralGradient<HeatGrads>` (1 forward + 3 inverse FFTs/step) instead of a stencil sweep. The `DuField` shim hides halo prep + per-cell evaluation here, where the FD twin (`heat3d_fd`) instead spells those primitives out in `main`.
-- **[`src/cpu/heat3d_fd_convergence_study.cpp`](src/cpu/heat3d_fd_convergence_study.cpp)** — the [Order of accuracy (FD)](#order-of-accuracy-fd) sweep: loops `heat3d::convergence::run_case(fd_order, N)` over every `(fd_order, N)` pair, prints the design-vs-observed-order table, and writes `docs/report/data/heat3d_fd_order_convergence.csv`.
-- **[`src/cpu/heat3d_spectral_content_study.cpp`](src/cpu/heat3d_spectral_content_study.cpp)** — the [Spectral against finite difference](#spectral-against-finite-difference-where-each-wins) study: prints the error map, the crossover fractions and the equal-accuracy cost ladder, runs the validation cases, and writes `docs/report/data/heat3d_spectral_content_{map,crossover,validation}.csv`.
+- **[`src/cpu/heat3d_fd_convergence_study.cpp`](src/cpu/heat3d_fd_convergence_study.cpp)** — the [Order of accuracy (FD)](#order-of-accuracy-fd) sweep: loops `heat3d::convergence::run_case(fd_order, N)` over every `(fd_order, N)` pair, prints the design-vs-observed-order table, and writes `out/report/data/heat3d_fd_order_convergence.csv`.
+- **[`src/cpu/heat3d_spectral_content_study.cpp`](src/cpu/heat3d_spectral_content_study.cpp)** — the [Spectral against finite difference](#spectral-against-finite-difference-where-each-wins) study: prints the error map, the crossover fractions and the equal-accuracy cost ladder, runs the validation cases, and writes `out/report/data/heat3d_spectral_content_{map,crossover,validation}.csv`.
 
 Tests:
 
@@ -320,7 +320,7 @@ difference consistent with Euler's own residual `O(dt)` error at that
 `dt`, confirming the exact-evolution shortcut is measuring the same thing
 real time-stepping would, just without paying for the steps.
 
-**Measured table** (LUMI, CPU, Release; `docs/report/data/heat3d_fd_order_convergence.csv`
+**Measured table** (LUMI, CPU, Release; `out/report/data/heat3d_fd_order_convergence.csv`
 has the full per-`N` breakdown):
 
 | fd_order (design) | L2 error, N=16 | L2 error, N=64 | observed order (range across N) |
@@ -345,14 +345,14 @@ clean (well above its own floor) across the whole `N` range tested.
 fd_order 8 (measured avg ≈7.80) as a regression guard, using all five grid
 sizes since neither gets near the round-off floor in this range.
 
-**Figure**: `docs/report/figures/heat3d_fd_order_convergence.svg` (log-log
+**Figure**: `out/report/figures/heat3d_fd_order_convergence.svg` (log-log
 L2 error vs `dx`, one line per order, dotted reference slopes for orders 2,
 8, 12, and the round-off floor marked). Regenerate after re-running the
 study with:
 
 ```bash
-./apps/heat3d/heat3d_fd_convergence_study docs/report/data/heat3d_fd_order_convergence.csv
-python3 docs/report/figures/make_figures.py   # needs matplotlib; see that file's docstring
+./apps/heat3d/heat3d_fd_convergence_study out/report/data/heat3d_fd_order_convergence.csv
+python3 out/report/figures/make_figures.py   # needs matplotlib; see that file's docstring
 ```
 
 **A boundary-shell bug found while building this study** (worth knowing if
@@ -414,13 +414,13 @@ timing campaign.
 **The result.** Under an `N^3` cost model at a fixed step count, FD order `p`
 is the cheaper route to accuracy `eps` iff the coarsest grid it can use still
 keeps the content above `cbrt(cost_fd / cost_spectral)` of Nyquist. With the
-measured per-step costs (`docs/report/data/heat3d_method_cost.csv`) that
+measured per-step costs (`out/report/data/heat3d_method_cost.csv`) that
 threshold is 0.32 (FD-2) to 0.49 (FD-12): a 32x cheaper step buys only
 `32^(1/3) = 3.2x` in grid spacing. The crossover in accuracy is at
 `L2 ~ 6e-7`, owned by FD-12; below `1e-2` FD-2 costs a twentieth of the
 spectral path. The full tables are in the
 applications catalog
-(Heat3D comparison; formerly `docs/report/16_scalability.qmd`).
+(Heat3D comparison; formerly `out/report/16_scalability.qmd`).
 
 **Validated, not asserted.** Ten points of the map were re-measured by
 running the shipped FD stack (padded `Field` + `HaloExchange` +
@@ -448,10 +448,10 @@ Reproduce (single rank, login node, no allocation needed):
 # Held-out family RK4 (compute node; cosine-sum ICs). The driver writes
 # the CSV then exits nonzero if max |ratio-1| is not below the frozen 1e-6:
 #   sbatch apps/heat3d/slurm/heldout_families.sbatch
-python3 docs/report/figures/make_figures.py            # needs matplotlib
+python3 out/report/figures/make_figures.py            # needs matplotlib
 ```
 
-**Figure**: `docs/report/figures/heat3d_spectral_content.svg`.
+**Figure**: `out/report/figures/heat3d_spectral_content.svg`.
 
 ## See also
 

@@ -179,7 +179,7 @@ TEST_CASE("heat3d spectral content: the map does not depend on the mode cube",
 TEST_CASE("heat3d spectral content: the crossover predicate",
           "[heat3d][spectral-content][unit]") {
   // Measured per-step costs at N=1024 on 8 GCDs, from
-  // docs/report/data/heat3d_method_cost.csv. The crossover is the cube root
+  // out/report/data/heat3d_method_cost.csv. The crossover is the cube root
   // of the cost ratio and nothing else: under an N^3 cost model a 31.8x
   // per-step advantage buys only 3.17x in grid spacing.
   constexpr double kSpectral = 213.82;

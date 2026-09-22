@@ -31,7 +31,7 @@
  *
  * Single rank by default and not fast — the finest point is a 96³ run twice
  * over. It is a study, not a test; nothing in CI calls it. Regenerate
- * `docs/report/data/tungsten_dealias_resolution.csv` with it when the model or
+ * `out/report/data/tungsten_dealias_resolution.csv` with it when the model or
  * the presets change.
  */
 

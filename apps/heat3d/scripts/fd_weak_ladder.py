@@ -272,7 +272,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--check", action="store_true")
     p.add_argument("--collect")
-    p.add_argument("--out", default="docs/report/data/heat3d_fd_lumi_g_weak.csv")
+    p.add_argument("--out", default="out/report/data/heat3d_fd_lumi_g_weak.csv")
     p.add_argument("--warmup", type=int, default=5)
     args = p.parse_args()
     if args.check:

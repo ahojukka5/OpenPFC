@@ -66,9 +66,9 @@ Radii here are the volume where `|psi - n0|`, box-blurred over one lattice
 constant, exceeds half its own 99.9th percentile, converted to a
 sphere-equivalent radius; the envelope amplitude is that percentile. Rendered
 in the applications report as
-`docs/report/figures/aluminum_fcc_nucleus_comparison.svg` (at `t = 200`, where
+`out/report/figures/aluminum_fcc_nucleus_comparison.svg` (at `t = 200`, where
 the shipped preset stops); the run recipe is in
-`docs/report/figures/run_field_demos.sh`.
+`out/report/figures/run_field_demos.sh`.
 
 Do not shrink the box below `192^3` without re-checking the melt. At `128^3`
 the same radius-60 nucleus leaves only about 70 reduced units between its own

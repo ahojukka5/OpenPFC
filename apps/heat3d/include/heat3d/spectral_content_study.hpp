@@ -143,7 +143,7 @@
  * \f]
  * That threshold (`crossover_fraction()`) is **pure cost arithmetic** —
  * independent of \f$\tau\f$, of the threshold convention, and of the
- * numerics. With the measured costs in `docs/report/data/heat3d_method_cost.csv`
+ * numerics. With the measured costs in `out/report/data/heat3d_method_cost.csv`
  * it sits between 0.32 (FD-2) and 0.49 (FD-12): a 32x per-step advantage
  * buys only a factor \f$32^{1/3} = 3.2\f$ in grid spacing, which is much
  * less protection than the raw cost table suggests.

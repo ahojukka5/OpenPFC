@@ -26,10 +26,10 @@ find_package(OpenMP COMPONENTS CXX)
 #   heat3d_spectral            — implicit-Euler spectral
 #   heat3d_spectral_hip        — implicit-Euler spectral on HIP (2 FFTs/step)
 #   heat3d_fd_convergence_study — FD order-of-accuracy sweep (single-mode,
-#                                N x fd_order) -> docs/report/data CSV
+#                                N x fd_order) -> out/report/data CSV
 #   heat3d_spectral_content_study — accuracy vs the field's own spectral
 #                                content: semi-analytic map + RK4 validation
-#                                runs -> docs/report/data CSVs
+#                                runs -> out/report/data CSVs
 set(_heat3d_binaries heat3d_fd_scratch heat3d_fd_manual heat3d_fd
                      heat3d_fd_convergence_study heat3d_spectral_content_study)
 if(OpenPFC_ENABLE_HEFFTE)
