@@ -25,7 +25,7 @@ The science case (`#114`), as opposed to the linear verifier below. This is the
 | Item | Description |
 |---|---|
 | **Use case** | A thin liquid coating on a solid substrate: does it level into a uniform layer, or break up into droplets? |
-| **Question** | What sets the wavelength, the rupture time and the failure location — and does a substrate defect change the answer? |
+| **Question** | What sets the wavelength, the rupture time and the failure location — and does a localized initial-thickness depression change the answer at fixed background noise? |
 | **Domain** | 2-D periodic patch, 512² cells at `dx = 0.5`, i.e. 256 × 256 in units of the mean thickness — about 16 fastest-growing wavelengths per side |
 | **Boundary conditions** | Periodic on both axes, representing an interior patch of a much larger uniform coating |
 | **Initial condition** | `h = h0[1 + ε ξ(x,y) + g(x,y)]` with deterministic hashed noise `ξ`; `g` is an optional Gaussian depression for the defect case |
@@ -86,15 +86,26 @@ The linear theory predicts a fastest-growing wavelength of 16.2; the measured
 spacing of 14.2 for the spontaneous case is consistent with it once finite
 amplitude and the structure-factor bin width are allowed for.
 
-The engineering result is the comparison: a single 30 % deep depression brings
-failure forward by about 40 %, and the film fails **at the defect** rather than
-at the wavelength the instability would have chosen — the defect case's 25.6
-spacing reflects one isolated hole, not a pattern.
+The two shipped presets are **not** a one-factor pair. The spontaneous run
+uses background amplitude `0.01` and no depression; the defect-seeded run
+uses background amplitude `0.002` and a 30 % Gaussian thickness depression.
+They differ by about 39 % in first-precursor time (`t = 140` versus
+`t = 85`), and the defect-seeded film fails **at the imposed depression**
+rather than at an emergent spinodal hole. Because the broadband amplitude
+also changes, that timing difference is descriptive of the shipped presets,
+not an isolated defect effect. The defect case's 25.6 spacing reflects one
+isolated hole, not a selected pattern wavelength. Call the imposed feature
+an initial-thickness depression, not a substrate defect or chemical
+heterogeneity: no substrate parameter is varied.
 
-Volume is conserved to round-off in both, which is the check that the
-divergence form is being integrated honestly. The defect case starts from a
-lower volume because the depression removes liquid; that is its initial
-condition, not a loss.
+The missing matched cells (noise `0.01` with the depression, and noise
+`0.002` without it) are `thin_film_defect_noise01.json` and
+`thin_film_dewetting_noise002.json` (research #609).
+
+Volume is conserved to round-off in both shipped runs, which is the check
+that the divergence form is being integrated honestly. The defect case
+starts from a lower volume because the depression removes liquid; that is
+its initial condition, not a loss.
 
 ### Known limitation: integrating *through* rupture
 
@@ -388,5 +399,7 @@ HIP-vs-host parity case (`[thin_film][hip][nonlinear]`), plus
 | `inputs_json/leveling.json` | \(A=0\) capillary smoothing (linear verifier) |
 | `inputs_json/thin_film_dewetting.json` / `thin_film_fd_dewetting.json` | Spontaneous dewetting, spectral / FD |
 | `inputs_json/thin_film_defect.json` / `thin_film_fd_defect.json` | Defect-triggered dewetting, spectral / FD |
+| `inputs_json/thin_film_dewetting_noise002.json` | Matched spontaneous cell at noise 0.002 |
+| `inputs_json/thin_film_defect_noise01.json` | Matched defect cell at noise 0.01 |
 | `inputs_json/thin_film_dewetting_heroic.json` | Heroic-scale device run |
 | `slurm/fd_flagship.sbatch` | Reproduces the 512² FD through-rupture runs on `standard-g` |
