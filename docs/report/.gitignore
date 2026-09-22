@@ -1,6 +1,0 @@
-# Quarto build output
-_output/
-
-/.quarto/
-
-**/*.quarto_ipynb

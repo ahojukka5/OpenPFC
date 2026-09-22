@@ -1,6 +1,0 @@
-# Occupancy-matched periodic families. f is the fraction of Nyquist at which the amplitude prescription reaches 0.001 of peak (top-hat: support cutoff).
-family_id,name,geometry,amplitude_at_nu_eq_1,occupancy_threshold
-gaussian,"periodic Gaussian (isotropic / separable identity)",isotropic,1.0000000000e-03,1.0000000000e-03
-isotropic_tophat,"isotropic band-limited (top-hat) ball",isotropic,1.0000000000e+00,1.0000000000e-03
-isotropic_exponential,"isotropic exponential tail (L2 radius)",isotropic,1.0000000000e-03,1.0000000000e-03
-separable_exponential,"separable exponential tail (L1 product)",separable,1.0000000000e-03,1.0000000000e-03
