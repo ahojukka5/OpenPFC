@@ -12,7 +12,7 @@
  * The isotropic Mullins model (`surface_diffusion_physics.hpp`) is the
  * divergence form
  * \f[
- *   \partial_t h = \nabla\cdot\bigl[B_0\,\nabla(\nabla^2 h)\bigr]
+ *   \partial_t h = -\nabla\cdot\bigl[B_0\,\nabla(\nabla^2 h)\bigr]
  *               = -B_0\nabla^4 h,
  * \f]
  * which is a pure reciprocal-space symbol because \f$B_0\f$ is constant. The
@@ -21,7 +21,7 @@
  * \f$\theta=\operatorname{atan2}(h_y,h_x)\f$ the local surface-gradient
  * orientation:
  * \f[
- *   \partial_t h = \nabla\cdot\bigl[B(\theta)\,\nabla(\nabla^2 h)\bigr].
+ *   \partial_t h = -\nabla\cdot\bigl[B(\theta)\,\nabla(\nabla^2 h)\bigr].
  * \f]
  * \f$B(\theta)\f$ depends on the field itself (through its gradient), so the
  * operator cannot be written as a single reciprocal-space multiplier the way
@@ -40,7 +40,7 @@
  * \f[
  *   \partial_t\hat h = L_0(k)\,\hat h + \hat N,\qquad
  *   L_0(k) = -B_0\,k_{\mathrm{lap}}^2,\qquad
- *   \hat N = \widehat{\nabla\cdot[B(\theta)\nabla(\nabla^2 h)]} - L_0(k)\hat h,
+ *   \hat N = \widehat{-\nabla\cdot[B(\theta)\nabla(\nabla^2 h)]} - L_0(k)\hat h,
  * \f]
  * i.e. the constant-\f$B_0\f$ part is integrated exactly (unconditionally
  * stable for the stiff fourth-order term) and \f$\hat N\f$ carries only the

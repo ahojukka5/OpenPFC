@@ -84,7 +84,7 @@ from `i*k_x*h_hat` / `i*k_y*h_hat`, not a finite-difference stencil). The
 governing equation generalises the isotropic divergence form:
 
 \[
-\partial_t h=\nabla\cdot\bigl[B(\theta)\,\nabla(\nabla^2 h)\bigr]
+\partial_t h=-\nabla\cdot\bigl[B(\theta)\,\nabla(\nabla^2 h)\bigr]
 \quad\xrightarrow{\ B(\theta)\to B_0\ }\quad
 \partial_t h=-B_0\nabla^4 h.
 \]
