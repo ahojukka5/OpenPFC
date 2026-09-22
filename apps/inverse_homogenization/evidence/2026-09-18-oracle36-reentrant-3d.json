@@ -1,6 +1,5 @@
 {
   "schema": "openpfc-inverse-evidence/v1",
-  "research_issue": "ahojukka5/research#476",
   "openpfc_issue": 36,
   "openpfc_pr": 37,
   "question": "Can we prescribe a genuinely 3-D, connected, periodic auxetic cell that the existing OpenPFC 3-D homogenizer evaluates as nu<0?",

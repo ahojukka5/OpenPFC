@@ -30,7 +30,7 @@ void write_evidence(const std::string &path,
   out << "{\n";
   out << "  \"schema\": \"openpfc-inverse-evidence/v1\",\n";
   out << "  \"openpfc_issue\": 55,\n";
-  out << "  \"research_issue\": \"ahojukka5/research#484\",\n";
+  out << "  \"research_issue\": \"\",\n";
   out << "  \"question\": \"Does a 2-D plane-strain finite-strain forward "
          "path with P22=0 report a tangent Poisson that matches FD of the "
          "same shipped F22(F11)?\",\n";

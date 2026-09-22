@@ -1,6 +1,5 @@
 {
   "schema": "openpfc-inverse-evidence/v1",
-  "research_issue": "ahojukka5/research#476",
   "openpfc_issue": 28,
   "openpfc_pr": 29,
   "question": "Can 3-D spinodal Allen-Cahn inverse homogenization produce an auxetic periodic cell?",

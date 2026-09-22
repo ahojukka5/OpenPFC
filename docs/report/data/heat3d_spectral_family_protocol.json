@@ -1,6 +1,5 @@
 {
   "question": "Is Nyquist occupancy f sufficient to rank FD vs spectral operators across periodic spectral families?",
-  "research_issue": "https://github.com/ahojukka5/research/issues/304",
   "implementation_issue": "https://github.com/VTT-ProperTune/OpenPFC/issues/177",
   "executable_owner": "ahojukka5/OpenPFC",
   "protocol": {

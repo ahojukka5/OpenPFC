@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# One LUMI-C job for research issue ahojukka5/research#237: freeze the
+# One LUMI-C job for research issue : freeze the
 # three linear waves against the in-tree dispersion solver, plus the
 # Weibel k=3 no-growth check. Not HIP parity (job 21943612). Not a
 # k-scan. Do not import chapter-17 tables without this job's IDs.

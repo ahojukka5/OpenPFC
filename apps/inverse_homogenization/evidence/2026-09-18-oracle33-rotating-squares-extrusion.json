@@ -1,6 +1,5 @@
 {
   "schema": "openpfc-inverse-evidence/v1",
-  "research_issue": "ahojukka5/research#476",
   "openpfc_issue": 33,
   "openpfc_pr": 34,
   "question": "When the qualified 2-D rotating-square auxetic seed is extruded as h(x,y,z)=h(x,y), does the 3-D compliance tensor still recover a negative in-plane Poisson ratio?",

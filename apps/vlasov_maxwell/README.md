@@ -12,7 +12,7 @@ Vlasov–Poisson reduction is a runtime specialisation of the same code, not a
 second implementation.
 
 This is the kinetic capstone of issue #84. The
-[applications catalog](https://github.com/ahojukka5/research/blob/master/articles/openpfc-applications/17_vlasov_maxwell.qmd)
+applications catalog
 presents the full Vlasov–Maxwell system before deriving the 1D2V
 reduction. GPU measurements live in
 [`docs/hpc/vlasov_gpu.md`](../../docs/hpc/vlasov_gpu.md).
@@ -82,9 +82,9 @@ occupancy. The transverse Weibel relation used as the Stage-4 oracle is
 **derived in this repository**, not quoted — see
 `openpfc_apps/plasma_dispersion.hpp`.
 
-## Qualified dispersion suite (research#237)
+## Qualified dispersion suite ()
 
-The bounded validation suite ordered by ahojukka5/research#237 is frozen as
+The bounded validation suite ordered by  is frozen as
 [`slurm/gamma_oracle.sbatch`](slurm/gamma_oracle.sbatch): one LUMI-C node,
 8 ranks × 16 threads, `--device=host`, 64³ space × 64² velocity per case.
 Tolerances were declared in the research issue after pipeline qualification

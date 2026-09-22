@@ -11,7 +11,7 @@
  * @details
  * ## Why this exists
  *
- * `ahojukka5/research` `articles/openpfc-applications/18_scalability.qmd`
+ * Spectral-content study for the heat equation application.
  * measures the spectral and
  * finite-difference paths of @sec-heat3d on two of the three axes that
  * decide between them — cost per step at equal grid, and parallel

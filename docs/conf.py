@@ -44,8 +44,8 @@ exclude_patterns = [
     "archive/OPENPFC_REFACTORING_EXECUTION_PLAN.md",
     "archive/0.2_migration_map.md",
     "archive/refactoring_roadmap.md",
-    # Applications catalog prose lives in ahojukka5/research
-    # (articles/openpfc-applications). This tree keeps CSV/figure artifacts.
+    # Applications catalog prose lives in 
+    # This tree keeps CSV and figure artifacts.
     "report/_output/**",
 ]
 suppress_warnings = ["toc.not_included"]

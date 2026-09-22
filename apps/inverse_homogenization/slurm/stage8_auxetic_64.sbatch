@@ -13,7 +13,7 @@
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
 #
-# Frozen first experiment, ahojukka5/research#476 / OpenPFC #28.
+# Frozen first experiment,  / OpenPFC #28.
 # Do not retune after seeing the result.
 
 set -euo pipefail

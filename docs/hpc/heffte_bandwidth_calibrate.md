@@ -14,7 +14,7 @@ Heat3D weak curve or the extra-wall envelope in the research report.
 Do not mix those tables with this campaign.
 
 Issue: [#119](https://github.com/ahojukka5/OpenPFC/issues/119). Research
-[#589](https://github.com/ahojukka5/research/issues/589).
+#589.
 
 ## Question
 

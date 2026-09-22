@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Predeclared held-out RK4 for occupancy-matched spectral families
-# (ahojukka5/research#304). Same orders, occupancies, n/2n steps and
+# (). Same orders, occupancies, n/2n steps and
 # 1e-6 |ratio-1| bound as heldout_n128.sbatch; N=32 for cosine-sum ICs.
 #
 #SBATCH --account=project_462001519
