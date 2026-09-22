@@ -25,13 +25,13 @@ application to carry, for the `ehd_film_nonlinear` **science preset**
 | Item | Description |
 |---|---|
 | **Use case** | A viscous film squeezed between a substrate and a flexible plate (e.g. a compliant coating, a soft lubrication bearing, or a stamped/rolled film) receives a localized press, then the load lifts off and the film redistributes |
-| **Question** | How much does the gap thin under a localized load, how far does the disturbance spread, and how does that depend on the plate's bending stiffness? |
+| **Question** | Under the same localized load, how does cubic lubrication mobility change the forced and post-release response relative to the exact constant-mobility bending+tension solution, and does plate stiffness alter that nonlinear departure? |
 | **Domain** | 2-D periodic patch, 256² cells, `dx = 1` (code length units) |
 | **Boundary conditions** | Periodic on both axes — see "Why periodic" below |
 | **Initial condition** | `h(x,y,0) = h0` (uniform gap); the disturbance comes entirely from the applied load, not the IC |
 | **Key parameters** | `h0=1`, `M0=1`, `gamma=10`, `A=0` (adhesion off in the science preset — see "Deferred" below); load `p0=0.5`, `a=8`, `t_load=60`; two bending stiffnesses `B=640` (stiff) and `B=100` (compliant) |
 | **Observable** | Central gap `h_center(t)` / deflection, pressure extrema, RMS spreading radius, displaced volume, total volume (conservation check) — all in the diagnostics CSV |
-| **Model maturity** | numerical verification: **analytical** (the `#81` linear \(k^6\) mode decay is an exact closed-form check that the nonlinear flux solver must reproduce at constant mobility, see Tests) · physical completeness: **reduced** (2-D lubrication + Kirchhoff bending + tension + optional adhesion; no plate inertia, no cavitation, no contact) · calibration: **none** — `B`, `gamma`, `M0`, the load shape and its amplitude are illustrative nondimensional grid-unit parameters, not fit to a material |
+| **Model maturity** | numerical verification: **analytical** (unforced \(k^6\) decay, and the `#610` forced/switch-off linear oracle on the same sampled load; both are reproduced by the constant-mobility flux path, see Tests) · physical completeness: **reduced** (2-D lubrication + Kirchhoff bending + tension + optional adhesion; no plate inertia, no cavitation, no contact) · calibration: **none** — `B`, `gamma`, `M0`, the load shape and its amplitude are illustrative nondimensional grid-unit parameters, not fit to a material |
 
 ### Why periodic
 
@@ -125,16 +125,24 @@ run to `t1=600` on 4 ranks (LUMI CPU, shared allocation):
 
 The bending–tension crossover length \(\ell^*=\sqrt{B/\gamma}\) is `8.0`
 for the stiff case (equal to the load width `a`) and `3.16` for the
-compliant case (well below it), which is why `B` visibly changes the peak
-deflection and how far the load spreads while the two cases still recover
-at a similar *rate* — that rate is set mainly by `gamma`, not `B`, at this
-load width. **The physically interpretable trend requested by `#116`:** the
-stiffer plate deflects less and spreads the same load over a wider area;
-the more compliant plate deflects more and keeps the disturbance more
-localized — the classical plate-on-viscous-foundation picture. Both cases
-conserve total fluid volume to round-off, confirming the divergence-form
-flux is exact regardless of the nonlinear mobility, tension, or the
-time-dependent load.
+compliant case (well below it). At the load scale \(k\sim 1/a\) the stiff
+plate sits at the bending–tension crossover, so both terms contribute;
+the compliant plate is tension-dominated. The two nonlinear cases show
+similar *normalized endpoint* recovery (about 84% and 82% of the
+load-release deflection by \(t=600\)). That is an empirical observation
+for these two runs, not a demonstration that recovery is set only by
+`gamma`. Compare the full trajectories with the exact linear forced
+oracle (`scripts/forced_linear_oracle.py`, research `#610`) before making
+a mechanism claim.
+
+The nonlinear \(h^3\) mobility reduces the load-release deflection
+relative to that linear oracle (deeper thinning lowers mobility). **The
+physically interpretable stiffness trend requested by `#116` remains:**
+the stiffer plate deflects less and spreads the same load over a wider
+area; the more compliant plate deflects more and keeps the disturbance
+more localized. Both cases conserve total fluid volume to round-off,
+confirming the divergence-form flux is exact regardless of the nonlinear
+mobility, tension, or the time-dependent load.
 
 ## Run
 
@@ -179,9 +187,23 @@ to `M0` at `h0`; the flux stepper reproduces the exact \(k^6\) decay at
 constant mobility (the point of keeping the linear verifier); volume
 conservation under bending + tension + adhesion together; the load's sign
 convention (thins the gap centre, conserves volume); and the load's
-on/off gating at `t_load`. HIP builds add `HIP_EhdFilmETD` and
+on/off gating at `t_load`. `#610` adds the exact forced/switch-off
+bending+tension oracle (`linear_oracle.hpp`) and asserts that the
+constant-mobility flux path reproduces it for a cosine load, including
+mean-gap conservation and field-level agreement at load release and
+during recovery. HIP builds add `HIP_EhdFilmETD` and
 `ehd-film-hip-smoke` (linear model only). LUMI-G smoke: job 21799835
 (`small-g`, 16², mean \(h=1\)).
+
+The paper comparator is the same closed form on the sampled Gaussian
+load:
+
+```bash
+python3 apps/ehd_film/scripts/forced_linear_oracle.py \
+  --B 100 --out results/ehd_film_nonlinear/linear_B100.csv
+python3 apps/ehd_film/scripts/forced_linear_oracle.py \
+  --B 640 --out results/ehd_film_nonlinear/linear_B640.csv
+```
 
 ## Deferred (not in this PR)
 
@@ -212,8 +234,12 @@ PR does not attempt:
 | `include/ehd_film/ehd_film_pointwise.hpp` | \(\Pi\) remainder, device-capable, now with the `h_star` precursor form |
 | `include/ehd_film/ehd_film_session.hpp` | JSON session, field `h`, 2/3 dealias (linear model) |
 | `include/ehd_film/nonlinear.hpp` | `#116`: cubic mobility, Gaussian load, `EhdFilmSample` diagnostics |
+| `include/ehd_film/linear_oracle.hpp` | `#610`: exact forced/switch-off Fourier solution |
+| `scripts/forced_linear_oracle.py` | Grid-matched Gaussian DFT trajectory for the paper |
 | `src/ehd_film.cpp` / `src/hip/` | CPU / HIP `main` (linear model) |
 | `src/ehd_film_nonlinear.cpp` | CPU `main`, nonlinear science driver (`#116`) |
 | `inputs_json/relaxation.json` | Linear verifier/demo: bending-driven leveling |
-| `inputs_json/load_relaxation_stiff.json` | Nonlinear science preset, `B=640` |
-| `inputs_json/load_relaxation_compliant.json` | Nonlinear science preset, `B=100` |
+| `inputs_json/load_relaxation_stiff.json` | Nonlinear science preset, `B=640`, `p0=0.5` |
+| `inputs_json/load_relaxation_compliant.json` | Nonlinear science preset, `B=100`, `p0=0.5` |
+| `inputs_json/load_relaxation_*_p005.json` | Same pair at `p0=0.05` (linear-oracle approach) |
+| `inputs_json/load_relaxation_compliant_dt2.json` | `B=100`, `p0=0.5`, `dt=0.25` stability control |

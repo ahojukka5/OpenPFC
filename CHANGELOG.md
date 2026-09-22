@@ -29,6 +29,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- **Exact forced linear EHD oracle** (`apps/ehd_film`, OpenPFC
+  [#126](https://github.com/ahojukka5/OpenPFC/issues/126), research
+  [#610](https://github.com/ahojukka5/research/issues/610)). Closed-form
+  constant-mobility bending+tension solution on the sampled periodic
+  load, a Catch2 check that the flux stepper matches it through
+  load/switch-off, and a DFT helper for the paper comparator. Qualifies
+  the README recovery-mechanism sentence: similar normalized endpoint
+  recovery is empirical, not a `gamma`-only rate law.
+
 - **Doubly-periodic magnetic-island coalescence** on the 2-D
   incompressible MHD prototype (issue
   [#113](https://github.com/ahojukka5/OpenPFC/issues/113), parent
