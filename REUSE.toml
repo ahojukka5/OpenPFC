@@ -87,6 +87,15 @@ SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
+path = [
+    "docs/hpc/fd_order_campaign_scaling.csv",
+    "docs/hpc/fd_order_geometry.csv",
+    "docs/hpc/fd_order_overlap_diag.csv",
+]
+SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+[[annotations]]
 path = ["apps/inverse_homogenization/evidence/checkpoint-qualified/**"]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
