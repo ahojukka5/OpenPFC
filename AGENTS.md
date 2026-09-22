@@ -30,16 +30,13 @@ machine toolchain, configures, builds, and runs tests.
 
 **HeFFTe:** build and install **outside** the OpenPFC clone. On Tohtori typical prefixes are `$HOME/opt/heffte/…`. On LUMI load `heffte-rocm` (do not vendor HeFFTe sources next to `CMakeLists.txt`).
 
-## Article evidence
+## Campaign records
 
-A measurement that supports an article does not stay in this
-repository. The launch script, the compact output, and the hidden
-provenance comment belong in the article (`openpfc-applications`,
-`openpfc-framework`, `inverse-homogenization`, or
-`vlasov-kinetic-validation`). This package keeps the library and its
-tests. Do not add a new campaign `.sbatch` or a results dump here.
-Scripts already under `apps/*/slurm` and `docs/lumi_slurm` are legacy
-launchers; they do not grow.
+This package is the library. It does not record scientific claims and
+it does not name them. Do not add a campaign `.sbatch`, a measurement
+dump, or a pointer to a research result. A published paper may later
+be cited from `README.md` only. Scripts already under `apps/*/slurm`
+and `docs/lumi_slurm` are legacy launchers; they do not grow.
 
 ## Workspace conventions (this project)
 
