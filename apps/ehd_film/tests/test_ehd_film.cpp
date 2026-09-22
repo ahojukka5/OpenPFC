@@ -12,7 +12,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <complex>
 #include <mpi.h>
 #include <numbers>
 
@@ -20,6 +22,7 @@
 
 #include <ehd_film/ehd_film_physics.hpp>
 #include <ehd_film/ehd_film_session.hpp>
+#include <ehd_film/linear_oracle.hpp>
 #include <ehd_film/nonlinear.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
@@ -442,6 +445,151 @@ TEST_CASE("GaussianLoad turns off at t_load", "[ehd_film][nonlinear]") {
   REQUIRE(load(16.0, 16.0, 5.0) == 0.0);                      // stays off
   const ehd_film::GaussianLoad none{};
   REQUIRE(none(1.0, 2.0, 0.0) == 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Forced linear oracle (#610)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Forced linear oracle matches the modal ODE",
+          "[ehd_film][linear_oracle]") {
+  constexpr double k2 = 1.0, B = 2.0, gamma = 3.0, M0 = 4.0;
+  const std::complex<double> p_hat{1.0, 0.0};
+  const double lambda = ehd_film::forced_linear_decay_rate(k2, B, gamma, M0);
+  REQUIRE_THAT(lambda, WithinAbs(20.0, 1e-15));
+  REQUIRE(ehd_film::forced_linear_u_hat(p_hat, 0.0, B, gamma, M0, 1.0, 2.0) ==
+          std::complex<double>{0.0, 0.0});
+  REQUIRE(ehd_film::forced_linear_u_hat(p_hat, k2, B, gamma, M0, 0.0, 2.0) ==
+          std::complex<double>{0.0, 0.0});
+
+  const double t_load = 0.2;
+  const double t_on = 0.1;
+  const auto u_on =
+      ehd_film::forced_linear_u_hat(p_hat, k2, B, gamma, M0, t_on, t_load);
+  const auto expected_on = -p_hat / 5.0 * (1.0 - std::exp(-lambda * t_on));
+  REQUIRE_THAT(u_on.real(), WithinAbs(expected_on.real(), 1e-14));
+  REQUIRE_THAT(u_on.imag(), WithinAbs(0.0, 1e-15));
+
+  const double t_off = 0.5;
+  const auto u_off =
+      ehd_film::forced_linear_u_hat(p_hat, k2, B, gamma, M0, t_off, t_load);
+  const auto u_T =
+      ehd_film::forced_linear_u_hat(p_hat, k2, B, gamma, M0, t_load, t_load);
+  const auto expected_off = u_T * std::exp(-lambda * (t_off - t_load));
+  REQUIRE_THAT(u_off.real(), WithinAbs(expected_off.real(), 1e-14));
+}
+
+TEST_CASE("Constant-mobility flux path matches the forced linear oracle",
+          "[ehd_film][nonlinear][linear_oracle][load]") {
+  if (world_size() != 1) {
+    SKIP("single-rank analytical comparison");
+  }
+  // A single cosine load below the Orszag 2/3 cutoff: ETD1 is exact for
+  // linear + piecewise-constant forcing, so the flux stepper must reproduce
+  // the closed-form mode through load-on and switch-off, not only unforced
+  // pure-bending decay.
+  constexpr int N = 32;
+  constexpr int nx = 2;
+  constexpr double h0 = 1.0, B = 1.0, gamma = 0.1, M0 = 1.0;
+  constexpr double p0 = 0.02, dt = 0.02, t_load = 1.0, t_final = 2.0;
+
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({1.0, 1.0, 1.0}));
+  pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
+  auto &h = stack.u();
+  h.apply([&](double, double, double) { return h0; });
+
+  const double twopi = 2.0 * std::numbers::pi;
+  const double L = static_cast<double>(N);
+  const double k = twopi * static_cast<double>(nx) / L;
+  const double k2 = k * k;
+  const double lambda =
+      ehd_film::forced_linear_decay_rate(k2, B, gamma, M0);
+  const double U_inf = -p0 / (k2 * (B * k2 + gamma));
+  auto U_exact = [&](double t) {
+    const double t_on = std::min(t, t_load);
+    double u = U_inf * (1.0 - std::exp(-lambda * t_on));
+    if (t > t_load)
+      u *= std::exp(-lambda * (t - t_load));
+    return u;
+  };
+
+  std::vector<double> k_lap(stack.fft().size_outbox(), 0.0);
+  pfc::fft::kspace::for_each_kpoint(
+      stack.fft().get_outbox_bounds(), domain,
+      [&](std::size_t i, double kx, double ky, double kz, int, int, int) {
+        k_lap[i] = -(kx * kx + ky * ky + kz * kz);
+      });
+
+  pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
+    const double kl2 = kl * kl;
+    return M0 * B * kl * kl2 - M0 * gamma * kl2;
+  });
+  pfc::data::Field<double> pext_real(domain, stack.fft().get_inbox_bounds(), 0);
+  pfc::data::Field<std::complex<double>> pext_hat(
+      domain, stack.fft().get_outbox_bounds(), 0);
+  double load_time = 0.0;
+  auto potential = [&](pfc::data::Field<std::complex<double>> &h_hat,
+                       pfc::data::Field<double> &,
+                       pfc::data::Field<std::complex<double>> &out) {
+    const auto nloc = pext_real.local_size();
+    for (int kk = 0; kk < nloc[2]; ++kk)
+      for (int j = 0; j < nloc[1]; ++j)
+        for (int i = 0; i < nloc[0]; ++i) {
+          const auto x = pext_real.coords(i, j, kk);
+          pext_real(i, j, kk) =
+              (load_time < t_load) ? p0 * std::cos(k * x[0]) : 0.0;
+        }
+    pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(stack.fft(), pext_real,
+                                                      pext_hat);
+    h_hat.with_host_view([&](std::complex<double> *hv, std::size_t m) {
+      pext_hat.with_host_view([&](std::complex<double> *pev, std::size_t) {
+        out.with_host_view([&](std::complex<double> *o, std::size_t) {
+          for (std::size_t i = 0; i < m; ++i)
+            o[i] = B * k_lap[i] * k_lap[i] * hv[i] - gamma * k_lap[i] * hv[i] +
+                   pev[i];
+        });
+      });
+    });
+  };
+  auto constant_mobility = [=](double) { return M0; };
+
+  auto rel_l2 = [&](double t) {
+    double num = 0.0, den = 0.0;
+    const auto nloc = h.local_size();
+    const double amp = U_exact(t);
+    for (int j = 0; j < nloc[1]; ++j)
+      for (int i = 0; i < nloc[0]; ++i) {
+        const auto x = h.coords(i, j, 0);
+        const double hex = h0 + amp * std::cos(k * x[0]);
+        const double d = h(i, j, 0) - hex;
+        num += d * d;
+        den += (hex - h0) * (hex - h0);
+      }
+    return std::sqrt(num / den);
+  };
+
+  double t = 0.0;
+  const int n_on = static_cast<int>(std::llround(t_load / dt));
+  const int n_all = static_cast<int>(std::llround(t_final / dt));
+  for (int s = 0; s < n_on; ++s) {
+    load_time = t;
+    t = stepper.step(t, h, potential, constant_mobility);
+  }
+  REQUIRE_THAT(t, WithinAbs(t_load, 1e-12));
+  REQUIRE_THAT(mean_h(h), WithinAbs(h0, 1e-12));
+  REQUIRE_THAT(rel_l2(t), WithinAbs(0.0, 1e-6));
+  const double defl_T = h0 - h(N / 2, N / 2, 0);
+  REQUIRE_THAT(defl_T, WithinRel(-U_exact(t_load), 1e-6));
+
+  for (int s = n_on; s < n_all; ++s) {
+    load_time = t;
+    t = stepper.step(t, h, potential, constant_mobility);
+  }
+  REQUIRE_THAT(t, WithinAbs(t_final, 1e-12));
+  REQUIRE_THAT(mean_h(h), WithinAbs(h0, 1e-12));
+  REQUIRE_THAT(rel_l2(t), WithinAbs(0.0, 1e-6));
 }
 
 int main(int argc, char *argv[]) {
