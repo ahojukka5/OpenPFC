@@ -27,7 +27,7 @@
  *
  * ## What it writes
  *
- * Three CSVs under `docs/report/data/` (override the directory with
+ * Three CSVs under `out/report/data/` (override the directory with
  * `--data-dir`):
  *
  *  - `heat3d_spectral_content_map.csv` — the semi-analytic \f$L^2\f$ error
@@ -55,7 +55,7 @@
  *     heat3d_spectral_content_study [--data-dir DIR] [--held-out-families]
  *     heat3d_spectral_content_study [--data-dir DIR] [--families-only]
  *
- * `DIR` defaults to `docs/report/data` resolved against the current
+ * `DIR` defaults to `out/report/data` resolved against the current
  * working directory — run this from the repository root, or pass an
  * absolute path. Single MPI rank only (an accuracy measurement, not a
  * scaling benchmark). The Gaussian map is a couple of minutes; the
@@ -84,7 +84,7 @@ namespace sp = pfc::field::spectra;
 namespace {
 
 /// Per-step cost of one spatial operator at the reference grid, as measured
-/// in `docs/report/data/heat3d_method_cost.csv`.
+/// in `out/report/data/heat3d_method_cost.csv`.
 struct MethodCost {
   /// FD order; 0 denotes the spectral path, matching the CSV's convention.
   int fd_order{0};
@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  std::string data_dir = "docs/report/data";
+  std::string data_dir = "out/report/data";
   bool validate = true;
   bool held_out_only = false;
   bool held_out_families = false;

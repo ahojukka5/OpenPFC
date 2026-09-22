@@ -137,7 +137,7 @@ fall on the same step.
 | ICs / BCs / writers | Framework catalogs: `constant`, `single_seed`, `seed_grid` ICs; `fixed` / `moving` BCs from `apps/common` (`tungsten::register_catalog()`); `fields[]` writers (`binary`, `vtk`, `hdf5`) |
 | Device instantiation of the nonlinearity | `src/gpu/tungsten_pointwise.inc` (stamped into `.cu` / `.hip`) |
 | Grid criteria for dealiasing | `include/tungsten/resolution.hpp`, pinned by `test_tungsten_resolution.cpp` (`[resolution]`) |
-| Resolution study | `src/cpu/tungsten_dealias_study.cpp` -> `docs/report/data/tungsten_dealias_resolution.csv` |
+| Resolution study | `src/cpu/tungsten_dealias_study.cpp` -> `out/report/data/tungsten_dealias_resolution.csv` |
 | `main()` | `src/{cpu,cuda,hip}/tungsten.cpp` via `pfc::ui::run_json_session_main` |
 
 ## Dealiasing and resolution
@@ -170,8 +170,8 @@ Regenerate the data (minutes, single rank):
 
 ```bash
 ./apps/tungsten/tungsten_dealias_study \
-  ../docs/report/data/tungsten_dealias_resolution.csv 1000
-python3 docs/report/figures/make_figures.py
+  ../out/report/data/tungsten_dealias_resolution.csv 1000
+python3 out/report/figures/make_figures.py
 ```
 
 See the resolution section of the tungsten chapter in the applications report

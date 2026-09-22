@@ -12,7 +12,7 @@
  * error by construction, not merely small) for every `(fd_order, N)` pair
  * in the fixed sweep below, prints a human-readable table (design vs
  * observed order, plus the eigenvalue self-check), and writes the raw
- * per-case rows as a CSV that `docs/report/figures/make_figures.py` turns
+ * per-case rows as a CSV that `out/report/figures/make_figures.py` turns
  * into a log-log figure.
  *
  * Single MPI rank only (the sweep is a numerical-accuracy measurement, not
@@ -21,7 +21,7 @@
  * Usage:
  *   heat3d_fd_convergence_study [output.csv]
  *
- * `output.csv` defaults to `docs/report/data/heat3d_fd_order_convergence.csv`
+ * `output.csv` defaults to `out/report/data/heat3d_fd_order_convergence.csv`
  * resolved against the current working directory — run this from the repo
  * root (or pass an absolute path).
  */
@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
   }
 
   const std::string out_path =
-      (argc > 1) ? argv[1] : "docs/report/data/heat3d_fd_order_convergence.csv";
+      (argc > 1) ? argv[1] : "out/report/data/heat3d_fd_order_convergence.csv";
 
   const std::vector<int> orders = {2, 4, 6, 8, 10, 12};
   const std::vector<int> grid_sizes = {16, 24, 32, 48, 64};
@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
     MPI_Finalize();
     return 1;
   }
-  // No SPDX header in the output: everything under docs/report/ is covered by
+  // No SPDX header in the output: everything under out/report/ is covered by
   // the REUSE.toml annotation, and the sibling data CSVs carry a provenance
   // comment instead. Emitting the tags here also made the REUSE linter read
   // these string literals as a second, malformed license declaration for this

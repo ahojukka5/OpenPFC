@@ -919,7 +919,7 @@ campaign and writes `el_wstar` and `el_balance_rel`. Kinetics match
 \(5.4\times10^{-6}\) (thermal), \(7.0\times10^{-7}\) (`both`);
 the worst sample in any arm is \(6.1\times10^{-6}\) (thermal),
 O(`tol_el`). CSV:
-`docs/report/data/alloy_dendrite_hip_science_22045158.csv`. The
+`out/report/data/alloy_dendrite_hip_science_22045158.csv`. The
 22043824 table below is the original kinetics snapshot.
 
 | | `V` | `rho` | `int f_el` | `max σ_vm` | last iters | `t_el` (ms) |
@@ -937,9 +937,9 @@ eigenstrains again reduce stored energy (here by a factor of two
 relative to solutal, and below thermal). Hydrostatic mean stress stays
 at round-off (`|mean p| < 10^{-18}`), consistent with the zero-mean-stress
 macroscopic condition. Kinetics CSV:
-`docs/report/data/alloy_dendrite_hip_science_22043824.csv`.
+`out/report/data/alloy_dendrite_hip_science_22043824.csv`.
 Energy-balance CSV (job **22045158**):
-`docs/report/data/alloy_dendrite_hip_science_22045158.csv`.
+`out/report/data/alloy_dendrite_hip_science_22045158.csv`.
 
 ## Layout
 
@@ -1033,9 +1033,9 @@ science result. Downstream-crop figures (recipe only; no admitted
 snapshot):
 
 ```bash
-python3 docs/report/figures/make_alloy_dendrite_figures.py \
+python3 out/report/figures/make_alloy_dendrite_figures.py \
   --fta-dir /scratch/project_462001519/juaho/alloy-dendrite/fta_<jobid> \
-  --out docs/report/figures
+  --out out/report/figures
 ```
 
 **This is not a paper-scale melt-pool result.** No CMS 2026 reduced-scale

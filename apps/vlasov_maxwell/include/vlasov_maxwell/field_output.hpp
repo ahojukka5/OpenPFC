@@ -25,7 +25,7 @@
  * Each field goes to its own headerless Fortran-ordered `double` brick through
  * `pfc::BinaryWriter`, i.e. one collective `MPI_File_write_all`. The grid
  * shape lives out of band in a JSON manifest written once by rank 0. That is
- * the format `docs/report/figures/field_io.py` already reads (`read_raw`), and
+ * the format `out/report/figures/field_io.py` already reads (`read_raw`), and
  * -- unlike the single-piece `.vti` path the other report figures use -- it is
  * correct at any rank count, which matters because the 3-D cases here are not
  * single-rank runs. The manifest is what makes the brick self-describing; a
@@ -57,7 +57,7 @@
  * `order = 2` and is silently sheared everywhere else.
  *
  * @see docs/reference/binary_field_io_spec.md
- * @see docs/report/figures/field_io.py for the reader
+ * @see out/report/figures/field_io.py for the reader
  */
 
 #include <cmath>
