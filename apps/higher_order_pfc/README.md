@@ -304,6 +304,15 @@ to \(\psi\) at 3+ decimal places over 2000 ETD steps, the cleanest possible
 statement that a kernel *stabilises* the phase it is given, independent of
 whatever a noise-seeded run's grain structure happens to look like.
 
+A prospectively frozen eight-seed ensemble (seeds `42, 7, 11, 99, 137, 256,
+1024, 2024`; OpenPFC job 22250503) repeats the split: every single-mode
+seed is real-space triangular and every two-mode `r1=0.02` seed is real-space
+square under the predeclared classifier. The same seed-42 pair on a `256²`
+box at unchanged `dx` (job 22251035; `|k|=1` on mode 32) remains
+triangular vs square. Those controls live in
+`single_mode_triangular_256.json` and `two_mode_square_256.json`. This is
+not a phase diagram and not a claim that two-mode square selection is novel.
+
 What this benchmark does **not** measure: an explicit grain/orientation
 *count* for the noise-seeded runs. The global-vs-local \(\psi_n\) gap
 (`single_mode_triangular`: \(0.335\) vs \(0.852\); `two_mode_square`:
@@ -363,6 +372,13 @@ Create `results/higher_order_pfc/` first. GPU builds also provide
 # crystal-selection benchmark, single rank (order metric needs the whole grid)
 for case in single_mode_triangular two_mode_square two_mode_degenerate \
             single_mode_seed_triangular two_mode_seed_square; do
+  ./apps/higher_order_pfc/higher_order_pfc \
+      ../apps/higher_order_pfc/inputs_json/${case}.json
+done
+# eight-seed ensemble (research #608 Gate B)
+bash apps/higher_order_pfc/scripts/run_seed_ensemble.sh
+# 256^2 same-dx box control (Gate C)
+for case in single_mode_triangular_256 two_mode_square_256; do
   ./apps/higher_order_pfc/higher_order_pfc \
       ../apps/higher_order_pfc/inputs_json/${case}.json
 done
