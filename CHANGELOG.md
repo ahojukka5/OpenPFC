@@ -37,6 +37,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   load/switch-off, and a DFT helper for the paper comparator. Qualifies
   the README recovery-mechanism sentence: similar normalized endpoint
   recovery is empirical, not a `gamma`-only rate law.
+- Matched thin-film 2×2 presets (`apps/thin_film`, OpenPFC
+  [#128](https://github.com/ahojukka5/OpenPFC/issues/128), research
+  [#609](https://github.com/ahojukka5/research/issues/609)): noise
+  amplitude 0.002 without a depression, and noise 0.01 with the 30 %
+  Gaussian thickness depression, completing the shipped one-factor
+  design. The README no longer presents the unmatched 85-versus-140
+  precursor times as an isolated ~40 % defect effect.
 
 - **Doubly-periodic magnetic-island coalescence** on the 2-D
   incompressible MHD prototype (issue
