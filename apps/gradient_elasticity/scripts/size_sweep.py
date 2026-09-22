@@ -52,17 +52,17 @@ SUMMARY_RE = re.compile(
 )
 
 
-def make_settings(*, N, R, w, ell, mu, lam, eps0, order, x0=None, y0=None,
-                   line_profile=None):
-    x0 = N / 2.0 if x0 is None else x0
-    y0 = N / 2.0 if y0 is None else y0
+def make_settings(*, N, R, w, ell, mu, lam, eps0, order, dx=1.0, x0=None,
+                  y0=None, line_profile=None):
+    x0 = N * dx / 2.0 if x0 is None else x0
+    y0 = N * dx / 2.0 if y0 is None else y0
     settings = {
         "model": {
             "name": "gradient_elasticity",
             "params": {"mu": mu, "lambda": lam, "ell": ell, "eps0": eps0,
                        "order": order},
         },
-        "domain": {"Lx": N, "Ly": N, "Lz": 1, "dx": 1.0, "dy": 1.0, "dz": 1.0,
+        "domain": {"Lx": N, "Ly": N, "Lz": 1, "dx": dx, "dy": dx, "dz": 1.0,
                   "origin": "corner"},
         "timestepping": {"t0": 0.0, "t1": 1.0, "dt": 1.0, "saveat": -1.0},
         "initial_conditions": [
@@ -93,9 +93,22 @@ def run_case(binary, launcher, workdir, settings):
     return {k: float(v) for k, v in match.groupdict().items()}
 
 
-def interface_width(R, dx=1.0):
-    """Smoothed-inclusion interface half-width: max(1 grid spacing, R/8)."""
-    return max(dx, R / 8.0)
+def interface_width(R, ratio=1.0 / 8.0, floor=1.0):
+    """Smoothed-inclusion interface half-width: max(floor, ratio * R).
+
+    The default is a geometrically similar family (w/R = 1/8) with a floor of
+    one unit length, the rule of the published sweep. The floor is a physical
+    length, not a number of cells, so refining dx leaves w unchanged.
+    """
+    return max(floor, ratio * R)
+
+
+def grid_size(L, dx):
+    """Number of cells for physical box length L at spacing dx."""
+    N = int(round(L / dx))
+    if abs(N * dx - L) > 1e-9 * L:
+        raise ValueError(f"box length {L} is not a multiple of dx={dx}")
+    return N
 
 
 def main():
@@ -116,6 +129,15 @@ def main():
                              "16 to 32, so 16 is the default here). Scaling "
                              "by max(R, ell), not just R, matters once ell "
                              "is comparable to or larger than R.")
+    parser.add_argument("--width-ratio", type=float, default=1.0 / 8.0,
+                        help="Interface half-width w = max(floor, ratio*R); "
+                             "ratio (default: 1/8).")
+    parser.add_argument("--width-floor", type=float, default=1.0,
+                        help="Physical lower bound on w (default: 1.0).")
+    parser.add_argument("--dx", type=float, default=1.0,
+                        help="Grid spacing. R, w, ell and the box length L "
+                             "stay fixed in physical units, so halving dx is "
+                             "a fixed-geometry refinement (default: 1.0).")
     parser.add_argument("--radii", type=float, nargs="+",
                         default=[4.0, 8.0, 16.0, 32.0, 64.0, 128.0],
                         help="Inclusion radii to sweep (default spans "
@@ -139,19 +161,21 @@ def main():
     args.outdir.mkdir(parents=True, exist_ok=True)
     rows = []
     for R in args.radii:
-        N = int(round(args.box_to_radius * max(R, args.ell)))
-        w = interface_width(R)
+        L = args.box_to_radius * max(R, args.ell)
+        N = grid_size(L, args.dx)
+        w = interface_width(R, args.width_ratio, args.width_floor)
         line_profile = None
         if R in args.line_profile_radii:
             line_profile = str((args.outdir / f"line_profile_R{R:g}.csv").resolve())
         settings = make_settings(N=N, R=R, w=w, ell=args.ell, mu=args.mu,
                                  lam=args.lam, eps0=args.eps0, order=4,
-                                 line_profile=line_profile)
+                                 dx=args.dx, line_profile=line_profile)
         summary = run_case(args.binary, launcher, args.outdir / f"R{R:g}",
                            settings)
-        rows.append({"R": R, "ell": args.ell, "R_over_ell": R / args.ell, "N": N,
-                    "box_L": N, "box_L_over_R": N / R,
-                    "interface_width": w, **summary})
+        rows.append({"R": R, "ell": args.ell, "R_over_ell": R / args.ell,
+                     "dx": args.dx, "N": N, "box_L": L, "box_L_over_R": L / R,
+                     "interface_width": w, "w_over_R": w / R,
+                     "w_over_ell": w / args.ell, **summary})
         print(f"R={R:g} R/ell={R/args.ell:.3g} peak_hydro={summary['peak_hydro']:.6g} "
              f"peak_vm={summary['peak_vm']:.6g} energy={summary['energy']:.6g}")
 
@@ -164,16 +188,18 @@ def main():
 
     if args.box_check_radius is not None:
         R = args.box_check_radius
-        w = interface_width(R)
+        w = interface_width(R, args.width_ratio, args.width_floor)
         base = max(R, args.ell)
-        small_N = int(round(args.box_to_radius * base))
-        large_N = int(round(2.0 * args.box_to_radius * base))
+        small_N = grid_size(args.box_to_radius * base, args.dx)
+        large_N = grid_size(2.0 * args.box_to_radius * base, args.dx)
         small = run_case(args.binary, launcher, args.outdir / "box_check_small",
                          make_settings(N=small_N, R=R, w=w, ell=args.ell, mu=args.mu,
-                                      lam=args.lam, eps0=args.eps0, order=4))
+                                      lam=args.lam, eps0=args.eps0, order=4,
+                                      dx=args.dx))
         large = run_case(args.binary, launcher, args.outdir / "box_check_large",
                          make_settings(N=large_N, R=R, w=w, ell=args.ell, mu=args.mu,
-                                      lam=args.lam, eps0=args.eps0, order=4))
+                                      lam=args.lam, eps0=args.eps0, order=4,
+                                      dx=args.dx))
         rel_hydro = abs(large["peak_hydro"] - small["peak_hydro"]) / small["peak_hydro"]
         rel_vm = abs(large["peak_vm"] - small["peak_vm"]) / small["peak_vm"]
         print(f"box check R={R:g} ell={args.ell:g}: L/max(R,ell) "
