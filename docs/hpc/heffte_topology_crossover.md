@@ -104,7 +104,7 @@ Pre-execution communication descriptors (no wall times) live in
 [`heffte_topology_crossover_descriptors.csv`](heffte_topology_crossover_descriptors.csv),
 generated from the OpenPFC slab / min-reshape replica in
 `apps/heat3d/scripts/heffte_comm_plan.py`. Candidate models are defined
-there; coefficients are not fit on this campaign yet.
+there. Coefficients were not fit; the campaign stopped without a selector.
 
 Observability of LUMI topology:
 [what a job can actually see](heffte_topology_observability.md).

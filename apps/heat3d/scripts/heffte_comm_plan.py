@@ -334,7 +334,7 @@ def write_csv(path: str, rows: Iterable[Dict[str, Any]]) -> None:
 
 def model_notes() -> List[str]:
     notes = [
-        "Coefficients are not fit on the still-running #106 campaign.",
+        "Coefficients were not fit. The #106 campaign stopped without a selector.",
         "reshape_algorithm is a timing mechanism, not a layout feature.",
         "n_mpi_reshapes is the geometric OpenPFC replica, not a live "
         "heffte::plan_operations dump (that dump is not available pre-job).",
