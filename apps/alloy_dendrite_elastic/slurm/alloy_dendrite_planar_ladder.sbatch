@@ -13,7 +13,7 @@
 #
 # Re-measure the Stage-1 planar ladder of PR #147 on a *compute* node.
 #
-# Research admission purpose (research#313): the original README tables were
+# Research admission purpose (): the original README tables were
 # produced on a LUMI login node and the raw per-case output was not retained in
 # the research evidence ledger. This is therefore the ONE bounded baseline
 # rerun allowed if those original artifacts cannot be recovered. It is not a
@@ -63,7 +63,7 @@ SUM="${OUT}/planar_summary.csv"
 PROV="${OUT}/provenance.txt"
 
 {
-  echo "protocol=research#313 bounded planar quantitative-alloy baseline"
+  echo "protocol= bounded planar quantitative-alloy baseline"
   echo "slurm_job_id=${SLURM_JOB_ID}"
   echo "slurm_partition=${SLURM_JOB_PARTITION}"
   echo "slurm_nodes=${SLURM_JOB_NUM_NODES:-1}"

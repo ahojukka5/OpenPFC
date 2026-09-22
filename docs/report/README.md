@@ -5,14 +5,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Applications report artifacts
 
-The scientific catalog — equations, discrete formulations, verification
-and measured scaling for every shipped application — lives in the
-research portfolio:
-
-**[OpenPFC applications](https://github.com/ahojukka5/research/blob/master/articles/openpfc-applications/index.qmd)**
-(`ahojukka5/research`, `articles/openpfc-applications/`).
-
-This directory is the **executable artifact location** for that report:
+This directory keeps CSV and figure artifacts produced by the
+applications. It does not store a manuscript.
 
 | Path | Role |
 |---|---|

@@ -24,7 +24,7 @@ void write_evidence(const std::string &path,
   out << "{\n";
   out << "  \"schema\": \"openpfc-inverse-evidence/v1\",\n";
   out << "  \"openpfc_issue\": 57,\n";
-  out << "  \"research_issue\": \"ahojukka5/research#484\",\n";
+  out << "  \"research_issue\": \"\",\n";
   out << "  \"grid\": \"16x16\",\n";
   out << "  \"model\": \"neo-hookean\",\n";
   out << "  \"all_converged\": " << (ex.all_converged ? "true" : "false") << ",\n";

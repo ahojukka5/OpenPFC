@@ -419,7 +419,7 @@ threshold is 0.32 (FD-2) to 0.49 (FD-12): a 32x cheaper step buys only
 `32^(1/3) = 3.2x` in grid spacing. The crossover in accuracy is at
 `L2 ~ 6e-7`, owned by FD-12; below `1e-2` FD-2 costs a twentieth of the
 spectral path. The full tables are in the
-[applications catalog](https://github.com/ahojukka5/research/blob/master/articles/openpfc-applications/18_scalability.qmd)
+applications catalog
 (Heat3D comparison; formerly `docs/report/16_scalability.qmd`).
 
 **Validated, not asserted.** Ten points of the map were re-measured by

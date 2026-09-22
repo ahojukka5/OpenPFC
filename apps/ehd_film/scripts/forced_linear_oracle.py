@@ -10,7 +10,7 @@ Evaluates the discrete Fourier solution of
 
 on the same periodic grid and sampled Gaussian load as ``ehd_film_nonlinear``.
 Matches ``ehd_film/linear_oracle.hpp``. This is the paper comparator for
-research#610; it does not run OpenPFC.
+; it does not run OpenPFC.
 
     python3 apps/ehd_film/scripts/forced_linear_oracle.py \\
         --B 100 --out linear_B100.csv

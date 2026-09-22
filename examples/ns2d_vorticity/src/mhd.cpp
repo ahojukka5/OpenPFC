@@ -45,7 +45,7 @@ struct Cli {
   double cfl{-1.0};
   // Orszag-Tang drive amplitude: scales the initial vorticity while the
   // flux function is held fixed, weakening the externally imposed flow
-  // relative to the magnetic field. 1.0 is the admitted case (research#591).
+  // relative to the magnetic field. 1.0 is the admitted case ().
   double drive{1.0};
   bool verify{false};
   std::string outdir;
@@ -267,7 +267,7 @@ int run(const Cli &cli, int rank, int nproc) {
            << "  \"drive\": " << cli.drive << ",\n"
            << "  \"drive_definition\": \"orszag_tang initial vorticity is "
               "scaled by this factor; the flux function is unchanged. 1.0 is "
-              "the admitted case (research#591).\",\n"
+              "the admitted case ().\",\n"
            << "  \"nproc\": " << nproc << ",\n"
            << "  \"cfl_nominal\": " << (dt / dx) << ",\n"
            << "  \"cfl_nominal_definition\": \"dt/dx; --cfl sets dt=CFL*dx\",\n"

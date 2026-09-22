@@ -37,13 +37,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 - Higher-order PFC seed-ensemble driver and $256^2$ same-$dx$ box-control
   inputs (`apps/higher_order_pfc`, research
-  [#608](https://github.com/ahojukka5/research/issues/608)). Frozen seeds
+  #608). Frozen seeds
   `42, 7, 11, 99, 137, 256, 1024, 2024` and a mode-32 $|k|=1$ torus that
   keeps $dx$ fixed. Diagnostics already exported the time series.
 
 - **Exact forced linear EHD oracle** (`apps/ehd_film`, OpenPFC
   [#126](https://github.com/ahojukka5/OpenPFC/issues/126), research
-  [#610](https://github.com/ahojukka5/research/issues/610)). Closed-form
+  #610). Closed-form
   constant-mobility bending+tension solution on the sampled periodic
   load, a Catch2 check that the flux stepper matches it through
   load/switch-off, and a DFT helper for the paper comparator. Qualifies
@@ -51,7 +51,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   recovery is empirical, not a `gamma`-only rate law.
 - Matched thin-film 2×2 presets (`apps/thin_film`, OpenPFC
   [#128](https://github.com/ahojukka5/OpenPFC/issues/128), research
-  [#609](https://github.com/ahojukka5/research/issues/609)): noise
+  #609): noise
   amplitude 0.002 without a depression, and noise 0.01 with the 30 %
   Gaussian thickness depression, completing the shipped one-factor
   design. The README no longer presents the unmatched 85-versus-140
@@ -60,7 +60,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Doubly-periodic magnetic-island coalescence** on the 2-D
   incompressible MHD prototype (issue
   [#113](https://github.com/ahojukka5/OpenPFC/issues/113), parent
-  [research#543](https://github.com/ahojukka5/research/issues/543)).
+  ).
   Literature-matched flux \(a=0.4\sin x\sin y\) plus a frozen
   \(k=1\) streamfunction seed. Stage 0 at \(\eta=\nu=0.01\) only.
   Cross-\(\eta\) alignment is frozen on cumulative X-point flux
@@ -267,8 +267,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   are not ranked. Cheapest picks are unchanged: Gaussian FD-2 and
   top-hat FD-12 at `1e-2`; spectral at `1e-8`. Pre-issue-3 CSV
   snapshots stay as historical evidence.
-- **Applications catalog moved** to `ahojukka5/research`
-  (`articles/openpfc-applications`). `docs/report/` keeps CSV writers
+- **Applications catalog moved** to ``
+  `docs/report/` keeps CSV writers
   and figure-regeneration scripts; narrative Quarto chapters are no
   longer in this repository ([#174](https://github.com/VTT-ProperTune/OpenPFC/issues/174)).
 
@@ -370,7 +370,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Periodic spectrum families** for spatial-operator analysis
   (`pfc::field::spectra`, issue
   [#177](https://github.com/VTT-ProperTune/OpenPFC/issues/177),
-  `ahojukka5/research#304`). Occupancy-matched Gaussian, isotropic
+  ``). Occupancy-matched Gaussian, isotropic
   top-hat, and exponential (isotropic L2 / separable L1) families share
   one Parseval heat-error interface with the shipped D2 symbols in
   `fd_symbols.hpp`. `heat3d_spectral_content_study --families-only`

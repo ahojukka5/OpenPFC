@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # LUMI-C equal-node CPU control for the linear Heat3D protocol slice
-# (research/articles/periodic-operator-choice).
+# CPU control run.
 #
 #SBATCH --account=project_462001519
 #SBATCH --partition=standard

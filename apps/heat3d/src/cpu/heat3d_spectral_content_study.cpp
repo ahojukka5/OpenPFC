@@ -10,9 +10,7 @@
  * @details
  * ## Why
  *
- * The method comparison in the OpenPFC applications catalog
- * (`articles/openpfc-applications/18_scalability.qmd` in
- * ahojukka5/research) had two of its
+ * The method comparison for this heat application had two of its
  * three axes measured (cost per step at equal grid, strong scaling at equal
  * grid) and the third — accuracy — measured only for a **single Fourier
  * mode**, by `heat3d_fd_convergence_study`. One smooth mode is the best
@@ -165,7 +163,7 @@ const std::vector<ValidationPoint> kHeldOutPoints = {
     {12, 128, 0.60, 800},
 };
 
-/// Predeclared non-Gaussian referee gate (research#304). Same orders,
+/// Predeclared non-Gaussian referee gate (). Same orders,
 /// occupancies, step counts and 1e-6 residual bound as kHeldOutPoints.
 /// N=32 is held out from the family Parseval map (N=64) and from the
 /// N=16 --validate-families smoke; cosine-sum ICs forbid N=128.

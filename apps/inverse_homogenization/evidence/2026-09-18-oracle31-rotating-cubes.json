@@ -1,6 +1,5 @@
 {
   "schema": "openpfc-inverse-evidence/v1",
-  "research_issue": "ahojukka5/research#476",
   "openpfc_issue": 31,
   "openpfc_pr": 32,
   "question": "Does the existing 3-D FFT homogenizer admit a known mechanically stable, connected periodic auxetic mechanism?",

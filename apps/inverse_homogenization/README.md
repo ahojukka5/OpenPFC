@@ -125,7 +125,7 @@ a guarantee against storage hardware corruption or power loss.
 
 ## Finite-strain forward ladder (issue #55)
 
-Research [#484](https://github.com/ahojukka5/research/issues/484) needs a
+Research #484 needs a
 finite-strain Poisson along a loading path. That is **not** the
 small-strain \(C_H\) from `openpfc_homogenize`.
 

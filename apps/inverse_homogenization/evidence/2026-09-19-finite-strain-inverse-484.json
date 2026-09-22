@@ -1,7 +1,6 @@
 {
   "schema": "openpfc-inverse-evidence/v1",
   "openpfc_issue": 57,
-  "research_issue": "ahojukka5/research#484",
   "grid": "16x16",
   "model": "neo-hookean",
   "all_converged": true,

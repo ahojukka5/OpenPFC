@@ -1027,8 +1027,8 @@ does not. Do not quote the trailing-window slope from that job. Issue
 #155 stays open until a non-diverging geometry exists.
 
 The scientific catalog for this application is
-[OpenPFC applications, dendrite chapter](https://github.com/ahojukka5/research/blob/master/articles/openpfc-applications/16_alloy_dendrite.qmd)
-in `ahojukka5/research`. It still records FTA as geometry, not a
+OpenPFC applications, dendrite chapter
+in ``. It still records FTA as geometry, not a
 science result. Downstream-crop figures (recipe only; no admitted
 snapshot):
 

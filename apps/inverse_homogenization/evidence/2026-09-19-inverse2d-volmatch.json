@@ -2,7 +2,6 @@
   "schema": "openpfc-inverse-evidence/v1",
   "openpfc_issue": 40,
   "openpfc_pr": 41,
-  "research_issue": "ahojukka5/research#476",
   "question": "Does binary auxeticity survive when binarization retains approximately the original 0.5 solid volume fraction?",
   "stop_rule": "2d_volume_matched_binary_retains_negative_nu",
   "qualified": true,

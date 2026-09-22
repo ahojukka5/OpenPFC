@@ -1,7 +1,6 @@
 {
   "schema": "openpfc-inverse-evidence/v1",
   "openpfc_issue": 55,
-  "research_issue": "ahojukka5/research#484",
   "question": "Does a 2-D plane-strain finite-strain forward path with P22=0 report a tangent Poisson that matches FD of the same shipped F22(F11)?",
   "kinematics": {
     "F33": 1.0,

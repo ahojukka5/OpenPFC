@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 Stage-0 qualification of a doubly-periodic coalescence control for
 the accepted Orszag–Tang persistent-X result. Parent research work
-order: [ahojukka5/research#543](https://github.com/ahojukka5/research/issues/543).
+order: .
 
 This note freezes the benchmark, the perturbation, and — after the
 \(\eta=0.01\) run — the cross-\(\eta\) event statistic. It does

@@ -2,7 +2,6 @@
   "schema": "openpfc-inverse-evidence/v1",
   "openpfc_issue": 40,
   "openpfc_pr": 41,
-  "research_issue": "ahojukka5/research#476",
   "question": "Does the mechanism-informed 2-D optimization preserve auxeticity after thresholding, or is the continuous result grey-dependent?",
   "stop_rule": "2d_mechanism_informed_survives_binarization",
   "qualified": true,
