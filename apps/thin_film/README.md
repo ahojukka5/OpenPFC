@@ -100,7 +100,7 @@ heterogeneity: no substrate parameter is varied.
 
 The missing matched cells (noise `0.01` with the depression, and noise
 `0.002` without it) are `thin_film_defect_noise01.json` and
-`thin_film_dewetting_noise002.json` (research #609).
+`thin_film_dewetting_noise002.json` (OpenPFC #128 / research #609).
 
 Volume is conserved to round-off in both shipped runs, which is the check
 that the divergence form is being integrated honestly. The defect case
