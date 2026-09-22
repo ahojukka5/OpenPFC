@@ -30,6 +30,17 @@ machine toolchain, configures, builds, and runs tests.
 
 **HeFFTe:** build and install **outside** the OpenPFC clone. On Tohtori typical prefixes are `$HOME/opt/heffte/…`. On LUMI load `heffte-rocm` (do not vendor HeFFTe sources next to `CMakeLists.txt`).
 
+## Article evidence
+
+A measurement that supports an article does not stay in this
+repository. The launch script, the compact output, and the hidden
+provenance comment belong in the article (`openpfc-applications`,
+`openpfc-framework`, `inverse-homogenization`, or
+`vlasov-kinetic-validation`). This package keeps the library and its
+tests. Do not add a new campaign `.sbatch` or a results dump here.
+Scripts already under `apps/*/slurm` and `docs/lumi_slurm` are legacy
+launchers; they do not grow.
+
 ## Workspace conventions (this project)
 
 - **CMake build trees:** on workstations/Tohtori keep them under a top-level **`builds/`** directory (e.g. `builds/debug`, `builds/release`). On **LUMI** use flash via `scripts/build.sh` (default `/flash/project_462001519/juaho/build/openpfc-lumi-…`). Do not configure or compile inside the git clone on LUMI.
