@@ -17,7 +17,8 @@
  * \f]
  * which is a pure reciprocal-space symbol because \f$B_0\f$ is constant. The
  * anisotropic generalisation replaces the constant kinetic coefficient with
- * the orientation-dependent stiffness \f$B(\theta)\f$ of `anisotropy.hpp`,
+ * the imposed orientation-dependent coefficient \f$B(\theta)\f$ of
+ * `anisotropy.hpp`,
  * \f$\theta=\operatorname{atan2}(h_y,h_x)\f$ the local surface-gradient
  * orientation:
  * \f[
