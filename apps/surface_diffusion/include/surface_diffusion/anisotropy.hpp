@@ -12,8 +12,8 @@
  * The Mullins verifier (`surface_diffusion_physics.hpp`) keeps a single,
  * orientation-independent coefficient \f$B\f$. Real crystalline surfaces do
  * not: the surface free energy \f$\gamma\f$ depends on the local surface
- * normal, and by the Herring relation the *kinetic* stiffness that actually
- * controls diffusive smoothing is
+ * normal, and by the Herring relation the thermodynamic surface stiffness
+ * that multiplies curvature in the chemical potential is
  * \f[
  *   \tilde\gamma(\theta) = \gamma(\theta) + \gamma''(\theta),
  * \f]
@@ -24,7 +24,9 @@
  *
  * **Honesty note (model maturity).** This header does *not* differentiate a
  * specific literature \f$\gamma(\theta)\f$ to obtain \f$\tilde\gamma(\theta)\f$.
- * It imposes the periodic modulation directly on the *kinetic* coefficient,
+ * It imposes the periodic modulation directly on the scalar *kinetic*
+ * coefficient of the flux, so \f$B(\theta)\f$ is phenomenological and not a
+ * derived stiffness (the type name `SurfaceStiffness` is historical):
  *
  * \f[
  *   B(\theta) = B_0\bigl[1 + \epsilon_a\cos(m\theta)\bigr],

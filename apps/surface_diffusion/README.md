@@ -66,12 +66,16 @@ There is no real-space nonlinearity.
 
 Real crystalline surfaces do not relax isotropically: the surface free energy
 \(\gamma\) depends on the local surface-normal orientation, and by the
-Herring relation the *kinetic* stiffness that controls diffusive smoothing is
-\(\tilde\gamma(\theta)=\gamma(\theta)+\gamma''(\theta)\) (Mullins 1957;
+Herring relation the surface stiffness that multiplies curvature in the
+chemical potential is
+\(\tilde\gamma(\theta)=\gamma(\theta)+\gamma''(\theta)\), a thermodynamic
+quantity (Mullins 1957;
 Rettori & Villain, *J. Phys. France* 49, 257 (1988); Bonzel & Preuss, *Surf.
 Sci.* 336, 209 (1995)). This code does **not** differentiate a specific
 literature \(\gamma(\theta)\) to obtain \(\tilde\gamma\); it imposes the same
-periodic *functional form* directly on the kinetic coefficient,
+periodic *functional form* directly on the scalar coefficient of the flux.
+\(B(\theta)\) is therefore a phenomenological kinetic coefficient, not a
+derived stiffness; the type name `SurfaceStiffness` is historical:
 
 \[
 B(\theta)=B_0\bigl[1+\epsilon_a\cos(m\theta)\bigr],\qquad
