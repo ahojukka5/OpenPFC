@@ -135,10 +135,10 @@ struct Case {
 
 MicroelasticityParams two_phase(const Stiffness &cs, const Stiffness &cl) {
   MicroelasticityParams p;
-  p.c_solid = cs;
-  p.c_liquid = cl;
-  p.tol_el = 1.0e-10;
-  p.n_el_iter = 80;
+  p.stiffness_at_one = cs;
+  p.stiffness_at_zero = cl;
+  p.relative_tolerance = 1.0e-10;
+  p.max_iterations = 80;
   p.warm_start = false;
   p.comm = MPI_COMM_WORLD;
   return p;

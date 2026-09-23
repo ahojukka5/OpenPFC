@@ -69,10 +69,10 @@ int main(int argc, char **argv) {
     h.note_host_write();
 
     pfc::solvers::MicroelasticityParams p;
-    p.c_solid = pfc::solvers::Stiffness::isotropic(E_s, nu_s);
-    p.c_liquid = pfc::solvers::Stiffness::isotropic(E_v, nu_v);
-    p.tol_el = 1.0e-8;
-    p.n_el_iter = 80;
+    p.stiffness_at_one = pfc::solvers::Stiffness::isotropic(E_s, nu_s);
+    p.stiffness_at_zero = pfc::solvers::Stiffness::isotropic(E_v, nu_v);
+    p.relative_tolerance = 1.0e-8;
+    p.max_iterations = 80;
     p.comm = MPI_COMM_WORLD;
     pfc::apps::PeriodicHomogenizerHIP hom(domain, stack.fft(), p);
     const auto r = hom.compute(h);

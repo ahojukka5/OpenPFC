@@ -304,6 +304,27 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     message(STATUS "✅ HIP kernel library enabled")
 endif()
 
+# Periodic microelasticity device kernels. A solver target, not part of the
+# generic runtime library and not an application.
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
+  set_source_files_properties(
+      src/openpfc/solvers/microelasticity/microelasticity_hip_kernels.hip
+      PROPERTIES LANGUAGE HIP)
+  add_library(openpfc_microelasticity_hip
+      src/openpfc/solvers/microelasticity/microelasticity_hip_kernels.hip)
+  target_include_directories(openpfc_microelasticity_hip
+      PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>)
+  target_link_libraries(openpfc_microelasticity_hip PUBLIC OpenPFC hip::host)
+  target_compile_definitions(openpfc_microelasticity_hip PUBLIC
+      OpenPFC_ENABLE_HIP OpenPFC_ENABLE_HIP_SPECTRAL)
+  set_target_properties(openpfc_microelasticity_hip PROPERTIES
+      HIP_STANDARD 17
+      HIP_STANDARD_REQUIRED ON)
+  message(STATUS "openpfc_microelasticity_hip (periodic microelasticity) enabled")
+endif()
+
 # Add tomlplusplus include directory (header-only library)
 # Since it's header-only (often from FetchContent), we just need the include path
 # Use $<BUILD_INTERFACE:...> to avoid export issues with build directory paths

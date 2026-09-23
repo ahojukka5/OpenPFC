@@ -9,18 +9,17 @@
  * @details
  * ## The question this binary exists to answer
  *
- * `openpfc/solvers/microelasticity/microelasticity.hpp` is host-only by deliberate design: its
- * author found that `SpectralETDOps` is shaped around one scalar field plus
- * two aux slots, and a six-component symmetric tensor with a spatially
- * varying stiffness does not fit. `elasticity.hpp` is the adapter the CPU
- * application uses to wire that solver onto the FD stepper; this driver uses
- * the same adapter's eigenstrain assembly and the same solver, but keeps the
- * five parts of the GPU/host round-trip timed separately -- wrapping
- * `ElasticCoupling::solve` would fold the tensor build into the FFT time.
- * A GPU phase field coupled to that host solver either needs a device port
- * of the tensor solve, or pays a host round-trip on every elastic solve.
- * Choosing between those on the basis of "12 transforms per Eyre-Milton
- * iteration and about 16 iterations sounds expensive" is guessing. This
+ * `openpfc/solvers/microelasticity/microelasticity.hpp` is host-only by deliberate
+ * design: its author found that `SpectralETDOps` is shaped around one scalar field
+ * plus two aux slots, and a six-component symmetric tensor with a spatially varying
+ * stiffness does not fit. `elasticity.hpp` is the adapter the CPU application uses
+ * to wire that solver onto the FD stepper; this driver uses the same adapter's
+ * eigenstrain assembly and the same solver, but keeps the five parts of the GPU/host
+ * round-trip timed separately -- wrapping `ElasticCoupling::solve` would fold the
+ * tensor build into the FFT time. A GPU phase field coupled to that host solver
+ * either needs a device port of the tensor solve, or pays a host round-trip on every
+ * elastic solve. Choosing between those on the basis of "12 transforms per
+ * Eyre-Milton iteration and about 16 iterations sounds expensive" is guessing. This
  * driver runs the actual coupled step and times its five parts separately:
  *
  *     t_pf    the GPU phase-field step  (4 kernels, 3 device halo exchanges)
@@ -89,11 +88,11 @@
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 
-#include <openpfc/frontend/utils/cli_options.hpp>
 #include <alloy_dendrite/device_stepper_hip.hpp>
 #include <alloy_dendrite/diagnostics.hpp>
 #include <alloy_dendrite/elasticity.hpp>
 #include <alloy_dendrite/parameters.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 #if defined(OpenPFC_ENABLE_HIP_SPECTRAL)
 #include <alloy_dendrite/device_elasticity_hip.hpp>
 #endif
@@ -107,7 +106,6 @@ using pfc::solvers::MicroelasticityParams;
 using pfc::solvers::MicroelasticityScheme;
 using pfc::solvers::Stiffness;
 using pfc::solvers::Sym3;
-using pfc::solvers::Stiffness;
 
 struct CostConfig {
   alloy_dendrite::ModelParams model{};
@@ -131,10 +129,10 @@ struct CostConfig {
   double tol_el = 1.0e-6;
   int n_el_iter = 50;
   /// Young's modulus and Poisson ratio of the solid; the liquid is
-  /// `soft_liquid(solid, liquid_shear)`.
+  /// `material::liquid_stiffness(solid, liquid_shear)`.
   double youngs = 1.0;
   double poisson = 0.3;
-  double liquid_shear = pfc::solvers::kDefaultLiquidShearFraction;
+  double liquid_shear = alloy_dendrite::material::kLiquidShearFraction;
   /// Eigenstrain amplitudes: `a = h(phi) [eps_c (U - U_ref) + eps_T theta]`.
   double eps_c = 0.01;
   double eps_T = 0.0;
@@ -256,15 +254,13 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
   pfc::sim::stacks::SpectralCPUStack fftstack(domain, rank, nproc, comm);
   const auto fft_grid =
       pfc::decomposition::spectral_fft_proc_grid(domain.size, nproc);
-  auto fd_decomp =
-      (cfg.fd_grid == "brick")
-          ? pfc::decomposition::create(domain, nproc)
-          : pfc::decomposition::create(domain, fft_grid);
+  auto fd_decomp = (cfg.fd_grid == "brick")
+                       ? pfc::decomposition::create(domain, nproc)
+                       : pfc::decomposition::create(domain, fft_grid);
 
   const auto fd_box = pfc::decomposition::local_box(fd_decomp, rank);
   const auto fft_box = fftstack.u().box();
-  const bool boxes_match =
-      fd_box.low == fft_box.low && fd_box.size == fft_box.size;
+  const bool boxes_match = fd_box.low == fft_box.low && fd_box.size == fft_box.size;
   if (cfg.elastic && !boxes_match) {
     throw std::runtime_error(
         "alloy_dendrite_coupled_cost: the FD and FFT local boxes differ, so a "
@@ -287,9 +283,9 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
     // phi
     seed.for_each_owned([&](int i, int j, int k) {
       const auto c = seed.coords(i, j, k);
-      const double r = std::sqrt((c[0] - xc) * (c[0] - xc) +
-                                 (c[1] - yc) * (c[1] - yc) +
-                                 (c[2] - zc) * (c[2] - zc));
+      const double r =
+          std::sqrt((c[0] - xc) * (c[0] - xc) + (c[1] - yc) * (c[1] - yc) +
+                    (c[2] - zc) * (c[2] - zc));
       seed(i, j, k) = std::tanh((cfg.seed_radius * p.W0 - r) * inv_w);
     });
     push_owned(seed, dev.phi());
@@ -326,14 +322,14 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
   ep.warm_start = cfg.warm_start;
 
   MicroelasticityParams mp;
-  mp.c_solid = ep.c_solid;
-  mp.c_liquid = pfc::solvers::soft_liquid(ep.c_solid, ep.mu_liquid_fraction,
-                                       ep.bulk_liquid_fraction);
+  mp.stiffness_at_one = ep.c_solid;
+  mp.stiffness_at_zero = alloy_dendrite::material::liquid_stiffness(
+      ep.c_solid, ep.mu_liquid_fraction, ep.bulk_liquid_fraction);
   mp.eigenstrain_pattern = Sym3::identity();
   mp.applied_strain = Sym3{};
   mp.scheme = ep.scheme;
-  mp.tol_el = ep.tol_el;
-  mp.n_el_iter = ep.n_el_iter;
+  mp.relative_tolerance = ep.tol_el;
+  mp.max_iterations = ep.n_el_iter;
   mp.warm_start = ep.warm_start;
   mp.comm = comm;
 
@@ -342,7 +338,8 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
   std::unique_ptr<alloy_dendrite::DeviceElasticCoupling> device_solver;
 #endif
   if (cfg.elastic && !cfg.device_elastic) {
-    solver = std::make_unique<EigenstrainMicroelasticity>(domain, fftstack.fft(), mp);
+    solver =
+        std::make_unique<EigenstrainMicroelasticity>(domain, fftstack.fft(), mp);
     dev.set_elastic_driving_force(&dfel_d);
   }
 #if defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -386,10 +383,11 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
 #if defined(OpenPFC_ENABLE_HIP_SPECTRAL)
       if (cfg.device_elastic && device_solver) {
         a = MPI_Wtime();
-        const auto rep = device_solver->solve(dev.phi(), dev.solute(),
-                                                dev.temperature());
+        const auto rep =
+            device_solver->solve(dev.phi(), dev.solute(), dev.temperature());
         if (hipDeviceSynchronize() != hipSuccess) {
-          throw std::runtime_error("hipDeviceSynchronize failed after device elastic");
+          throw std::runtime_error(
+              "hipDeviceSynchronize failed after device elastic");
         }
         b = MPI_Wtime();
         el = b - a;
@@ -399,64 +397,63 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
       } else
 #endif
           if (solver) {
-      a = MPI_Wtime();
-      pull_three(dev.phi(), dev.solute(), dev.temperature(), phi_h, u_h, th_h);
-      b = MPI_Wtime();
-      d2h = b - a;
+        a = MPI_Wtime();
+        pull_three(dev.phi(), dev.solute(), dev.temperature(), phi_h, u_h, th_h);
+        b = MPI_Wtime();
+        d2h = b - a;
 
-      a = b;
-      // Same assembly as `ElasticCoupling::solve`: eps* = h(phi) [eps_c
-      // (U - U_ref) + eps_T (theta - theta_ref)] I, dh/dphi = 1/2,
-      // da/dphi = s/2, and ZeroMeanStress fixes eps_hat(0) = <a> P.
-      const double ec = ep.eps_c;
-      const double et = ep.eps_T;
-      const double ur = ep.U_ref;
-      const double tr = ep.theta_ref;
-      double amp_local = 0.0;
-      h.for_each_owned([&](int i, int j, int k) {
-        const double ph = phi_h(i, j, k);
-        const double hv = 0.5 * (1.0 + ph);
-        const double s =
-            ec * (u_h(i, j, k) - ur) + et * (th_h(i, j, k) - tr);
-        h(i, j, k) = hv;
-        amp(i, j, k) = hv * s;
-        dh(i, j, k) = 0.5;
-        damp(i, j, k) = 0.5 * s;
-        amp_local += hv * s;
-      });
-      h.note_host_write();
-      amp.note_host_write();
-      dh.note_host_write();
-      damp.note_host_write();
-      if (ep.macro_strain == alloy_dendrite::MacroStrainMode::ZeroMeanStress) {
-        double amp_sum = 0.0;
-        MPI_Allreduce(&amp_local, &amp_sum, 1, MPI_DOUBLE, MPI_SUM, comm);
-        const auto gsz = h.global_size();
-        const double ncells = static_cast<double>(gsz[0]) *
-                              static_cast<double>(gsz[1]) *
-                              static_cast<double>(gsz[2]);
-        const double mean_amp = amp_sum / ncells;
-        Sym3 bar;
-        for (int c = 0; c < pfc::solvers::kSymComponents; ++c) {
-          bar[c] = mean_amp * solver->params().eigenstrain_pattern[c];
+        a = b;
+        // Same assembly as `ElasticCoupling::solve`: eps* = h(phi) [eps_c
+        // (U - U_ref) + eps_T (theta - theta_ref)] I, dh/dphi = 1/2,
+        // da/dphi = s/2, and ZeroMeanStress fixes eps_hat(0) = <a> P.
+        const double ec = ep.eps_c;
+        const double et = ep.eps_T;
+        const double ur = ep.U_ref;
+        const double tr = ep.theta_ref;
+        double amp_local = 0.0;
+        h.for_each_owned([&](int i, int j, int k) {
+          const double ph = phi_h(i, j, k);
+          const double hv = 0.5 * (1.0 + ph);
+          const double s = ec * (u_h(i, j, k) - ur) + et * (th_h(i, j, k) - tr);
+          h(i, j, k) = hv;
+          amp(i, j, k) = hv * s;
+          dh(i, j, k) = 0.5;
+          damp(i, j, k) = 0.5 * s;
+          amp_local += hv * s;
+        });
+        h.note_host_write();
+        amp.note_host_write();
+        dh.note_host_write();
+        damp.note_host_write();
+        if (ep.macro_strain == alloy_dendrite::MacroStrainMode::ZeroMeanStress) {
+          double amp_sum = 0.0;
+          MPI_Allreduce(&amp_local, &amp_sum, 1, MPI_DOUBLE, MPI_SUM, comm);
+          const auto gsz = h.global_size();
+          const double ncells = static_cast<double>(gsz[0]) *
+                                static_cast<double>(gsz[1]) *
+                                static_cast<double>(gsz[2]);
+          const double mean_amp = amp_sum / ncells;
+          Sym3 bar;
+          for (int c = 0; c < pfc::solvers::kSymComponents; ++c) {
+            bar[c] = mean_amp * solver->params().eigenstrain_pattern[c];
+          }
+          solver->params().applied_strain = bar;
         }
-        solver->params().applied_strain = bar;
-      }
-      b = MPI_Wtime();
-      prep = b - a;
+        b = MPI_Wtime();
+        prep = b - a;
 
-      a = b;
-      const auto rep = solver->solve(h, amp, &dh, &damp);
-      b = MPI_Wtime();
-      el = b - a;
-      iters = rep.iterations;
-      residual = rep.residual;
-      converged = rep.converged;
+        a = b;
+        const auto rep = solver->solve(h, amp, &dh, &damp);
+        b = MPI_Wtime();
+        el = b - a;
+        iters = rep.iterations;
+        residual = rep.residual;
+        converged = rep.converged;
 
-      a = b;
-      push_owned(solver->dfel_dphi(), dfel_d);
-      b = MPI_Wtime();
-      h2d = b - a;
+        a = b;
+        push_owned(solver->elastic_energy_derivative(), dfel_d);
+        b = MPI_Wtime();
+        h2d = b - a;
       }
     }
 
@@ -471,10 +468,10 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
         resid.push_back(residual);
       }
       if (csv.active()) {
-        csv.row(alloy_dendrite::format(
-            "%s,%d,%.6f,%.6f,%.6f,%.6f,%.6f,%d,%.3e,%d", cfg.run_id.c_str(), step,
-            1e3 * pf, 1e3 * d2h, 1e3 * prep, 1e3 * el, 1e3 * h2d, iters, residual,
-            converged ? 1 : 0));
+        csv.row(alloy_dendrite::format("%s,%d,%.6f,%.6f,%.6f,%.6f,%.6f,%d,%.3e,%d",
+                                       cfg.run_id.c_str(), step, 1e3 * pf, 1e3 * d2h,
+                                       1e3 * prep, 1e3 * el, 1e3 * h2d, iters,
+                                       residual, converged ? 1 : 0));
       }
     }
   }
@@ -505,8 +502,8 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
               << " roundtrip_over_pf=" << (pf > 0.0 ? rt / pf : 0.0)
               << " elastic_over_pf=" << (pf > 0.0 ? el / pf : 0.0)
               << " elastic_over_roundtrip=" << (rt > 0.0 ? el / rt : 0.0)
-              << " coupled_over_pf="
-              << (pf > 0.0 ? (pf + rt + prep + el) / pf : 0.0) << "\n";
+              << " coupled_over_pf=" << (pf > 0.0 ? (pf + rt + prep + el) / pf : 0.0)
+              << "\n";
     if (!its.empty()) {
       const auto mm = std::minmax_element(its.begin(), its.end());
       std::cout << "ALLOY_COST_ITER"
@@ -541,15 +538,14 @@ void print_usage(std::ostream &os, const char *exe) {
      << "\n"
      << "Elasticity (equations (5)-(7))\n"
      << "  --elastic=0|1          couple at all            (" << d.elastic << ")\n"
-     << "  --device=0|1          device Green operator (#157) ("
-     << d.device_elastic << ")\n"
+     << "  --device=0|1          device Green operator (#157) (" << d.device_elastic
+     << ")\n"
      << "  --n-el-substep=N       solve every N steps      (" << d.n_el_substep
      << ")\n"
      << "  --warm-start=0|1       reuse the last solution  (" << d.warm_start
      << ")\n"
      << "  --tol-el=X             fixed-point tolerance    (" << d.tol_el << ")\n"
-     << "  --n-el-iter=N          iteration cap            (" << d.n_el_iter
-     << ")\n"
+     << "  --n-el-iter=N          iteration cap            (" << d.n_el_iter << ")\n"
      << "  --youngs --poisson     solid stiffness          (" << d.youngs << ", "
      << d.poisson << ")\n"
      << "  --liquid-shear=X       mu_l / mu_s              (" << d.liquid_shear

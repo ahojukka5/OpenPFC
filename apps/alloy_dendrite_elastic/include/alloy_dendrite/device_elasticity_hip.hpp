@@ -44,9 +44,9 @@ public:
   DeviceElasticCoupling &operator=(const DeviceElasticCoupling &) = delete;
 
   DeviceElasticCoupling(const pfc::Domain &domain,
-                         const pfc::decomposition::Decomposition &decomp, int rank,
-                         MPI_Comm comm, const ElasticParams &params,
-                         const hip::DeviceGeom &geom)
+                        const pfc::decomposition::Decomposition &decomp, int rank,
+                        MPI_Comm comm, const ElasticParams &params,
+                        const hip::DeviceGeom &geom)
       : m_params(params), m_geom(geom),
         m_fft(pfc::fft::create_hip(decomp, rank, comm, 0)),
         m_dfel(domain, pfc::decomposition::local_box(decomp, rank), geom.hw),
@@ -69,7 +69,7 @@ public:
           "DeviceElasticCoupling: inbox cell count does not match DeviceGeom");
     }
     pfc::solvers::hip_detail::me_fill(m_dfel.data(), 0.0,
-                        static_cast<long long>(m_dfel.size()));
+                                      static_cast<long long>(m_dfel.size()));
     m_dfel.note_device_write();
   }
 
@@ -86,8 +86,9 @@ public:
   ElasticReport solve(const DevField &phi, const DevField &U,
                       const DevField &theta) {
     pfc::solvers::hip_detail::me_assemble_from_padded(
-        phi.data(), U.data(), theta.data(), m_solver.h_device(),
-        m_solver.amp_device(), m_solver.damp_device(), m_geom.nx, m_geom.ny,
+        phi.data(), U.data(), theta.data(), m_solver.stiffness_weight_device(),
+        m_solver.eigenstrain_amplitude_device(),
+        m_solver.eigenstrain_amplitude_derivative_device(), m_geom.nx, m_geom.ny,
         m_geom.nz, m_geom.hw, m_geom.sy, m_geom.sz, m_params.eps_c, m_params.eps_T,
         m_params.U_ref, m_params.theta_ref, m_solver.block_device(),
         m_solver.n_blocks());
@@ -104,8 +105,8 @@ public:
     }
     const auto rep = m_solver.solve_resident(true);
     pfc::solvers::hip_detail::me_copy_owned_to_padded(
-        m_solver.dfel_device(), m_dfel.data(), m_geom.nx, m_geom.ny, m_geom.nz,
-        m_geom.hw, m_geom.sy, m_geom.sz);
+        m_solver.elastic_energy_derivative_device(), m_dfel.data(), m_geom.nx,
+        m_geom.ny, m_geom.nz, m_geom.hw, m_geom.sy, m_geom.sz);
     m_dfel.note_device_write();
 
     ElasticReport out;
@@ -118,8 +119,7 @@ public:
       out.virial_energy = bal.W_star;
       out.energy_balance_rel = bal.residual_rel;
     }
-    m_solver.stress_invariants(out.mean_stress_trace, out.max_dfel_dphi,
-                               m_max_vm);
+    m_solver.stress_invariants(out.mean_stress_trace, out.max_dfel_dphi, m_max_vm);
     return out;
   }
 
@@ -128,21 +128,21 @@ public:
     return m_solver.elastic_energy_density();
   }
   [[nodiscard]] const pfc::data::Field<double> &dfel_host() const {
-    return m_solver.dfel_dphi();
+    return m_solver.elastic_energy_derivative();
   }
 
 private:
   static pfc::solvers::MicroelasticityParams
   make_solver_params_(const ElasticParams &p, MPI_Comm comm) {
     pfc::solvers::MicroelasticityParams q;
-    q.c_solid = p.c_solid;
-    q.c_liquid =
-        pfc::solvers::soft_liquid(p.c_solid, p.mu_liquid_fraction, p.bulk_liquid_fraction);
+    q.stiffness_at_one = p.c_solid;
+    q.stiffness_at_zero = material::liquid_stiffness(p.c_solid, p.mu_liquid_fraction,
+                                                     p.bulk_liquid_fraction);
     q.eigenstrain_pattern = pfc::solvers::Sym3::identity();
     q.applied_strain = pfc::solvers::Sym3{};
     q.scheme = p.scheme;
-    q.tol_el = p.tol_el;
-    q.n_el_iter = p.n_el_iter;
+    q.relative_tolerance = p.tol_el;
+    q.max_iterations = p.n_el_iter;
     q.warm_start = p.warm_start;
     q.comm = comm;
     return q;

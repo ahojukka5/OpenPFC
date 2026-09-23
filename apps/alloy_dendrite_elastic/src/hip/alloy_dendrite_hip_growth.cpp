@@ -35,7 +35,6 @@
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 
-#include <openpfc/frontend/utils/cli_options.hpp>
 #include <alloy_dendrite/device_elasticity_hip.hpp>
 #include <alloy_dendrite/device_stepper_hip.hpp>
 #include <alloy_dendrite/diagnostics.hpp>
@@ -43,6 +42,7 @@
 #include <alloy_dendrite/field_output.hpp>
 #include <alloy_dendrite/material.hpp>
 #include <alloy_dendrite/parameters.hpp>
+#include <openpfc/frontend/utils/cli_options.hpp>
 
 namespace {
 
@@ -69,7 +69,7 @@ struct Cfg {
   double tol_el = 1.0e-6;
   int n_el_iter = 50;
   Stiffness c_solid{};
-  double liquid_shear = pfc::solvers::kDefaultLiquidShearFraction;
+  double liquid_shear = alloy_dendrite::material::kLiquidShearFraction;
   double liquid_bulk = 1.0;
   double eps_c = 0.0;
   double eps_T = 0.0;
@@ -165,10 +165,10 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   std::unique_ptr<alloy_dendrite::DeviceStepper<3>> d3;
   if (cfg.nz == 1) {
     d2 = std::make_unique<alloy_dendrite::DeviceStepper<2>>(domain, decomp, rank,
-                                                           comm, p, cfg.fd_order);
+                                                            comm, p, cfg.fd_order);
   } else {
     d3 = std::make_unique<alloy_dendrite::DeviceStepper<3>>(domain, decomp, rank,
-                                                           comm, p, cfg.fd_order);
+                                                            comm, p, cfg.fd_order);
   }
   auto &phi = d2 ? d2->phi() : d3->phi();
   auto &U = d2 ? d2->solute() : d3->solute();
@@ -184,8 +184,8 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   seed.for_each_owned([&](int i, int j, int k) {
     const auto c = seed.coords(i, j, k);
     const double dz = (cfg.nz == 1) ? 0.0 : (c[2] - zc);
-    const double r = std::sqrt((c[0] - xc) * (c[0] - xc) + (c[1] - yc) * (c[1] - yc) +
-                               dz * dz);
+    const double r =
+        std::sqrt((c[0] - xc) * (c[0] - xc) + (c[1] - yc) * (c[1] - yc) + dz * dz);
     seed(i, j, k) = std::tanh((cfg.seed_radius * p.W0 - r) * inv_w);
   });
   push_seed(phi, seed);
@@ -193,8 +193,10 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   push_seed(U, seed);
   seed.for_each_owned([&](int i, int j, int k) { seed(i, j, k) = 0.0; });
   push_seed(th, seed);
-  if (d2) d2->seed_conserved_solute();
-  else d3->seed_conserved_solute();
+  if (d2)
+    d2->seed_conserved_solute();
+  else
+    d3->seed_conserved_solute();
 
   alloy_dendrite::ElasticParams ep;
   ep.c_solid = cfg.c_solid;
@@ -213,8 +215,10 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   if (cfg.elastic) {
     elastic = std::make_unique<alloy_dendrite::DeviceElasticCoupling>(
         domain, decomp, rank, comm, ep, geom);
-    if (d2) d2->set_elastic_driving_force(&elastic->driving_force());
-    else d3->set_elastic_driving_force(&elastic->driving_force());
+    if (d2)
+      d2->set_elastic_driving_force(&elastic->driving_force());
+    else
+      d3->set_elastic_driving_force(&elastic->driving_force());
     el = elastic->solve(phi, U, th);
     if (hipDeviceSynchronize() != hipSuccess) {
       throw std::runtime_error("hipDeviceSynchronize failed after first solve");
@@ -224,8 +228,8 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   {
     const auto ln = phi.local_size();
     const std::size_t n_owned = static_cast<std::size_t>(ln[0]) *
-                                 static_cast<std::size_t>(ln[1]) *
-                                 static_cast<std::size_t>(ln[2]);
+                                static_cast<std::size_t>(ln[1]) *
+                                static_cast<std::size_t>(ln[2]);
     const long long n_global = static_cast<long long>(cfg.nx) * cfg.ny * cfg.nz;
     report_hbm(rank, nproc, comm, n_global, 3 * n_owned * sizeof(double),
                static_cast<bool>(elastic));
@@ -251,8 +255,8 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
     std::filesystem::create_directories(cfg.fields.dir);
   MPI_Barrier(comm);
   alloy_dendrite::FieldSnapshotWriter snap(
-      cfg.fields, cfg.run_id, {cfg.nx, cfg.ny, cfg.nz},
-      {nloc[0], nloc[1], nloc[2]}, {lo[0], lo[1], lo[2]}, cfg.dx, rank, comm);
+      cfg.fields, cfg.run_id, {cfg.nx, cfg.ny, cfg.nz}, {nloc[0], nloc[1], nloc[2]},
+      {lo[0], lo[1], lo[2]}, cfg.dx, rank, comm);
   std::vector<std::string> snap_fields{"phi", "U"};
   if (cfg.elastic) snap_fields.insert(snap_fields.end(), {"f_el", "dfel_dphi"});
   int n_seen = 0;
@@ -266,8 +270,10 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
   for (int step = 1; step <= cfg.steps; ++step) {
     MPI_Barrier(comm);
     double a = MPI_Wtime();
-    if (d2) d2->step(dt);
-    else d3->step(dt);
+    if (d2)
+      d2->step(dt);
+    else
+      d3->step(dt);
     if (hipDeviceSynchronize() != hipSuccess) {
       throw std::runtime_error("hipDeviceSynchronize failed after step");
     }
@@ -309,11 +315,10 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
         csv.row(alloy_dendrite::format(
             "%s,%d,%.6f,%.6f,%.6f,%d,%.6e,%.6e,%.3e,%.3e,%.6e,%.6e,%.6e,%.6f,"
             "%.6e,%.6f",
-            cfg.run_id.c_str(), step, step * dt, 1e3 * tpf, 1e3 * tel,
-            el.iterations, el.total_energy, el.virial_energy,
-            el.energy_balance_rel, el.residual, el.max_dfel_dphi,
-            el.mean_stress_trace, elastic ? elastic->max_von_mises() : 0.0,
-            x_tip, v_tip, rho));
+            cfg.run_id.c_str(), step, step * dt, 1e3 * tpf, 1e3 * tel, el.iterations,
+            el.total_energy, el.virial_energy, el.energy_balance_rel, el.residual,
+            el.max_dfel_dphi, el.mean_stress_trace,
+            elastic ? elastic->max_von_mises() : 0.0, x_tip, v_tip, rho));
       }
       if (snap.due(n_seen)) {
         snap.note_time(step * dt);
@@ -336,10 +341,9 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
               << " ny=" << cfg.ny << " nz=" << cfg.nz << " steps=" << cfg.steps
               << " elastic=" << (cfg.elastic ? 1 : 0)
               << " lambda=" << cfg.model.lambda
-              << " lambda_el=" << cfg.model.lambda_el
-              << " eps_c=" << cfg.eps_c << " eps_T=" << cfg.eps_T
-              << " u_ref=" << cfg.u_ref << " c11=" << cfg.c_solid.c11
-              << " liquid_shear=" << cfg.liquid_shear
+              << " lambda_el=" << cfg.model.lambda_el << " eps_c=" << cfg.eps_c
+              << " eps_T=" << cfg.eps_T << " u_ref=" << cfg.u_ref
+              << " c11=" << cfg.c_solid.c11 << " liquid_shear=" << cfg.liquid_shear
               << " ranks=" << nproc << "\n";
     std::cout << "ALLOY_HIP_GROWTH_MS t_pf_mean=" << 1e3 * t_pf_sum / cfg.steps
               << " t_el_mean=" << (n_el > 0 ? 1e3 * t_el_sum / n_el : 0.0)
@@ -382,8 +386,7 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   cfg.seed_radius = opt.real("seed-radius", cfg.seed_radius);
   cfg.model.k = opt.real("k", cfg.model.k);
   cfg.model.D_l = opt.real("Dl", cfg.model.D_l);
-  cfg.model.lambda =
-      opt.real("lambda", cfg.model.D_l / alloy_dendrite::kA2);
+  cfg.model.lambda = opt.real("lambda", cfg.model.D_l / alloy_dendrite::kA2);
   cfg.model.D_th = opt.real("Dth", cfg.model.D_th);
   cfg.model.M_c = opt.real("Mc", cfg.model.M_c);
   cfg.model.eps4 = opt.real("eps4", cfg.model.eps4);
@@ -399,8 +402,8 @@ int run_cli(int argc, char **argv, int rank, int nproc) {
   cfg.eps_T = opt.real("eps-T", cfg.eps_T);
   cfg.u_ref = opt.real("u-ref", -cfg.omega);
   if (opt.has("youngs") || opt.has("poisson")) {
-    cfg.c_solid = Stiffness::isotropic(opt.real("youngs", 1.0),
-                                      opt.real("poisson", 0.3));
+    cfg.c_solid =
+        Stiffness::isotropic(opt.real("youngs", 1.0), opt.real("poisson", 0.3));
   } else {
     const double soften = opt.real("el-soften", mat::kSofteningAtTm);
     cfg.c_solid = mat::al_cu_solid_stiffness(soften);
@@ -438,7 +441,8 @@ int main(int argc, char **argv) {
         try {
           return run_cli(app_argc, app_argv, rank, nproc);
         } catch (const std::exception &e) {
-          if (rank == 0) std::cerr << "alloy_dendrite_hip_growth: " << e.what() << "\n";
+          if (rank == 0)
+            std::cerr << "alloy_dendrite_hip_growth: " << e.what() << "\n";
           return EXIT_FAILURE;
         }
       });

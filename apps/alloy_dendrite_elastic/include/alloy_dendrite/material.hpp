@@ -63,6 +63,8 @@
  * @see MODEL_SPEC.md equations (5)-(7)
  */
 
+#include <stdexcept>
+
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
 namespace alloy_dendrite::material {
@@ -153,8 +155,7 @@ inline constexpr double kThermalExpansion = 3.0e-5;
 /// Nominal composition in at% Cu, from @ref kCompositionWtPct.
 inline constexpr double kCompositionAtPct =
     100.0 * (kCompositionWtPct / kMolarMassCu) /
-    (kCompositionWtPct / kMolarMassCu +
-     (100.0 - kCompositionWtPct) / kMolarMassAl);
+    (kCompositionWtPct / kMolarMassCu + (100.0 - kCompositionWtPct) / kMolarMassAl);
 
 /// Freezing range `dT_0 = |m| c_l^0 (1 - k)`, K.
 inline constexpr double kFreezingRange =
@@ -175,8 +176,7 @@ inline constexpr double kStiffnessScale =
     kLatentHeatPerVolume * kFreezingRange / kMeltingPointAl;
 
 /// Hypercooling `L / c_p`, K -- the unit of the dimensionless `theta`.
-inline constexpr double kHypercooling =
-    kLatentHeatPerMass / kSpecificHeat;
+inline constexpr double kHypercooling = kLatentHeatPerMass / kSpecificHeat;
 
 /**
  * @brief `eps_c = d eps* / d U` for Cu in Al.
@@ -202,6 +202,27 @@ inline constexpr double kEpsT = kThermalExpansion * kHypercooling;
 al_cu_solid_stiffness(double soften = kSofteningAtTm) noexcept {
   const double s = soften / kStiffnessScale;
   return pfc::solvers::Stiffness::cubic(kC11_300K * s, kC12_300K * s, kC44_300K * s);
+}
+
+/// Shear fraction of the liquid relative to the solid. A zero shear modulus
+/// makes the fixed point singular, so the liquid is a regularised endpoint.
+inline constexpr double kLiquidShearFraction = 0.05;
+
+/**
+ * @brief Liquid stiffness: the solid's bulk modulus, shear scaled by
+ *        @p shear_fraction.
+ */
+[[nodiscard]] inline pfc::solvers::Stiffness
+liquid_stiffness(const pfc::solvers::Stiffness &solid,
+                 double shear_fraction = kLiquidShearFraction,
+                 double bulk_fraction = 1.0) {
+  if (shear_fraction <= 0.0 || bulk_fraction <= 0.0) {
+    throw std::invalid_argument("liquid_stiffness: fractions must be positive");
+  }
+  return pfc::solvers::Stiffness::from_channels(
+      bulk_fraction * solid.bulk_modulus(),
+      shear_fraction * solid.shear_tetragonal(),
+      shear_fraction * solid.shear_trigonal());
 }
 
 } // namespace alloy_dendrite::material

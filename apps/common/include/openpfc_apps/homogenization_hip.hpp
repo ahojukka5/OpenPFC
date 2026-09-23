@@ -71,8 +71,8 @@ public:
 
   void objective_sensitivity(const RealField &h, const Voigt6 &Cstar,
                              const Voigt6 &W, RealField &dJdh) const {
-    const Stiffness dC = Stiffness::blend(m_solver.params().c_solid, 1.0,
-                                          m_solver.params().c_liquid, -1.0);
+    const Stiffness dC = Stiffness::blend(m_solver.params().stiffness_at_one, 1.0,
+                                          m_solver.params().stiffness_at_zero, -1.0);
     const Voigt6 &C = m_last.stiffness;
     Voigt6 dJdC;
     for (int i = 0; i < kVoigtDim; ++i)
@@ -126,8 +126,8 @@ private:
       for (int c = 0; c < kVoigtDim; ++c)
         e[c] = eps[static_cast<std::size_t>(c)].data()[i];
       const Stiffness C =
-          Stiffness::blend(m_solver.params().c_solid, h.data()[i],
-                           m_solver.params().c_liquid, 1.0 - h.data()[i]);
+          Stiffness::blend(m_solver.params().stiffness_at_one, h.data()[i],
+                           m_solver.params().stiffness_at_zero, 1.0 - h.data()[i]);
       const Sym3 si = C.contract(e);
       for (int c = 0; c < kVoigtDim; ++c) s[c] += si[c];
     }

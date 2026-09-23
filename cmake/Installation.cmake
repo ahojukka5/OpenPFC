@@ -97,3 +97,11 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
         LIBRARY DESTINATION lib
     )
 endif()
+
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
+    install(TARGETS openpfc_microelasticity_hip
+        EXPORT OpenPFCTargets
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+    )
+endif()

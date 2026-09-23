@@ -38,10 +38,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - Public periodic eigenstrain solver
   `pfc::solvers::EigenstrainMicroelasticity`
   (`include/openpfc/solvers/microelasticity/`, #144). The host Green
-  operator, Basic and Eyre–Milton iterations, and the HIP path moved
-  out of `apps/common`. Applications still map phase, composition, and
-  temperature onto stiffness and eigenstrain. The scope is a periodic
-  RVE, not finite-body mechanics.
+  operator and the Basic / Eyre–Milton iterations live in that header.
+  The HIP kernels are `openpfc_microelasticity_hip`, built from
+  `src/openpfc/solvers/microelasticity/` and exported with the library.
+  Endpoint stiffnesses are `stiffness_at_one` and `stiffness_at_zero`;
+  a liquid shear fraction is an application choice. The scope is a
+  periodic RVE, not finite-body mechanics.
 
 - Public conservative face flux `pfc::field::fd::divergence_separated`
   (`include/openpfc/kernel/field/face_flux.hpp`, #143). Arithmetic
