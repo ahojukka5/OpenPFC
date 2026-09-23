@@ -39,9 +39,14 @@
  *
  * Inactive axes (global size 1) are left out of the sum. Their spacing is
  * not used for the mask, so a 2-D grid does not divide by a degenerate
- * \f$\Delta z\f$. On every active axis the mask is Orszag's rule as
- * implemented by `fill_two_thirds_mask`: a mode is kept only when
- * \f$|k_d| < (2/3)\pi/\Delta x_d\f$.
+ * \f$\Delta z\f$. The mask is exactly `fill_two_thirds_mask` from
+ * `dealias.hpp`: a mode is kept only when
+ * \f$|k_d| < (2/3)\pi/\Delta x_d\f$ on every active axis. A mode that lands
+ * on that cutoff is removed. The earlier app-local mask used a strict
+ * greater-than and would have kept that one mode. On a grid whose size is
+ * not divisible by 3, no stored wave number sits on the cutoff, so the two
+ * rules agree on every mode. This operator follows the public dealiasing
+ * contract; it does not restore the old inequality.
  *
  * ## Time stepping
  *
@@ -151,9 +156,10 @@ public:
           k[2][i] = kz;
         });
 
-    // 2/3 mask from dealias.hpp. Inactive axes are given a dummy positive
-    // spacing so two_thirds_keep does not divide by zero; their wave
-    // numbers are zero, so they do not drop modes.
+    // Public dealias contract: keep |k_d| < (2/3) π/Δx_d. Equality is
+    // removed. Inactive axes get a dummy positive spacing so the helper
+    // does not divide by zero; their wave numbers are zero, so they do
+    // not drop modes.
     std::vector<double> mask_host(n, 1.0);
     auto mask_spacing = pfc::domain::get_spacing(domain);
     for (int d = 0; d < 3; ++d) {
