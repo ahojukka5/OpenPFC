@@ -40,10 +40,10 @@
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/runtime/gpu/databuffer_gpu.hpp>
 #include <openpfc/runtime/gpu/memory_space_gpu.hpp>
-#include <openpfc_apps/microelasticity.hpp>
-#include <openpfc_apps/microelasticity_hip_kernels.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity_hip_kernels.hpp>
 
-namespace pfc::apps {
+namespace pfc::solvers {
 
 class DeviceEigenstrainMicroelasticity {
 public:
@@ -92,11 +92,9 @@ public:
     m_d_kx = RealBuf(m_n_outbox);
     m_d_ky = RealBuf(m_n_outbox);
     m_d_kz = RealBuf(m_n_outbox);
-    m_n_blocks = hip_detail::me_local_block_count(
-        static_cast<long long>(m_n_local));
+    m_n_blocks = hip_detail::me_local_block_count(static_cast<long long>(m_n_local));
     m_d_block = RealBuf(static_cast<std::size_t>(std::max(3 * m_n_blocks, 3)));
-    m_block_host.assign(static_cast<std::size_t>(std::max(3 * m_n_blocks, 3)),
-                        0.0);
+    m_block_host.assign(static_cast<std::size_t>(std::max(3 * m_n_blocks, 3)), 0.0);
     hip_detail::me_fill(m_d_dh.data(), 0.5, static_cast<long long>(m_n_local));
     build_and_upload_green(domain, fft);
     bind_packs();
@@ -138,9 +136,7 @@ public:
   [[nodiscard]] int n_blocks() const noexcept { return m_n_blocks; }
   [[nodiscard]] double *block_device() noexcept { return m_d_block.data(); }
 
-  void reset() {
-    m_has = false;
-  }
+  void reset() { m_has = false; }
 
   MicroelasticityReport solve(const RealField &h, const RealField &amp,
                               const RealField *dh_dphi = nullptr,
@@ -192,7 +188,7 @@ public:
 
   [[nodiscard]] double total_elastic_energy() {
     hip_detail::me_block_sum(m_d_f_el.data(), m_d_block.data(),
-                            static_cast<long long>(m_n_local), m_n_blocks);
+                             static_cast<long long>(m_n_local), m_n_blocks);
     return finish_block_sum() * m_cell;
   }
 
@@ -201,7 +197,7 @@ public:
     for (int c = 0; c < kSymComponents; ++c)
       sig_ro.c[c] = m_d_stress[static_cast<std::size_t>(c)].data();
     hip_detail::me_sigma_estar_sum(sig_ro, m_d_amp.data(), m_dp, m_d_block.data(),
-                                    m_n_blocks);
+                                   m_n_blocks);
     return -0.5 * finish_block_sum() * m_cell;
   }
 
@@ -231,8 +227,7 @@ public:
 
   /// Hydrostatic mean, max |dfel|, max von Mises (same σ_vm as the host
   /// dendrite snapshots). Uses `m_d_block`.
-  void stress_invariants(double &mean_p, double &max_abs_dfel,
-                         double &max_vm) {
+  void stress_invariants(double &mean_p, double &max_abs_dfel, double &max_vm) {
     hip_detail::MESym6Const sig_ro{};
     for (int c = 0; c < kSymComponents; ++c)
       sig_ro.c[c] = m_d_stress[static_cast<std::size_t>(c)].data();
@@ -273,8 +268,7 @@ private:
     m_dp.c_solid = flat(m_params.c_solid);
     m_dp.c_liquid = flat(m_params.c_liquid);
     m_dp.c0 = flat(m_c0);
-    m_dp.dc = flat(Stiffness::blend(m_params.c_solid, 1.0, m_params.c_liquid,
-                                    -1.0));
+    m_dp.dc = flat(Stiffness::blend(m_params.c_solid, 1.0, m_params.c_liquid, -1.0));
     for (int c = 0; c < kSymComponents; ++c)
       m_dp.pattern[c] = m_params.eigenstrain_pattern[c];
     m_dp.n = static_cast<long long>(m_n_local);
@@ -305,13 +299,13 @@ private:
     }
     double eapp[6];
     for (int c = 0; c < kSymComponents; ++c) eapp[c] = m_params.applied_strain[c];
-    hip_detail::me_green_multiply(
-        m_hat_rw, m_d_kx.data(), m_d_ky.data(), m_d_kz.data(), m_g_ro,
-        static_cast<long long>(m_n_outbox),
-        (m_zero_mode == static_cast<std::size_t>(-1))
-            ? -1
-            : static_cast<long long>(m_zero_mode),
-        eapp, m_n_global);
+    hip_detail::me_green_multiply(m_hat_rw, m_d_kx.data(), m_d_ky.data(),
+                                  m_d_kz.data(), m_g_ro,
+                                  static_cast<long long>(m_n_outbox),
+                                  (m_zero_mode == static_cast<std::size_t>(-1))
+                                      ? -1
+                                      : static_cast<long long>(m_zero_mode),
+                                  eapp, m_n_global);
     for (int c = 0; c < kSymComponents; ++c) {
       m_fft.backward(m_d_hat[static_cast<std::size_t>(c)],
                      m_d_strain[static_cast<std::size_t>(c)]);
@@ -326,8 +320,7 @@ private:
     double diff = 0.0, scale = 0.0;
     for (int b = 0; b < m_n_blocks; ++b) {
       diff = std::max(diff, m_block_host[static_cast<std::size_t>(2 * b)]);
-      scale =
-          std::max(scale, m_block_host[static_cast<std::size_t>(2 * b + 1)]);
+      scale = std::max(scale, m_block_host[static_cast<std::size_t>(2 * b + 1)]);
     }
     double local[2] = {diff, scale};
     double global[2] = {0.0, 0.0};
@@ -337,8 +330,8 @@ private:
 
   void finalise(bool want_dfel) {
     hip_detail::me_finalise(m_d_h.data(), m_d_amp.data(), m_d_dh.data(),
-                           m_d_damp.data(), m_eps_ro, m_sig_rw, m_d_f_el.data(),
-                           m_d_dfel.data(), m_dp, want_dfel ? 1 : 0);
+                            m_d_damp.data(), m_eps_ro, m_sig_rw, m_d_f_el.data(),
+                            m_d_dfel.data(), m_dp, want_dfel ? 1 : 0);
   }
 
   void download_stress_energy() {
@@ -429,12 +422,11 @@ private:
   hip_detail::MESym6 m_eps_rw{}, m_tau_rw{}, m_hat_rw{}, m_sig_rw{};
   hip_detail::MESym6Const m_eps_ro{}, m_tau_prev_ro{}, m_g_ro{};
   std::vector<double> m_block_host;
-  std::size_t m_n_local{0}, m_n_outbox{0},
-      m_zero_mode{static_cast<std::size_t>(-1)};
+  std::size_t m_n_local{0}, m_n_outbox{0}, m_zero_mode{static_cast<std::size_t>(-1)};
   double m_n_global{1.0};
   double m_cell{1.0};
   int m_n_blocks{1};
   bool m_has{false};
 };
 
-} // namespace pfc::apps
+} // namespace pfc::solvers

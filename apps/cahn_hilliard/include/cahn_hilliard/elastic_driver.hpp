@@ -49,7 +49,7 @@
 #include <cahn_hilliard/fe_cr_thermo.hpp>
 #include <cahn_hilliard/seeded_noise.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
-#include <openpfc_apps/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/dealias.hpp>
@@ -90,14 +90,14 @@ inline ElasticCHParams parse_elasticity(const nlohmann::json &cfg) {
 }
 
 /// Convert a physical cubic/isotropic stiffness (Pa) into CH energy units.
-inline pfc::apps::Stiffness stiffness_in_rt_vm(const ElasticCHParams &el,
+inline pfc::solvers::Stiffness stiffness_in_rt_vm(const ElasticCHParams &el,
                                                const CahnHilliardParams &ch) {
   const double f0 = ch.scales().f0(ch.T);
   if (!(f0 > 0.0)) throw std::invalid_argument("RT/Vm energy scale must be > 0");
   if (el.c11 > 0.0) {
-    return pfc::apps::Stiffness::cubic(el.c11 / f0, el.c12 / f0, el.c44 / f0);
+    return pfc::solvers::Stiffness::cubic(el.c11 / f0, el.c12 / f0, el.c44 / f0);
   }
-  return pfc::apps::Stiffness::isotropic(el.E / f0, el.nu);
+  return pfc::solvers::Stiffness::isotropic(el.E / f0, el.nu);
 }
 
 inline void apply_initial_condition(const nlohmann::json &cfg, pfc::Domain domain,
@@ -176,14 +176,14 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     std::fill(dh.vec().begin(), dh.vec().end(), 0.0);
     std::fill(damp.vec().begin(), damp.vec().end(), 1.0);
 
-    pfc::apps::MicroelasticityParams mp;
+    pfc::solvers::MicroelasticityParams mp;
     mp.c_solid = C;
     mp.c_liquid = C;
-    mp.eigenstrain_pattern = pfc::apps::Sym3{
+    mp.eigenstrain_pattern = pfc::solvers::Sym3{
         {el.eps0, el.eps0, el.eps0, 0.0, 0.0, 0.0}};
     mp.comm = comm;
     mp.warm_start = true;
-    pfc::apps::EigenstrainMicroelasticity solver(domain, stack.fft(), mp);
+    pfc::solvers::EigenstrainMicroelasticity solver(domain, stack.fft(), mp);
 
     Ops::ComplexField c_hat(domain, stack.fft().get_outbox_bounds(), 0);
     Ops::ComplexField n_hat(domain, stack.fft().get_outbox_bounds(), 0);

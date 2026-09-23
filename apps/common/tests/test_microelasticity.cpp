@@ -3,7 +3,7 @@
 
 /**
  * @file test_microelasticity.cpp
- * @brief Verification ladder for `openpfc_apps/microelasticity.hpp`.
+ * @brief Verification ladder for `openpfc/solvers/microelasticity/microelasticity.hpp`.
  *
  * @details
  * Stage 0 of the capstone verification table (MODEL_SPEC.md): the elastic
@@ -51,22 +51,22 @@
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
-using pfc::apps::EigenstrainMicroelasticity;
-using pfc::apps::kSymComponents;
-using pfc::apps::MicroelasticityParams;
-using pfc::apps::MicroelasticityScheme;
-using pfc::apps::Stiffness;
-using pfc::apps::Sym3;
-using pfc::apps::SYM_XX;
-using pfc::apps::SYM_XY;
-using pfc::apps::SYM_XZ;
-using pfc::apps::SYM_YY;
-using pfc::apps::SYM_YZ;
-using pfc::apps::SYM_ZZ;
+using pfc::solvers::EigenstrainMicroelasticity;
+using pfc::solvers::kSymComponents;
+using pfc::solvers::MicroelasticityParams;
+using pfc::solvers::MicroelasticityScheme;
+using pfc::solvers::Stiffness;
+using pfc::solvers::Sym3;
+using pfc::solvers::SYM_XX;
+using pfc::solvers::SYM_XY;
+using pfc::solvers::SYM_XZ;
+using pfc::solvers::SYM_YY;
+using pfc::solvers::SYM_YZ;
+using pfc::solvers::SYM_ZZ;
 
 using RealField = pfc::data::Field<double>;
 
@@ -923,17 +923,17 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
           "[microelasticity][accelerated]") {
   constexpr int N = 32;
   const Stiffness solid = Stiffness::isotropic(1.0, 0.3);
-  const Stiffness liquid = pfc::apps::soft_liquid(solid);
+  const Stiffness liquid = pfc::solvers::soft_liquid(solid);
 
   // Shear softened by kDefaultLiquidShearFraction, bulk untouched.
   REQUIRE_THAT(liquid.bulk_modulus(), WithinRel(solid.bulk_modulus(), 1e-14));
   REQUIRE_THAT(
       liquid.shear_trigonal(),
-      WithinRel(pfc::apps::kDefaultLiquidShearFraction * solid.shear_trigonal(),
+      WithinRel(pfc::solvers::kDefaultLiquidShearFraction * solid.shear_trigonal(),
                 1e-14));
   REQUIRE_THAT(
       liquid.shear_tetragonal(),
-      WithinRel(pfc::apps::kDefaultLiquidShearFraction * solid.shear_tetragonal(),
+      WithinRel(pfc::solvers::kDefaultLiquidShearFraction * solid.shear_tetragonal(),
                 1e-14));
 
   for (auto scheme :
@@ -980,7 +980,7 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
     MicroelasticityParams p;
     p.scheme = MicroelasticityScheme::EyreMilton;
     p.c_solid = solid;
-    p.c_liquid = pfc::apps::soft_liquid(solid, fraction);
+    p.c_liquid = pfc::solvers::soft_liquid(solid, fraction);
     p.n_el_iter = 2000;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
@@ -1186,7 +1186,7 @@ TEST_CASE("Elastic energy is self-consistent and matches the Eshelby energy",
         worst = std::max(worst, std::abs(sg[c2] - sg_ref[c2]));
         scale = std::max(scale, std::abs(sg_ref[c2]));
       }
-      const double fe = 0.5 * pfc::apps::ddot(e, sg);
+      const double fe = 0.5 * pfc::solvers::ddot(e, sg);
       REQUIRE_THAT(solver.elastic_energy_density().data()[i], WithinAbs(fe, 1e-18));
     }
     REQUIRE(gmax(worst) / gmax(scale) < 1.0e-14);
@@ -1337,10 +1337,10 @@ TEST_CASE("d f_el/d phi matches a finite difference of the converged energy",
   }();
   const Sym3 s_here = sample_tensor(solver.stress(), gi, gj, gk);
   const double term_work =
-      -pfc::apps::ddot(s_here, Sym3{{0.5 * e0, 0.5 * e0, 0.5 * e0, 0.0, 0.0, 0.0}});
+      -pfc::solvers::ddot(s_here, Sym3{{0.5 * e0, 0.5 * e0, 0.5 * e0, 0.0, 0.0, 0.0}});
   const Stiffness dc = Stiffness::blend(solid, 1.0, liquid, -1.0);
   const double term_modulus =
-      0.5 * 0.5 * pfc::apps::ddot(e_here, dc.contract(e_here));
+      0.5 * 0.5 * pfc::solvers::ddot(e_here, dc.contract(e_here));
   REQUIRE_THAT(analytic, WithinRel(term_work + term_modulus, 1.0e-12));
 
   const double delta = 1.0e-3;

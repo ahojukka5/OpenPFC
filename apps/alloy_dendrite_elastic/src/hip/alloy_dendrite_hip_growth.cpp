@@ -48,7 +48,7 @@ namespace {
 
 using DevField = pfc::data::Field<double, pfc::HIPSpace>;
 using RealField = pfc::data::Field<double>;
-using pfc::apps::Stiffness;
+using pfc::solvers::Stiffness;
 
 struct Cfg {
   alloy_dendrite::ModelParams model{};
@@ -69,7 +69,7 @@ struct Cfg {
   double tol_el = 1.0e-6;
   int n_el_iter = 50;
   Stiffness c_solid{};
-  double liquid_shear = pfc::apps::kDefaultLiquidShearFraction;
+  double liquid_shear = pfc::solvers::kDefaultLiquidShearFraction;
   double liquid_bulk = 1.0;
   double eps_c = 0.0;
   double eps_T = 0.0;

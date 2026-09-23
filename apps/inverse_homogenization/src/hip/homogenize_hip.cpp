@@ -68,9 +68,9 @@ int main(int argc, char **argv) {
       pfc::apps::inverse::fill_rotating_squares(h, nx, ny, 0.200, 0.45);
     h.note_host_write();
 
-    pfc::apps::MicroelasticityParams p;
-    p.c_solid = pfc::apps::Stiffness::isotropic(E_s, nu_s);
-    p.c_liquid = pfc::apps::Stiffness::isotropic(E_v, nu_v);
+    pfc::solvers::MicroelasticityParams p;
+    p.c_solid = pfc::solvers::Stiffness::isotropic(E_s, nu_s);
+    p.c_liquid = pfc::solvers::Stiffness::isotropic(E_v, nu_v);
     p.tol_el = 1.0e-8;
     p.n_el_iter = 80;
     p.comm = MPI_COMM_WORLD;

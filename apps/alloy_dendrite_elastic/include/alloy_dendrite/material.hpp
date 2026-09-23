@@ -63,7 +63,7 @@
  * @see MODEL_SPEC.md equations (5)-(7)
  */
 
-#include <openpfc_apps/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
 namespace alloy_dendrite::material {
 
@@ -198,10 +198,10 @@ inline constexpr double kEpsT = kThermalExpansion * kHypercooling;
  * @param soften Multiplier on the 300 K constants; @ref kSofteningAtTm by
  *               default, 1 for the room-temperature values.
  */
-[[nodiscard]] inline pfc::apps::Stiffness
+[[nodiscard]] inline pfc::solvers::Stiffness
 al_cu_solid_stiffness(double soften = kSofteningAtTm) noexcept {
   const double s = soften / kStiffnessScale;
-  return pfc::apps::Stiffness::cubic(kC11_300K * s, kC12_300K * s, kC44_300K * s);
+  return pfc::solvers::Stiffness::cubic(kC11_300K * s, kC12_300K * s, kC44_300K * s);
 }
 
 } // namespace alloy_dendrite::material

@@ -27,18 +27,18 @@
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc/runtime/gpu/bind_local_device.hpp>
 #include <openpfc/runtime/gpu/gpu_spectral_stack.hpp>
-#include <openpfc_apps/microelasticity.hpp>
-#include <openpfc_apps/microelasticity_hip.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity_hip.hpp>
 
 namespace {
 
 using RealField = pfc::data::Field<double>;
-using pfc::apps::DeviceEigenstrainMicroelasticity;
-using pfc::apps::EigenstrainMicroelasticity;
-using pfc::apps::kSymComponents;
-using pfc::apps::MicroelasticityParams;
-using pfc::apps::Stiffness;
-using pfc::apps::Sym3;
+using pfc::solvers::DeviceEigenstrainMicroelasticity;
+using pfc::solvers::EigenstrainMicroelasticity;
+using pfc::solvers::kSymComponents;
+using pfc::solvers::MicroelasticityParams;
+using pfc::solvers::Stiffness;
+using pfc::solvers::Sym3;
 
 [[nodiscard]] double reduce_max(double x, MPI_Comm comm) {
   double out = 0.0;

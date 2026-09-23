@@ -9,7 +9,7 @@
  * @details
  * ## The question this binary exists to answer
  *
- * `openpfc_apps/microelasticity.hpp` is host-only by deliberate design: its
+ * `openpfc/solvers/microelasticity/microelasticity.hpp` is host-only by deliberate design: its
  * author found that `SpectralETDOps` is shaped around one scalar field plus
  * two aux slots, and a six-component symmetric tensor with a spatially
  * varying stiffness does not fit. `elasticity.hpp` is the adapter the CPU
@@ -102,12 +102,12 @@ namespace {
 
 using DevField = pfc::data::Field<double, pfc::HIPSpace>;
 using RealField = pfc::data::Field<double>;
-using pfc::apps::EigenstrainMicroelasticity;
-using pfc::apps::MicroelasticityParams;
-using pfc::apps::MicroelasticityScheme;
-using pfc::apps::Stiffness;
-using pfc::apps::Sym3;
-using pfc::apps::Stiffness;
+using pfc::solvers::EigenstrainMicroelasticity;
+using pfc::solvers::MicroelasticityParams;
+using pfc::solvers::MicroelasticityScheme;
+using pfc::solvers::Stiffness;
+using pfc::solvers::Sym3;
+using pfc::solvers::Stiffness;
 
 struct CostConfig {
   alloy_dendrite::ModelParams model{};
@@ -134,7 +134,7 @@ struct CostConfig {
   /// `soft_liquid(solid, liquid_shear)`.
   double youngs = 1.0;
   double poisson = 0.3;
-  double liquid_shear = pfc::apps::kDefaultLiquidShearFraction;
+  double liquid_shear = pfc::solvers::kDefaultLiquidShearFraction;
   /// Eigenstrain amplitudes: `a = h(phi) [eps_c (U - U_ref) + eps_T theta]`.
   double eps_c = 0.01;
   double eps_T = 0.0;
@@ -327,7 +327,7 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
 
   MicroelasticityParams mp;
   mp.c_solid = ep.c_solid;
-  mp.c_liquid = pfc::apps::soft_liquid(ep.c_solid, ep.mu_liquid_fraction,
+  mp.c_liquid = pfc::solvers::soft_liquid(ep.c_solid, ep.mu_liquid_fraction,
                                        ep.bulk_liquid_fraction);
   mp.eigenstrain_pattern = Sym3::identity();
   mp.applied_strain = Sym3{};
@@ -437,7 +437,7 @@ int run_cost(const CostConfig &cfg, int rank, int nproc, MPI_Comm comm) {
                               static_cast<double>(gsz[2]);
         const double mean_amp = amp_sum / ncells;
         Sym3 bar;
-        for (int c = 0; c < pfc::apps::kSymComponents; ++c) {
+        for (int c = 0; c < pfc::solvers::kSymComponents; ++c) {
           bar[c] = mean_amp * solver->params().eigenstrain_pattern[c];
         }
         solver->params().applied_strain = bar;

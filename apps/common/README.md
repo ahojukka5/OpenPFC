@@ -17,12 +17,13 @@ PFC directional-solidification BCs relocated from the kernel.
 | `openpfc_apps/fixed_bc.hpp` | sigmoid density band (tungsten / aluminum JSON App) |
 | `openpfc_apps/moving_bc.hpp` | front-tracking band (same apps) |
 | `openpfc_apps/solidification_bc_json.hpp` | JSON + `register_solidification_bcs()` |
-| `openpfc_apps/microelasticity.hpp` | quasi-static eigenstrain elasticity: Fourier Green operator, Hu-Chen / Eyre-Milton polarisation fixed points, `f_el` and `d f_el/d phi` (host, periodic) |
-| `openpfc_apps/microelasticity_hip.hpp` | same scheme on rocFFT HeFFTe + HIP kernels (issue #157); inner loop has no tensor-field host copy |
-| `openpfc_apps/homogenization.hpp` | periodic FFT homogenization \(C_H\) on that solver (six imposed-strain loads, engineering Voigt) plus the discrete mutual-energy \(\partial J/\partial h\) of issue #161 |
+| `openpfc_apps/homogenization.hpp` | periodic FFT homogenization \(C_H\) on the public eigenstrain solver (six imposed-strain loads, engineering Voigt) plus the discrete mutual-energy \(\partial J/\partial h\) of issue #161 |
 
-`microelasticity.hpp` and `homogenization.hpp` are the headers here that
-carry physics rather than plumbing. The eigenstrain solver has Catch2 suite
+The periodic eigenstrain solver is
+`include/openpfc/solvers/microelasticity/` (host and HIP). It is a
+periodic RVE / FFT solver, not a finite-body mechanics code. Material
+maps stay in the applications. `homogenization.hpp` is the header here
+that carries physics rather than plumbing. The eigenstrain solver has Catch2 suite
 `apps-common-microelasticity` (~5 s single rank); its oracles are closed
 forms — Eshelby's spherical inclusion, an exact dilatation identity, and a
 finite difference of the re-converged elastic energy — not stored baselines.

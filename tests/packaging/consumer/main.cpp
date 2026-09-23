@@ -7,12 +7,15 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/field/face_flux.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
 #include <cstdio>
 #include <type_traits>
 
 int main() {
   static_assert(std::is_trivially_copyable_v<pfc::sim::AsStored>);
+  static_assert(static_cast<int>(pfc::solvers::MicroelasticityScheme::EyreMilton) !=
+                static_cast<int>(pfc::solvers::MicroelasticityScheme::Basic));
   static_assert(pfc::field::fd::average_face(pfc::field::fd::FaceAverage::Harmonic,
                                              0.0, 1.0) == 0.0);
   auto domain = pfc::domain::create({8, 8, 8});

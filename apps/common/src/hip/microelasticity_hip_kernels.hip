@@ -15,9 +15,9 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <openpfc_apps/microelasticity_hip_kernels.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity_hip_kernels.hpp>
 
-namespace pfc::apps::hip_detail {
+namespace pfc::solvers::hip_detail {
 namespace {
 
 constexpr int kBlock = 256;
@@ -483,4 +483,4 @@ void me_sigma_estar_sum(const MESym6Const &sig, const double *amp,
   check(hipGetLastError(), "me_sigma_estar_sum");
 }
 
-} // namespace pfc::apps::hip_detail
+} // namespace pfc::solvers::hip_detail

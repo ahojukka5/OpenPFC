@@ -362,9 +362,9 @@ int run(int argc, char **argv, int rank, int nproc) {
     }
     const std::string scheme = opt.text("el-scheme", "em");
     if (scheme == "em") {
-      ep.scheme = pfc::apps::MicroelasticityScheme::EyreMilton;
+      ep.scheme = pfc::solvers::MicroelasticityScheme::EyreMilton;
     } else if (scheme == "basic") {
-      ep.scheme = pfc::apps::MicroelasticityScheme::Basic;
+      ep.scheme = pfc::solvers::MicroelasticityScheme::Basic;
     } else {
       throw std::invalid_argument("--el-scheme must be 'em' or 'basic'");
     }

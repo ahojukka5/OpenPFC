@@ -24,7 +24,7 @@ FFT solve, coupled, in one application; that combination is the point.
 | Parallelism | MPI on `pfc::Domain` / `Box3i`, halo width `order/2` via `pfc::comm::HaloExchange` |
 | Time integration | explicit, four stages, three halo exchanges per step |
 | Dimensions | 2-D (`nz = 1`) and 3-D from one templated stepper |
-| Elastic solve | `openpfc_apps/microelasticity.hpp` — Khachaturyan Green operator, Eyre–Milton fixed point, HeFFTe on the FD stack's own decomposition |
+| Elastic solve | `openpfc/solvers/microelasticity/microelasticity.hpp` — Khachaturyan Green operator, Eyre–Milton fixed point, HeFFTe on the FD stack's own decomposition |
 | Backends | CPU science path; HIP twin of the FD step; device Green operator for coupled elasticity (`--device=1` / `alloy_dendrite_hip_growth`) — see [The HIP twin](#the-hip-twin) |
 
 ## Binaries
@@ -336,7 +336,7 @@ and never touches the fit.
 
 Equation (2) ends with `− lambda_el (1−phi^2)^2 dF_el/dphi`, and
 `elasticity.hpp` is what supplies that term. It is *not* an elastic solver:
-`openpfc_apps/microelasticity.hpp` is the solver, Eshelby-validated, with a
+`openpfc/solvers/microelasticity/microelasticity.hpp` is the solver, Eshelby-validated, with a
 finite-difference-checked `d f_el/d phi`. This file is the adapter, and the
 three jobs it does are the three places a coupled local-FD / global-FFT
 application goes quietly wrong.
@@ -933,7 +933,7 @@ science CSV writes both integrals and the relative residual
 floor keeps the zero-energy arms (`off`, modulus-only) at 0 rather
 than NaN. Heterogeneous-modulus solves stop at `tol_el`, so the
 residual is then O(`tol_el`) rather than round-off. This is the same
-identity as `openpfc_apps/microelasticity.hpp` and
+identity as `openpfc/solvers/microelasticity/microelasticity.hpp` and
 `test_microelasticity.cpp`; it is not a fitted "energy score".
 Job **22045158** (`dev-g`, one GCD) repeats the frozen five-arm
 campaign and writes `el_wstar` and `el_balance_rel`. Kinetics match

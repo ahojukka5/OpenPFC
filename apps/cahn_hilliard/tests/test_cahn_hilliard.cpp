@@ -572,7 +572,7 @@ TEST_CASE("Elastic CH converts Pa stiffness into RT/Vm units",
   el.nu = 0.3;
   const auto C = cahn_hilliard::stiffness_in_rt_vm(el, ch);
   const double f0 = ch.scales().f0(ch.T);
-  const auto C_pa = pfc::apps::Stiffness::isotropic(el.E, el.nu);
+  const auto C_pa = pfc::solvers::Stiffness::isotropic(el.E, el.nu);
   REQUIRE_THAT(C.c11, WithinRel(C_pa.c11 / f0, 1e-12));
   REQUIRE_THAT(C.zener(), WithinAbs(1.0, 1e-12));
 }
