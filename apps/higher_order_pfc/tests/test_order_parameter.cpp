@@ -36,9 +36,9 @@
 #include <higher_order_pfc/higher_order_pfc_physics.hpp>
 #include <higher_order_pfc/lattice_seed.hpp>
 #include <higher_order_pfc/order_parameter.hpp>
-#include <higher_order_pfc/seeded_noise.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/simulation/apply_field_modifier.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
@@ -226,10 +226,10 @@ TEST_CASE("Diagnostics mean_psi tracks exact mass conservation through ETD steps
   pfc::SimulationState state;
   phys.declare_fields(state);
   auto &psi = state.get_field<double>("psi");
-  hop::SeededNoise noise; // reuse the app's own decomposition-independent seed
-  noise.psi0 = -0.05;
-  noise.amplitude = 1.0e-2;
-  noise.seed = 5;
+  pfc::IndexedNoiseFill noise;
+  noise.offset = -0.05;
+  noise.noise.amplitude = 1.0e-2;
+  noise.noise.seed = 5;
   pfc::apply_field_modifier(noise, psi, 0.0);
 
   pfc::sim::SpectralETDOptions opt;

@@ -9,7 +9,7 @@
  *
  * Primary field is `c` (Cr mole fraction). Orszag 2/3-rule dealiasing is on
  * because the regular-solution remainder is not a low-order polynomial.
- * `register_catalog()` adds `cosine_mode` and `seeded_noise`. Optional
+ * `cosine_mode` and `seeded_noise` are built-in modifiers. Optional
  * `diagnostics.csv` samples current-state mass, bounds, and total energy.
  * HIP builds
  * also define `CahnHilliardHIPSession` on `GPUSpectralStack<HIPSpace>`.
@@ -19,8 +19,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
-#include <cahn_hilliard/cosine_mode.hpp>
-#include <cahn_hilliard/seeded_noise.hpp>
+#include <cahn_hilliard/concentration_seed.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/frontend/ui/json_spectral_etd_session.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
@@ -34,9 +33,17 @@
 
 namespace cahn_hilliard {
 
-inline void register_catalog() {
-  pfc::ui::register_field_modifier<CosineMode>("cosine_mode");
-  pfc::ui::register_field_modifier<SeededNoise>("seeded_noise");
+inline void register_catalog() {}
+
+inline const nlohmann::json &
+check_concentration_seeds(const nlohmann::json &settings) {
+  if (settings.contains("initial_conditions") &&
+      settings["initial_conditions"].is_array()) {
+    for (const auto &ic : settings["initial_conditions"]) {
+      require_concentration_noise(ic);
+    }
+  }
+  return settings;
 }
 
 inline pfc::sim::SpectralETDOptions etd_options() {
@@ -55,7 +62,8 @@ public:
 
   DiagnosticSession(const nlohmann::json &settings, int rank, int nproc,
                     MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()), m_comm(comm) {}
+      : Base(check_concentration_seeds(settings), rank, nproc, comm, etd_options()),
+        m_comm(comm) {}
 
   void run() {
     if (!this->settings().contains("diagnostics")) {

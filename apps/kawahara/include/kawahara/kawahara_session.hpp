@@ -17,10 +17,9 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 
-#include <kawahara/cosine_mode.hpp>
 #include <kawahara/gaussian_pulse.hpp>
-#include <kawahara/kdv_soliton.hpp>
 #include <kawahara/kawahara_physics.hpp>
+#include <kawahara/kdv_soliton.hpp>
 #include <kawahara/wave_packet.hpp>
 #include <kawahara/wave_packet_diagnostics.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
@@ -35,7 +34,6 @@
 namespace kawahara {
 
 inline void register_catalog() {
-  pfc::ui::register_field_modifier<CosineMode>("cosine_mode");
   pfc::ui::register_field_modifier<GaussianPulse>("gaussian_pulse");
   pfc::ui::register_field_modifier<KdVSoliton>("kdv_soliton");
   pfc::ui::register_field_modifier<WavePacket>("wave_packet");
@@ -67,14 +65,16 @@ public:
     }
     const auto &cfg = this->settings().at("diagnostics");
     const auto path = cfg.at("csv").template get<std::string>();
-    if (path.empty()) throw std::invalid_argument("diagnostics.csv must not be empty");
+    if (path.empty())
+      throw std::invalid_argument("diagnostics.csv must not be empty");
     const std::string kind = cfg.value("kind", std::string("wave_packet"));
     if (kind == "wave_packet") {
       run_with_wave_packet_diagnostics(cfg, path);
     } else if (kind == "pulse") {
       run_with_pulse_diagnostics(cfg, path);
     } else {
-      throw std::invalid_argument("diagnostics.kind must be 'wave_packet' or 'pulse'");
+      throw std::invalid_argument(
+          "diagnostics.kind must be 'wave_packet' or 'pulse'");
     }
   }
 
@@ -84,7 +84,8 @@ private:
     const double k0 = cfg.at("k0").template get<double>();
     const double cutoff = cfg.value("cutoff_factor", 0.5);
     WavePacketCSV csv(path, m_comm);
-    WavePacketDiagnostics diagnostics(this->domain(), this->fft(), m_comm, k0, cutoff);
+    WavePacketDiagnostics diagnostics(this->domain(), this->fft(), m_comm, k0,
+                                      cutoff);
     auto save = [&] {
       csv.write(pfc::time::increment(this->time()), pfc::time::current(this->time()),
                 diagnostics.sample(this->psi()));
@@ -94,7 +95,8 @@ private:
     Base::run(save);
   }
 
-  void run_with_pulse_diagnostics(const nlohmann::json &cfg, const std::string &path) {
+  void run_with_pulse_diagnostics(const nlohmann::json &cfg,
+                                  const std::string &path) {
     const double window = cfg.at("window").template get<double>();
     PulseCSV csv(path, m_comm);
     PulseDiagnostics diagnostics(m_comm, window);

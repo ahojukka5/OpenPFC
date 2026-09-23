@@ -27,11 +27,13 @@
 
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
 #include <cahn_hilliard/cahn_hilliard_session.hpp>
-#include <cahn_hilliard/cosine_mode.hpp>
+#include <cahn_hilliard/concentration_seed.hpp>
 #include <cahn_hilliard/elastic_driver.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
+#include <openpfc/frontend/ui/from_json_field_modifiers.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/simulation_state.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
@@ -176,20 +178,11 @@ TEST_CASE("CahnHilliard n_nl vanishes at c0", "[cahn_hilliard][physics]") {
   REQUIRE_THAT(pw.n_nl(pw.c0), WithinAbs(0.0, 1e-14));
 }
 
-TEST_CASE("cosine_mode JSON sets a single periodic mode", "[cahn_hilliard][ic]") {
-  json j = {{"type", "cosine_mode"},
-            {"c0", 0.32},
-            {"amplitude", 0.02},
-            {"nx", 3},
-            {"ny", 1},
-            {"nz", 0}};
-  cahn_hilliard::CosineMode ic;
-  cahn_hilliard::from_json(j, ic);
-  REQUIRE_THAT(ic.c0(), WithinAbs(0.32, 1e-15));
-  REQUIRE_THAT(ic.amplitude(), WithinAbs(0.02, 1e-15));
-  REQUIRE(ic.nx() == 3);
-  REQUIRE(ic.ny() == 1);
-  REQUIRE(ic.nz() == 0);
+TEST_CASE("A concentration seed stays inside (0, 1)", "[cahn_hilliard][noise]") {
+  cahn_hilliard::require_concentration_noise(0.32, 0.02);
+  REQUIRE_THROWS(cahn_hilliard::require_concentration_noise(0.32, 0.5));
+  REQUIRE_THROWS(cahn_hilliard::require_concentration_noise(json{
+      {"type", "seeded_noise"}, {"c0", 0.32}, {"amplitude", 0.5}, {"seed", 1}}));
 }
 
 TEST_CASE("CahnHilliard ETD conserves mean c and matches linear growth",
@@ -341,12 +334,12 @@ TEST_CASE("Seeded noise has the same mean and cells on every decomposition",
                           pfc::GridSpacing({1, 1, 1}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, rank, world_size(),
                                            MPI_COMM_WORLD);
-  cahn_hilliard::SeededNoise noise;
-  cahn_hilliard::from_json(json{{"type", "seeded_noise"},
-                                {"c0", 0.32},
-                                {"amplitude", 0.02},
-                                {"seed", 1234}},
-                           noise);
+  pfc::IndexedNoiseFill noise;
+  pfc::ui::from_json(json{{"type", "seeded_noise"},
+                          {"c0", 0.32},
+                          {"amplitude", 0.02},
+                          {"seed", 1234}},
+                     noise);
   const pfc::SimulationContext context(MPI_COMM_WORLD);
   pfc::apply_field_modifier(noise, stack.u(), 0, &context);
   auto full = pfc::data::field_from_inbox<double>(
@@ -360,12 +353,10 @@ TEST_CASE("Seeded noise has the same mean and cells on every decomposition",
   REQUIRE_THAT(mean_c(full), WithinAbs(0.32, 1e-14));
   REQUIRE(variance_c(full) > 0);
   const auto before = full.vec();
-  ++noise.seed;
+  ++noise.noise.seed;
   pfc::apply_field_modifier(noise, full, 0);
   REQUIRE(full.vec() != before);
-  noise.amplitude = 0.5;
-  REQUIRE_THROWS(pfc::apply_field_modifier(noise, full, 0));
-  REQUIRE_THROWS(cahn_hilliard::from_json(
+  REQUIRE_THROWS(pfc::ui::from_json(
       json{
           {"type", "seeded_noise"}, {"c0", 0.32}, {"amplitude", 0.02}, {"seed", -1}},
       noise));

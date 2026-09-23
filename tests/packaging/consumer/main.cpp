@@ -5,10 +5,12 @@
 // and query it. If this configures, links, and runs, find_package(OpenPFC) and
 // the exported targets/transitive deps are wired correctly.
 #include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/field/face_flux.hpp>
+#include <openpfc/kernel/field/fourier_series.hpp>
+#include <openpfc/kernel/field/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
-#include <openpfc/kernel/fft/power_spectrum.hpp>
 
 #include <cstdio>
 #include <type_traits>
@@ -22,6 +24,11 @@ int main() {
   static_assert(pfc::fft::r2c_multiplicity(0, 64) == 1.0);
   static_assert(pfc::fft::r2c_multiplicity(1, 64) == 2.0);
   static_assert(pfc::fft::r2c_multiplicity(32, 64) == 1.0);
+  static_assert(pfc::field::indexed_noise_sample(1, 2, 3, 4, 8, 8) <= 65535);
+  static_assert(pfc::field::indexed_noise_sample(1, 0, 0, 0, 4, 4) !=
+                pfc::field::indexed_noise_sample(2, 0, 0, 0, 4, 4));
+  constexpr pfc::field::FourierMode mode{{1, 0, 0}, 1.0, 0.0};
+  static_assert(mode.index[0] == 1);
   pfc::fft::RadialSpectrum spectrum;
   spectrum.wavenumber = {1.0};
   spectrum.mean_power = {1.0};

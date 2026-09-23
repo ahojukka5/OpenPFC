@@ -28,8 +28,8 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -47,9 +47,10 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
+#include <openpfc/kernel/field/indexed_noise.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
-#include <openpfc/kernel/simulation/spectral_flux.hpp>
 
 #include <ehd_film/ehd_film_physics.hpp>
 #include <ehd_film/nonlinear.hpp>
@@ -57,18 +58,6 @@
 namespace {
 
 using json = nlohmann::json;
-
-/// Deterministic broadband perturbation, identical on any decomposition.
-double hashed_noise(int i, int j, int k, const pfc::Int3 &n, std::uint64_t seed) {
-  std::uint64_t x = seed + std::uint64_t(i) +
-                    std::uint64_t(n[0]) *
-                        (std::uint64_t(j) + std::uint64_t(n[1]) * std::uint64_t(k));
-  x += 0x9e3779b97f4a7c15ULL;
-  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-  x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-  x = x ^ (x >> 31);
-  return 2.0 * (double(x >> 11) / double(1ULL << 53)) - 1.0;
-}
 
 } // namespace
 
@@ -96,7 +85,8 @@ int main(int argc, char *argv[]) {
     ehd_film::apply_ehd_film_json(cfg.at("model").at("params"), p);
 
     const auto &ts = cfg.at("timestepping");
-    const double t1 = ts.at("t1"), dt = ts.at("dt"), saveat = ts.value("saveat", -1.0);
+    const double t1 = ts.at("t1"), dt = ts.at("dt"),
+                 saveat = ts.value("saveat", -1.0);
 
     const auto &ic = cfg.value("initial_conditions", json::object());
     const double amp = ic.value("amplitude", 0.0);
@@ -119,7 +109,9 @@ int main(int argc, char *argv[]) {
       const int i = int(std::lround(x[0] / dx));
       const int j = int(std::lround(x[1] / dx));
       const int k = int(std::lround(x[2] / dx));
-      const double xi = (amp != 0.0) ? hashed_noise(i, j, k, n, seed) : 0.0;
+      const double xi =
+          (amp != 0.0) ? pfc::field::indexed_noise_signed(seed, i, j, k, n[0], n[1])
+                       : 0.0;
       return p.h0 * (1.0 + amp * xi);
     });
 
@@ -212,10 +204,9 @@ int main(int argc, char *argv[]) {
         std::filesystem::create_directories(path.parent_path());
       out.reset(std::fopen(path.string().c_str(), "w"));
       if (!out) throw std::runtime_error("cannot open diagnostics csv");
-      std::fprintf(out.get(),
-                   "step,time,h_center,deflection_center,p_max,p_min,"
-                   "spreading_radius,displaced_volume,volume,"
-                   "volume_rel_drift\n");
+      std::fprintf(out.get(), "step,time,h_center,deflection_center,p_max,p_min,"
+                              "spreading_radius,displaced_volume,volume,"
+                              "volume_rel_drift\n");
     }
 
     double volume0 = -1.0;
@@ -235,9 +226,9 @@ int main(int argc, char *argv[]) {
       pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(stack.fft(), h, h_hat_diag);
       potential(h_hat_diag, h, p_hat_diag);
       pfc::sim::SpectralETDOps<pfc::HostSpace>::backward(stack.fft(), p_hat_diag,
-                                                          p_real_diag);
-      auto s = ehd_film::sample_ehd_film(h, p_real_diag, domain, p.h0,
-                                         MPI_COMM_WORLD);
+                                                         p_real_diag);
+      auto s =
+          ehd_film::sample_ehd_film(h, p_real_diag, domain, p.h0, MPI_COMM_WORLD);
       pfc::apps::write_field_snapshot(snapshots.get(), snapshot_index++, h);
       if (volume0 < 0.0) volume0 = s.volume;
       const double drift = (volume0 != 0.0) ? (s.volume - volume0) / volume0 : 0.0;
@@ -248,10 +239,10 @@ int main(int argc, char *argv[]) {
       if (out) {
         std::ostringstream line;
         line.imbue(std::locale::classic());
-        line << std::setprecision(17) << step << ',' << t << ',' << s.h_center
-             << ',' << (p.h0 - s.h_center) << ',' << s.p_max << ',' << s.p_min
-             << ',' << s.spreading_radius << ',' << s.displaced_volume << ','
-             << s.volume << ',' << drift << '\n';
+        line << std::setprecision(17) << step << ',' << t << ',' << s.h_center << ','
+             << (p.h0 - s.h_center) << ',' << s.p_max << ',' << s.p_min << ','
+             << s.spreading_radius << ',' << s.displaced_volume << ',' << s.volume
+             << ',' << drift << '\n';
         std::fputs(line.str().c_str(), out.get());
         std::fflush(out.get());
       }

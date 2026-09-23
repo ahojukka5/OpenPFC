@@ -9,12 +9,17 @@
 #ifndef PFC_UI_FROM_JSON_FIELD_MODIFIERS_HPP
 #define PFC_UI_FROM_JSON_FIELD_MODIFIERS_HPP
 
+#include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include <openpfc/frontend/ui/from_json_fwd.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/constant.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/file_reader.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/fourier_modes.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/random_seeds.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/seed_grid.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/single_seed.hpp>
@@ -137,6 +142,164 @@ inline void from_json(const json &j, FileReader &ic) {
   }
 
   ic.set_filename(j["filename"]);
+}
+
+namespace detail {
+
+inline int json_mode_index(const json &j, const char *key, int fallback) {
+  if (!j.contains(key)) return fallback;
+  if (!j[key].is_number()) {
+    throw std::invalid_argument(std::string("fourier mode: '") + key +
+                                "' must be an integer.");
+  }
+  return j[key].get<int>();
+}
+
+inline pfc::field::FourierMode one_fourier_mode(const json &m, int default_nx) {
+  pfc::field::FourierMode mode;
+  if (m.contains("n")) {
+    if (!m["n"].is_array() || m["n"].size() != 3) {
+      throw std::invalid_argument("fourier mode: 'n' must be [nx, ny, nz].");
+    }
+    mode.index = {m["n"].at(0).get<int>(), m["n"].at(1).get<int>(),
+                  m["n"].at(2).get<int>()};
+  } else {
+    mode.index = {json_mode_index(m, "nx", default_nx), json_mode_index(m, "ny", 0),
+                  json_mode_index(m, "nz", 0)};
+  }
+  if (!m.contains("amplitude") || !m["amplitude"].is_number()) {
+    throw std::invalid_argument("fourier mode: missing or invalid 'amplitude'.");
+  }
+  mode.amplitude = m["amplitude"].get<double>();
+  if (m.contains("phase")) {
+    if (!m["phase"].is_number()) {
+      throw std::invalid_argument("fourier mode: 'phase' must be numeric.");
+    }
+    mode.phase = m["phase"].get<double>();
+  }
+  return mode;
+}
+
+inline std::vector<pfc::field::FourierMode> fourier_terms_from_json(const json &j) {
+  std::vector<pfc::field::FourierMode> terms;
+  if (j.contains("modes")) {
+    if (!j["modes"].is_array() || j["modes"].empty()) {
+      throw std::invalid_argument(
+          "fourier modes: 'modes' must be a non-empty array.");
+    }
+    terms.reserve(j["modes"].size());
+    for (const auto &mode : j["modes"]) {
+      if (!mode.contains("n") && !mode.contains("nx")) {
+        throw std::invalid_argument("fourier mode: each mode needs 'n' or 'nx'.");
+      }
+      terms.push_back(one_fourier_mode(mode, 0));
+    }
+    return terms;
+  }
+  terms.push_back(one_fourier_mode(j, 1));
+  return terms;
+}
+
+inline bool has_legacy_offset(const json &j) {
+  for (const char *key : {"offset", "c0", "h0", "psi0", "u0", "g0"}) {
+    if (j.contains(key)) return true;
+  }
+  return false;
+}
+
+inline double legacy_offset(const json &j, bool required) {
+  const char *found = nullptr;
+  double value = 0.0;
+  for (const char *key : {"offset", "c0", "h0", "psi0", "u0", "g0"}) {
+    if (!j.contains(key)) continue;
+    if (!j[key].is_number()) {
+      throw std::invalid_argument(std::string("offset: '") + key +
+                                  "' must be numeric.");
+    }
+    if (found != nullptr) {
+      throw std::invalid_argument(
+          "offset: give one of offset, c0, h0, psi0, u0, g0.");
+    }
+    found = key;
+    value = j[key].get<double>();
+  }
+  if (found == nullptr && required) {
+    throw std::invalid_argument("offset: missing offset (or c0, h0, psi0, u0, g0).");
+  }
+  return value;
+}
+
+inline std::uint64_t json_seed(const json &j) {
+  if (!j.contains("seed")) {
+    throw std::invalid_argument("indexed noise: missing 'seed'.");
+  }
+  const auto &seed = j["seed"];
+  if (!seed.is_number_integer() ||
+      (!seed.is_number_unsigned() && seed.get<std::int64_t>() < 0)) {
+    throw std::invalid_argument(
+        "indexed noise: seed must be a nonnegative integer.");
+  }
+  return seed.get<std::uint64_t>();
+}
+
+inline double json_amplitude(const json &j) {
+  if (!j.contains("amplitude") || !j["amplitude"].is_number()) {
+    throw std::invalid_argument("indexed noise: missing or invalid 'amplitude'.");
+  }
+  return j["amplitude"].get<double>();
+}
+
+inline void reject_offset_on_additive(const json &j, const char *type) {
+  if (has_legacy_offset(j)) {
+    throw std::invalid_argument(
+        std::string(type) +
+        " adds to the field. Set the offset with constant or with the fill form.");
+  }
+}
+
+} // namespace detail
+
+inline void from_json(const json &j, FourierModes &ic) {
+  detail::throw_unless_json_modifier_type(
+      j, "fourier_modes", "Invalid JSON input: missing or incorrect 'type' field.");
+  detail::reject_offset_on_additive(j, "fourier_modes");
+  ic.terms = detail::fourier_terms_from_json(j);
+}
+
+inline void from_json(const json &j, FourierSeriesFill &ic) {
+  detail::throw_unless_json_modifier_type(
+      j, "cosine_mode", "Invalid JSON input: missing or incorrect 'type' field.");
+  ic.offset = detail::legacy_offset(j, false);
+  ic.terms = detail::fourier_terms_from_json(j);
+}
+
+inline void from_json(const json &j, IndexedNoiseModifier &ic) {
+  detail::throw_unless_json_modifier_type(
+      j, "indexed_noise", "Invalid JSON input: missing or incorrect 'type' field.");
+  detail::reject_offset_on_additive(j, "indexed_noise");
+  ic.noise.seed = detail::json_seed(j);
+  ic.noise.amplitude = detail::json_amplitude(j);
+  if (j.contains("remove_mean")) {
+    if (!j["remove_mean"].is_boolean()) {
+      throw std::invalid_argument("indexed noise: 'remove_mean' must be a boolean.");
+    }
+    ic.noise.remove_mean = j["remove_mean"].get<bool>();
+  }
+}
+
+inline void from_json(const json &j, IndexedNoiseFill &ic) {
+  detail::throw_unless_json_modifier_type(
+      j, "seeded_noise", "Invalid JSON input: missing or incorrect 'type' field.");
+  ic.offset = detail::legacy_offset(j, true);
+  ic.noise.seed = detail::json_seed(j);
+  ic.noise.amplitude = detail::json_amplitude(j);
+  ic.noise.remove_mean = true;
+  if (j.contains("remove_mean")) {
+    if (!j["remove_mean"].is_boolean()) {
+      throw std::invalid_argument("indexed noise: 'remove_mean' must be a boolean.");
+    }
+    ic.noise.remove_mean = j["remove_mean"].get<bool>();
+  }
 }
 
 } // namespace pfc::ui

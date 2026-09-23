@@ -231,7 +231,7 @@ LUMI-G smoke: job 21780712 (`small-g`, 16², mean \(c=0.32\)).
 | `include/cahn_hilliard/cahn_hilliard_physics.hpp` | `SpectralETDPhysics` + schema |
 | `include/cahn_hilliard/cahn_hilliard_pointwise.hpp` | Device-capable \(n(c)\) and bulk \(f\) |
 | `include/cahn_hilliard/cahn_hilliard_session.hpp` | JSON session, field name `c`, 2/3 dealias |
-| `include/cahn_hilliard/cosine_mode.hpp` | Reproducible Fourier-mode IC |
+| `include/cahn_hilliard/concentration_seed.hpp` | Mole-fraction bound on noise |
 | `src/cahn_hilliard.cpp` | CPU `main` |
 | `src/hip/cahn_hilliard.cpp` | HIP `main` (`CahnHilliardHIPSession`) |
 | `src/gpu/cahn_hilliard_pointwise.hip` | Device instantiation of `n(c)` |

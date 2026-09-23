@@ -44,10 +44,10 @@
 #include <nlohmann/json.hpp>
 
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
-#include <cahn_hilliard/cosine_mode.hpp>
+#include <cahn_hilliard/concentration_seed.hpp>
 #include <cahn_hilliard/diagnostics.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
-#include <cahn_hilliard/seeded_noise.hpp>
+#include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/dealias.hpp>
@@ -105,20 +105,12 @@ inline void apply_initial_condition(const nlohmann::json &cfg, pfc::Domain domai
   if (!cfg.contains("initial_conditions") || cfg.at("initial_conditions").empty())
     throw std::invalid_argument(
         "cahn_hilliard_elastic: initial_conditions required");
-  const auto &ic = cfg.at("initial_conditions").front();
-  const std::string type = ic.at("type").get<std::string>();
   const pfc::SimulationContext ctx(comm);
-  if (type == "seeded_noise") {
-    SeededNoise noise;
-    from_json(ic, noise);
-    noise.apply(ctx, c.output(), domain, c.box(), 0.0);
-  } else if (type == "cosine_mode") {
-    CosineMode mode;
-    from_json(ic, mode);
-    mode.apply(c.output(), domain, c.box(), 0.0);
-  } else {
-    throw std::invalid_argument("cahn_hilliard_elastic: unknown IC type '" + type +
-                                "'");
+  for (const auto &ic : cfg.at("initial_conditions")) {
+    require_concentration_noise(ic);
+    const std::string type = ic.at("type").get<std::string>();
+    auto modifier = pfc::ui::create_field_modifier(type, ic);
+    modifier->apply(ctx, c.output(), domain, c.box(), 0.0);
   }
 }
 

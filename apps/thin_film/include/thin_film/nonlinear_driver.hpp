@@ -53,6 +53,7 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
+#include <openpfc/kernel/field/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
@@ -64,19 +65,6 @@
 namespace thin_film {
 
 namespace detail {
-
-/// Deterministic broadband perturbation, identical on any decomposition.
-inline double hashed_noise(int i, int j, int k, const pfc::Int3 &n,
-                           std::uint64_t seed) {
-  std::uint64_t x = seed + std::uint64_t(i) +
-                    std::uint64_t(n[0]) *
-                        (std::uint64_t(j) + std::uint64_t(n[1]) * std::uint64_t(k));
-  x += 0x9e3779b97f4a7c15ULL;
-  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-  x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-  x = x ^ (x >> 31);
-  return 2.0 * (double(x >> 11) / double(1ULL << 53)) - 1.0;
-}
 
 inline pfc::sim::PointwiseGeometry geometry_of(const pfc::Domain &domain,
                                                const pfc::Box3i &box) {
@@ -168,7 +156,8 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
               const int gk = box.low[2] + k;
               const double x0 = static_cast<double>(gi) * dx;
               const double x1 = static_cast<double>(gj) * dx;
-              const double xi = detail::hashed_noise(gi, gj, gk, n, seed);
+              const double xi =
+                  pfc::field::indexed_noise_signed(seed, gi, gj, gk, n[0], n[1]);
               d[h.idx(i, j, k)] = p.h0 * (1.0 + amp * xi + defect(x0, x1));
             }
           }
