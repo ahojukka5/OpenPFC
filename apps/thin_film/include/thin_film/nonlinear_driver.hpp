@@ -52,10 +52,10 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
-#include <openpfc/spectral/power_spectrum.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
 
 #include <thin_film/nonlinear.hpp>
@@ -245,7 +245,7 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
       ComplexField hh(domain, stack.fft().get_outbox_bounds(), 0);
       Ops::forward(stack.fft(), h, hh);
       hh.with_host_view([&](std::complex<double> *hv, std::size_t) {
-        const auto spectrum = pfc::spectral::radial_average(
+        const auto spectrum = pfc::fft::radial_average(
             stack.fft().get_outbox_bounds(), domain, hv, comm, 64);
         s.dominant_spacing = spectrum.dominant_wavelength();
       });

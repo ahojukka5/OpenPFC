@@ -5,17 +5,24 @@
 
 /**
  * @file power_spectrum.hpp
- * @brief Radial and directional power of a stored real-to-complex spectrum.
+ * @brief Power of a stored real-to-complex spectrum.
  *
- * The caller owns what the field means. This header owns the bookkeeping:
- * which stored mode stands for an unstored conjugate, how shells are
- * averaged, and which axis dominates a wavevector.
+ * Backend-independent bookkeeping for an OpenPFC r2c outbox. The caller
+ * owns what the real field means. This header owns which stored mode
+ * stands for an unstored conjugate, how `|k|` shells are reduced, and
+ * which axis dominates a wavevector.
  *
- * Spectra are HeFFTe r2c outboxes: `kx` runs from 0 through the Nyquist
- * index, and `ky`/`kz` span their full signed range. A mode with `kx = 0`,
- * or with `kx` at the Nyquist index of an even grid, is its own conjugate
- * and is stored once. Every other `kx` has an unstored conjugate of equal
- * power. `r2c_multiplicity` is that weight.
+ * The forward transform is unnormalized: `hat[k] = sum_n u_n exp(-ik·x)`.
+ * The backward transform divides by the global number of real samples.
+ * `weighted_power` is therefore `N` times the real-space sum of squares
+ * (Parseval), once every stored coefficient is given its conjugate weight.
+ *
+ * An even grid stores `kx = 0` and the `kx` Nyquist mode once; each is
+ * its own conjugate (`weight = 1`). Every other `kx` is stored once and
+ * stands for itself and `-kx` (`weight = 2`). Applying weight 2 to the
+ * Nyquist mode, or weight 1 to an ordinary `kx`, mis-counts the full
+ * spectrum. Mixed shells therefore differ from an unweighted average of
+ * the stored coefficients. That difference is the correction.
  */
 
 #include <cmath>
@@ -29,10 +36,10 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 
-namespace pfc::spectral {
+namespace pfc::fft {
 
 /**
- * @brief Weight of one stored r2c coefficient in the full complex spectrum.
+ * @brief Weight of one stored r2c coefficient in the full spectrum.
  *
  * @param index  x index in the outbox, in `[0, extent/2]`
  * @param extent global number of real samples along x
@@ -43,34 +50,68 @@ namespace pfc::spectral {
   return 2.0;
 }
 
-/// Shell-averaged power, with the zero mode omitted.
+/**
+ * @brief `sum weight |hat|^2` over every stored mode, including `k = 0`.
+ *
+ * Reduced over @p comm. Divide by the global real-sample count to recover
+ * `sum u^2`.
+ */
+[[nodiscard]] inline double weighted_power(const pfc::Box3i &outbox,
+                                           const pfc::Domain &domain,
+                                           const std::complex<double> *spectrum,
+                                           MPI_Comm comm) {
+  const auto size = pfc::domain::get_size(domain);
+  double local = 0.0;
+  pfc::fft::kspace::for_each_kpoint(
+      outbox, domain, [&](std::size_t i, double, double, double, int ix, int, int) {
+        local += r2c_multiplicity(ix, size[0]) * std::norm(spectrum[i]);
+      });
+  double global = 0.0;
+  MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, comm);
+  return global;
+}
+
+/**
+ * @brief One radial binning of a spectrum. The zero mode is omitted.
+ *
+ * Shells run from 0 to the Nyquist radius of the coarsest active axis,
+ * `k_max = pi / dx`. Bin `b` covers `[b, b+1) * k_max / n_bins` and is
+ * reported at its centre. A mode with `|k| >= k_max` (the corner of a
+ * square or cubic Fourier box) is not in any shell.
+ *
+ * `mean_power` is the multiplicity-weighted mean of `|hat|^2` in the
+ * shell. `integrated_power` is the sum of those weighted values, so
+ * `mean_power = integrated_power / (weighted mode count)`.
+ * `total_power` sums `integrated_power`. It is not a Parseval identity:
+ * `k = 0` and modes outside the ball are absent. `first_moment` is the
+ * first moment of the shell *means*, `sum k mean_power / sum mean_power`,
+ * not of the integrated power.
+ */
 struct RadialSpectrum {
-  std::vector<double> wavenumber; ///< shell-centre `|k|`
-  std::vector<double> power;      ///< multiplicity-weighted shell mean
-  double first_moment{0.0};       ///< `\sum k P / \sum P`
+  std::vector<double> wavenumber;
+  std::vector<double> mean_power;
+  std::vector<double> integrated_power;
+  double first_moment{0.0};
   double peak_wavenumber{0.0};
+  /// Largest `mean_power`.
   double peak_power{0.0};
+  /// Sum of `integrated_power` over the shells that were kept.
   double total_power{0.0};
 
-  /// `2\pi` over `first_moment`. Zero when the spectrum has no power.
+  /// `2 pi / first_moment`. Zero when no shell has mean power.
   [[nodiscard]] double mean_wavelength() const {
     return (first_moment > 0.0) ? 2.0 * std::numbers::pi / first_moment : 0.0;
   }
-  /// `2\pi` over `peak_wavenumber`.
+  /// `2 pi / peak_wavenumber`.
   [[nodiscard]] double dominant_wavelength() const {
     return (peak_wavenumber > 0.0) ? 2.0 * std::numbers::pi / peak_wavenumber : 0.0;
   }
 };
 
 /**
- * @brief Bin `|spectrum|^2` into shells of `|k|`.
+ * @brief Bin `|hat|^2` into shells of `|k|`.
  *
- * Each stored coefficient is weighted by `r2c_multiplicity` in both the
- * power and the count, so a shell of one weight class has the same mean as
- * an unweighted average of its stored values. The `k = 0` mode is dropped.
- * Histograms are summed over @p comm.
- *
- * @param n_bins shells from 0 to the Nyquist radius of the coarsest active axis
+ * @param n_bins shells from 0 to `k_max`. Empty shells are omitted.
  */
 [[nodiscard]] inline RadialSpectrum
 radial_average(const pfc::Box3i &outbox, const pfc::Domain &domain,
@@ -111,40 +152,49 @@ radial_average(const pfc::Box3i &outbox, const pfc::Domain &domain,
 
   RadialSpectrum out;
   out.wavenumber.reserve(static_cast<std::size_t>(n_bins));
-  out.power.reserve(static_cast<std::size_t>(n_bins));
+  out.mean_power.reserve(static_cast<std::size_t>(n_bins));
+  out.integrated_power.reserve(static_cast<std::size_t>(n_bins));
   double moment = 0.0;
+  double mean_sum = 0.0;
   for (int b = 0; b < n_bins; ++b) {
     const auto bi = static_cast<std::size_t>(b);
     if (global_counts[bi] <= 0.0) continue;
     const double kc = (static_cast<double>(b) + 0.5) * bin_width;
-    const double s = global_power[bi] / global_counts[bi];
+    const double mean = global_power[bi] / global_counts[bi];
     out.wavenumber.push_back(kc);
-    out.power.push_back(s);
-    out.total_power += s;
-    moment += kc * s;
-    if (s > out.peak_power) {
-      out.peak_power = s;
+    out.mean_power.push_back(mean);
+    out.integrated_power.push_back(global_power[bi]);
+    out.total_power += global_power[bi];
+    mean_sum += mean;
+    moment += kc * mean;
+    if (mean > out.peak_power) {
+      out.peak_power = mean;
       out.peak_wavenumber = kc;
     }
   }
-  if (out.total_power > 0.0) out.first_moment = moment / out.total_power;
+  if (mean_sum > 0.0) out.first_moment = moment / mean_sum;
   return out;
 }
 
-/// Power split by the axis with the strictly largest `|k|` component.
+/// Integrated `|hat|^2`, split by the unique largest `|k|` component.
 struct DirectionalPower {
   double along_x{0.0};
   double along_y{0.0};
   double along_z{0.0};
   /// Modes whose largest component is shared by two or more axes.
   double unresolved{0.0};
+
+  [[nodiscard]] double sum() const {
+    return along_x + along_y + along_z + unresolved;
+  }
 };
 
 /**
- * @brief Sum multiplicity-weighted `|spectrum|^2` into axis bins.
+ * @brief Sum multiplicity-weighted `|hat|^2` into axis bins.
  *
- * The zero mode is omitted. A 2-D grid (`Nz = 1`) leaves `along_z` at zero
- * and sends `|kx| == |ky|` to `unresolved`.
+ * The zero mode is omitted. A grid with `Nz = 1` leaves `along_z` at
+ * zero and sends `|kx| == |ky|` to `unresolved`. Unlike `radial_average`,
+ * every nonzero mode is counted: there is no `|k|` ball.
  */
 [[nodiscard]] inline DirectionalPower
 directional_power(const pfc::Box3i &outbox, const pfc::Domain &domain,
@@ -183,10 +233,10 @@ directional_power(const pfc::Box3i &outbox, const pfc::Domain &domain,
 }
 
 /**
- * @brief Power of the shell whose centre is nearest @p target.
+ * @brief `mean_power` of the shell whose centre is nearest @p target.
  *
- * An exact tie goes to the shell with more power, so a target that lands on
- * a bin boundary does not report an empty neighbour.
+ * An exact tie goes to the shell with more mean power, so a target on a
+ * bin boundary does not report an empty neighbour.
  */
 [[nodiscard]] inline double power_near(const RadialSpectrum &spectrum,
                                        double target) {
@@ -196,12 +246,13 @@ directional_power(const pfc::Box3i &outbox, const pfc::Domain &domain,
   for (std::size_t i = 1; i < spectrum.wavenumber.size(); ++i) {
     const double distance = std::abs(spectrum.wavenumber[i] - target);
     if (distance < best_distance ||
-        (distance == best_distance && spectrum.power[i] > spectrum.power[best])) {
+        (distance == best_distance &&
+         spectrum.mean_power[i] > spectrum.mean_power[best])) {
       best_distance = distance;
       best = i;
     }
   }
-  return spectrum.power[best];
+  return spectrum.mean_power[best];
 }
 
-} // namespace pfc::spectral
+} // namespace pfc::fft

@@ -54,11 +54,11 @@
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/simulation_state.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc/spectral/power_spectrum.hpp>
 #include <tungsten/resolution.hpp>
 #include <tungsten/tungsten_physics.hpp>
 
@@ -142,10 +142,10 @@ Outcome run_case(int n, double dx, int n_steps, bool dealias, int rank, int npro
   pfc::data::Field<std::complex<double>> hat(domain, stack.fft().get_outbox_bounds(),
                                              0);
   pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(stack.fft(), psi, hat);
-  pfc::spectral::RadialSpectrum sf{};
+  pfc::fft::RadialSpectrum sf{};
   hat.with_host_view([&](std::complex<double> *h, std::size_t) {
-    sf = pfc::spectral::radial_average(stack.fft().get_outbox_bounds(), domain, h,
-                                       MPI_COMM_WORLD, 96);
+    sf = pfc::fft::radial_average(stack.fft().get_outbox_bounds(), domain, h,
+                                  MPI_COMM_WORLD, 96);
   });
 
   double lo = 1e300, hi = -1e300, sum = 0.0, cnt = 0.0;

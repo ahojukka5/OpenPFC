@@ -16,8 +16,8 @@
 
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
-#include <openpfc/spectral/power_spectrum.hpp>
 
 namespace cahn_hilliard {
 
@@ -119,7 +119,7 @@ public:
     // The same transform serves the gradient energy and the spectrum.
     // radial_average drops k=0, so the mean does not have to be removed first.
     m_hat.with_host_view([&](typename Ops::Complex *hat, std::size_t) {
-      const auto spectrum = pfc::spectral::radial_average(
+      const auto spectrum = pfc::fft::radial_average(
           m_fft.get_outbox_bounds(), m_domain, hat, m_comm, m_sf_bins);
       result.k1 = spectrum.first_moment;
       result.domain_length = spectrum.mean_wavelength();

@@ -35,11 +35,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
-- Public spectral observables `pfc::spectral::radial_average`,
-  `directional_power`, and `r2c_multiplicity`
-  (`include/openpfc/spectral/power_spectrum.hpp`, #145). Shell means,
-  the first moment, the dominant wavelength, and the real-to-complex
-  weight live in that header. Coarsening exponents and crystal-band
+- Public r2c power `pfc::fft::weighted_power`, `radial_average`, and
+  `directional_power` (`include/openpfc/kernel/fft/power_spectrum.hpp`,
+  #145). Stored `kx = 0` and the even-grid Nyquist mode have weight 1;
+  every other `kx` has weight 2, so mixed shells and directional totals
+  differ from an unweighted average of the stored coefficients.
+  `mean_power` is the shell mean; `total_power` sums the integrated
+  shell power and drops `k = 0`. Coarsening exponents and crystal-band
   labels stay in the applications.
 
 - Public periodic eigenstrain solver
