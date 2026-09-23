@@ -21,10 +21,12 @@
  *   M(h) = M_0\left(\frac{h}{h_0}\right)^{3},
  * \f]
  *
- * and that cubic factor is what decides where the film ruptures: a thinning
- * region loses mobility as \f$h^3\f$, so drainage stalls and the depression
- * sharpens into a hole instead of relaxing. Constant mobility cannot produce
- * that, which is why the linear preset is a verifier and not the science case.
+ * Cubic mobility is the no-slip lubrication law for this reduced model.
+ * Freezing it at \f$M_0\f$ is exact only in the linearization about \f$h_0\f$.
+ * State dependence changes nonlinear drainage and the near-precursor
+ * degeneracy. The linear constant-mobility symbol already has a positive
+ * unstable band when \f$\Pi'(h_0)>0\f$. This code does not establish that a
+ * nonlinear constant-mobility model cannot form a localized thin state.
  *
  * \f$M_0(h/h_0)^3\f$ is written in units of \f$M_0\f$ so the nonlinear model
  * reduces to the linear one at \f$h=h_0\f$; in dimensional terms

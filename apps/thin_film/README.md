@@ -41,9 +41,12 @@ The verifier freezes the mobility at `M0`. The science case does not:
 dh/dt = div( M(h) grad p ),   p = -gamma lap h - Pi(h),   M(h) = M0 (h/h0)^3
 ```
 
-The cubic factor is the physics that matters. A thinning region loses mobility
-as `h³`, so drainage stalls and a depression sharpens into a hole instead of
-relaxing. Constant mobility cannot produce that.
+Cubic mobility is the no-slip lubrication law for this reduced model. Freezing
+it at `M0` is exact only in the linearization about `h0`. State dependence
+changes nonlinear drainage and the near-precursor degeneracy. The linearized
+constant-mobility model already has an unstable band when `Pi'(h0)` is
+positive, so this application does not claim that constant mobility cannot
+form a localized thin state.
 
 Because `M(h)` sits *inside* a divergence it cannot be written as a
 reciprocal-space symbol, so this case uses the shared conservative flux stepper
