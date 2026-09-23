@@ -49,6 +49,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
@@ -57,7 +58,6 @@
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
-#include <openpfc_apps/field_snapshots.hpp>
 
 #include <thin_film/nonlinear.hpp>
 #include <thin_film/thin_film_physics.hpp>
@@ -207,8 +207,10 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
       Ops::swap(out, p_scratch);
     };
 
-    auto snapshots = pfc::apps::make_field_snapshot_writer(cfg, "h", h, comm);
-    int snapshot_index = 0;
+    pfc::io::SnapshotSeries snapshots(h.domain(), h.box(),
+                                      pfc::io::SnapshotSeriesOptions{.comm = comm});
+    snapshots.bind_json_field(cfg, "h", h);
+    snapshots.finish_json_fields(cfg);
 
     // Diagnostics CSV, rank 0, never overwriting.
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
@@ -239,7 +241,7 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
         s.dominant_spacing = spectrum.dominant_wavelength();
       });
       if (s.ruptured && rupture_time < 0.0) rupture_time = t;
-      pfc::apps::write_field_snapshot(snapshots.get(), snapshot_index++, h);
+      snapshots.write(step, t);
       if (out) {
         std::ostringstream line;
         line.imbue(std::locale::classic());

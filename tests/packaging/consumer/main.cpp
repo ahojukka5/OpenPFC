@@ -4,6 +4,7 @@
 // Smallest possible use of the installed OpenPFC public API: construct a Domain
 // and query it. If this configures, links, and runs, find_package(OpenPFC) and
 // the exported targets/transitive deps are wired correctly.
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/field/face_flux.hpp>
@@ -27,6 +28,8 @@ int main() {
   static_assert(pfc::field::indexed_noise_sample(1, 2, 3, 4, 8, 8) <= 65535);
   static_assert(pfc::field::indexed_noise_sample(1, 0, 0, 0, 4, 4) !=
                 pfc::field::indexed_noise_sample(2, 0, 0, 0, 4, 4));
+  static_assert(static_cast<int>(pfc::io::SnapshotFormat::Binary) !=
+                static_cast<int>(pfc::io::SnapshotFormat::Vtk));
   constexpr pfc::field::FourierMode mode{{1, 0, 0}, 1.0, 0.0};
   static_assert(mode.index[0] == 1);
   pfc::fft::RadialSpectrum spectrum;

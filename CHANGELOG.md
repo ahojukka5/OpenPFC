@@ -35,6 +35,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Solver-independent field snapshots
+  (`include/openpfc/frontend/io/snapshot_series.hpp`, #147).
+  A driver registers scalar fields and calls `write(step, time)`. The
+  series packs owned cells, including a storage halo and a device field
+  read through `with_host_read`, and writes raw binary or VTK. Rank 0
+  records steps, times, and one XDMF series for binary frames.
+  `ResultsWriter` reports `writes_real()` / `writes_complex()` so a
+  format does not have to implement a value type it cannot store.
+  HDF5 stays real-only. The standalone `fields[]` VTK helper and the
+  Vlasov brick writer now use this series.
+
 - Public Fourier-series and indexed-noise field operations
   (`include/openpfc/kernel/field/fourier_series.hpp`,
   `include/openpfc/kernel/field/indexed_noise.hpp`, #146).

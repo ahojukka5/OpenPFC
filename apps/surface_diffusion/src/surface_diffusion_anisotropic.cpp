@@ -55,12 +55,12 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/field_snapshots.hpp>
 
 #include <surface_diffusion/anisotropic_flux.hpp>
 #include <surface_diffusion/anisotropy.hpp>
@@ -229,11 +229,12 @@ int main(int argc, char *argv[]) {
 
     // Optional `.vti` snapshots of the surface itself (`fields[]`). The
     // diagnostics CSV carries the orientation split as a number; the
-    // snapshots are what let a reader see *which* ridge set the anisotropic
-    // anneal is erasing. See openpfc_apps/field_snapshots.hpp.
-    auto snapshots =
-        pfc::apps::make_field_snapshot_writer(cfg, "h", h, MPI_COMM_WORLD);
-    int snapshot_index = 0;
+    // snapshots are what let a reader see which ridge set the anisotropic
+    // anneal is erasing.
+    pfc::io::SnapshotSeries snapshots(
+        h.domain(), h.box(), pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_WORLD});
+    snapshots.bind_json_field(cfg, "h", h);
+    snapshots.finish_json_fields(cfg);
 
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
     if (rank == 0 && cfg.contains("diagnostics")) {
@@ -250,7 +251,7 @@ int main(int argc, char *argv[]) {
 
     auto report = [&](int step, double t) {
       auto s = sample_surface(h, domain, stack.fft(), MPI_COMM_WORLD);
-      pfc::apps::write_field_snapshot(snapshots.get(), snapshot_index++, h);
+      snapshots.write(step, t);
       if (out) {
         std::ostringstream line;
         line.imbue(std::locale::classic());

@@ -32,10 +32,10 @@
 
 #include <mpi.h>
 
-#include <openpfc_apps/plasma_dispersion.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/frontend/utils/cli_options.hpp>
+#include <openpfc_apps/plasma_dispersion.hpp>
 #include <vlasov_maxwell/diagnostics.hpp>
-#include <vlasov_maxwell/field_output.hpp>
 #include <vlasov_maxwell/ics.hpp>
 #include <vlasov_maxwell/reduced_output.hpp>
 #include <vlasov_maxwell/step.hpp>
@@ -146,7 +146,7 @@ struct Case {
     c.amp = 1.0e-4;
     c.t_end = 120.0;
   } else if (n == "wave") {
-    c.Lx = twopi;       // k = 1 for mode 1
+    c.Lx = twopi; // k = 1 for mode 1
     c.vth = 0.05;
     c.vmax = 8.0 * c.vth;
     c.amp = 1.0e-3;
@@ -162,8 +162,8 @@ struct Case {
     c.electrostatic = false;
     c.self_consistent = false;
   } else if (n == "weibel") {
-    c.vth = 0.05;   // along x, the wave vector
-    c.vthy = 0.15;  // across it: A = 9, comfortably unstable
+    c.vth = 0.05;       // along x, the wave vector
+    c.vthy = 0.15;      // across it: A = 9, comfortably unstable
     c.Lx = twopi / 0.5; // k = 0.5 / d_e for mode 1
     c.vmax = 8.0 * c.vthy;
     c.amp = 1.0e-5;
@@ -240,13 +240,15 @@ int run(int argc, char **argv, int rank, int nproc) {
   p.species.clear();
   p.species.push_back(Species{"electron", -1.0, 1.0});
   if (opt.flag("mobile-ions", false)) {
-    p.species.push_back(
-        Species{"ion", +1.0, vlasov::kProtonElectronMassRatio});
+    p.species.push_back(Species{"ion", +1.0, vlasov::kProtonElectronMassRatio});
   }
 
   const std::string csv = opt.text("csv", "");
   const std::string summary = opt.text("summary", "");
-  vlasov::FieldOutputConfig fo;
+  struct FieldOutputConfig {
+    std::string dir;
+    int every{1};
+  } fo;
   fo.dir = opt.text("fields-dir", "");
   fo.every = opt.integer("fields-every", 1);
   vlasov::ReducedOutputConfig ro;
@@ -336,8 +338,7 @@ int run(int argc, char **argv, int rank, int nproc) {
   // for the whole run -- measured, before this was fixed -- and the
   // electrostatic force on the plasma is simply missing.
   {
-    const auto sol = vlasov::solve_gauss(st.line, st.sources.rho,
-                                         p.neutrality_tol);
+    const auto sol = vlasov::solve_gauss(st.line, st.sources.rho, p.neutrality_tol);
     if (!sol.neutral && rank == 0 && !quiet) {
       std::cout << "  WARNING net charge " << sol.net_charge
                 << " exceeds the neutrality tolerance; the k = 0 mode of "
@@ -389,13 +390,12 @@ int run(int argc, char **argv, int rank, int nproc) {
               << "  box           Lx=" << p.Lx << " d_e, k=" << k
               << ", vmax=" << p.v_max << " c\n"
               << "  k lambda_D    " << k * vth << "\n"
-              << "  T_R           " << t_recurrence << "  (t_end/T_R = "
-              << p.t_end / t_recurrence << ")\n"
-              << "  dt            " << dt << " (limit " << lim << "), "
-              << n_steps << " steps to t=" << p.t_end << "\n"
+              << "  T_R           " << t_recurrence
+              << "  (t_end/T_R = " << p.t_end / t_recurrence << ")\n"
+              << "  dt            " << dt << " (limit " << lim << "), " << n_steps
+              << " steps to t=" << p.t_end << "\n"
               << "  device        " << device
-              << (device == "hip" && !device_x ? " (x-shift on host)" : "")
-              << "\n"
+              << (device == "hip" && !device_x ? " (x-shift on host)" : "") << "\n"
               << "  model         "
               << (p.electrostatic ? "electrostatic" : "electromagnetic")
               << (p.self_consistent ? "" : ", fields frozen") << "\n";
@@ -404,21 +404,20 @@ int run(int argc, char **argv, int rank, int nproc) {
   // ---- output sinks ------------------------------------------------------
   vlasov::CsvAppender ts;
   if (!csv.empty()) ts = vlasov::CsvAppender(csv, vlasov::ledger_header(), rank);
-  const auto &ob = ps.owned_box();
-  vlasov::FieldSnapshotWriter snap(
-      fo, run_id, {p.nx, p.nvx, p.nvy},
-      {ob.size[0], ob.size[1], ob.size[2]},
-      {ob.low[0], ob.low[1], ob.low[2]}, p.dx(), rank, ps.comm());
-  std::vector<std::string> snap_fields{"f"};
+  pfc::io::SnapshotSeries snap(ps.domain(), ps.owned_box(),
+                               pfc::io::SnapshotSeriesOptions{.directory = fo.dir,
+                                                              .prefix = run_id,
+                                                              .comm = ps.comm()});
+  if (!fo.dir.empty()) snap.add_field("f", ps.f(0));
   vlasov::ReducedSnapshotWriter reduced(ro, run_id, ps, rank);
   int n_reduced = 0;
 
   // ---- time loop ---------------------------------------------------------
   std::vector<double> t_s, e_ex, e_bz, e_em, m_ex, m_bz, p_x, p_y;
-  Ledger ref = vlasov::make_ledger(p, st.line, st.moments, st.sources,
-                                   st.fields, st.gauss, 0.0, 0, mode);
+  Ledger ref = vlasov::make_ledger(p, st.line, st.moments, st.sources, st.fields,
+                                   st.gauss, 0.0, 0, mode);
   Ledger now = ref;
-  int n_seen = 0, n_snap = 0;
+  int n_seen = 0;
   auto record = [&](int step, double t) {
     now = vlasov::make_ledger(p, st.line, st.moments, st.sources, st.fields,
                               st.gauss, t, step, mode);
@@ -432,10 +431,9 @@ int run(int argc, char **argv, int rank, int nproc) {
     m_bz.push_back(now.mode_bz);
     p_x.push_back(now.momentum_x);
     p_y.push_back(now.momentum_y);
-    if (snap.due(n_seen)) {
-      snap.note_time(t);
-      snap.write("f", n_snap, ps.f(0));
-      ++n_snap;
+    const int stride = fo.every < 1 ? 1 : fo.every;
+    if (!fo.dir.empty() && (n_seen % stride) == 0) {
+      snap.write(step, t);
     }
     if (reduced.due(n_seen)) {
       reduced.write(n_reduced, t, ps, st);
@@ -482,7 +480,7 @@ int run(int argc, char **argv, int rank, int nproc) {
       if (step % sample_every == 0 || step == n_steps) record(step, t);
     }
   }
-  snap.write_manifest(snap_fields);
+  snap.close();
   reduced.write_manifest();
 
   // ---- rate fits against the oracles -------------------------------------
@@ -564,16 +562,14 @@ int run(int argc, char **argv, int rank, int nproc) {
               << "  entropy drift " << now.d_entropy << "\n"
               << "  Gauss residual" << now.gauss_residual << "\n"
               << "  min f         " << now.f_min << "\n"
-              << "  boundary      ratio " << now.boundary_ratio
-              << ", fraction " << now.boundary_fraction << "\n"
-              << "  halo used     " << st.peak_halo_used << " of " << halo
-              << "\n";
+              << "  boundary      ratio " << now.boundary_ratio << ", fraction "
+              << now.boundary_fraction << "\n"
+              << "  halo used     " << st.peak_halo_used << " of " << halo << "\n";
     if (std::isfinite(gamma_fit)) {
       std::cout << "  growth rate   " << gamma_fit;
       if (std::isfinite(gamma_ref)) {
         std::cout << "  vs oracle " << gamma_ref << "  ("
-                  << 100.0 * (gamma_fit - gamma_ref) / std::fabs(gamma_ref)
-                  << " %)";
+                  << 100.0 * (gamma_fit - gamma_ref) / std::fabs(gamma_ref) << " %)";
       }
       std::cout << "\n";
     }
@@ -581,8 +577,7 @@ int run(int argc, char **argv, int rank, int nproc) {
       std::cout << "  frequency     " << omega_fit;
       if (std::isfinite(omega_ref)) {
         std::cout << "  vs oracle " << omega_ref << "  ("
-                  << 100.0 * (omega_fit - omega_ref) / std::fabs(omega_ref)
-                  << " %)";
+                  << 100.0 * (omega_fit - omega_ref) / std::fabs(omega_ref) << " %)";
       }
       std::cout << "\n";
     }
@@ -600,28 +595,28 @@ int run(int argc, char **argv, int rank, int nproc) {
         "energy_ex,energy_em,energy_bz,cells",
         rank);
     char buf[2048];
-    std::snprintf(
-        buf, sizeof(buf),
-        "%s,%s,%d,%d,%d,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,"
-        "%.10g,%.10g,%d,%d,%d,%d,%d,%.6g,%.6g,"
-        "%.10g,%.10g,%.6g,%.10g,%.10g,%.6g,"
-        "%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,"
-        "%.6e,%.6e,%.6e,%.6e,"
-        "%.10g,%.10g,%.10g,%.0f",
-        run_id.c_str(), c.name.c_str(), p.nx, p.nvx, p.nvy, p.Lx, p.v_max, k,
-        k * vth, vth, vthy, drift, amp, dt, p.t_end, n_steps, nproc, halo,
-        st.peak_halo_used, p.interp_order, fit_t0, fit_t1, gamma_fit, gamma_ref,
-        (std::isfinite(gamma_ref) && gamma_ref != 0.0)
-            ? (gamma_fit - gamma_ref) / std::fabs(gamma_ref)
-            : std::nan(""),
-        omega_fit, omega_ref,
-        (std::isfinite(omega_ref) && omega_ref != 0.0)
-            ? (omega_fit - omega_ref) / std::fabs(omega_ref)
-            : std::nan(""),
-        now.d_energy, now.d_number, now.d_entropy, now.d_l1, now.d_l2,
-        now.d_momentum_x, now.gauss_residual, now.f_min, now.boundary_ratio,
-        now.boundary_fraction, now.energy_ex, now.energy_em, now.energy_bz,
-        p.cells());
+    std::snprintf(buf, sizeof(buf),
+                  "%s,%s,%d,%d,%d,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,"
+                  "%.10g,%.10g,%d,%d,%d,%d,%d,%.6g,%.6g,"
+                  "%.10g,%.10g,%.6g,%.10g,%.10g,%.6g,"
+                  "%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,"
+                  "%.6e,%.6e,%.6e,%.6e,"
+                  "%.10g,%.10g,%.10g,%.0f",
+                  run_id.c_str(), c.name.c_str(), p.nx, p.nvx, p.nvy, p.Lx, p.v_max,
+                  k, k * vth, vth, vthy, drift, amp, dt, p.t_end, n_steps, nproc,
+                  halo, st.peak_halo_used, p.interp_order, fit_t0, fit_t1, gamma_fit,
+                  gamma_ref,
+                  (std::isfinite(gamma_ref) && gamma_ref != 0.0)
+                      ? (gamma_fit - gamma_ref) / std::fabs(gamma_ref)
+                      : std::nan(""),
+                  omega_fit, omega_ref,
+                  (std::isfinite(omega_ref) && omega_ref != 0.0)
+                      ? (omega_fit - omega_ref) / std::fabs(omega_ref)
+                      : std::nan(""),
+                  now.d_energy, now.d_number, now.d_entropy, now.d_l1, now.d_l2,
+                  now.d_momentum_x, now.gauss_residual, now.f_min,
+                  now.boundary_ratio, now.boundary_fraction, now.energy_ex,
+                  now.energy_em, now.energy_bz, p.cells());
     sum.row(std::string(buf));
   }
   return EXIT_SUCCESS;
