@@ -12,23 +12,24 @@
  * @details
  * ## What this file is, and what it is not
  *
- * It is *not* an elastic solver. `openpfc/solvers/microelasticity/microelasticity.hpp` is the
- * solver -- Eshelby-validated, with a finite-difference-checked
- * `d f_el/d phi` -- and nothing here re-derives any of it. This file is the
- * adapter that makes the solver usable from inside a finite-difference time
- * loop, and the three jobs it does are the three places where a coupled
- * local-FD / global-FFT application can quietly go wrong:
+ * It is *not* an elastic solver.
+ * `openpfc/solvers/microelasticity/microelasticity.hpp` is the solver --
+ * Eshelby-validated, with a finite-difference-checked `d f_el/d phi` -- and nothing
+ * here re-derives any of it. This file is the adapter that makes the solver usable
+ * from inside a finite-difference time loop, and the three jobs it does are the
+ * three places where a coupled local-FD / global-FFT application can quietly go
+ * wrong:
  *
  *  1. **Two layouts, one grid.** The phase field lives on a *padded* FD field
  *     (`FDPaddedCPUStack`, storage halo `fd_order/2`); the elastic solver
  *     lives on flat HeFFTe inbox fields with no halo. They must describe the
  *     same owned cells or the coupling is silently wrong on every rank but
  *     zero. See @ref ElasticCoupling::require_matching_layout_.
- *  2. **Three fields, not one.** The solver wants `h`, the eigenstrain
- *     amplitude `a`, and *both* their `phi`-derivatives. Passing `nullptr`
- *     for the derivatives is accepted by the solver and yields
- *     `dfel_dphi() == 0` everywhere -- a coupled run that is silently
- *     uncoupled. @ref ElasticCoupling always supplies all four.
+ *  2. **Three fields, not one.** The solver wants the stiffness weight, the
+ *     eigenstrain amplitude, and both of their derivatives with respect to
+ *     `phi`. Passing `nullptr` for the derivatives is accepted and yields
+ *     `elastic_energy_derivative() == 0` everywhere -- a coupled run that is
+ *     silently uncoupled. @ref ElasticCoupling always supplies all four.
  *  3. **Units.** `lambda_el` is not a free knob if the elastic constants are
  *     in GPa and `U` is dimensionless. The conversion is derived below and
  *     implemented in @ref chemical_energy_scale.
@@ -126,7 +127,8 @@
  * right way to size `N` is to measure the resulting change in a dendrite
  * observable rather than to argue about it. The drivers do exactly that.
  *
- * @see openpfc/solvers/microelasticity/microelasticity.hpp for the solver and its verification
+ * @see openpfc/solvers/microelasticity/microelasticity.hpp for the solver and its
+ * verification
  * @see MODEL_SPEC.md equations (5)-(7)
  * @see Khachaturyan, *Theory of Structural Transformations in Solids* (1983)
  * @see Hu & Chen, *Acta Mater.* **49**, 1879 (2001)
@@ -149,6 +151,7 @@
 
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
+#include <alloy_dendrite/material.hpp>
 #include <alloy_dendrite/parameters.hpp>
 
 namespace alloy_dendrite {
@@ -210,18 +213,18 @@ struct ElasticParams {
   /// Solid stiffness, cubic, `<100>` along the grid, in units of `f_ref`.
   Stiffness c_solid{};
   /**
-   * @brief `mu_l / mu_s` for @ref pfc::solvers::soft_liquid.
+   * @brief `mu_l / mu_s` for @ref material::liquid_stiffness.
    *
    * A liquid has no shear modulus, and a phase-field elastic solve cannot
    * use zero: the local stiffness becomes singular in two channels and every
    * fixed point of this family has contraction factor 1. It is a
    * regularisation parameter. The default here is the solver's own
-   * (`kDefaultLiquidShearFraction = 0.05`, contrast 20), whose measured cost
+   * (`kLiquidShearFraction = 0.05`, contrast 20), whose measured cost
    * is documented there; the drivers scan it and report the iteration count,
    * because "we picked 0.05" is not a justification and "0.01 costs twice
    * the iterations and moves the tip velocity by X" is.
    */
-  double mu_liquid_fraction{pfc::solvers::kDefaultLiquidShearFraction};
+  double mu_liquid_fraction{material::kLiquidShearFraction};
   /// `K_l / K_s`. 1 by default: liquids are nearly as stiff in bulk as solids.
   double bulk_liquid_fraction{1.0};
 
@@ -301,8 +304,7 @@ public:
    * @param rank    Caller rank on @p comm.
    * @param comm    Communicator; must be the stack's.
    */
-  ElasticCoupling(Stack &stack, const ElasticParams &params, int rank,
-                  MPI_Comm comm)
+  ElasticCoupling(Stack &stack, const ElasticParams &params, int rank, MPI_Comm comm)
       : m_params(params), m_comm(comm),
         // The FFT is built from the *stack's own* decomposition rather than
         // from `nproc`. `SpectralCPUStack` would build its own via
@@ -320,8 +322,8 @@ public:
                                                  m_fft.get_inbox_bounds())),
         m_damp(pfc::data::field_from_inbox<double>(stack.domain(),
                                                    m_fft.get_inbox_bounds())),
-        m_dfel(stack.make_field()), m_solver(stack.domain(), m_fft,
-                                             make_solver_params_(params, comm)) {
+        m_dfel(stack.make_field()),
+        m_solver(stack.domain(), m_fft, make_solver_params_(params, comm)) {
     if (params.n_el_substep < 1) {
       throw std::invalid_argument(
           "ElasticCoupling: n_el_substep must be >= 1 (1 = solve every step)");
@@ -337,19 +339,17 @@ public:
 
   /// The `d f_el / d phi` field, in the stepper's padded layout. Hand this to
   /// `Stepper::set_elastic_driving_force`. Zero until the first @ref solve.
-  [[nodiscard]] const PaddedField &driving_force() const noexcept {
-    return m_dfel;
-  }
+  [[nodiscard]] const PaddedField &driving_force() const noexcept { return m_dfel; }
 
   [[nodiscard]] const pfc::solvers::EigenstrainMicroelasticity &
   solver() const noexcept {
     return m_solver;
   }
   [[nodiscard]] const ElasticParams &params() const noexcept { return m_params; }
-  /// Liquid stiffness actually in use, derived from the solid by `soft_liquid`.
+  /// Liquid stiffness actually in use, from `material::liquid_stiffness`.
   [[nodiscard]] Stiffness c_liquid() const noexcept {
-    return pfc::solvers::soft_liquid(m_params.c_solid, m_params.mu_liquid_fraction,
-                                  m_params.bulk_liquid_fraction);
+    return material::liquid_stiffness(m_params.c_solid, m_params.mu_liquid_fraction,
+                                      m_params.bulk_liquid_fraction);
   }
 
   /// True when step @p step (1-based) is one the solve runs on.
@@ -396,8 +396,8 @@ public:
       double amp_sum = 0.0;
       MPI_Allreduce(&amp_local, &amp_sum, 1, MPI_DOUBLE, MPI_SUM, m_comm);
       const auto g = m_h.global_size();
-      const double ncells = static_cast<double>(g[0]) *
-                            static_cast<double>(g[1]) * static_cast<double>(g[2]);
+      const double ncells = static_cast<double>(g[0]) * static_cast<double>(g[1]) *
+                            static_cast<double>(g[2]);
       const double mean_amp = amp_sum / ncells;
       Sym3 bar;
       for (int c = 0; c < pfc::solvers::kSymComponents; ++c) {
@@ -411,7 +411,7 @@ public:
     // Back to the padded layout. The owned boxes are identical (checked at
     // construction), so this is an index-for-index copy; the halo of m_dfel
     // is never read by the stepper, which only touches owned cells.
-    const auto &src = m_solver.dfel_dphi();
+    const auto &src = m_solver.elastic_energy_derivative();
     double local_max = 0.0;
     m_dfel.for_each_owned([&](int i, int j, int k) {
       const double v = src(i, j, k);
@@ -450,14 +450,14 @@ private:
   static pfc::solvers::MicroelasticityParams
   make_solver_params_(const ElasticParams &p, MPI_Comm comm) {
     pfc::solvers::MicroelasticityParams q;
-    q.c_solid = p.c_solid;
-    q.c_liquid =
-        pfc::solvers::soft_liquid(p.c_solid, p.mu_liquid_fraction, p.bulk_liquid_fraction);
+    q.stiffness_at_one = p.c_solid;
+    q.stiffness_at_zero = material::liquid_stiffness(p.c_solid, p.mu_liquid_fraction,
+                                                     p.bulk_liquid_fraction);
     q.eigenstrain_pattern = Sym3::identity(); // dilatational, equation (5)
     q.applied_strain = Sym3{};
     q.scheme = p.scheme;
-    q.tol_el = p.tol_el;
-    q.n_el_iter = p.n_el_iter;
+    q.relative_tolerance = p.tol_el;
+    q.max_iterations = p.n_el_iter;
     q.warm_start = p.warm_start;
     q.comm = comm;
     return q;

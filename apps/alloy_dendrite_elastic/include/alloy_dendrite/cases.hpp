@@ -910,7 +910,7 @@ template <int Dim>
       if (elastic) {
         const auto &sol = elastic->solver();
         snap.write("f_el", n_snap, sol.elastic_energy_density());
-        snap.write("dfel_dphi", n_snap, sol.dfel_dphi());
+        snap.write("dfel_dphi", n_snap, sol.elastic_energy_derivative());
         // Voigt order is (xx, yy, zz, yz, xz, xy); see `Sym3`. The
         // hydrostatic part is what couples to composition, and the von Mises
         // equivalent is what a deviatoric response would show -- a

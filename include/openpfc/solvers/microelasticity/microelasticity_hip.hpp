@@ -12,9 +12,10 @@
  * local reflection, residual reduction, and equation (7) stay on device.
  * The inner loop does not copy the six tensor fields to the host.
  *
- * Host `Field<double>` `solve()` is the homogenization API: upload, iterate,
- * download strain/stress/`f_el`/`dfel`. Dendrite coupling writes the device
- * `h`/`amp` buffers directly and calls `solve_resident()`.
+ * Host `Field<double>` `solve()` uploads, iterates, and downloads strain,
+ * stress, the energy density, and its derivative. A caller that already
+ * holds those scalars on device writes the stiffness-weight and
+ * eigenstrain-amplitude buffers and calls `solve_resident()`.
  */
 
 #if !defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -56,18 +57,20 @@ public:
   DeviceEigenstrainMicroelasticity(const pfc::Domain &domain, FFT &fft,
                                    MicroelasticityParams params)
       : m_fft(fft), m_params(params),
-        m_c0(EigenstrainMicroelasticity::optimal_reference(
-            params.scheme, params.c_solid, params.c_liquid)),
+        m_reference_stiffness(EigenstrainMicroelasticity::optimal_reference(
+            params.scheme, params.stiffness_at_one, params.stiffness_at_zero)),
         m_n_local(fft.size_inbox()), m_n_outbox(fft.size_outbox()) {
     if (m_params.scheme != MicroelasticityScheme::EyreMilton) {
       throw std::invalid_argument(
           "DeviceEigenstrainMicroelasticity: only EyreMilton is on the "
           "device; Basic is the host-side reference");
     }
-    require_invertible(Stiffness::blend(m_params.c_solid, 1.0, m_c0, 1.0),
-                       "c_solid + reference");
-    require_invertible(Stiffness::blend(m_params.c_liquid, 1.0, m_c0, 1.0),
-                       "c_liquid + reference");
+    require_invertible(
+        Stiffness::blend(m_params.stiffness_at_one, 1.0, m_reference_stiffness, 1.0),
+        "stiffness_at_one + reference");
+    require_invertible(Stiffness::blend(m_params.stiffness_at_zero, 1.0,
+                                        m_reference_stiffness, 1.0),
+                       "stiffness_at_zero + reference");
     const auto box = fft.get_inbox_bounds();
     for (int c = 0; c < kSymComponents; ++c) {
       m_strain_host[static_cast<std::size_t>(c)] =
@@ -78,24 +81,25 @@ public:
       m_d_tau[static_cast<std::size_t>(c)] = RealBuf(m_n_local);
       m_d_tau_prev[static_cast<std::size_t>(c)] = RealBuf(m_n_local);
       m_d_stress[static_cast<std::size_t>(c)] = RealBuf(m_n_local);
-      m_d_hat[static_cast<std::size_t>(c)] = CplxBuf(m_n_outbox);
+      m_d_stiffness_weightat[static_cast<std::size_t>(c)] = CplxBuf(m_n_outbox);
       m_d_g[static_cast<std::size_t>(c)] = RealBuf(m_n_outbox);
     }
-    m_f_el_host = pfc::data::field_from_inbox<double>(domain, box);
+    m_elastic_energy_density_host = pfc::data::field_from_inbox<double>(domain, box);
     m_dfel_host = pfc::data::field_from_inbox<double>(domain, box);
-    m_d_h = RealBuf(m_n_local);
-    m_d_amp = RealBuf(m_n_local);
-    m_d_dh = RealBuf(m_n_local);
-    m_d_damp = RealBuf(m_n_local);
-    m_d_f_el = RealBuf(m_n_local);
-    m_d_dfel = RealBuf(m_n_local);
+    m_d_stiffness_weight = RealBuf(m_n_local);
+    m_d_eigenstrain_amplitude = RealBuf(m_n_local);
+    m_d_stiffness_weight_derivative = RealBuf(m_n_local);
+    m_d_eigenstrain_amplitude_derivative = RealBuf(m_n_local);
+    m_d_elastic_energy_density = RealBuf(m_n_local);
+    m_d_elastic_energy_derivative = RealBuf(m_n_local);
     m_d_kx = RealBuf(m_n_outbox);
     m_d_ky = RealBuf(m_n_outbox);
     m_d_kz = RealBuf(m_n_outbox);
     m_n_blocks = hip_detail::me_local_block_count(static_cast<long long>(m_n_local));
     m_d_block = RealBuf(static_cast<std::size_t>(std::max(3 * m_n_blocks, 3)));
     m_block_host.assign(static_cast<std::size_t>(std::max(3 * m_n_blocks, 3)), 0.0);
-    hip_detail::me_fill(m_d_dh.data(), 0.5, static_cast<long long>(m_n_local));
+    hip_detail::me_fill(m_d_stiffness_weight_derivative.data(), 0.5,
+                        static_cast<long long>(m_n_local));
     build_and_upload_green(domain, fft);
     bind_packs();
     const auto gs = m_strain_host[0].global_size();
@@ -116,18 +120,26 @@ public:
     return m_stress_host;
   }
   [[nodiscard]] const RealField &elastic_energy_density() const noexcept {
-    return m_f_el_host;
+    return m_elastic_energy_density_host;
   }
-  [[nodiscard]] const RealField &dfel_dphi() const noexcept { return m_dfel_host; }
+  [[nodiscard]] const RealField &elastic_energy_derivative() const noexcept {
+    return m_dfel_host;
+  }
 
-  [[nodiscard]] double *h_device() noexcept { return m_d_h.data(); }
-  [[nodiscard]] double *amp_device() noexcept { return m_d_amp.data(); }
-  [[nodiscard]] double *damp_device() noexcept { return m_d_damp.data(); }
-  [[nodiscard]] const double *dfel_device() const noexcept {
-    return m_d_dfel.data();
+  [[nodiscard]] double *stiffness_weight_device() noexcept {
+    return m_d_stiffness_weight.data();
   }
-  [[nodiscard]] const double *f_el_device() const noexcept {
-    return m_d_f_el.data();
+  [[nodiscard]] double *eigenstrain_amplitude_device() noexcept {
+    return m_d_eigenstrain_amplitude.data();
+  }
+  [[nodiscard]] double *eigenstrain_amplitude_derivative_device() noexcept {
+    return m_d_eigenstrain_amplitude_derivative.data();
+  }
+  [[nodiscard]] const double *elastic_energy_derivative_device() const noexcept {
+    return m_d_elastic_energy_derivative.data();
+  }
+  [[nodiscard]] const double *elastic_energy_density_device() const noexcept {
+    return m_d_elastic_energy_density.data();
   }
   [[nodiscard]] const double *stress_device(int c) const noexcept {
     return m_d_stress[static_cast<std::size_t>(c)].data();
@@ -138,15 +150,20 @@ public:
 
   void reset() { m_has = false; }
 
-  MicroelasticityReport solve(const RealField &h, const RealField &amp,
-                              const RealField *dh_dphi = nullptr,
-                              const RealField *damp_dphi = nullptr) {
-    m_d_h.copy_from_host(h.data(), m_n_local);
-    m_d_amp.copy_from_host(amp.data(), m_n_local);
-    const bool want = (dh_dphi != nullptr) && (damp_dphi != nullptr);
+  MicroelasticityReport
+  solve(const RealField &stiffness_weight, const RealField &eigenstrain_amplitude,
+        const RealField *stiffness_weight_derivative = nullptr,
+        const RealField *eigenstrain_amplitude_derivative = nullptr) {
+    m_d_stiffness_weight.copy_from_host(stiffness_weight.data(), m_n_local);
+    m_d_eigenstrain_amplitude.copy_from_host(eigenstrain_amplitude.data(),
+                                             m_n_local);
+    const bool want = (stiffness_weight_derivative != nullptr) &&
+                      (eigenstrain_amplitude_derivative != nullptr);
     if (want) {
-      m_d_dh.copy_from_host(dh_dphi->data(), m_n_local);
-      m_d_damp.copy_from_host(damp_dphi->data(), m_n_local);
+      m_d_stiffness_weight_derivative.copy_from_host(
+          stiffness_weight_derivative->data(), m_n_local);
+      m_d_eigenstrain_amplitude_derivative.copy_from_host(
+          eigenstrain_amplitude_derivative->data(), m_n_local);
     }
     const auto report = solve_resident(want);
     download_outputs();
@@ -165,7 +182,7 @@ public:
     bind_packs();
     polarise();
     MicroelasticityReport report;
-    for (int it = 1; it <= m_params.n_el_iter; ++it) {
+    for (int it = 1; it <= m_params.max_iterations; ++it) {
       for (int c = 0; c < kSymComponents; ++c) {
         std::swap(m_d_tau[static_cast<std::size_t>(c)],
                   m_d_tau_prev[static_cast<std::size_t>(c)]);
@@ -176,7 +193,7 @@ public:
       report.iterations = it;
       report.residual = res;
       report.residual_history.push_back(res);
-      if (res < m_params.tol_el) {
+      if (res < m_params.relative_tolerance) {
         report.converged = true;
         break;
       }
@@ -187,7 +204,7 @@ public:
   }
 
   [[nodiscard]] double total_elastic_energy() {
-    hip_detail::me_block_sum(m_d_f_el.data(), m_d_block.data(),
+    hip_detail::me_block_sum(m_d_elastic_energy_density.data(), m_d_block.data(),
                              static_cast<long long>(m_n_local), m_n_blocks);
     return finish_block_sum() * m_cell;
   }
@@ -196,8 +213,8 @@ public:
     hip_detail::MESym6Const sig_ro{};
     for (int c = 0; c < kSymComponents; ++c)
       sig_ro.c[c] = m_d_stress[static_cast<std::size_t>(c)].data();
-    hip_detail::me_sigma_estar_sum(sig_ro, m_d_amp.data(), m_dp, m_d_block.data(),
-                                   m_n_blocks);
+    hip_detail::me_sigma_estar_sum(sig_ro, m_d_eigenstrain_amplitude.data(), m_dp,
+                                   m_d_block.data(), m_n_blocks);
     return -0.5 * finish_block_sum() * m_cell;
   }
 
@@ -231,8 +248,9 @@ public:
     hip_detail::MESym6Const sig_ro{};
     for (int c = 0; c < kSymComponents; ++c)
       sig_ro.c[c] = m_d_stress[static_cast<std::size_t>(c)].data();
-    hip_detail::me_report_stats(sig_ro, m_d_dfel.data(), m_d_block.data(),
-                                static_cast<long long>(m_n_local), m_n_blocks);
+    hip_detail::me_report_stats(sig_ro, m_d_elastic_energy_derivative.data(),
+                                m_d_block.data(), static_cast<long long>(m_n_local),
+                                m_n_blocks);
     m_d_block.copy_to_host(m_block_host.data(), m_block_host.size());
     double p_local = 0.0, adfel = 0.0, vm = 0.0;
     for (int b = 0; b < m_n_blocks; ++b) {
@@ -265,10 +283,11 @@ private:
   }
 
   void rebuild_device_params() {
-    m_dp.c_solid = flat(m_params.c_solid);
-    m_dp.c_liquid = flat(m_params.c_liquid);
-    m_dp.c0 = flat(m_c0);
-    m_dp.dc = flat(Stiffness::blend(m_params.c_solid, 1.0, m_params.c_liquid, -1.0));
+    m_dp.stiffness_at_one = flat(m_params.stiffness_at_one);
+    m_dp.stiffness_at_zero = flat(m_params.stiffness_at_zero);
+    m_dp.reference = flat(m_reference_stiffness);
+    m_dp.stiffness_difference = flat(Stiffness::blend(
+        m_params.stiffness_at_one, 1.0, m_params.stiffness_at_zero, -1.0));
     for (int c = 0; c < kSymComponents; ++c)
       m_dp.pattern[c] = m_params.eigenstrain_pattern[c];
     m_dp.n = static_cast<long long>(m_n_local);
@@ -281,21 +300,22 @@ private:
       m_eps_ro.c[c] = m_d_strain[ci].data();
       m_tau_rw.c[c] = m_d_tau[ci].data();
       m_tau_prev_ro.c[c] = m_d_tau_prev[ci].data();
-      m_hat_rw.c[c] = reinterpret_cast<double *>(m_d_hat[ci].data());
+      m_hat_rw.c[c] = reinterpret_cast<double *>(m_d_stiffness_weightat[ci].data());
       m_g_ro.c[c] = m_d_g[ci].data();
       m_sig_rw.c[c] = m_d_stress[ci].data();
     }
   }
 
   void polarise() {
-    hip_detail::me_build_polarisation(m_d_h.data(), m_d_amp.data(), m_eps_ro,
+    hip_detail::me_build_polarisation(m_d_stiffness_weight.data(),
+                                      m_d_eigenstrain_amplitude.data(), m_eps_ro,
                                       m_tau_rw, m_dp);
   }
 
   void apply_green() {
     for (int c = 0; c < kSymComponents; ++c) {
       m_fft.forward(m_d_tau_prev[static_cast<std::size_t>(c)],
-                    m_d_hat[static_cast<std::size_t>(c)]);
+                    m_d_stiffness_weightat[static_cast<std::size_t>(c)]);
     }
     double eapp[6];
     for (int c = 0; c < kSymComponents; ++c) eapp[c] = m_params.applied_strain[c];
@@ -307,15 +327,15 @@ private:
                                       : static_cast<long long>(m_zero_mode),
                                   eapp, m_n_global);
     for (int c = 0; c < kSymComponents; ++c) {
-      m_fft.backward(m_d_hat[static_cast<std::size_t>(c)],
+      m_fft.backward(m_d_stiffness_weightat[static_cast<std::size_t>(c)],
                      m_d_strain[static_cast<std::size_t>(c)]);
     }
   }
 
   double eyre_milton_local() {
-    hip_detail::me_eyre_milton_local(m_d_h.data(), m_d_amp.data(), m_tau_prev_ro,
-                                     m_eps_rw, m_tau_rw, m_dp, m_d_block.data(),
-                                     m_n_blocks);
+    hip_detail::me_eyre_milton_local(
+        m_d_stiffness_weight.data(), m_d_eigenstrain_amplitude.data(), m_tau_prev_ro,
+        m_eps_rw, m_tau_rw, m_dp, m_d_block.data(), m_n_blocks);
     m_d_block.copy_to_host(m_block_host.data(), m_block_host.size());
     double diff = 0.0, scale = 0.0;
     for (int b = 0; b < m_n_blocks; ++b) {
@@ -329,9 +349,12 @@ private:
   }
 
   void finalise(bool want_dfel) {
-    hip_detail::me_finalise(m_d_h.data(), m_d_amp.data(), m_d_dh.data(),
-                            m_d_damp.data(), m_eps_ro, m_sig_rw, m_d_f_el.data(),
-                            m_d_dfel.data(), m_dp, want_dfel ? 1 : 0);
+    hip_detail::me_finalise(
+        m_d_stiffness_weight.data(), m_d_eigenstrain_amplitude.data(),
+        m_d_stiffness_weight_derivative.data(),
+        m_d_eigenstrain_amplitude_derivative.data(), m_eps_ro, m_sig_rw,
+        m_d_elastic_energy_density.data(), m_d_elastic_energy_derivative.data(),
+        m_dp, want_dfel ? 1 : 0);
   }
 
   void download_stress_energy() {
@@ -340,9 +363,10 @@ private:
           m_stress_host[static_cast<std::size_t>(c)].data(), m_n_local);
       m_stress_host[static_cast<std::size_t>(c)].note_host_write();
     }
-    m_d_f_el.copy_to_host(m_f_el_host.data(), m_n_local);
-    m_f_el_host.note_host_write();
-    m_d_dfel.copy_to_host(m_dfel_host.data(), m_n_local);
+    m_d_elastic_energy_density.copy_to_host(m_elastic_energy_density_host.data(),
+                                            m_n_local);
+    m_elastic_energy_density_host.note_host_write();
+    m_d_elastic_energy_derivative.copy_to_host(m_dfel_host.data(), m_n_local);
     m_dfel_host.note_host_write();
   }
 
@@ -352,8 +376,9 @@ private:
     std::array<std::vector<double>, 6> g;
     for (auto &v : g) v.assign(m_n_outbox, 0.0);
     m_zero_mode = static_cast<std::size_t>(-1);
-    const double c12 = m_c0.c12, c44 = m_c0.c44;
-    const double aniso = m_c0.c11 - m_c0.c12 - 2.0 * m_c0.c44;
+    const double c12 = m_reference_stiffness.c12, c44 = m_reference_stiffness.c44;
+    const double aniso = m_reference_stiffness.c11 - m_reference_stiffness.c12 -
+                         2.0 * m_reference_stiffness.c44;
     const auto gsz = pfc::domain::get_size(domain);
     pfc::fft::kspace::for_each_kpoint(
         fft.get_outbox_bounds(), domain,
@@ -408,15 +433,17 @@ private:
 
   FFT &m_fft;
   MicroelasticityParams m_params;
-  Stiffness m_c0;
+  Stiffness m_reference_stiffness;
   SymRealFields m_strain_host{};
   SymRealFields m_stress_host{};
-  RealField m_f_el_host{};
+  RealField m_elastic_energy_density_host{};
   RealField m_dfel_host{};
   std::array<RealBuf, 6> m_d_strain{}, m_d_tau{}, m_d_tau_prev{}, m_d_stress{},
       m_d_g{};
-  std::array<CplxBuf, 6> m_d_hat{};
-  RealBuf m_d_h, m_d_amp, m_d_dh, m_d_damp, m_d_f_el, m_d_dfel, m_d_kx, m_d_ky,
+  std::array<CplxBuf, 6> m_d_stiffness_weightat{};
+  RealBuf m_d_stiffness_weight, m_d_eigenstrain_amplitude,
+      m_d_stiffness_weight_derivative, m_d_eigenstrain_amplitude_derivative,
+      m_d_elastic_energy_density, m_d_elastic_energy_derivative, m_d_kx, m_d_ky,
       m_d_kz, m_d_block;
   hip_detail::MEParams m_dp{};
   hip_detail::MESym6 m_eps_rw{}, m_tau_rw{}, m_hat_rw{}, m_sig_rw{};

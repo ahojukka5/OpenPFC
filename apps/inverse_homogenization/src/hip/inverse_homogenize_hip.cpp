@@ -495,10 +495,10 @@ int run(int argc, char **argv, int rank, int nproc) {
   h.note_host_write();
 
   pfc::solvers::MicroelasticityParams p;
-  p.c_solid = pfc::solvers::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
-  p.c_liquid = pfc::solvers::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
-  p.tol_el = 1.0e-8;
-  p.n_el_iter = cfg.n_el_iter;
+  p.stiffness_at_one = pfc::solvers::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
+  p.stiffness_at_zero = pfc::solvers::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
+  p.relative_tolerance = 1.0e-8;
+  p.max_iterations = cfg.n_el_iter;
   p.warm_start = false;
   p.comm = MPI_COMM_WORLD;
 

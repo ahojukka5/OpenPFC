@@ -3,7 +3,8 @@
 
 /**
  * @file test_microelasticity.cpp
- * @brief Verification ladder for `openpfc/solvers/microelasticity/microelasticity.hpp`.
+ * @brief Verification ladder for
+ * `openpfc/solvers/microelasticity/microelasticity.hpp`.
  *
  * @details
  * Stage 0 of the capstone verification table (MODEL_SPEC.md): the elastic
@@ -360,8 +361,8 @@ TEST_CASE("Green operator reproduces the closed-form single-mode strain (isotrop
   });
 
   MicroelasticityParams p;
-  p.c_solid = c;
-  p.c_liquid = c;
+  p.stiffness_at_one = c;
+  p.stiffness_at_zero = c;
   p.warm_start = false;
   EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
   const auto rep = solver.solve(cs.h, cs.amp);
@@ -422,8 +423,8 @@ TEST_CASE("Green operator matches an independent acoustic-tensor solve (cubic)",
   });
 
   MicroelasticityParams p;
-  p.c_solid = c;
-  p.c_liquid = c;
+  p.stiffness_at_one = c;
+  p.stiffness_at_zero = c;
   p.eigenstrain_pattern = pattern;
   p.warm_start = false;
   EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
@@ -491,8 +492,8 @@ TEST_CASE("Dilatation identity holds pointwise for an arbitrary eigenstrain",
   });
 
   MicroelasticityParams p;
-  p.c_solid = c;
-  p.c_liquid = c;
+  p.stiffness_at_one = c;
+  p.stiffness_at_zero = c;
   p.warm_start = false;
   EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
   REQUIRE(solver.solve(cs.h, cs.amp).iterations == 1);
@@ -578,8 +579,8 @@ TEST_CASE("Eshelby spherical inclusion: interior strain, interior stress, decay"
   fill_value(cs.h, 1.0);
 
   MicroelasticityParams p;
-  p.c_solid = c;
-  p.c_liquid = c;
+  p.stiffness_at_one = c;
+  p.stiffness_at_zero = c;
   p.warm_start = false;
   EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
   REQUIRE(solver.solve(cs.h, cs.amp).iterations == 1);
@@ -707,8 +708,8 @@ TEST_CASE("A homogeneous modulus converges in exactly one iteration",
 
     MicroelasticityParams p;
     p.scheme = scheme;
-    p.c_solid = c;
-    p.c_liquid = c; // <- the point of the test
+    p.stiffness_at_one = c;
+    p.stiffness_at_zero = c; // <- the point of the test
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     const auto rep = solver.solve(cs.h, cs.amp);
@@ -767,10 +768,10 @@ TEST_CASE("Contrast: the accelerated scheme beats the basic one as sqrt(r)",
     fill(cs.amp, [&](double x, double y, double z) { return 2.0e-3 * s(x, y, z); });
     MicroelasticityParams p;
     p.scheme = scheme;
-    p.c_solid = solid;
-    p.c_liquid = Stiffness::isotropic(1.0 / ratio, nu);
-    p.tol_el = tol;
-    p.n_el_iter = max_it;
+    p.stiffness_at_one = solid;
+    p.stiffness_at_zero = Stiffness::isotropic(1.0 / ratio, nu);
+    p.relative_tolerance = tol;
+    p.max_iterations = max_it;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     const auto rep = solver.solve(cs.h, cs.amp);
@@ -855,8 +856,8 @@ TEST_CASE("Contrast: the accelerated scheme beats the basic one as sqrt(r)",
 // An accelerated scheme that converges quickly to the wrong answer is worse
 // than a slow one. The basic scheme is the reference here: it is the one whose
 // solution every closed-form test above has already checked, so agreeing with
-// it to a tolerance well below tol_el is what licenses making Eyre-Milton the
-// default.
+// it to a tolerance well below relative_tolerance is what licenses making
+// Eyre-Milton the default.
 TEST_CASE("Basic and Eyre-Milton converge to the same solution",
           "[microelasticity][accelerated]") {
   constexpr int N = 32;
@@ -872,10 +873,10 @@ TEST_CASE("Basic and Eyre-Milton converge to the same solution",
     fill_value(cs.damp, 1.0e-3);
     MicroelasticityParams p;
     p.scheme = scheme;
-    p.c_solid = Stiffness::isotropic(1.0, nu);
-    p.c_liquid = Stiffness::isotropic(1.0 / ratio, nu);
-    p.tol_el = 1.0e-12;
-    p.n_el_iter = 2000;
+    p.stiffness_at_one = Stiffness::isotropic(1.0, nu);
+    p.stiffness_at_zero = Stiffness::isotropic(1.0 / ratio, nu);
+    p.relative_tolerance = 1.0e-12;
+    p.max_iterations = 2000;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     REQUIRE(solver.solve(cs.h, cs.amp, &cs.dh, &cs.damp).converged);
@@ -885,7 +886,7 @@ TEST_CASE("Basic and Eyre-Milton converge to the same solution",
           solver.strain()[static_cast<std::size_t>(c)].vec();
     }
     return std::tuple{eps, solver.total_elastic_energy(),
-                      field_absmax(solver.dfel_dphi())};
+                      field_absmax(solver.elastic_energy_derivative())};
   };
 
   const auto [eps_basic, e_basic, d_basic] =
@@ -915,26 +916,26 @@ TEST_CASE("Basic and Eyre-Milton converge to the same solution",
 // ---------------------------------------------------------------------------
 //
 // A real liquid has mu = 0 and no fixed point of this family converges there,
-// so the liquid modulus is a regularisation parameter. `soft_liquid` softens
-// only the two shear channels and leaves the bulk modulus alone, because
-// liquids really are nearly as incompressible as solids. This pins the
-// documented default and the iteration count the header quotes for it.
-TEST_CASE("The recommended liquid stiffness converges within the default cap",
+// so a zero shear modulus is not a useful endpoint. The alloy app scales
+// shear and keeps the bulk modulus; this case pins the iteration count the
+// header quotes for a shear fraction of 0.05.
+TEST_CASE("A shear contrast of 20 converges within the default cap",
           "[microelasticity][accelerated]") {
   constexpr int N = 32;
+  constexpr double kShearFraction = 0.05;
+  const auto soften_shear = [](const Stiffness &stiff, double shear_fraction) {
+    return Stiffness::from_channels(stiff.bulk_modulus(),
+                                    shear_fraction * stiff.shear_tetragonal(),
+                                    shear_fraction * stiff.shear_trigonal());
+  };
   const Stiffness solid = Stiffness::isotropic(1.0, 0.3);
-  const Stiffness liquid = pfc::solvers::soft_liquid(solid);
+  const Stiffness liquid = soften_shear(solid, kShearFraction);
 
-  // Shear softened by kDefaultLiquidShearFraction, bulk untouched.
   REQUIRE_THAT(liquid.bulk_modulus(), WithinRel(solid.bulk_modulus(), 1e-14));
-  REQUIRE_THAT(
-      liquid.shear_trigonal(),
-      WithinRel(pfc::solvers::kDefaultLiquidShearFraction * solid.shear_trigonal(),
-                1e-14));
-  REQUIRE_THAT(
-      liquid.shear_tetragonal(),
-      WithinRel(pfc::solvers::kDefaultLiquidShearFraction * solid.shear_tetragonal(),
-                1e-14));
+  REQUIRE_THAT(liquid.shear_trigonal(),
+               WithinRel(kShearFraction * solid.shear_trigonal(), 1e-14));
+  REQUIRE_THAT(liquid.shear_tetragonal(),
+               WithinRel(kShearFraction * solid.shear_tetragonal(), 1e-14));
 
   for (auto scheme :
        {MicroelasticityScheme::Basic, MicroelasticityScheme::EyreMilton}) {
@@ -944,9 +945,9 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
     fill(cs.amp, [&](double x, double y, double z) { return 2.0e-3 * s(x, y, z); });
     MicroelasticityParams p;
     p.scheme = scheme;
-    p.c_solid = solid;
-    p.c_liquid = liquid;
-    p.n_el_iter = 2000;
+    p.stiffness_at_one = solid;
+    p.stiffness_at_zero = liquid;
+    p.max_iterations = 2000;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     const auto rep = solver.solve(cs.h, cs.amp);
@@ -959,7 +960,7 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
       // fitting, the default cap or the default fraction has to move, and
       // this is where that gets noticed.
       MicroelasticityParams q = p;
-      q.n_el_iter = MicroelasticityParams{}.n_el_iter;
+      q.max_iterations = MicroelasticityParams{}.max_iterations;
       Case cs2(N, 1.0);
       fill(cs2.h, [&](double x, double y, double z) { return s(x, y, z); });
       fill(cs2.amp,
@@ -979,9 +980,11 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
     fill(cs.amp, [&](double x, double y, double z) { return 2.0e-3 * s(x, y, z); });
     MicroelasticityParams p;
     p.scheme = MicroelasticityScheme::EyreMilton;
-    p.c_solid = solid;
-    p.c_liquid = pfc::solvers::soft_liquid(solid, fraction);
-    p.n_el_iter = 2000;
+    p.stiffness_at_one = solid;
+    p.stiffness_at_zero = Stiffness::from_channels(
+        solid.bulk_modulus(), fraction * solid.shear_tetragonal(),
+        fraction * solid.shear_trigonal());
+    p.max_iterations = 2000;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     const auto rep = solver.solve(cs.h, cs.amp);
@@ -994,7 +997,7 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
     previous = rep.iterations;
     // Even the stiffest regularisation the literature uses stays inside the
     // default cap with the accelerated scheme.
-    REQUIRE(rep.iterations <= MicroelasticityParams{}.n_el_iter);
+    REQUIRE(rep.iterations <= MicroelasticityParams{}.max_iterations);
   }
 }
 
@@ -1005,7 +1008,7 @@ TEST_CASE("The recommended liquid stiffness converges within the default cap",
 // The spec stops on the strain change; both schemes here stop on the
 // polarisation change, which is the same fixed point one step apart. Take the
 // converged iterate, run one more pass, and confirm the strain moved by less
-// than tol_el in the spec's own norm.
+// than relative_tolerance in the spec's own norm.
 TEST_CASE("The reported iteration count also satisfies the spec's strain test",
           "[microelasticity][fixedpoint]") {
   constexpr int N = 32;
@@ -1020,10 +1023,10 @@ TEST_CASE("The reported iteration count also satisfies the spec's strain test",
     fill(cs.amp, [&](double x, double y, double z) { return 2.0e-3 * s(x, y, z); });
     MicroelasticityParams p;
     p.scheme = scheme;
-    p.c_solid = solid;
-    p.c_liquid = Stiffness::isotropic(1.0 / ratio, nu);
-    p.tol_el = tol;
-    p.n_el_iter = iters;
+    p.stiffness_at_one = solid;
+    p.stiffness_at_zero = Stiffness::isotropic(1.0 / ratio, nu);
+    p.relative_tolerance = tol;
+    p.max_iterations = iters;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     const auto rep = solver.solve(cs.h, cs.amp);
@@ -1076,16 +1079,16 @@ TEST_CASE("The returned stress satisfies div sigma = 0",
   constexpr int N = 32;
   const double nu = 0.3;
 
-  auto check = [&](double ratio, double tol_el, double allowed) {
+  auto check = [&](double ratio, double relative_tolerance, double allowed) {
     Case cs(N, 1.0);
     const Sphere s{16.0, 16.0, 16.0, 7.0, 1.5};
     fill(cs.h, [&](double x, double y, double z) { return s(x, y, z); });
     fill(cs.amp, [&](double x, double y, double z) { return 2.0e-3 * s(x, y, z); });
     MicroelasticityParams p;
-    p.c_solid = Stiffness::isotropic(1.0, nu);
-    p.c_liquid = Stiffness::isotropic(1.0 / ratio, nu);
-    p.tol_el = tol_el;
-    p.n_el_iter = 400;
+    p.stiffness_at_one = Stiffness::isotropic(1.0, nu);
+    p.stiffness_at_zero = Stiffness::isotropic(1.0 / ratio, nu);
+    p.relative_tolerance = relative_tolerance;
+    p.max_iterations = 400;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     solver.solve(cs.h, cs.amp);
@@ -1162,10 +1165,10 @@ TEST_CASE("Elastic energy is self-consistent and matches the Eshelby energy",
 
   SECTION("f_el agrees with (1/2) sigma:(eps-eps*) built from the returned fields") {
     MicroelasticityParams p;
-    p.c_solid = c;
-    p.c_liquid = Stiffness::isotropic(youngs / 4.0, nu);
-    p.tol_el = 1.0e-10;
-    p.n_el_iter = 400;
+    p.stiffness_at_one = c;
+    p.stiffness_at_zero = Stiffness::isotropic(youngs / 4.0, nu);
+    p.relative_tolerance = 1.0e-10;
+    p.max_iterations = 400;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     REQUIRE(solver.solve(cs.h, cs.amp).converged);
@@ -1194,8 +1197,8 @@ TEST_CASE("Elastic energy is self-consistent and matches the Eshelby energy",
 
   SECTION("total energy matches the closed form for a homogeneous medium") {
     MicroelasticityParams p;
-    p.c_solid = c;
-    p.c_liquid = c;
+    p.stiffness_at_one = c;
+    p.stiffness_at_zero = c;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
     REQUIRE(solver.solve(cs.h, cs.amp).iterations == 1);
@@ -1238,8 +1241,8 @@ TEST_CASE("Elastic energy is self-consistent and matches the Eshelby energy",
       return (r <= rad) ? estar : 0.0;
     });
     MicroelasticityParams p;
-    p.c_solid = c;
-    p.c_liquid = c;
+    p.stiffness_at_one = c;
+    p.stiffness_at_zero = c;
     p.warm_start = false;
     EigenstrainMicroelasticity solver(sharp.domain, sharp.stack.fft(), p);
     REQUIRE(solver.solve(sharp.h, sharp.amp).iterations == 1);
@@ -1289,10 +1292,10 @@ TEST_CASE("d f_el/d phi matches a finite difference of the converged energy",
   };
 
   MicroelasticityParams p;
-  p.c_solid = solid;
-  p.c_liquid = liquid;
-  p.tol_el = 1.0e-13;
-  p.n_el_iter = 600;
+  p.stiffness_at_one = solid;
+  p.stiffness_at_zero = liquid;
+  p.relative_tolerance = 1.0e-13;
+  p.max_iterations = 600;
   p.warm_start = false;
 
   EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
@@ -1322,7 +1325,8 @@ TEST_CASE("d f_el/d phi matches a finite difference of the converged energy",
 
   set_inputs(0.0, gi, gj, gk);
   REQUIRE(solver.solve(cs.h, cs.amp, &cs.dh, &cs.damp).converged);
-  const double analytic = sample_global(solver.dfel_dphi(), gi, gj, gk);
+  const double analytic =
+      sample_global(solver.elastic_energy_derivative(), gi, gj, gk);
 
   // Split eq. (7) so the modulus-contrast term can be shown to matter.
   const Sym3 e_here = [&] {
@@ -1336,8 +1340,8 @@ TEST_CASE("d f_el/d phi matches a finite difference of the converged energy",
     return e;
   }();
   const Sym3 s_here = sample_tensor(solver.stress(), gi, gj, gk);
-  const double term_work =
-      -pfc::solvers::ddot(s_here, Sym3{{0.5 * e0, 0.5 * e0, 0.5 * e0, 0.0, 0.0, 0.0}});
+  const double term_work = -pfc::solvers::ddot(
+      s_here, Sym3{{0.5 * e0, 0.5 * e0, 0.5 * e0, 0.0, 0.0, 0.0}});
   const Stiffness dc = Stiffness::blend(solid, 1.0, liquid, -1.0);
   const double term_modulus =
       0.5 * 0.5 * pfc::solvers::ddot(e_here, dc.contract(e_here));
@@ -1393,10 +1397,10 @@ TEST_CASE("The solution is independent of the MPI decomposition",
   // is scheme-dependent (the other three goldens are not -- both schemes
   // reach the same fixed point, which is the point of the [accelerated] case).
   p.scheme = MicroelasticityScheme::EyreMilton;
-  p.c_solid = Stiffness::cubic(2.4, 1.1, 0.7);
-  p.c_liquid = Stiffness::cubic(0.6, 0.275, 0.175);
-  p.tol_el = 1.0e-10;
-  p.n_el_iter = 400;
+  p.stiffness_at_one = Stiffness::cubic(2.4, 1.1, 0.7);
+  p.stiffness_at_zero = Stiffness::cubic(0.6, 0.275, 0.175);
+  p.relative_tolerance = 1.0e-10;
+  p.max_iterations = 400;
   p.warm_start = false;
   EigenstrainMicroelasticity solver(cs.domain, cs.stack.fft(), p);
   const auto rep = solver.solve(cs.h, cs.amp, &cs.dh, &cs.damp);
@@ -1419,7 +1423,7 @@ TEST_CASE("The solution is independent of the MPI decomposition",
   }
   const double checksum = gsum(chk);
   const double energy = solver.total_elastic_energy();
-  const double dmax = field_absmax(solver.dfel_dphi());
+  const double dmax = field_absmax(solver.elastic_energy_derivative());
 
   INFO(precise("ranks=", world_size(), " iterations=", rep.iterations,
                " checksum=", checksum, " energy=", energy, " dfel_max=", dmax));

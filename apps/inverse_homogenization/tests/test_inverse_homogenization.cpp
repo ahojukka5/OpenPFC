@@ -129,10 +129,10 @@ struct Slab {
 
 MicroelasticityParams phases() {
   MicroelasticityParams p;
-  p.c_solid = Stiffness::isotropic(2.0, 0.25);
-  p.c_liquid = Stiffness::isotropic(0.5, 0.25);
-  p.tol_el = 1.0e-8;
-  p.n_el_iter = 40;
+  p.stiffness_at_one = Stiffness::isotropic(2.0, 0.25);
+  p.stiffness_at_zero = Stiffness::isotropic(0.5, 0.25);
+  p.relative_tolerance = 1.0e-8;
+  p.max_iterations = 40;
   p.warm_start = false;
   p.comm = MPI_COMM_WORLD;
   return p;
@@ -284,10 +284,10 @@ TEST_CASE("Rotating-square seed homogenizes to negative C12",
   Slab sl(48, 48);
   pfc::apps::inverse::fill_rotating_squares(sl.h, sl.nx, sl.ny, 0.200, 0.45);
   MicroelasticityParams p = phases();
-  p.c_solid = Stiffness::isotropic(1.0, 0.3);
-  p.c_liquid = Stiffness::isotropic(0.02, 0.3);
-  p.n_el_iter = 200;
-  p.tol_el = 1.0e-7;
+  p.stiffness_at_one = Stiffness::isotropic(1.0, 0.3);
+  p.stiffness_at_zero = Stiffness::isotropic(0.02, 0.3);
+  p.max_iterations = 200;
+  p.relative_tolerance = 1.0e-7;
   PeriodicHomogenizer hom(sl.domain, sl.stack.fft(), p);
   const auto r = hom.compute(sl.h);
   REQUIRE(r.all_converged());
@@ -302,10 +302,10 @@ TEST_CASE("Reentrant honeycomb seed homogenizes to negative C12",
   Slab sl(48, 48);
   pfc::apps::inverse::fill_reentrant_honeycomb(sl.h, sl.nx, sl.ny, 0.035, 0.30);
   MicroelasticityParams p = phases();
-  p.c_solid = Stiffness::isotropic(1.0, 0.3);
-  p.c_liquid = Stiffness::isotropic(0.02, 0.3);
-  p.n_el_iter = 200;
-  p.tol_el = 1.0e-7;
+  p.stiffness_at_one = Stiffness::isotropic(1.0, 0.3);
+  p.stiffness_at_zero = Stiffness::isotropic(0.02, 0.3);
+  p.max_iterations = 200;
+  p.relative_tolerance = 1.0e-7;
   PeriodicHomogenizer hom(sl.domain, sl.stack.fft(), p);
   const auto r = hom.compute(sl.h);
   REQUIRE(r.all_converged());
@@ -363,9 +363,9 @@ TEST_CASE("Spinodal C12 is positive; rotating-square C12 is negative",
   pfc::apps::inverse::seed_spinodal_noise(chs.h, chs.nx, chs.ny, 1, ch);
   pfc::apps::inverse::generate_spinodal(chs.domain, chs.stack.fft(), chs.h, ch);
   MicroelasticityParams p = phases();
-  p.c_solid = Stiffness::isotropic(1.0, 0.3);
-  p.c_liquid = Stiffness::isotropic(0.02, 0.3);
-  p.n_el_iter = 200;
+  p.stiffness_at_one = Stiffness::isotropic(1.0, 0.3);
+  p.stiffness_at_zero = Stiffness::isotropic(0.02, 0.3);
+  p.max_iterations = 200;
   PeriodicHomogenizer hom_ch(chs.domain, chs.stack.fft(), p);
   const auto rch = hom_ch.compute(chs.h);
   REQUIRE(rch.all_converged());

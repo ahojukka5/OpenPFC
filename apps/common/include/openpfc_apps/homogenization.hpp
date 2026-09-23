@@ -679,8 +679,8 @@ public:
           "PeriodicHomogenizer::objective_sensitivity: compute() has not been "
           "called");
     }
-    const Stiffness dC = Stiffness::blend(m_solver.params().c_solid, 1.0,
-                                          m_solver.params().c_liquid, -1.0);
+    const Stiffness dC = Stiffness::blend(m_solver.params().stiffness_at_one, 1.0,
+                                          m_solver.params().stiffness_at_zero, -1.0);
     const Voigt6 &C = m_last.stiffness;
     Voigt6 dJdC;
     for (int i = 0; i < kVoigtDim; ++i)

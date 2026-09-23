@@ -18,6 +18,13 @@ int main() {
                 static_cast<int>(pfc::solvers::MicroelasticityScheme::Basic));
   static_assert(pfc::field::fd::average_face(pfc::field::fd::FaceAverage::Harmonic,
                                              0.0, 1.0) == 0.0);
+  pfc::solvers::MicroelasticityParams elastic;
+  elastic.stiffness_at_one = pfc::solvers::Stiffness::isotropic(1.0, 0.3);
+  elastic.stiffness_at_zero = elastic.stiffness_at_one;
+  elastic.relative_tolerance = 1.0e-6;
+  if (elastic.max_iterations < 1) {
+    return 1;
+  }
   auto domain = pfc::domain::create({8, 8, 8});
   const auto size = pfc::domain::get_size(domain);
   std::printf("OpenPFC consumer OK: domain %dx%dx%d\n", size[0], size[1], size[2]);

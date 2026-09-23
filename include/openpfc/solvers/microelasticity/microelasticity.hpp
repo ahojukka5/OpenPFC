@@ -13,23 +13,20 @@
  * temperature belongs to the application.
  *
  * @details
- * A phase field that changes the local lattice parameter loads the solid it
- * grows into. The load is *not* a time-integrated field: mechanical
- * equilibrium relaxes on the acoustic time scale, which is many orders of
- * magnitude faster than diffusion, so the displacement is slaved to the
- * instantaneous phase field and must be re-solved from scratch every time
- * step. Adding a displacement to the ETD state vector would be wrong physics
- * *and* an intolerable stiffness; what is needed instead is an elliptic solve
- * that runs inside one time step and hands back a body force on the phase
- * field. That is what this header is.
+ * The unknown is the periodic displacement that balances a stiffness field
+ * and an eigenstrain the caller supplies. Equilibrium is elliptic and is
+ * re-solved whenever those inputs change; the displacement is not part of
+ * the caller's time integrator.
  *
  * \f[
  *   \nabla\cdot\boldsymbol\sigma = 0,\qquad
- *   \boldsymbol\sigma = \mathbf{C}(\phi):\bigl(\boldsymbol\varepsilon(\mathbf u)
+ *   \boldsymbol\sigma = \mathbf{C}(w):\bigl(\boldsymbol\varepsilon(\mathbf u)
  *                                              - \boldsymbol\varepsilon^{*}\bigr),
  *   \qquad
- *   \varepsilon_{ij}(\mathbf u) = \tfrac12\,(\partial_i u_j + \partial_j u_i).
+ *   \varepsilon_{ij}(\mathbf u) = \tfrac12\,(\partial_i u_j + \partial_j u_i),
  * \f]
+ *
+ * with \f$\mathbf C(w) = w\,\mathbf C(1) + (1-w)\,\mathbf C(0)\f$.
  *
  * ## Why Fourier, and why an iteration on top of it
  *
@@ -67,9 +64,8 @@
  * (Khachaturyan 1983).
  *
  * \f$\boldsymbol\tau\f$ depends on \f$\boldsymbol\varepsilon\f$ whenever the
- * modulus is inhomogeneous, and here it always is: the liquid is soft and the
- * solid is stiff, that contrast is the whole reason the elastic field is
- * interesting, and it is exactly what makes this *not* a one-shot solve. The
+ * modulus is inhomogeneous. The two endpoints differ, and that contrast is
+ * exactly what makes this *not* a one-shot solve. The
  * fix is a fixed point — evaluate \f$\boldsymbol\tau\f$ in real space where
  * the modulus lives, apply \f$\Gamma\f$ in Fourier space where the Green
  * operator lives, repeat. Two of them are implemented
@@ -82,11 +78,9 @@
  * \f$\lVert(\mathbf C-\mathbf C_0)\mathbf C_0^{-1}\rVert\f$, minimised by
  * taking \f$\mathbf C_0\f$ to be the Voigt (arithmetic) mean and equal to
  * \f$(r-1)/(r+1)\f$ for a stiffness ratio \f$r\f$. That tends to 1 as
- * \f$r\to\infty\f$ *like* \f$1 - 2/r\f$, and the contrast between a solid and
- * a liquid is not small: a liquid supports no shear at all, so the honest
- * range is \f$r = 10\ldots100\f$ (see `kDefaultLiquidShearFraction`). At one
- * elastic solve per phase-field step in a 3-D dendrite run, several hundred
- * Green applications per step is not a cost anyone can pay.
+ * \f$r\to\infty\f$ *like* \f$1 - 2/r\f$. A soft endpoint that carries little
+ * shear sits at \f$r = 10\ldots100\f$. At one solve per time step, several
+ * hundred Green applications per step is not a cost anyone can pay.
  *
  * The Eyre–Milton scheme (Eyre & Milton, *Eur. Phys. J. AP* **6**, 41 (1999))
  * fixes this. It rewrites *both* the constitutive law and the
@@ -97,11 +91,11 @@
  * \f$(\sqrt r-1)/(\sqrt r+1)\f$. The square root is the whole point. It is
  * the default here.
  *
- * Measured on a \f$32^3\f$ grid with a tanh solid sphere (R = 7, w = 1.5),
+ * Measured on a \f$32^3\f$ grid with a tanh sphere (R = 7, w = 1.5),
  * isotropic \f$\nu = 0.3\f$, uniform stiffness scaling, cold start,
- * `tol_el = 1e-6`:
+ * `relative_tolerance = 1e-6`:
  *
- * | \f$r = C_{\text{solid}}/C_{\text{liquid}}\f$ | 1 | 2 | 4 | 10 | 100 |
+ * | \f$r = C(1)/C(0)\f$ | 1 | 2 | 4 | 10 | 100 |
  * |---|---|---|---|---|---|
  * | `Basic` iterations | 1 | 11 | 22 | 53 | 466 |
  * | `Basic` observed contraction | — | 0.265 | 0.524 | 0.767 | 0.970 |
@@ -117,15 +111,14 @@
  * number for the configured scheme; `test_microelasticity.cpp` regenerates
  * every entry of this table and asserts against it.
  *
- * For the liquid this header actually recommends — bulk modulus kept, shear
- * softened by `kDefaultLiquidShearFraction` — the accelerated scheme needs
- * **16** iterations against the basic scheme's **44**. `Basic` remains
+ * A shear-only contrast of 20 (bulk modulus unchanged) needs **16**
+ * accelerated iterations against the basic scheme's **44**. `Basic` remains
  * selectable: it is the reference the accelerated scheme is validated
  * against, and the two agree to 7e-13 in the strain.
  *
  * Other ways to buy back cost, all still available: lag the solve over
- * several phase-field steps (`n_el_substep` in the spec — it is quasi-static,
- * so this is legitimate), or warm-start from the previous step, which is the
+ * several caller steps (the problem is quasi-static, so this is legitimate),
+ * or warm-start from the previous step, which is the
  * default and cuts the count sharply once the interface is only moving a cell
  * per step. `MicroelasticityReport::converged` is returned rather than
  * thrown, so the driver decides.
@@ -143,9 +136,9 @@
  * the same fixed point one step apart
  * (\f$\varepsilon_{n+1}-\varepsilon_n = -\Gamma:(\tau_n - \tau_{n-1})\f$ with
  * \f$\Gamma\f$ linear and bounded), and the suite checks directly that the
- * strain change after the reported count is below `tol_el`. For `Basic` the
- * test is applied in real space *before* the transforms, so the pass that
- * merely confirms convergence is free.
+ * strain change after the reported count is below `relative_tolerance`. For `Basic`
+ * the test is applied in real space *before* the transforms, so the pass that merely
+ * confirms convergence is free.
  *
  * A homogeneous modulus costs exactly one \f$\Gamma\f$ application in both
  * schemes, for different reasons: in `Basic` the polarisation collapses to
@@ -167,37 +160,33 @@
  * \f$\boldsymbol\varepsilon^{*}(\mathbf x) = a(\mathbf x)\,\mathbf P\f$: one
  * scalar amplitude field times one constant symmetric pattern tensor
  * (`MicroelasticityParams::eigenstrain_pattern`, identity by default, i.e.
- * dilatational).
- * That covers the capstone's
- * \f$\varepsilon^{*}_{ij} = h(\phi)\,[\varepsilon_c(U-U_{\text{ref}}) +
- * \varepsilon_T(\theta-\theta_{\text{ref}})]\,\delta_{ij}\f$ and any
- * single-variant transformation strain, and it keeps the per-call state at two
+ * dilatational). One amplitude field covers a dilatational or
+ * single-variant transformation strain and keeps the per-call state at two
  * scalar fields instead of twelve. A multi-variant eigenstrain
- * \f$\sum_v a_v \mathbf P_v\f$ is *not* supported; the spec lists a
- * multi-variant orientation field as a non-goal.
+ * \f$\sum_v a_v \mathbf P_v\f$ is *not* supported.
  *
- * ## Energy and the phase-field feedback
+ * ## Energy and its derivative
  *
  * \f[
  *   f_{\mathrm{el}} = \tfrac12(\boldsymbol\varepsilon-\boldsymbol\varepsilon^{*}):
  *                      \mathbf
  * C:(\boldsymbol\varepsilon-\boldsymbol\varepsilon^{*}),
  *   \qquad
- *   \frac{\partial f_{\mathrm{el}}}{\partial \phi} =
- *     -\,\boldsymbol\sigma:\frac{\partial\boldsymbol\varepsilon^{*}}{\partial\phi}
+ *   \frac{\partial f_{\mathrm{el}}}{\partial s} =
+ *     -\,\boldsymbol\sigma:\frac{\partial\boldsymbol\varepsilon^{*}}{\partial s}
  *     + \tfrac12(\boldsymbol\varepsilon-\boldsymbol\varepsilon^{*}):
- *        \frac{\partial\mathbf C}{\partial\phi}:
+ *        \frac{\partial\mathbf C}{\partial s}:
  *        (\boldsymbol\varepsilon-\boldsymbol\varepsilon^{*}).
  * \f]
  *
- * Both terms are returned. The first is the transformation-work term and
- * dominates; the second is the modulus-contrast term, it is small, it is the
- * one an implementation is tempted to drop, and dropping it makes the elastic
- * driving force wrong wherever the stiffness varies — which is precisely the
- * interface, i.e. the only place the phase field cares. Note that this
- * *partial* derivative at frozen \f$\boldsymbol\varepsilon\f$ is also the
- * *total* variational derivative of the elastic energy functional, because the
- * strain is at equilibrium and \f$\delta F/\delta\mathbf u = -\nabla\cdot
+ * \f$s\f$ is whatever scalar the caller differentiated. The solver does not
+ * name it: `solve()` takes \f$\partial w/\partial s\f$ and
+ * \f$\partial a/\partial s\f$ and returns both terms. The first is the
+ * transformation-work term and dominates; the second is the modulus-contrast
+ * term. Dropping it makes the derivative wrong wherever the stiffness varies.
+ * This partial derivative at frozen \f$\boldsymbol\varepsilon\f$ is also the
+ * total variational derivative of the elastic energy, because the strain is
+ * at equilibrium and \f$\delta F/\delta\mathbf u = -\nabla\cdot
  * \boldsymbol\sigma = 0\f$. `test_microelasticity.cpp` checks that against a
  * finite difference of the fully re-converged energy rather than assuming it.
  *
@@ -213,7 +202,7 @@
  *     \equiv W_{*}.
  * \f]
  *
- * That is the energy balance the coupled science campaign reports. The
+ * That is the energy balance a caller can report. The
  * residual is \f$|F-W_{*}|/\max(|F|,|W_{*}|,\varepsilon)\f$ with floor
  * \f$\varepsilon=10^{-30}\f$ so a zero-energy run (no eigenstrain) is
  * identically balanced rather than NaN. It is not an ad-hoc score: it is
@@ -231,8 +220,8 @@
  * - **Small strain, no plasticity, no finite rotation.** Linear kinematics
  *   throughout.
  * - **No displacement output.** Only the strain, stress, energy density and
- *   \f$\partial f_{\mathrm{el}}/\partial\phi\f$ are stored; \f$\mathbf u\f$ is
- *   an intermediate and nothing downstream in the capstone reads it.
+ *   \f$\partial f_{\mathrm{el}}/\partial s\f$ are stored; \f$\mathbf u\f$ is
+ *   an intermediate.
  * - **Cubic or isotropic stiffness, crystal axes aligned with the grid.** A
  *   rotated or lower-symmetry \f$\mathbf C\f$ would need the general 21-constant
  *   contraction; `Stiffness` is deliberately three numbers.
@@ -339,8 +328,7 @@ elastic_energy_balance_from_integrals(double F, double W_star) noexcept {
   b.W_star = W_star;
   b.residual = std::abs(F - W_star);
   const double scale = std::max(std::abs(F), std::abs(W_star));
-  b.residual_rel =
-      b.residual / std::max(scale, kElasticEnergyBalanceFloor);
+  b.residual_rel = b.residual / std::max(scale, kElasticEnergyBalanceFloor);
   return b;
 }
 
@@ -509,63 +497,6 @@ struct Stiffness {
 };
 
 /**
- * @brief Default shear softening of the liquid, and the reasoning behind it.
- *
- * A real liquid has \f$\mu = 0\f$: it supports no shear at all. A phase-field
- * elastic solve cannot use that number. With \f$\mu_l = 0\f$ the local
- * stiffness is singular in two of its three channels, `Stiffness::solve`
- * throws, the elastic energy density and the modulus-contrast term of eq. (7)
- * lose meaning inside the liquid, and — the practical killer — the contrast
- * ratio is infinite, so *every* fixed point of this family has contraction
- * factor 1 and none of them converges. The liquid modulus is therefore a
- * regularisation parameter, not a material constant, and the honest thing is
- * to say so and to price it.
- *
- * The usual range in the literature is \f$\mu_l/\mu_s \in [0.01, 0.1]\f$.
- * This header's default is **0.05** — contrast 20 in the two shear channels
- * — and the measured price, on the \f$32^3\f$ tanh sphere of the table in the
- * file header, cold start, `tol_el = 1e-6`:
- *
- * | \f$\mu_l/\mu_s\f$ | 0.01 | **0.05** | 0.1 |
- * |---|---|---|---|
- * | `EyreMilton` iterations | 32 | **16** | 12 |
- *
- * with `Basic` needing 44 at the default against `EyreMilton`'s 16. The soft
- * end of the range is what sets `n_el_iter = 50`: 0.01 costs 32 accelerated
- * iterations, so the capstone spec's cap of 20 would not cover the range this
- * header claims to support.
- *
- * The *bulk* modulus is left alone (`bulk_fraction = 1`), and that is the
- * physics, not a convenience: liquids are very nearly as incompressible as
- * the solids they come from (water and steel differ by a factor of ~100 in
- * shear and ~2 in bulk), so softening the hydrostatic channel would be a
- * larger lie than softening the shear one, and it would add a third contrast
- * channel to the iteration for nothing. For a dilatational eigenstrain it
- * also happens to be the channel that carries the driving force.
- */
-inline constexpr double kDefaultLiquidShearFraction = 0.05;
-
-/**
- * @brief Build the liquid stiffness from the solid's, softening only shear.
- *
- * @param solid          the solid phase stiffness
- * @param shear_fraction \f$\mu_l/\mu_s\f$ in both shear channels
- * @param bulk_fraction  \f$K_l/K_s\f$; 1 by default (see
- *                       `kDefaultLiquidShearFraction`)
- */
-[[nodiscard]] inline Stiffness
-soft_liquid(const Stiffness &solid,
-            double shear_fraction = kDefaultLiquidShearFraction,
-            double bulk_fraction = 1.0) {
-  if (shear_fraction <= 0.0 || bulk_fraction <= 0.0) {
-    throw std::invalid_argument("soft_liquid: fractions must be positive");
-  }
-  return Stiffness::from_channels(bulk_fraction * solid.bulk_modulus(),
-                                  shear_fraction * solid.shear_tetragonal(),
-                                  shear_fraction * solid.shear_trigonal());
-}
-
-/**
  * @brief Which fixed point to run.
  *
  * @details
@@ -579,10 +510,10 @@ soft_liquid(const Stiffness &solid,
  * | `Basic` | arithmetic (Voigt) mean | \f$(r-1)/(r+1)\f$ | 466 |
  * | `EyreMilton` | geometric mean | \f$(\sqrt r-1)/(\sqrt r+1)\f$ | 66 |
  *
- * The square root is the whole point. A liquid supports no shear, so an
- * honest solid/liquid contrast is 10–100 (see `kDefaultLiquidShearFraction`)
- * and the basic scheme is simply not affordable there at one elastic solve
- * per phase-field step. `EyreMilton` was measured faster at every contrast
+ * The square root is the whole point. A soft endpoint with little shear
+ * sits at a contrast of 10–100, and the basic scheme is simply not
+ * affordable there at one elastic solve
+ * per solve. `EyreMilton` was measured faster at every contrast
  * tried, including \f$r=2\f$, so `Basic` is kept for one reason only: it is
  * the reference the accelerated scheme is validated against, and the suite
  * asserts the two agree to 7e-13 in the strain rather than assuming it.
@@ -606,8 +537,8 @@ enum class MicroelasticityScheme : int {
 
 /// Configuration of the fixed point and the reference medium.
 struct MicroelasticityParams {
-  Stiffness c_solid{};
-  Stiffness c_liquid{};
+  Stiffness stiffness_at_one{};
+  Stiffness stiffness_at_zero{};
   /// Constant pattern \f$\mathbf P\f$ in \f$\varepsilon^{*} = a(\mathbf x)\mathbf
   /// P\f$.
   Sym3 eigenstrain_pattern{Sym3::identity()};
@@ -616,25 +547,21 @@ struct MicroelasticityParams {
   /// Which fixed point to run; see `MicroelasticityScheme`.
   MicroelasticityScheme scheme{MicroelasticityScheme::EyreMilton};
   /// Relative polarisation change at which the fixed point is declared converged.
-  double tol_el{1.0e-6};
+  double relative_tolerance{1.0e-6};
   /**
    * @brief Hard cap on \f$\Gamma\f$ applications.
    *
-   * 50, not the capstone spec's 20. The spec's number was written for the
-   * basic scheme without naming a contrast, and at the contrast a liquid
-   * actually has it does not cover the range: the default liquid needs 16
-   * accelerated iterations (44 basic), and the soft end of the literature
-   * range, \f$\mu_l/\mu_s = 0.01\f$, needs 32. 50 leaves headroom over the
-   * whole documented range with the default scheme. Raised deliberately and
-   * priced in the tables above, not tuned quietly to make a run pass.
+   * 50, not 20. At a shear contrast of 20 the accelerated scheme needs 16
+   * iterations (44 for `Basic`); a shear fraction of 0.01 needs 32. 50
+   * covers that range. The number is the one the tests pin, not a quiet
+   * retune.
    */
-  int n_el_iter{50};
+  int max_iterations{50};
   /**
    * @brief Reference medium. Left at its default (all zeros) the
    *        contraction-optimal choice for the selected scheme is used: the
-   *        arithmetic (Voigt) mean \f$(\mathbf C_s+\mathbf C_l)/2\f$ for
-   *        `Basic`, the geometric mean \f$(\mathbf C_s\mathbf C_l)^{1/2}\f$
-   *        for `EyreMilton`.
+   *        arithmetic (Voigt) mean of the two endpoints for `Basic`, the
+   *        geometric mean for `EyreMilton`.
    */
   Stiffness reference{0.0, 0.0, 0.0};
   /// Reuse the previous solution as the initial iterate (big win in a time loop).
@@ -657,7 +584,7 @@ struct MicroelasticityReport {
  * @brief Quasi-static eigenstrain microelasticity solver, host / periodic.
  *
  * Construct once per `Domain`+FFT (it precomputes the Green operator over the
- * local outbox) and call `solve()` every time the phase field moves.
+ * local outbox) and call `solve()` whenever the inputs change.
  */
 class EigenstrainMicroelasticity {
 public:
@@ -669,20 +596,24 @@ public:
   EigenstrainMicroelasticity(const pfc::Domain &domain, pfc::fft::IHostFFT &fft,
                              MicroelasticityParams params)
       : m_fft(fft), m_params(params),
-        m_c0(is_zero(params.reference)
-                 ? optimal_reference(params.scheme, params.c_solid, params.c_liquid)
-                 : params.reference),
+        m_reference_stiffness(is_zero(params.reference)
+                                  ? optimal_reference(params.scheme,
+                                                      params.stiffness_at_one,
+                                                      params.stiffness_at_zero)
+                                  : params.reference),
         m_strain(make_sym(domain, fft)), m_stress(make_sym(domain, fft)),
         m_tau(make_sym(domain, fft)), m_tau_prev(make_sym(domain, fft)),
-        m_f_el(pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds())),
-        m_dfel_dphi(
+        m_elastic_energy_density(
+            pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds())),
+        m_elastic_energy_derivative(
             pfc::data::field_from_inbox<double>(domain, fft.get_inbox_bounds())) {
-    if (m_params.tol_el < 0.0) {
-      throw std::invalid_argument("EigenstrainMicroelasticity: tol_el must be >= 0");
-    }
-    if (m_params.n_el_iter < 1) {
+    if (m_params.relative_tolerance < 0.0) {
       throw std::invalid_argument(
-          "EigenstrainMicroelasticity: n_el_iter must be >= 1");
+          "EigenstrainMicroelasticity: relative_tolerance must be >= 0");
+    }
+    if (m_params.max_iterations < 1) {
+      throw std::invalid_argument(
+          "EigenstrainMicroelasticity: max_iterations must be >= 1");
     }
     for (int c = 0; c < kSymComponents; ++c) {
       m_hat[static_cast<std::size_t>(c)] =
@@ -698,7 +629,9 @@ public:
   }
 
   /// Reference medium actually in use (scheme-optimal unless overridden).
-  [[nodiscard]] const Stiffness &reference() const noexcept { return m_c0; }
+  [[nodiscard]] const Stiffness &reference() const noexcept {
+    return m_reference_stiffness;
+  }
 
   /**
    * @brief The contraction-optimal reference for a scheme and a phase pair.
@@ -709,25 +642,25 @@ public:
    * \f$\max\lVert(\mathbf C-\mathbf C_0)(\mathbf C+\mathbf C_0)^{-1}\rVert\f$).
    */
   [[nodiscard]] static Stiffness
-  optimal_reference(MicroelasticityScheme scheme, const Stiffness &c_solid,
-                    const Stiffness &c_liquid) noexcept {
+  optimal_reference(MicroelasticityScheme scheme, const Stiffness &stiffness_at_one,
+                    const Stiffness &stiffness_at_zero) noexcept {
     return (scheme == MicroelasticityScheme::EyreMilton)
-               ? Stiffness::geometric_mean(c_solid, c_liquid)
-               : Stiffness::blend(c_solid, 0.5, c_liquid, 0.5);
+               ? Stiffness::geometric_mean(stiffness_at_one, stiffness_at_zero)
+               : Stiffness::blend(stiffness_at_one, 0.5, stiffness_at_zero, 0.5);
   }
 
   /**
    * @brief Asymptotic contraction factor predicted for the configured scheme.
    *
    * @details
-   * The local stiffness sweeps \f$h\mathbf C_s + (1-h)\mathbf C_l\f$ as
-   * \f$h\f$ runs over \f$[0,1]\f$, and both schemes' error operators are
+   * The local stiffness sweeps \f$w\mathbf C(1) + (1-w)\mathbf C(0)\f$ as
+   * \f$w\f$ runs over \f$[0,1]\f$, and both schemes' error operators are
    * monotone in each channel eigenvalue, so the worst case sits at one of the
    * two endpoints. Per channel eigenvalue \f$\lambda\f$ against the
    * reference's \f$\lambda_0\f$ the factor is
    * \f$|\lambda-\lambda_0|/\lambda_0\f$ for `Basic` and
    * \f$|\lambda-\lambda_0|/(\lambda+\lambda_0)\f$ for `EyreMilton`; the answer
-   * is the maximum over the three channels and the two phases. With the
+   * is the maximum over the three channels and the two endpoints. With the
    * optimal reference these reduce to \f$(r-1)/(r+1)\f$ and
    * \f$(\sqrt r-1)/(\sqrt r+1)\f$ for a uniform channel ratio \f$r\f$.
    *
@@ -736,9 +669,9 @@ public:
    * checks the measured rate against this number.
    */
   [[nodiscard]] double predicted_contraction() const noexcept {
-    const auto e0 = m_c0.eigenvalues();
-    const auto es = m_params.c_solid.eigenvalues();
-    const auto el = m_params.c_liquid.eigenvalues();
+    const auto e0 = m_reference_stiffness.eigenvalues();
+    const auto es = m_params.stiffness_at_one.eigenvalues();
+    const auto el = m_params.stiffness_at_zero.eigenvalues();
     double worst = 0.0;
     for (int i = 0; i < 3; ++i) {
       const auto idx = static_cast<std::size_t>(i);
@@ -756,7 +689,8 @@ public:
     return m_params;
   }
 
-  /// Mutable parameters — a driver may retune `tol_el`/`n_el_iter` between steps.
+  /// Mutable parameters. A driver may retune `relative_tolerance` and
+  /// `max_iterations` between steps.
   [[nodiscard]] MicroelasticityParams &params() noexcept { return m_params; }
 
   /// Discard the warm start (next `solve()` begins from the applied strain).
@@ -770,31 +704,42 @@ public:
   [[nodiscard]] const SymRealFields &strain() const noexcept { return m_strain; }
   [[nodiscard]] const SymRealFields &stress() const noexcept { return m_stress; }
   [[nodiscard]] const RealField &elastic_energy_density() const noexcept {
-    return m_f_el;
+    return m_elastic_energy_density;
   }
-  /// \f$\partial f_{\mathrm{el}}/\partial\phi\f$; only filled when `solve()` got
+  /// \f$\partial f_{\mathrm{el}}/\partial s\f$; only filled when `solve()` got
   /// the two derivative fields.
-  [[nodiscard]] const RealField &dfel_dphi() const noexcept { return m_dfel_dphi; }
+  [[nodiscard]] const RealField &elastic_energy_derivative() const noexcept {
+    return m_elastic_energy_derivative;
+  }
 
   /**
    * @brief Solve equilibrium for the given modulus interpolation and eigenstrain.
    *
-   * @param h        \f$h(\phi)\in[0,1]\f$; \f$\mathbf C = h\mathbf C_s +
-   * (1-h)\mathbf C_l\f$
-   * @param amp      \f$a(\mathbf x)\f$ in \f$\varepsilon^{*} = a\,\mathbf P\f$
-   * @param dh_dphi  \f$\partial h/\partial\phi\f$, or `nullptr` to skip eq. (7)
-   * @param damp_dphi \f$\partial a/\partial\phi\f$, or `nullptr` to skip eq. (7)
+   * @param stiffness_weight  \f$w\in[0,1]\f$;
+   *        \f$\mathbf C = w\mathbf C(1) + (1-w)\mathbf C(0)\f$
+   * @param eigenstrain_amplitude \f$a(\mathbf x)\f$ in
+   *        \f$\varepsilon^{*} = a\,\mathbf P\f$
+   * @param stiffness_weight_derivative \f$\partial w\f$ with respect to the
+   *        caller's order parameter, or `nullptr` to skip that term
+   * @param eigenstrain_amplitude_derivative \f$\partial a\f$ with respect to
+   *        the same parameter, or `nullptr` to skip that term
    *
    * On return `strain()`, `stress()` and `elastic_energy_density()` are filled;
-   * `dfel_dphi()` too when both derivative fields were supplied.
+   * `elastic_energy_derivative()` too when both derivative fields were supplied.
    */
-  MicroelasticityReport solve(const RealField &h, const RealField &amp,
-                              const RealField *dh_dphi = nullptr,
-                              const RealField *damp_dphi = nullptr) {
-    check_same_size(h, "h");
-    check_same_size(amp, "amp");
-    if (dh_dphi != nullptr) check_same_size(*dh_dphi, "dh_dphi");
-    if (damp_dphi != nullptr) check_same_size(*damp_dphi, "damp_dphi");
+  MicroelasticityReport
+  solve(const RealField &stiffness_weight, const RealField &eigenstrain_amplitude,
+        const RealField *stiffness_weight_derivative = nullptr,
+        const RealField *eigenstrain_amplitude_derivative = nullptr) {
+    check_same_size(stiffness_weight, "stiffness_weight");
+    check_same_size(eigenstrain_amplitude, "eigenstrain_amplitude");
+    if (stiffness_weight_derivative != nullptr) {
+      check_same_size(*stiffness_weight_derivative, "stiffness_weight_derivative");
+    }
+    if (eigenstrain_amplitude_derivative != nullptr) {
+      check_same_size(*eigenstrain_amplitude_derivative,
+                      "eigenstrain_amplitude_derivative");
+    }
 
     if (!m_params.warm_start || !m_has_solution) {
       for (int c = 0; c < kSymComponents; ++c) {
@@ -806,11 +751,12 @@ public:
 
     const MicroelasticityReport report =
         (m_params.scheme == MicroelasticityScheme::EyreMilton)
-            ? run_eyre_milton(h, amp)
-            : run_basic(h, amp);
+            ? run_eyre_milton(stiffness_weight, eigenstrain_amplitude)
+            : run_basic(stiffness_weight, eigenstrain_amplitude);
 
     m_has_solution = true;
-    finalise(h, amp, dh_dphi, damp_dphi);
+    finalise(stiffness_weight, eigenstrain_amplitude, stiffness_weight_derivative,
+             eigenstrain_amplitude_derivative);
     return report;
   }
 
@@ -820,10 +766,11 @@ public:
    * Reduced across `params().comm`, so every rank gets the same number.
    */
   [[nodiscard]] double total_elastic_energy() const {
-    const auto &s = m_f_el.spacing();
+    const auto &s = m_elastic_energy_density.spacing();
     const double cell = s[0] * s[1] * s[2];
     double local = 0.0;
-    for (std::size_t i = 0; i < m_n_local; ++i) local += m_f_el.data()[i];
+    for (std::size_t i = 0; i < m_n_local; ++i)
+      local += m_elastic_energy_density.data()[i];
     double global = 0.0;
     MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, m_params.comm);
     return global * cell;
@@ -831,11 +778,13 @@ public:
 
   /**
    * @brief \f$W_{*}=-\tfrac12\int\boldsymbol\sigma:\boldsymbol\varepsilon^{*}
-   *        \,\mathrm{d}V\f$ from the last solve's stress and @p amp.
+   *        \,\mathrm{d}V\f$ from the last solve's stress and
+   *        @p eigenstrain_amplitude.
    */
-  [[nodiscard]] double transformation_work(const RealField &amp) const {
-    check_same_size(amp, "amp");
-    const auto &s = m_f_el.spacing();
+  [[nodiscard]] double
+  transformation_work(const RealField &eigenstrain_amplitude) const {
+    check_same_size(eigenstrain_amplitude, "eigenstrain_amplitude");
+    const auto &s = m_elastic_energy_density.spacing();
     const double cell = s[0] * s[1] * s[2];
     const Sym3 &pattern = m_params.eigenstrain_pattern;
     double local = 0.0;
@@ -844,7 +793,7 @@ public:
       Sym3 sg;
       for (int c = 0; c < kSymComponents; ++c) {
         const auto ci = static_cast<std::size_t>(c);
-        estar[c] = amp.data()[i] * pattern[c];
+        estar[c] = eigenstrain_amplitude.data()[i] * pattern[c];
         sg[c] = m_stress[ci].data()[i];
       }
       local += ddot(sg, estar);
@@ -855,15 +804,15 @@ public:
   }
 
   [[nodiscard]] ElasticEnergyBalance
-  energy_balance(const RealField &amp) const {
-    return elastic_energy_balance_from_integrals(total_elastic_energy(),
-                                                 transformation_work(amp));
+  energy_balance(const RealField &eigenstrain_amplitude) const {
+    return elastic_energy_balance_from_integrals(
+        total_elastic_energy(), transformation_work(eigenstrain_amplitude));
   }
 
-  /// Local stiffness at cell @p i, i.e. \f$h\mathbf C_s + (1-h)\mathbf C_l\f$.
-  [[nodiscard]] Stiffness stiffness_at(double h_value) const noexcept {
-    return Stiffness::blend(m_params.c_solid, h_value, m_params.c_liquid,
-                            1.0 - h_value);
+  /// Local stiffness \f$w\mathbf C(1)+(1-w)\mathbf C(0)\f$.
+  [[nodiscard]] Stiffness stiffness_at(double stiffness_weight) const noexcept {
+    return Stiffness::blend(m_params.stiffness_at_one, stiffness_weight,
+                            m_params.stiffness_at_zero, 1.0 - stiffness_weight);
   }
 
 private:
@@ -876,13 +825,13 @@ private:
    */
   MicroelasticityReport run_basic(const RealField &h, const RealField &amp) {
     MicroelasticityReport report;
-    for (int it = 1; it <= m_params.n_el_iter; ++it) {
+    for (int it = 1; it <= m_params.max_iterations; ++it) {
       build_polarisation(h, amp);
       if (it > 1) {
         const double res = relative_change();
         report.residual = res;
         report.residual_history.push_back(res);
-        if (res < m_params.tol_el) {
+        if (res < m_params.relative_tolerance) {
           report.converged = true;
           break;
         }
@@ -899,7 +848,7 @@ private:
       const double res = relative_change();
       report.residual = res;
       report.residual_history.push_back(res);
-      report.converged = res < m_params.tol_el;
+      report.converged = res < m_params.relative_tolerance;
     }
     return report;
   }
@@ -956,14 +905,14 @@ private:
   MicroelasticityReport run_eyre_milton(const RealField &h, const RealField &amp) {
     MicroelasticityReport report;
     build_polarisation(h, amp); // m_tau = z^0
-    for (int it = 1; it <= m_params.n_el_iter; ++it) {
+    for (int it = 1; it <= m_params.max_iterations; ++it) {
       swap_tau();                                   // m_tau_prev = z
       apply_green_operator(m_tau_prev, m_strain);   // m_strain = W(z)
       const double res = eyre_milton_local(h, amp); // -> m_strain = eps, m_tau = z'
       report.iterations = it;
       report.residual = res;
       report.residual_history.push_back(res);
-      if (res < m_params.tol_el) {
+      if (res < m_params.relative_tolerance) {
         report.converged = true;
         break;
       }
@@ -1003,7 +952,7 @@ private:
         w[c] = eps[ci][i]; // currently holds W(z)
       }
       const Stiffness ci_local = stiffness_at(hp[i]);
-      const Sym3 c0w = m_c0.contract(w);
+      const Sym3 c0w = m_reference_stiffness.contract(w);
       Sym3 y;
       for (int c = 0; c < kSymComponents; ++c) y[c] = z[c] + 2.0 * c0w[c];
 
@@ -1013,8 +962,9 @@ private:
       Sym3 rhs;
       for (int c = 0; c < kSymComponents; ++c) rhs[c] = y[c] + c_estar[c];
 
-      const Sym3 e = Stiffness::blend(ci_local, 1.0, m_c0, 1.0).solve(rhs);
-      const Sym3 c0e = m_c0.contract(e);
+      const Sym3 e =
+          Stiffness::blend(ci_local, 1.0, m_reference_stiffness, 1.0).solve(rhs);
+      const Sym3 c0e = m_reference_stiffness.contract(e);
       for (int c = 0; c < kSymComponents; ++c) {
         const auto ci = static_cast<std::size_t>(c);
         const double zn = y[c] - 2.0 * c0e[c];
@@ -1092,9 +1042,10 @@ private:
     for (auto &g : m_g) g.assign(n, 0.0);
     m_zero_mode = static_cast<std::size_t>(-1);
 
-    const double c12 = m_c0.c12;
-    const double c44 = m_c0.c44;
-    const double aniso = m_c0.c11 - m_c0.c12 - 2.0 * m_c0.c44;
+    const double c12 = m_reference_stiffness.c12;
+    const double c44 = m_reference_stiffness.c44;
+    const double aniso = m_reference_stiffness.c11 - m_reference_stiffness.c12 -
+                         2.0 * m_reference_stiffness.c44;
 
     pfc::fft::kspace::for_each_kpoint(
         fft.get_outbox_bounds(), domain,
@@ -1171,7 +1122,7 @@ private:
         ediff[c] = e[c] - ap[i] * pattern[c];
       }
       const Sym3 s = stiffness_at(hp[i]).contract(ediff);
-      const Sym3 s0 = m_c0.contract(e);
+      const Sym3 s0 = m_reference_stiffness.contract(e);
       for (int c = 0; c < kSymComponents; ++c) {
         tau[static_cast<std::size_t>(c)][i] = s[c] - s0[c];
       }
@@ -1287,8 +1238,8 @@ private:
     const double *dap = (damp_dphi != nullptr) ? damp_dphi->data() : nullptr;
     const bool want_dfel = (dhp != nullptr) && (dap != nullptr);
     const Sym3 &pattern = m_params.eigenstrain_pattern;
-    const Stiffness dc =
-        Stiffness::blend(m_params.c_solid, 1.0, m_params.c_liquid, -1.0);
+    const Stiffness dc = Stiffness::blend(m_params.stiffness_at_one, 1.0,
+                                          m_params.stiffness_at_zero, -1.0);
 
     std::array<const double *, kSymComponents> eps{};
     std::array<double *, kSymComponents> sig{};
@@ -1298,8 +1249,8 @@ private:
       sig[static_cast<std::size_t>(c)] =
           m_stress[static_cast<std::size_t>(c)].data();
     }
-    double *fel = m_f_el.data();
-    double *dfel = m_dfel_dphi.data();
+    double *fel = m_elastic_energy_density.data();
+    double *dfel = m_elastic_energy_derivative.data();
 
     for (std::size_t i = 0; i < m_n_local; ++i) {
       Sym3 ediff;
@@ -1325,20 +1276,20 @@ private:
       }
     }
     for (auto &f : m_stress) f.note_host_write();
-    m_f_el.note_host_write();
-    m_dfel_dphi.note_host_write();
+    m_elastic_energy_density.note_host_write();
+    m_elastic_energy_derivative.note_host_write();
   }
 
   pfc::fft::IHostFFT &m_fft;
   MicroelasticityParams m_params;
-  Stiffness m_c0;
+  Stiffness m_reference_stiffness;
 
   SymRealFields m_strain;
   SymRealFields m_stress;
   SymRealFields m_tau;
   SymRealFields m_tau_prev;
-  RealField m_f_el;
-  RealField m_dfel_dphi;
+  RealField m_elastic_energy_density;
+  RealField m_elastic_energy_derivative;
   std::array<ComplexField, kSymComponents> m_hat{};
 
   std::vector<double> m_kx, m_ky, m_kz;

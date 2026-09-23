@@ -177,8 +177,8 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     std::fill(damp.vec().begin(), damp.vec().end(), 1.0);
 
     pfc::solvers::MicroelasticityParams mp;
-    mp.c_solid = C;
-    mp.c_liquid = C;
+    mp.stiffness_at_one = C;
+    mp.stiffness_at_zero = C;
     mp.eigenstrain_pattern = pfc::solvers::Sym3{
         {el.eps0, el.eps0, el.eps0, 0.0, 0.0, 0.0}};
     mp.comm = comm;
@@ -324,7 +324,7 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     auto elastic_step = [&]() -> std::pair<int, double> {
       assemble_amp();
       const auto rep = solver.solve(h, amp, &dh, &damp);
-      const auto &mu = solver.dfel_dphi();
+      const auto &mu = solver.elastic_energy_derivative();
       double max_mu = 0.0;
       for (std::size_t i = 0; i < n_in; ++i) {
         const double m = mu.data()[i];

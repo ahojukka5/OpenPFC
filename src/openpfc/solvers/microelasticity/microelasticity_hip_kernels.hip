@@ -42,8 +42,7 @@ __device__ inline void contract(const MEStiffness &c, const double e[6],
   s[XY] = 2.0 * c.c44 * e[XY];
 }
 
-__device__ inline void solve(const MEStiffness &c, const double s[6],
-                             double e[6]) {
+__device__ inline void solve(const MEStiffness &c, const double s[6], double e[6]) {
   const double d = c.c11 - c.c12;
   const double t = c.c11 + 2.0 * c.c12;
   const double tr = s[XX] + s[YY] + s[ZZ];
@@ -58,9 +57,9 @@ __device__ inline void solve(const MEStiffness &c, const double s[6],
 
 __device__ inline MEStiffness stiffness_at(const MEParams &p, double h) {
   MEStiffness c;
-  c.c11 = h * p.c_solid.c11 + (1.0 - h) * p.c_liquid.c11;
-  c.c12 = h * p.c_solid.c12 + (1.0 - h) * p.c_liquid.c12;
-  c.c44 = h * p.c_solid.c44 + (1.0 - h) * p.c_liquid.c44;
+  c.c11 = h * p.stiffness_at_one.c11 + (1.0 - h) * p.stiffness_at_zero.c11;
+  c.c12 = h * p.stiffness_at_one.c12 + (1.0 - h) * p.stiffness_at_zero.c12;
+  c.c44 = h * p.stiffness_at_one.c44 + (1.0 - h) * p.stiffness_at_zero.c44;
   return c;
 }
 
@@ -70,10 +69,8 @@ __device__ inline double ddot6(const double a[6], const double b[6]) {
 }
 
 __global__ void build_polarisation_kernel(const double *h, const double *amp,
-                                          MESym6Const eps, MESym6 tau,
-                                          MEParams p) {
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+                                          MESym6Const eps, MESym6 tau, MEParams p) {
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= p.n) return;
   double e[6];
   double ediff[6];
@@ -84,19 +81,17 @@ __global__ void build_polarisation_kernel(const double *h, const double *amp,
   double s[6];
   contract(stiffness_at(p, h[i]), ediff, s);
   double s0[6];
-  contract(p.c0, e, s0);
+  contract(p.reference, e, s0);
   for (int c = 0; c < 6; ++c) tau.c[c][i] = s[c] - s0[c];
 }
 
 __global__ void eyre_milton_local_kernel(const double *h, const double *amp,
-                                         MESym6Const zin, MESym6 eps,
-                                         MESym6 zout, MEParams p,
-                                         double *block_max) {
+                                         MESym6Const zin, MESym6 eps, MESym6 zout,
+                                         MEParams p, double *block_max) {
   __shared__ double sdiff[kBlock];
   __shared__ double sscale[kBlock];
   const int tid = static_cast<int>(threadIdx.x);
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
 
   double diff = 0.0;
   double scale = 0.0;
@@ -109,7 +104,7 @@ __global__ void eyre_milton_local_kernel(const double *h, const double *amp,
     }
     const MEStiffness ci_local = stiffness_at(p, h[i]);
     double c0w[6];
-    contract(p.c0, w, c0w);
+    contract(p.reference, w, c0w);
     double y[6];
     for (int c = 0; c < 6; ++c) y[c] = z[c] + 2.0 * c0w[c];
 
@@ -121,13 +116,13 @@ __global__ void eyre_milton_local_kernel(const double *h, const double *amp,
     for (int c = 0; c < 6; ++c) rhs[c] = y[c] + c_estar[c];
 
     MEStiffness sum;
-    sum.c11 = ci_local.c11 + p.c0.c11;
-    sum.c12 = ci_local.c12 + p.c0.c12;
-    sum.c44 = ci_local.c44 + p.c0.c44;
+    sum.c11 = ci_local.c11 + p.reference.c11;
+    sum.c12 = ci_local.c12 + p.reference.c12;
+    sum.c44 = ci_local.c44 + p.reference.c44;
     double e[6];
     solve(sum, rhs, e);
     double c0e[6];
-    contract(p.c0, e, c0e);
+    contract(p.reference, e, c0e);
     for (int c = 0; c < 6; ++c) {
       const double zn = y[c] - 2.0 * c0e[c];
       diff = fmax(diff, fabs(zn - z[c]));
@@ -165,12 +160,10 @@ __device__ inline MEComplex cadd(MEComplex a, MEComplex b) {
   return MEComplex{a.re + b.re, a.im + b.im};
 }
 
-__global__ void green_multiply_kernel(MESym6 hat, const double *kx,
-                                      const double *ky, const double *kz,
-                                      MESym6Const g, long long n_outbox,
-                                      long long zero_mode) {
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+__global__ void green_multiply_kernel(MESym6 hat, const double *kx, const double *ky,
+                                      const double *kz, MESym6Const g,
+                                      long long n_outbox, long long zero_mode) {
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= n_outbox) return;
   if (i == zero_mode) return;
 
@@ -191,28 +184,27 @@ __global__ void green_multiply_kernel(MESym6 hat, const double *kx,
   const MEComplex by = cadd(cadd(cmul(ax, txy), cmul(ay, tyy)), cmul(az, tyz));
   const MEComplex bz = cadd(cadd(cmul(ax, txz), cmul(ay, tyz)), cmul(az, tzz));
 
-  const MEComplex vx = cadd(cadd(cmul(g.c[XX][i], bx), cmul(g.c[XY][i], by)),
-                            cmul(g.c[XZ][i], bz));
-  const MEComplex vy = cadd(cadd(cmul(g.c[XY][i], bx), cmul(g.c[YY][i], by)),
-                            cmul(g.c[YZ][i], bz));
-  const MEComplex vz = cadd(cadd(cmul(g.c[XZ][i], bx), cmul(g.c[YZ][i], by)),
-                            cmul(g.c[ZZ][i], bz));
+  const MEComplex vx =
+      cadd(cadd(cmul(g.c[XX][i], bx), cmul(g.c[XY][i], by)), cmul(g.c[XZ][i], bz));
+  const MEComplex vy =
+      cadd(cadd(cmul(g.c[XY][i], bx), cmul(g.c[YY][i], by)), cmul(g.c[YZ][i], bz));
+  const MEComplex vz =
+      cadd(cadd(cmul(g.c[XZ][i], bx), cmul(g.c[YZ][i], by)), cmul(g.c[ZZ][i], bz));
 
   t[XX][i] = MEComplex{-(ax * vx.re), -(ax * vx.im)};
   t[YY][i] = MEComplex{-(ay * vy.re), -(ay * vy.im)};
   t[ZZ][i] = MEComplex{-(az * vz.re), -(az * vz.im)};
-  t[YZ][i] = MEComplex{-0.5 * (ay * vz.re + az * vy.re),
-                       -0.5 * (ay * vz.im + az * vy.im)};
-  t[XZ][i] = MEComplex{-0.5 * (ax * vz.re + az * vx.re),
-                       -0.5 * (ax * vz.im + az * vx.im)};
-  t[XY][i] = MEComplex{-0.5 * (ax * vy.re + ay * vx.re),
-                       -0.5 * (ax * vy.im + ay * vx.im)};
+  t[YZ][i] =
+      MEComplex{-0.5 * (ay * vz.re + az * vy.re), -0.5 * (ay * vz.im + az * vy.im)};
+  t[XZ][i] =
+      MEComplex{-0.5 * (ax * vz.re + az * vx.re), -0.5 * (ax * vz.im + az * vx.im)};
+  t[XY][i] =
+      MEComplex{-0.5 * (ax * vy.re + ay * vx.re), -0.5 * (ax * vy.im + ay * vx.im)};
 }
 
-__global__ void green_zero_mode_kernel(MESym6 hat, long long zero_mode,
-                                       double a0, double a1, double a2,
-                                       double a3, double a4, double a5,
-                                       double n_global) {
+__global__ void green_zero_mode_kernel(MESym6 hat, long long zero_mode, double a0,
+                                       double a1, double a2, double a3, double a4,
+                                       double a5, double n_global) {
   if (threadIdx.x != 0 || blockIdx.x != 0) return;
   const double applied[6] = {a0, a1, a2, a3, a4, a5};
   for (int c = 0; c < 6; ++c) {
@@ -224,9 +216,9 @@ __global__ void green_zero_mode_kernel(MESym6 hat, long long zero_mode,
 __global__ void finalise_kernel(const double *h, const double *amp,
                                 const double *dh_dphi, const double *damp_dphi,
                                 MESym6Const eps, MESym6 sig, double *f_el,
-                                double *dfel_dphi, MEParams p, int want_dfel) {
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+                                double *elastic_energy_derivative, MEParams p,
+                                int want_dfel) {
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= p.n) return;
 
   double ediff[6];
@@ -245,24 +237,22 @@ __global__ void finalise_kernel(const double *h, const double *amp,
       work += w * s[c] * damp_dphi[i] * p.pattern[c];
     }
     double sc[6];
-    contract(p.dc, ediff, sc);
-    dfel_dphi[i] = -work + 0.5 * dh_dphi[i] * ddot6(ediff, sc);
+    contract(p.stiffness_difference, ediff, sc);
+    elastic_energy_derivative[i] = -work + 0.5 * dh_dphi[i] * ddot6(ediff, sc);
   } else {
-    dfel_dphi[i] = 0.0;
+    elastic_energy_derivative[i] = 0.0;
   }
 }
 
 __global__ void fill_kernel(double *dst, double value, long long n) {
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i < n) dst[i] = value;
 }
 
 __global__ void block_sum_kernel(const double *x, double *partial, long long n) {
   __shared__ double s[kBlock];
   const int tid = static_cast<int>(threadIdx.x);
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   s[tid] = (i < n) ? x[i] : 0.0;
   __syncthreads();
   for (int w = blockDim.x / 2; w > 0; w >>= 1) {
@@ -280,8 +270,7 @@ __global__ void assemble_kernel(const double *phi, const double *U,
                                 double *block_sum) {
   __shared__ double s[kBlock];
   const int tid = static_cast<int>(threadIdx.x);
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   const long long n = static_cast<long long>(nx) * ny * nz;
   double local = 0.0;
   if (i < n) {
@@ -292,8 +281,7 @@ __global__ void assemble_kernel(const double *phi, const double *U,
     const long long pidx = (ix + hw) + (iy + hw) * sy + (iz + hw) * sz;
     const double ph = phi[pidx];
     const double hv = 0.5 * (1.0 + ph);
-    const double sv =
-        eps_c * (U[pidx] - u_ref) + eps_T * (theta[pidx] - theta_ref);
+    const double sv = eps_c * (U[pidx] - u_ref) + eps_T * (theta[pidx] - theta_ref);
     h[i] = hv;
     amp[i] = hv * sv;
     damp[i] = 0.5 * sv;
@@ -309,13 +297,12 @@ __global__ void assemble_kernel(const double *phi, const double *U,
 }
 
 __global__ void report_stats_kernel(MESym6Const sig, const double *dfel,
-                                      double *block, long long n) {
+                                    double *block, long long n) {
   __shared__ double sp[kBlock];
   __shared__ double sdfel[kBlock];
   __shared__ double svm[kBlock];
   const int tid = static_cast<int>(threadIdx.x);
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   double p = 0.0;
   double adfel = 0.0;
   double vm = 0.0;
@@ -353,12 +340,11 @@ __global__ void report_stats_kernel(MESym6Const sig, const double *dfel,
   }
 }
 
-__global__ void sigma_estar_kernel(MESym6Const sig, const double *amp,
-                                    MEParams p, double *partial) {
+__global__ void sigma_estar_kernel(MESym6Const sig, const double *amp, MEParams p,
+                                   double *partial) {
   __shared__ double s[kBlock];
   const int tid = static_cast<int>(threadIdx.x);
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   double acc = 0.0;
   if (i < p.n) {
     double ed[6];
@@ -379,9 +365,8 @@ __global__ void sigma_estar_kernel(MESym6Const sig, const double *amp,
 }
 
 __global__ void copy_owned_kernel(const double *src, double *dst, int nx, int ny,
-                                 int nz, int hw, long long sy, long long sz) {
-  const long long i =
-      static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+                                  int nz, int hw, long long sy, long long sz) {
+  const long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
   const long long n = static_cast<long long>(nx) * ny * nz;
   if (i >= n) return;
   const int ix = static_cast<int>(i % nx);
@@ -407,9 +392,8 @@ void me_build_polarisation(const double *h, const double *amp,
   check(hipGetLastError(), "me_build_polarisation");
 }
 
-void me_eyre_milton_local(const double *h, const double *amp,
-                          const MESym6Const &zin, const MESym6 &eps,
-                          const MESym6 &zout, const MEParams &p,
+void me_eyre_milton_local(const double *h, const double *amp, const MESym6Const &zin,
+                          const MESym6 &eps, const MESym6 &zout, const MEParams &p,
                           double *block_max, int n_blocks) {
   eyre_milton_local_kernel<<<n_blocks, kBlock>>>(h, amp, zin, eps, zout, p,
                                                  block_max);
@@ -417,26 +401,26 @@ void me_eyre_milton_local(const double *h, const double *amp,
 }
 
 void me_green_multiply(const MESym6 &hat, const double *kx, const double *ky,
-                       const double *kz, const MESym6Const &g,
-                       long long n_outbox, long long zero_mode,
-                       const double applied[kSym], double n_global) {
-  green_multiply_kernel<<<blocks_for(n_outbox), kBlock>>>(
-      hat, kx, ky, kz, g, n_outbox, zero_mode);
+                       const double *kz, const MESym6Const &g, long long n_outbox,
+                       long long zero_mode, const double applied[kSym],
+                       double n_global) {
+  green_multiply_kernel<<<blocks_for(n_outbox), kBlock>>>(hat, kx, ky, kz, g,
+                                                          n_outbox, zero_mode);
   check(hipGetLastError(), "me_green_multiply");
   if (zero_mode >= 0) {
     green_zero_mode_kernel<<<1, 1>>>(hat, zero_mode, applied[0], applied[1],
-                                     applied[2], applied[3], applied[4],
-                                     applied[5], n_global);
+                                     applied[2], applied[3], applied[4], applied[5],
+                                     n_global);
     check(hipGetLastError(), "me_green_multiply zero mode");
   }
 }
 
 void me_finalise(const double *h, const double *amp, const double *dh_dphi,
-                 const double *damp_dphi, const MESym6Const &eps,
-                 const MESym6 &sig, double *f_el, double *dfel_dphi,
-                 const MEParams &p, int want_dfel) {
-  finalise_kernel<<<blocks_for(p.n), kBlock>>>(h, amp, dh_dphi, damp_dphi, eps,
-                                               sig, f_el, dfel_dphi, p,
+                 const double *damp_dphi, const MESym6Const &eps, const MESym6 &sig,
+                 double *f_el, double *elastic_energy_derivative, const MEParams &p,
+                 int want_dfel) {
+  finalise_kernel<<<blocks_for(p.n), kBlock>>>(h, amp, dh_dphi, damp_dphi, eps, sig,
+                                               f_el, elastic_energy_derivative, p,
                                                want_dfel);
   check(hipGetLastError(), "me_finalise");
 }
@@ -451,34 +435,32 @@ void me_block_sum(const double *x, double *partial, long long n, int n_blocks) {
   check(hipGetLastError(), "me_block_sum");
 }
 
-void me_assemble_from_padded(const double *phi, const double *U,
-                             const double *theta, double *h, double *amp,
-                             double *damp, int nx, int ny, int nz, int hw,
-                             long long sy, long long sz, double eps_c,
-                             double eps_T, double u_ref, double theta_ref,
-                             double *block_sum, int n_blocks) {
-  assemble_kernel<<<n_blocks, kBlock>>>(phi, U, theta, h, amp, damp, nx, ny,
-                                        nz, hw, sy, sz, eps_c, eps_T, u_ref,
-                                        theta_ref, block_sum);
+void me_assemble_from_padded(const double *phi, const double *U, const double *theta,
+                             double *h, double *amp, double *damp, int nx, int ny,
+                             int nz, int hw, long long sy, long long sz,
+                             double eps_c, double eps_T, double u_ref,
+                             double theta_ref, double *block_sum, int n_blocks) {
+  assemble_kernel<<<n_blocks, kBlock>>>(phi, U, theta, h, amp, damp, nx, ny, nz, hw,
+                                        sy, sz, eps_c, eps_T, u_ref, theta_ref,
+                                        block_sum);
   check(hipGetLastError(), "me_assemble_from_padded");
 }
 
-void me_copy_owned_to_padded(const double *src, double *dst, int nx, int ny,
-                             int nz, int hw, long long sy, long long sz) {
+void me_copy_owned_to_padded(const double *src, double *dst, int nx, int ny, int nz,
+                             int hw, long long sy, long long sz) {
   const long long n = static_cast<long long>(nx) * ny * nz;
-  copy_owned_kernel<<<blocks_for(n), kBlock>>>(src, dst, nx, ny, nz, hw, sy,
-                                               sz);
+  copy_owned_kernel<<<blocks_for(n), kBlock>>>(src, dst, nx, ny, nz, hw, sy, sz);
   check(hipGetLastError(), "me_copy_owned_to_padded");
 }
 
 void me_report_stats(const MESym6Const &sig, const double *dfel, double *block,
-                      long long n, int n_blocks) {
+                     long long n, int n_blocks) {
   report_stats_kernel<<<n_blocks, kBlock>>>(sig, dfel, block, n);
   check(hipGetLastError(), "me_report_stats");
 }
 
-void me_sigma_estar_sum(const MESym6Const &sig, const double *amp,
-                         const MEParams &p, double *partial, int n_blocks) {
+void me_sigma_estar_sum(const MESym6Const &sig, const double *amp, const MEParams &p,
+                        double *partial, int n_blocks) {
   sigma_estar_kernel<<<n_blocks, kBlock>>>(sig, amp, p, partial);
   check(hipGetLastError(), "me_sigma_estar_sum");
 }

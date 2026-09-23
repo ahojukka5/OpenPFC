@@ -20,19 +20,19 @@ PFC directional-solidification BCs relocated from the kernel.
 | `openpfc_apps/homogenization.hpp` | periodic FFT homogenization \(C_H\) on the public eigenstrain solver (six imposed-strain loads, engineering Voigt) plus the discrete mutual-energy \(\partial J/\partial h\) of issue #161 |
 
 The periodic eigenstrain solver is
-`include/openpfc/solvers/microelasticity/` (host and HIP). It is a
-periodic RVE / FFT solver, not a finite-body mechanics code. Material
-maps stay in the applications. `homogenization.hpp` is the header here
-that carries physics rather than plumbing. The eigenstrain solver has Catch2 suite
-`apps-common-microelasticity` (~5 s single rank); its oracles are closed
-forms — Eshelby's spherical inclusion, an exact dilatation identity, and a
-finite difference of the re-converged elastic energy — not stored baselines.
-It defaults to the Eyre-Milton accelerated fixed point, which contracts as
-`(sqrt(r)-1)/(sqrt(r)+1)` in the solid/liquid stiffness ratio rather than
-`(r-1)/(r+1)`; that matters because a liquid supports no shear, so `r` is
-realistically 10–100. See the header's `@details` block for the measured
-iteration tables, the recommended liquid stiffness, and what the solver
-does not do.
+`include/openpfc/solvers/microelasticity/`. The HIP kernels are the
+exported target `openpfc_microelasticity_hip`, not a source in this
+tree. It is a periodic RVE / FFT solver, not a finite-body mechanics
+code. Material maps stay in the applications. `homogenization.hpp` is
+the header here that carries physics rather than plumbing. The
+eigenstrain solver's Catch2 suite is `solvers-microelasticity` (~5 s
+single rank); its oracles are closed forms — Eshelby's spherical
+inclusion, an exact dilatation identity, and a finite difference of the
+re-converged elastic energy — not stored baselines. It defaults to the
+Eyre-Milton accelerated fixed point, which contracts as
+`(sqrt(r)-1)/(sqrt(r)+1)` in the endpoint stiffness ratio rather than
+`(r-1)/(r+1)`. See the header's `@details` block for the measured
+iteration tables and what the solver does not do.
 
 `homogenization.hpp` sits on that solver (issue #161): six imposed-strain
 loads assemble an engineering-Voigt \(C_H\), and the mutual-energy formula
