@@ -445,7 +445,7 @@ not golden dumps:
 | Physics / schema / symbols | [`higher_order_pfc_physics.hpp`](include/higher_order_pfc/higher_order_pfc_physics.hpp) |
 | Local nonlinearity (host + device) | [`higher_order_pfc_pointwise.hpp`](include/higher_order_pfc/higher_order_pfc_pointwise.hpp) |
 | Session wiring + diagnostics hook | [`higher_order_pfc_session.hpp`](include/higher_order_pfc/higher_order_pfc_session.hpp) |
-| Initial conditions | [`cosine_mode.hpp`](include/higher_order_pfc/cosine_mode.hpp), [`seeded_noise.hpp`](include/higher_order_pfc/seeded_noise.hpp), [`lattice_seed.hpp`](include/higher_order_pfc/lattice_seed.hpp) |
+| Initial conditions | built-in `cosine_mode` / `seeded_noise`; [`lattice_seed.hpp`](include/higher_order_pfc/lattice_seed.hpp) keeps the crystal mode set |
 | Free energy + reciprocal-space sample | [`free_energy.hpp`](include/higher_order_pfc/free_energy.hpp) |
 | Real-space bond-orientational order | [`order_parameter.hpp`](include/higher_order_pfc/order_parameter.hpp) |
 | Diagnostics sample + CSV | [`diagnostics.hpp`](include/higher_order_pfc/diagnostics.hpp) |

@@ -13,7 +13,6 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
-#include <ehd_film/cosine_mode.hpp>
 #include <ehd_film/ehd_film_physics.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/frontend/ui/json_spectral_etd_session.hpp>
@@ -26,9 +25,7 @@
 
 namespace ehd_film {
 
-inline void register_catalog() {
-  pfc::ui::register_field_modifier<CosineMode>("cosine_mode");
-}
+inline void register_catalog() {}
 
 inline pfc::sim::SpectralETDOptions etd_options() {
   pfc::sim::SpectralETDOptions opt;

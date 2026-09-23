@@ -39,6 +39,7 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
+#include <openpfc/kernel/field/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
@@ -51,19 +52,6 @@
 namespace {
 
 using json = nlohmann::json;
-
-/// Deterministic broadband perturbation, identical to `thin_film_nonlinear`'s
-/// so the two solvers start from bit-identical initial conditions.
-double hashed_noise(int i, int j, int k, const pfc::Int3 &n, std::uint64_t seed) {
-  std::uint64_t x = seed + std::uint64_t(i) +
-                    std::uint64_t(n[0]) *
-                        (std::uint64_t(j) + std::uint64_t(n[1]) * std::uint64_t(k));
-  x += 0x9e3779b97f4a7c15ULL;
-  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-  x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-  x = x ^ (x >> 31);
-  return 2.0 * (double(x >> 11) / double(1ULL << 53)) - 1.0;
-}
 
 thin_film::FaceMobility parse_face_mobility(const std::string &s) {
   if (s == "harmonic") return thin_film::FaceMobility::Harmonic;
@@ -128,7 +116,8 @@ int main(int argc, char *argv[]) {
     for (int iy = 0; iy < ny; ++iy) {
       for (int ix = 0; ix < nx; ++ix) {
         const int gx = box.low[0] + ix, gy = box.low[1] + iy;
-        const double xi = hashed_noise(gx, gy, 0, n, seed);
+        const double xi =
+            pfc::field::indexed_noise_signed(seed, gx, gy, 0, n[0], n[1]);
         const double x = gx * dx, y = gy * dx;
         h[static_cast<std::size_t>(ix) + static_cast<std::size_t>(iy) * nx] =
             p.h0 * (1.0 + amp * xi + defect(x, y));

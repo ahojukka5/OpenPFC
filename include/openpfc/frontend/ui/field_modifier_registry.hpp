@@ -36,6 +36,8 @@
 #include <openpfc/kernel/simulation/field_modifier.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/constant.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/file_reader.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/fourier_modes.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/random_seeds.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/seed_grid.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/single_seed.hpp>
@@ -103,10 +105,15 @@ void register_field_modifier(const std::string &type,
   });
 }
 
-/** @brief Built-in OpenPFC IC types (constant, seeds, file). */
+/** @brief Built-in OpenPFC IC types (constant, Fourier, indexed noise, seeds, file).
+ */
 [[nodiscard]] inline FieldModifierCatalog make_builtin_field_modifier_catalog() {
   FieldModifierCatalog c;
   register_field_modifier<Constant>("constant", c);
+  register_field_modifier<FourierModes>("fourier_modes", c);
+  register_field_modifier<FourierSeriesFill>("cosine_mode", c);
+  register_field_modifier<IndexedNoiseModifier>("indexed_noise", c);
+  register_field_modifier<IndexedNoiseFill>("seeded_noise", c);
   register_field_modifier<SingleSeed>("single_seed", c);
   register_field_modifier<RandomSeeds>("random_seeds", c);
   register_field_modifier<SeedGrid>("seed_grid", c);

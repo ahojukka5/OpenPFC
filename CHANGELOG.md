@@ -35,6 +35,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Public Fourier-series and indexed-noise field operations
+  (`include/openpfc/kernel/field/fourier_series.hpp`,
+  `include/openpfc/kernel/field/indexed_noise.hpp`, #146).
+  `FourierModes` and `IndexedNoiseModifier` add to the current field.
+  `cosine_mode` and `seeded_noise` remain the one-shot fill forms, with
+  `offset` and the previous `c0` / `h0` / `psi0` / `u0` / `g0` keys.
+  The sample is a function of the global index and the seed. Mean
+  removal is the only collective, and it uses the communicator the
+  caller passes. A crystal lattice and a mole-fraction bound stay in
+  the applications.
+
 - Public r2c power `pfc::fft::weighted_power`, `radial_average`, and
   `directional_power` (`include/openpfc/kernel/fft/power_spectrum.hpp`,
   #145). Stored `kx = 0` and the even-grid Nyquist mode have weight 1;

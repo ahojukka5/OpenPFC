@@ -8,11 +8,10 @@
  * @brief Controlled single-crystal initial condition: a sum of plane waves.
  *
  * @details
- * `cosine_mode.hpp` seeds exactly one Fourier mode. `#118` also asks for a
- * *controlled single-crystal seed* -- an initial condition that starts the
- * run already at the target symmetry, so a clean run can confirm the kernel
- * merely *preserves* that symmetry rather than having to *select* it out of
- * noise. A single lattice is a small sum of plane waves, not one:
+ * A controlled single-crystal seed starts the run already at the target
+ * symmetry, so a clean run can confirm the kernel preserves that symmetry
+ * rather than having to select it out of noise. A lattice is one shared
+ * amplitude split across a small set of plane waves:
  *
  * \f[
  *   \psi(\mathbf x) = \psi_0 + \frac{A}{M}\sum_{m=1}^{M}
@@ -30,19 +29,13 @@
  * JSON `"type": "lattice_seed"`, `"modes": [[nx,ny,nz], ...]`.
  */
 
-#include <array>
-#include <cmath>
-#include <numbers>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
-#include <openpfc/kernel/data/box3i.hpp>
-#include <openpfc/kernel/data/domain.hpp>
-#include <openpfc/kernel/field/operations.hpp>
-#include <openpfc/kernel/field/state_access.hpp>
+#include <openpfc/kernel/field/fourier_series.hpp>
 #include <openpfc/kernel/simulation/field_modifier.hpp>
 
 namespace higher_order_pfc {
@@ -70,26 +63,13 @@ public:
              const pfc::Box3i &box, double /*time*/) override {
     if (m_modes.empty())
       throw std::invalid_argument("lattice_seed: need at least one mode");
-    const auto size = pfc::domain::get_size(domain);
-    const auto spacing = pfc::domain::get_spacing(domain);
-    const double Lx = spacing[0] * static_cast<double>(size[0]);
-    const double Ly = spacing[1] * static_cast<double>(size[1]);
-    const double Lz = spacing[2] * static_cast<double>(size[2]);
-    const double twopi = 2.0 * std::numbers::pi;
-    std::vector<std::array<double, 3>> k;
-    k.reserve(m_modes.size());
+    const double amp = m_amplitude / static_cast<double>(m_modes.size());
+    std::vector<pfc::field::FourierMode> terms;
+    terms.reserve(m_modes.size());
     for (const auto &m : m_modes) {
-      k.push_back({(Lx > 0.0) ? twopi * static_cast<double>(m.nx) / Lx : 0.0,
-                   (Ly > 0.0) ? twopi * static_cast<double>(m.ny) / Ly : 0.0,
-                   (Lz > 0.0) ? twopi * static_cast<double>(m.nz) / Lz : 0.0});
+      terms.push_back(pfc::field::FourierMode{{m.nx, m.ny, m.nz}, amp, 0.0});
     }
-    const double psi0 = m_psi0;
-    const double amp = m_amplitude / static_cast<double>(k.size());
-    pfc::field::apply(field, domain, box, [=](const pfc::Real3 &x) {
-      double s = 0.0;
-      for (const auto &kv : k) s += std::cos(kv[0] * x[0] + kv[1] * x[1] + kv[2] * x[2]);
-      return psi0 + amp * s;
-    });
+    pfc::field::fill_fourier_series(field, domain, box, m_psi0, terms);
   }
 
 private:
@@ -104,7 +84,8 @@ inline void from_json(const nlohmann::json &j, LatticeSeed &ic) {
   if (!j.contains("psi0") || !j["psi0"].is_number())
     throw std::invalid_argument("lattice_seed: missing or invalid 'psi0' field.");
   if (!j.contains("amplitude") || !j["amplitude"].is_number())
-    throw std::invalid_argument("lattice_seed: missing or invalid 'amplitude' field.");
+    throw std::invalid_argument(
+        "lattice_seed: missing or invalid 'amplitude' field.");
   if (!j.contains("modes") || !j["modes"].is_array() || j["modes"].empty())
     throw std::invalid_argument("lattice_seed: 'modes' must be a nonempty array "
                                 "of [nx, ny, nz] triples.");
@@ -115,7 +96,8 @@ inline void from_json(const nlohmann::json &j, LatticeSeed &ic) {
   for (const auto &mode : j["modes"]) {
     if (!mode.is_array() || mode.size() != 3)
       throw std::invalid_argument("lattice_seed: each mode must be [nx, ny, nz].");
-    modes.push_back({mode.at(0).get<int>(), mode.at(1).get<int>(), mode.at(2).get<int>()});
+    modes.push_back(
+        {mode.at(0).get<int>(), mode.at(1).get<int>(), mode.at(2).get<int>()});
   }
   ic.set_modes(std::move(modes));
 }

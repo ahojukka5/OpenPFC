@@ -42,6 +42,8 @@
 #include <openpfc/kernel/simulation/field_modifier.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/constant.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/file_reader.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/fourier_modes.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/random_seeds.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/seed.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/seed_grid.hpp>

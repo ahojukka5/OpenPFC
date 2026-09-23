@@ -29,7 +29,6 @@
 #include <nlohmann/json.hpp>
 
 #include <gradient_elasticity/circular_inclusion.hpp>
-#include <gradient_elasticity/cosine_mode.hpp>
 #include <gradient_elasticity/gaussian_inclusion.hpp>
 #include <gradient_elasticity/gradient_elasticity_diagnostics.hpp>
 #include <gradient_elasticity/gradient_elasticity_physics.hpp>
@@ -63,7 +62,6 @@
 namespace gradient_elasticity {
 
 inline void register_catalog() {
-  pfc::ui::register_field_modifier<CosineMode>("cosine_mode");
   pfc::ui::register_field_modifier<GaussianInclusion>("gaussian_inclusion");
   pfc::ui::register_field_modifier<CircularInclusion>("circular_inclusion");
 }
@@ -124,8 +122,7 @@ public:
   GradientElasticitySession(const nlohmann::json &settings_in, int rank, int nproc,
                             MPI_Comm comm = MPI_COMM_WORLD)
       : m_settings(with_backend_default(settings_in)),
-        m_ctx{.comm = comm, .mpi_rank = rank, .rank0 = (rank == 0)},
-        m_nproc(nproc),
+        m_ctx{.comm = comm, .mpi_rank = rank, .rank0 = (rank == 0)}, m_nproc(nproc),
         m_domain(pfc::ui::from_json<pfc::Domain>(m_settings)),
         m_session(
             pfc::ui::make_simulation_session<Stack>(m_settings, rank, nproc, comm)) {
@@ -204,9 +201,8 @@ public:
     write_results();
     const FieldChecksum cs_x = field_checksum("ux");
     const FieldChecksum cs_y = field_checksum("uy");
-    const StressSummary summary = summarize_stress(stress_hydro(), stress_vm(),
-                                                    energy_density(), m_domain,
-                                                    m_ctx.comm);
+    const StressSummary summary = summarize_stress(
+        stress_hydro(), stress_vm(), energy_density(), m_domain, m_ctx.comm);
     if (m_ctx.rank0) {
       std::cout << std::setprecision(17)
                 << "SPECTRAL_CHECKSUM field=ux sum=" << cs_x.sum
@@ -224,8 +220,9 @@ public:
       // std::defaultfloat above, GRADIENT_ELASTICITY_SUMMARY below would
       // print every value as "0x1p+3" instead of decimal, which
       // scripts/size_sweep.py cannot parse as a plain float.
-      std::cout << std::setprecision(17) << "GRADIENT_ELASTICITY_SUMMARY ell="
-                << m_physics.params.ell << " ell4=" << m_physics.params.ell4
+      std::cout << std::setprecision(17)
+                << "GRADIENT_ELASTICITY_SUMMARY ell=" << m_physics.params.ell
+                << " ell4=" << m_physics.params.ell4
                 << " order=" << m_physics.params.order
                 << " peak_abs_hydrostatic_stress=" << summary.peak_abs_hydrostatic
                 << " peak_von_mises_stress=" << summary.peak_von_mises
@@ -236,10 +233,10 @@ public:
       const auto spacing = pfc::domain::get_spacing(m_domain);
       const double Lx = spacing[0] * static_cast<double>(size[0]);
       const double Ly = spacing[1] * static_cast<double>(size[1]);
-      const double x0 = std::isfinite(m_line_profile.x0) ? m_line_profile.x0
-                                                          : 0.5 * Lx;
-      const double y0 = std::isfinite(m_line_profile.y0) ? m_line_profile.y0
-                                                          : 0.5 * Ly;
+      const double x0 =
+          std::isfinite(m_line_profile.x0) ? m_line_profile.x0 : 0.5 * Lx;
+      const double y0 =
+          std::isfinite(m_line_profile.y0) ? m_line_profile.y0 : 0.5 * Ly;
       write_line_profile(m_line_profile.path, g(), ux(), uy(), stress_hydro(),
                          stress_vm(), energy_density(), x0, y0, m_nproc);
     }

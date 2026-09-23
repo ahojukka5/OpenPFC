@@ -17,6 +17,7 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/field_from_subdomain_tests.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_dirichlet_ghosts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_face_flux.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_fourier_and_noise.cpp
 )
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE

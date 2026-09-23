@@ -17,7 +17,6 @@
 #include <openpfc/frontend/ui/json_spectral_etd_session.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <surface_diffusion/cosine_mode.hpp>
 #include <surface_diffusion/surface_diffusion_physics.hpp>
 
 #if defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -26,9 +25,7 @@
 
 namespace surface_diffusion {
 
-inline void register_catalog() {
-  pfc::ui::register_field_modifier<CosineMode>("cosine_mode");
-}
+inline void register_catalog() {}
 
 inline pfc::sim::SpectralETDOptions etd_options() {
   pfc::sim::SpectralETDOptions opt;

@@ -31,9 +31,10 @@
 #include <higher_order_pfc/correlation_kernel.hpp>
 #include <higher_order_pfc/higher_order_pfc_physics.hpp>
 #include <higher_order_pfc/higher_order_pfc_session.hpp>
-#include <higher_order_pfc/seeded_noise.hpp>
+#include <openpfc/frontend/ui/from_json_field_modifiers.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/simulation_state.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
@@ -127,24 +128,25 @@ double cosine_amplitude(const pfc::data::Field<double> &psi, double psi0, int nx
 }
 
 json mini_session_json() {
-  return {{"model", {{"name", "higher_order_pfc"}, {"params", {{"eps", 0.25}}}}},
-          {"domain",
-           {{"Lx", 16},
-            {"Ly", 16},
-            {"Lz", 1},
-            {"dx", kDx},
-            {"dy", kDx},
-            {"dz", kDx},
-            {"origin", "corner"}}},
-          {"timestepping", {{"t0", 0.0}, {"t1", 0.1}, {"dt", 0.05}, {"saveat", -1.0}}},
-          {"initial_conditions",
-           {{{"target", "psi"},
-             {"type", "cosine_mode"},
-             {"psi0", 0.0},
-             {"amplitude", 0.01},
-             {"nx", 2},
-             {"ny", 0},
-             {"nz", 0}}}}};
+  return {
+      {"model", {{"name", "higher_order_pfc"}, {"params", {{"eps", 0.25}}}}},
+      {"domain",
+       {{"Lx", 16},
+        {"Ly", 16},
+        {"Lz", 1},
+        {"dx", kDx},
+        {"dy", kDx},
+        {"dz", kDx},
+        {"origin", "corner"}}},
+      {"timestepping", {{"t0", 0.0}, {"t1", 0.1}, {"dt", 0.05}, {"saveat", -1.0}}},
+      {"initial_conditions",
+       {{{"target", "psi"},
+         {"type", "cosine_mode"},
+         {"psi0", 0.0},
+         {"amplitude", 0.01},
+         {"nx", 2},
+         {"ny", 0},
+         {"nz", 0}}}}};
 }
 
 } // namespace
@@ -166,8 +168,12 @@ TEST_CASE("HigherOrderPFC schema defaults describe a 2D square two-mode kernel",
 
 TEST_CASE("HigherOrderPFC schema round-trips JSON and rejects a bad mode count",
           "[higher_order_pfc][schema]") {
-  const auto p = params_from(json{{"eps", 0.4}, {"q1", 1.25}, {"r1", 0.1}, {"M", 2.0},
-                                  {"g", 0.5}, {"n_modes", 1}});
+  const auto p = params_from(json{{"eps", 0.4},
+                                  {"q1", 1.25},
+                                  {"r1", 0.1},
+                                  {"M", 2.0},
+                                  {"g", 0.5},
+                                  {"n_modes", 1}});
   REQUIRE_THAT(p.eps, WithinAbs(0.4, 1e-15));
   REQUIRE_THAT(p.q1, WithinAbs(1.25, 1e-15));
   REQUIRE_THAT(p.r1, WithinAbs(0.1, 1e-15));
@@ -186,7 +192,8 @@ TEST_CASE("HigherOrderPFC schema round-trips JSON and rejects a bad mode count",
 TEST_CASE("Two-mode kernel matches the factored analytical form through k^8",
           "[higher_order_pfc][kernel][analytical]") {
   constexpr double eps = 0.3, q1 = 1.35, r1 = 0.07;
-  const auto p = params_from(json{{"eps", eps}, {"q1", q1}, {"r1", r1}, {"n_modes", 2}});
+  const auto p =
+      params_from(json{{"eps", eps}, {"q1", q1}, {"r1", r1}, {"n_modes", 2}});
 
   // |k| from 0 to well past both peaks, i.e. u = -k^2 down to -16.
   for (int i = 0; i <= 400; ++i) {
@@ -199,7 +206,8 @@ TEST_CASE("Two-mode kernel matches the factored analytical form through k^8",
 TEST_CASE("Two-mode kernel coefficients are the derived expansion",
           "[higher_order_pfc][kernel][analytical]") {
   constexpr double eps = 0.3, q1 = 1.35, r1 = 0.07;
-  const auto p = params_from(json{{"eps", eps}, {"q1", q1}, {"r1", r1}, {"n_modes", 2}});
+  const auto p =
+      params_from(json{{"eps", eps}, {"q1", q1}, {"r1", r1}, {"n_modes", 2}});
 
   // Lambda(u) = -eps + (1+u)^2 [r1 + (a+u)^2], a = q1^2.
   // With A = r1 + a^2, B = 2a, C = 1 this expands to
@@ -254,7 +262,8 @@ TEST_CASE("Conserved evolution symbol is tenth order in k and matches M u Lambda
     const double k = 4.0 * static_cast<double>(i) / 400.0;
     const double u = -(k * k);
     const double expected = M * u * reference_two_mode(u, eps, q1, r1);
-    REQUIRE_THAT(p.symbol(u), WithinAbs(expected, 1e-9 * (1.0 + std::abs(expected))));
+    REQUIRE_THAT(p.symbol(u),
+                 WithinAbs(expected, 1e-9 * (1.0 + std::abs(expected))));
   }
 }
 
@@ -279,10 +288,11 @@ TEST_CASE("Conserved dynamics kills the k=0 mode exactly",
 TEST_CASE("With r1 = 0 both correlation peaks are degenerate at -eps",
           "[higher_order_pfc][kernel][band]") {
   constexpr double eps = 0.25, q1 = 1.4142135623730951;
-  const auto p = params_from(json{{"eps", eps}, {"q1", q1}, {"r1", 0.0}, {"n_modes", 2}});
+  const auto p =
+      params_from(json{{"eps", eps}, {"q1", q1}, {"r1", 0.0}, {"n_modes", 2}});
 
-  REQUIRE_THAT(p.kernel(-1.0), WithinAbs(-eps, 1e-14));          // |k| = 1
-  REQUIRE_THAT(p.kernel(-(q1 * q1)), WithinAbs(-eps, 1e-14));    // |k| = q1
+  REQUIRE_THAT(p.kernel(-1.0), WithinAbs(-eps, 1e-14));       // |k| = 1
+  REQUIRE_THAT(p.kernel(-(q1 * q1)), WithinAbs(-eps, 1e-14)); // |k| = q1
 
   // Both are genuine minima: the kernel rises on either side of each.
   for (const double kc : {1.0, q1}) {
@@ -295,7 +305,8 @@ TEST_CASE("With r1 = 0 both correlation peaks are degenerate at -eps",
 TEST_CASE("r1 > 0 lifts the second peak by exactly (1-q1^2)^2 r1",
           "[higher_order_pfc][kernel][band]") {
   constexpr double eps = 0.25, q1 = 1.4142135623730951, r1 = 0.05;
-  const auto p = params_from(json{{"eps", eps}, {"q1", q1}, {"r1", r1}, {"n_modes", 2}});
+  const auto p =
+      params_from(json{{"eps", eps}, {"q1", q1}, {"r1", r1}, {"n_modes", 2}});
   const double first = p.kernel(-1.0);
   const double second = p.kernel(-(q1 * q1));
   REQUIRE_THAT(second - first, WithinRel(p.second_mode_offset(), 1e-12));
@@ -317,11 +328,12 @@ TEST_CASE("Two modes destabilise |k| = sqrt(2) where one mode cannot",
           "[higher_order_pfc][kernel][comparison]") {
   constexpr double eps = 0.25;
   const double q1 = std::sqrt(2.0);
-  const auto two = params_from(json{{"eps", eps}, {"q1", q1}, {"r1", 0.0}, {"n_modes", 2}});
+  const auto two =
+      params_from(json{{"eps", eps}, {"q1", q1}, {"r1", 0.0}, {"n_modes", 2}});
   const auto one = params_from(json{{"eps", eps}, {"n_modes", 1}});
 
-  const double u1 = -1.0;            // |k| = 1
-  const double u2 = -(q1 * q1);      // |k| = sqrt(2)
+  const double u1 = -1.0;       // |k| = 1
+  const double u2 = -(q1 * q1); // |k| = sqrt(2)
 
   // Both kernels destabilise the first peak identically.
   REQUIRE(two.symbol(u1) > 0.0);
@@ -350,13 +362,12 @@ TEST_CASE("ETD reproduces L(k) growth and conserves the mean density",
   constexpr double dt = 0.05;
   constexpr int n_steps = 8;
 
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}),
-                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({kDx, kDx, kDx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({kDx, kDx, kDx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
-  auto phys = hop::HigherOrderPFCPhysics<>::from_json(json::object(), domain,
-                                                      stack.fft().get_inbox_bounds());
+  auto phys = hop::HigherOrderPFCPhysics<>::from_json(
+      json::object(), domain, stack.fft().get_inbox_bounds());
   pfc::SimulationState state;
   phys.declare_fields(state);
   auto &psi = state.get_field<double>("psi");
@@ -399,13 +410,12 @@ TEST_CASE("ETD is stable far beyond the explicit limit set by the k^10 term",
   constexpr double dt = 0.05;
   constexpr int n_steps = 40;
 
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}),
-                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({kDx, kDx, kDx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({kDx, kDx, kDx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
-  auto phys = hop::HigherOrderPFCPhysics<>::from_json(json::object(), domain,
-                                                      stack.fft().get_inbox_bounds());
+  auto phys = hop::HigherOrderPFCPhysics<>::from_json(
+      json::object(), domain, stack.fft().get_inbox_bounds());
 
   // Most negative eigenvalue on this grid sits at the Nyquist wave number.
   const double k_max = std::numbers::pi / kDx;
@@ -418,10 +428,10 @@ TEST_CASE("ETD is stable far beyond the explicit limit set by the k^10 term",
   pfc::SimulationState state;
   phys.declare_fields(state);
   auto &psi = state.get_field<double>("psi");
-  hop::SeededNoise noise;
-  noise.psi0 = 0.0;
-  noise.amplitude = 1.0e-3;
-  noise.seed = 7;
+  pfc::IndexedNoiseFill noise;
+  noise.offset = 0.0;
+  noise.noise.amplitude = 1.0e-3;
+  noise.noise.seed = 7;
   pfc::apply_field_modifier(noise, psi, 0.0);
 
   pfc::sim::SpectralETDOptions opt;
@@ -453,10 +463,9 @@ TEST_CASE("A seeded perturbation orders while the mean density is held fixed",
   // barely move. The mean density is a control parameter, not a detail.
   constexpr double psi0 = -0.05;
 
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}),
-                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({kDx, kDx, kDx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({kDx, kDx, kDx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
   auto phys = hop::HigherOrderPFCPhysics<>::from_json(
       json{{"eps", 0.25}, {"g", 0.5}}, domain, stack.fft().get_inbox_bounds());
@@ -464,10 +473,10 @@ TEST_CASE("A seeded perturbation orders while the mean density is held fixed",
   pfc::SimulationState state;
   phys.declare_fields(state);
   auto &psi = state.get_field<double>("psi");
-  hop::SeededNoise noise;
-  noise.psi0 = psi0;
-  noise.amplitude = 1.0e-2;
-  noise.seed = 11;
+  pfc::IndexedNoiseFill noise;
+  noise.offset = psi0;
+  noise.noise.amplitude = 1.0e-2;
+  noise.noise.seed = 11;
   pfc::apply_field_modifier(noise, psi, 0.0);
 
   const double mean0 = mean_psi(psi);
@@ -511,17 +520,16 @@ TEST_CASE("Seeded noise gives the same field on every decomposition",
   constexpr int N = 16;
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}),
-                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({kDx, kDx, kDx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({kDx, kDx, kDx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, rank, world_size(),
                                            MPI_COMM_WORLD);
 
-  hop::SeededNoise noise;
-  noise.psi0 = -0.15;
-  noise.amplitude = 1.0e-2;
-  noise.seed = 3;
+  pfc::IndexedNoiseFill noise;
+  noise.offset = -0.15;
+  noise.noise.amplitude = 1.0e-2;
+  noise.noise.seed = 3;
 
   // Distributed apply on this rank's slab ...
   const pfc::SimulationContext context(MPI_COMM_WORLD);
@@ -533,15 +541,17 @@ TEST_CASE("Seeded noise gives the same field on every decomposition",
 
   auto &psi = stack.u();
   psi.for_each_owned([&](int i, int j, int k) {
-    REQUIRE(psi(i, j, k) == full(i + psi.box().low[0], j + psi.box().low[1],
-                                 k + psi.box().low[2]));
+    REQUIRE(psi(i, j, k) ==
+            full(i + psi.box().low[0], j + psi.box().low[1], k + psi.box().low[2]));
   });
   REQUIRE_THAT(mean_psi(full), WithinAbs(-0.15, 1e-13));
   REQUIRE(variance_psi(full) > 0.0);
 
-  REQUIRE_THROWS(hop::from_json(
-      json{{"type", "seeded_noise"}, {"psi0", 0.0}, {"amplitude", 0.01}, {"seed", -1}},
-      noise));
+  REQUIRE_THROWS(pfc::ui::from_json(json{{"type", "seeded_noise"},
+                                         {"psi0", 0.0},
+                                         {"amplitude", 0.01},
+                                         {"seed", -1}},
+                                    noise));
 }
 
 TEST_CASE("HigherOrderPFCSession runs a short JSON case",
