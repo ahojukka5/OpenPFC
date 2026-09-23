@@ -35,6 +35,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Public periodic eigenstrain solver
+  `pfc::solvers::EigenstrainMicroelasticity`
+  (`include/openpfc/solvers/microelasticity/`, #144). The host Green
+  operator, Basic and Eyre–Milton iterations, and the HIP path moved
+  out of `apps/common`. Applications still map phase, composition, and
+  temperature onto stiffness and eigenstrain. The scope is a periodic
+  RVE, not finite-body mechanics.
+
 - Public conservative face flux `pfc::field::fd::divergence_separated`
   (`include/openpfc/kernel/field/face_flux.hpp`, #143). Arithmetic
   averaging is generic; harmonic averaging is for a non-negative

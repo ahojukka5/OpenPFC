@@ -41,9 +41,9 @@
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
-using pfc::apps::MicroelasticityParams;
+using pfc::solvers::MicroelasticityParams;
 using pfc::apps::PeriodicHomogenizer;
-using pfc::apps::Stiffness;
+using pfc::solvers::Stiffness;
 using pfc::apps::voigt_from_stiffness;
 using pfc::apps::Voigt6;
 using pfc::apps::inverse::double_well_prime;

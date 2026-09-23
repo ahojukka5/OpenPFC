@@ -363,7 +363,7 @@ void print_stiffness_report(const char *label, const pfc::apps::Voigt6 &C,
 }
 
 pfc::apps::Voigt6 make_target(const Config &cfg) {
-  using pfc::apps::Stiffness;
+  using pfc::solvers::Stiffness;
   using pfc::apps::Voigt6;
   using pfc::apps::voigt_from_stiffness;
   if (cfg.target == "file") {
@@ -485,9 +485,9 @@ int main(int argc, char **argv) {
     }
     h.note_host_write();
 
-    pfc::apps::MicroelasticityParams p;
-    p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
-    p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
+    pfc::solvers::MicroelasticityParams p;
+    p.c_solid = pfc::solvers::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
+    p.c_liquid = pfc::solvers::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
     p.tol_el = 1.0e-8;
     p.n_el_iter = cfg.n_el_iter;
     p.warm_start = false;

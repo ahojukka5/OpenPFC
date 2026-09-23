@@ -27,9 +27,9 @@
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/runtime/gpu/fft_gpu.hpp>
 #include <openpfc/runtime/gpu/memory_space_gpu.hpp>
-#include <openpfc_apps/microelasticity.hpp>
-#include <openpfc_apps/microelasticity_hip.hpp>
-#include <openpfc_apps/microelasticity_hip_kernels.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity_hip.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity_hip_kernels.hpp>
 
 #include <alloy_dendrite/device_step_hip.hpp>
 #include <alloy_dendrite/elasticity.hpp>
@@ -68,14 +68,14 @@ public:
       throw std::runtime_error(
           "DeviceElasticCoupling: inbox cell count does not match DeviceGeom");
     }
-    pfc::apps::hip_detail::me_fill(m_dfel.data(), 0.0,
+    pfc::solvers::hip_detail::me_fill(m_dfel.data(), 0.0,
                         static_cast<long long>(m_dfel.size()));
     m_dfel.note_device_write();
   }
 
   [[nodiscard]] const DevField &driving_force() const noexcept { return m_dfel; }
   [[nodiscard]] DevField &driving_force() noexcept { return m_dfel; }
-  [[nodiscard]] pfc::apps::DeviceEigenstrainMicroelasticity &solver() noexcept {
+  [[nodiscard]] pfc::solvers::DeviceEigenstrainMicroelasticity &solver() noexcept {
     return m_solver;
   }
 
@@ -85,7 +85,7 @@ public:
 
   ElasticReport solve(const DevField &phi, const DevField &U,
                       const DevField &theta) {
-    pfc::apps::hip_detail::me_assemble_from_padded(
+    pfc::solvers::hip_detail::me_assemble_from_padded(
         phi.data(), U.data(), theta.data(), m_solver.h_device(),
         m_solver.amp_device(), m_solver.damp_device(), m_geom.nx, m_geom.ny,
         m_geom.nz, m_geom.hw, m_geom.sy, m_geom.sz, m_params.eps_c, m_params.eps_T,
@@ -96,14 +96,14 @@ public:
       const auto g = phi.global_size();
       const double ncells = static_cast<double>(g[0]) * g[1] * g[2];
       const double mean_amp = amp_sum / ncells;
-      pfc::apps::Sym3 bar;
-      for (int c = 0; c < pfc::apps::kSymComponents; ++c) {
+      pfc::solvers::Sym3 bar;
+      for (int c = 0; c < pfc::solvers::kSymComponents; ++c) {
         bar[c] = mean_amp * m_solver.params().eigenstrain_pattern[c];
       }
       m_solver.params().applied_strain = bar;
     }
     const auto rep = m_solver.solve_resident(true);
-    pfc::apps::hip_detail::me_copy_owned_to_padded(
+    pfc::solvers::hip_detail::me_copy_owned_to_padded(
         m_solver.dfel_device(), m_dfel.data(), m_geom.nx, m_geom.ny, m_geom.nz,
         m_geom.hw, m_geom.sy, m_geom.sz);
     m_dfel.note_device_write();
@@ -132,14 +132,14 @@ public:
   }
 
 private:
-  static pfc::apps::MicroelasticityParams
+  static pfc::solvers::MicroelasticityParams
   make_solver_params_(const ElasticParams &p, MPI_Comm comm) {
-    pfc::apps::MicroelasticityParams q;
+    pfc::solvers::MicroelasticityParams q;
     q.c_solid = p.c_solid;
     q.c_liquid =
-        pfc::apps::soft_liquid(p.c_solid, p.mu_liquid_fraction, p.bulk_liquid_fraction);
-    q.eigenstrain_pattern = pfc::apps::Sym3::identity();
-    q.applied_strain = pfc::apps::Sym3{};
+        pfc::solvers::soft_liquid(p.c_solid, p.mu_liquid_fraction, p.bulk_liquid_fraction);
+    q.eigenstrain_pattern = pfc::solvers::Sym3::identity();
+    q.applied_strain = pfc::solvers::Sym3{};
     q.scheme = p.scheme;
     q.tol_el = p.tol_el;
     q.n_el_iter = p.n_el_iter;
@@ -152,7 +152,7 @@ private:
   hip::DeviceGeom m_geom{};
   pfc::fft::FFT_HIP m_fft;
   DevField m_dfel;
-  pfc::apps::DeviceEigenstrainMicroelasticity m_solver;
+  pfc::solvers::DeviceEigenstrainMicroelasticity m_solver;
   double m_max_vm{0.0};
 };
 

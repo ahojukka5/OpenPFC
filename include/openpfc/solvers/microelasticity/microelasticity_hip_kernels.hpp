@@ -16,7 +16,7 @@
 
 #include <cstddef>
 
-namespace pfc::apps::hip_detail {
+namespace pfc::solvers::hip_detail {
 
 inline constexpr int kSym = 6;
 
@@ -86,4 +86,4 @@ void me_report_stats(const MESym6Const &sig, const double *dfel, double *block,
 void me_sigma_estar_sum(const MESym6Const &sig, const double *amp,
                          const MEParams &p, double *partial, int n_blocks);
 
-} // namespace pfc::apps::hip_detail
+} // namespace pfc::solvers::hip_detail

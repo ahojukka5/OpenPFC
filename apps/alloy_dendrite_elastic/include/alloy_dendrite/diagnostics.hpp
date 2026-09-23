@@ -49,7 +49,7 @@
  * (`alloy_dendrite_hip_growth`). \(F=\int f_{\mathrm{el}}\,\mathrm{d}V\)
  * and \(W_{*}=-\tfrac12\int\sigma:\varepsilon^{*}\,\mathrm{d}V\). Relative
  * residual \(|F-W_{*}|/\max(|F|,|W_{*}|,10^{-30})\). Same identity as
- * `openpfc_apps/microelasticity.hpp` (eq. (6) plus periodic equilibrium);
+ * `openpfc/solvers/microelasticity/microelasticity.hpp` (eq. (6) plus periodic equilibrium);
  * not a fitted score. Zero-energy arms (`off`, modulus-only) report 0. |
  *
  * ## Why `k_eff` is defined through `U_i` and not through a nearby cell

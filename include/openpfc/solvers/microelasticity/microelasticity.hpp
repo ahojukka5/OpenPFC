@@ -7,6 +7,11 @@
  * @file microelasticity.hpp
  * @brief Quasi-static 3-D eigenstrain microelasticity on the existing FFT stack.
  *
+ * Periodic representative-volume FFT microelasticity. Not a finite-body,
+ * traction, or finite-element solver. The two stiffness fields and the
+ * eigenstrain are inputs; mapping them from phase, composition, or
+ * temperature belongs to the application.
+ *
  * @details
  * A phase field that changes the local lattice parameter loads the solid it
  * grows into. The load is *not* a time-integrated field: mechanical
@@ -263,7 +268,7 @@
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 
-namespace pfc::apps {
+namespace pfc::solvers {
 
 /**
  * @brief Component order of every symmetric second-rank tensor in this header.
@@ -1344,4 +1349,4 @@ private:
   bool m_has_solution{false};
 };
 
-} // namespace pfc::apps
+} // namespace pfc::solvers

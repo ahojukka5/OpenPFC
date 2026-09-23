@@ -335,9 +335,9 @@ int main(int argc, char **argv) {
 
   if (!proceed) {
   } else {
-  pfc::apps::MicroelasticityParams p;
-  p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
-  p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
+  pfc::solvers::MicroelasticityParams p;
+  p.c_solid = pfc::solvers::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
+  p.c_liquid = pfc::solvers::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
   p.tol_el = 1.0e-8;
   p.n_el_iter = cfg.n_el_iter;
   p.warm_start = false;

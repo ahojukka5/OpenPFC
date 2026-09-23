@@ -12,7 +12,7 @@
  * @details
  * ## What this file is, and what it is not
  *
- * It is *not* an elastic solver. `openpfc_apps/microelasticity.hpp` is the
+ * It is *not* an elastic solver. `openpfc/solvers/microelasticity/microelasticity.hpp` is the
  * solver -- Eshelby-validated, with a finite-difference-checked
  * `d f_el/d phi` -- and nothing here re-derives any of it. This file is the
  * adapter that makes the solver usable from inside a finite-difference time
@@ -126,7 +126,7 @@
  * right way to size `N` is to measure the resulting change in a dendrite
  * observable rather than to argue about it. The drivers do exactly that.
  *
- * @see openpfc_apps/microelasticity.hpp for the solver and its verification
+ * @see openpfc/solvers/microelasticity/microelasticity.hpp for the solver and its verification
  * @see MODEL_SPEC.md equations (5)-(7)
  * @see Khachaturyan, *Theory of Structural Transformations in Solids* (1983)
  * @see Hu & Chen, *Acta Mater.* **49**, 1879 (2001)
@@ -147,14 +147,14 @@
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/kernel/simulation/stacks/fd_padded_cpu_stack.hpp>
 
-#include <openpfc_apps/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
 #include <alloy_dendrite/parameters.hpp>
 
 namespace alloy_dendrite {
 
-using pfc::apps::Stiffness;
-using pfc::apps::Sym3;
+using pfc::solvers::Stiffness;
+using pfc::solvers::Sym3;
 
 /// Which condition fixes the `k = 0` Fourier mode of the strain.
 enum class MacroStrainMode : int {
@@ -210,7 +210,7 @@ struct ElasticParams {
   /// Solid stiffness, cubic, `<100>` along the grid, in units of `f_ref`.
   Stiffness c_solid{};
   /**
-   * @brief `mu_l / mu_s` for @ref pfc::apps::soft_liquid.
+   * @brief `mu_l / mu_s` for @ref pfc::solvers::soft_liquid.
    *
    * A liquid has no shear modulus, and a phase-field elastic solve cannot
    * use zero: the local stiffness becomes singular in two channels and every
@@ -221,7 +221,7 @@ struct ElasticParams {
    * because "we picked 0.05" is not a justification and "0.01 costs twice
    * the iterations and moves the tip velocity by X" is.
    */
-  double mu_liquid_fraction{pfc::apps::kDefaultLiquidShearFraction};
+  double mu_liquid_fraction{pfc::solvers::kDefaultLiquidShearFraction};
   /// `K_l / K_s`. 1 by default: liquids are nearly as stiff in bulk as solids.
   double bulk_liquid_fraction{1.0};
 
@@ -237,8 +237,8 @@ struct ElasticParams {
   /// Which condition fixes `eps_hat(0)`; see @ref MacroStrainMode.
   MacroStrainMode macro_strain{MacroStrainMode::ZeroMeanStress};
   /// `EyreMilton` unless a comparison against the reference scheme is wanted.
-  pfc::apps::MicroelasticityScheme scheme{
-      pfc::apps::MicroelasticityScheme::EyreMilton};
+  pfc::solvers::MicroelasticityScheme scheme{
+      pfc::solvers::MicroelasticityScheme::EyreMilton};
   /// Relative polarisation change at which the fixed point stops.
   double tol_el{1.0e-6};
   /// Hard cap on Green-operator applications per solve.
@@ -271,7 +271,7 @@ struct ElasticReport {
 };
 
 /**
- * @brief Couples @ref pfc::apps::EigenstrainMicroelasticity to a
+ * @brief Couples @ref pfc::solvers::EigenstrainMicroelasticity to a
  *        `Stepper<Dim>` running on an `FDPaddedCPUStack`.
  *
  * Owns the FFT, the solver, the four scalar inputs the solver needs, and the
@@ -341,14 +341,14 @@ public:
     return m_dfel;
   }
 
-  [[nodiscard]] const pfc::apps::EigenstrainMicroelasticity &
+  [[nodiscard]] const pfc::solvers::EigenstrainMicroelasticity &
   solver() const noexcept {
     return m_solver;
   }
   [[nodiscard]] const ElasticParams &params() const noexcept { return m_params; }
   /// Liquid stiffness actually in use, derived from the solid by `soft_liquid`.
   [[nodiscard]] Stiffness c_liquid() const noexcept {
-    return pfc::apps::soft_liquid(m_params.c_solid, m_params.mu_liquid_fraction,
+    return pfc::solvers::soft_liquid(m_params.c_solid, m_params.mu_liquid_fraction,
                                   m_params.bulk_liquid_fraction);
   }
 
@@ -400,7 +400,7 @@ public:
                             static_cast<double>(g[1]) * static_cast<double>(g[2]);
       const double mean_amp = amp_sum / ncells;
       Sym3 bar;
-      for (int c = 0; c < pfc::apps::kSymComponents; ++c) {
+      for (int c = 0; c < pfc::solvers::kSymComponents; ++c) {
         bar[c] = mean_amp * m_solver.params().eigenstrain_pattern[c];
       }
       m_solver.params().applied_strain = bar;
@@ -447,12 +447,12 @@ public:
   }
 
 private:
-  static pfc::apps::MicroelasticityParams
+  static pfc::solvers::MicroelasticityParams
   make_solver_params_(const ElasticParams &p, MPI_Comm comm) {
-    pfc::apps::MicroelasticityParams q;
+    pfc::solvers::MicroelasticityParams q;
     q.c_solid = p.c_solid;
     q.c_liquid =
-        pfc::apps::soft_liquid(p.c_solid, p.mu_liquid_fraction, p.bulk_liquid_fraction);
+        pfc::solvers::soft_liquid(p.c_solid, p.mu_liquid_fraction, p.bulk_liquid_fraction);
     q.eigenstrain_pattern = Sym3::identity(); // dilatational, equation (5)
     q.applied_strain = Sym3{};
     q.scheme = p.scheme;
@@ -502,7 +502,7 @@ private:
   FlatField m_dh;
   FlatField m_damp;
   PaddedField m_dfel;
-  pfc::apps::EigenstrainMicroelasticity m_solver;
+  pfc::solvers::EigenstrainMicroelasticity m_solver;
 };
 
 } // namespace alloy_dendrite

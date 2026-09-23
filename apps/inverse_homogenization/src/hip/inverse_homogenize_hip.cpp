@@ -297,7 +297,7 @@ pfc::apps::Voigt6 make_target(const Config &cfg) {
   const double nu =
       (cfg.target == "auxetic") ? -std::abs(cfg.nu_target) : cfg.nu_target;
   return pfc::apps::voigt_from_stiffness(
-      pfc::apps::Stiffness::isotropic(cfg.E_target, nu));
+      pfc::solvers::Stiffness::isotropic(cfg.E_target, nu));
 }
 
 void spectral_laplacian_hip(const pfc::Domain &domain, FFT &fft, const RealField &h,
@@ -494,9 +494,9 @@ int run(int argc, char **argv, int rank, int nproc) {
   }
   h.note_host_write();
 
-  pfc::apps::MicroelasticityParams p;
-  p.c_solid = pfc::apps::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
-  p.c_liquid = pfc::apps::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
+  pfc::solvers::MicroelasticityParams p;
+  p.c_solid = pfc::solvers::Stiffness::isotropic(cfg.E_solid, cfg.nu_solid);
+  p.c_liquid = pfc::solvers::Stiffness::isotropic(cfg.E_void, cfg.nu_void);
   p.tol_el = 1.0e-8;
   p.n_el_iter = cfg.n_el_iter;
   p.warm_start = false;

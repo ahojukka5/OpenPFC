@@ -161,7 +161,7 @@ The frozen family does **not** produce \(\nu_t>0\) then \(\nu_t<0\).
 ## Reuse
 
 The elliptic solve is `EigenstrainMicroelasticity` in
-[`apps/common/include/openpfc_apps/microelasticity.hpp`](../common/include/openpfc_apps/microelasticity.hpp).
+[`apps/common/include/openpfc/solvers/microelasticity/microelasticity.hpp`](../common/include/openpfc/solvers/microelasticity/microelasticity.hpp).
 Homogenization is the same Green-operator problem with **zero eigenstrain**
 and an imposed macroscopic strain (`applied_strain`). There is no second
 elasticity implementation, no FEM, and no unstructured mesh.

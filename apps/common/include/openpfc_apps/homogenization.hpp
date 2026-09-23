@@ -80,9 +80,15 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/fft_interface.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
-#include <openpfc_apps/microelasticity.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
 namespace pfc::apps {
+
+using pfc::solvers::EigenstrainMicroelasticity;
+using pfc::solvers::MicroelasticityParams;
+using pfc::solvers::MicroelasticityReport;
+using pfc::solvers::Stiffness;
+using pfc::solvers::Sym3;
 
 /// Engineering Voigt index order: 11, 22, 33, 23, 13, 12 (same as `SymIndex`).
 inline constexpr int kVoigtDim = 6;
@@ -147,8 +153,7 @@ struct Voigt6 {
   [[nodiscard]] double max_abs() const noexcept {
     double m = 0.0;
     for (int i = 0; i < kVoigtDim; ++i)
-      for (int j = 0; j < kVoigtDim; ++j)
-        m = std::max(m, std::abs((*this)(i, j)));
+      for (int j = 0; j < kVoigtDim; ++j) m = std::max(m, std::abs((*this)(i, j)));
     return m;
   }
 
@@ -452,10 +457,10 @@ diagnose_stiffness(const Voigt6 &C, const Voigt6 *C_target = nullptr) {
   const auto avg = [&](double a, double b) { return f1 * a + f2 * b; };
   const double inv_c11 = avg(1.0 / c1.c11, 1.0 / c2.c11);
   const double c12_over = avg(c1.c12 / c1.c11, c2.c12 / c2.c11);
-  const double p11 = avg(c1.c11 - c1.c12 * c1.c12 / c1.c11,
-                         c2.c11 - c2.c12 * c2.c12 / c2.c11);
-  const double p12 = avg(c1.c12 - c1.c12 * c1.c12 / c1.c11,
-                         c2.c12 - c2.c12 * c2.c12 / c2.c11);
+  const double p11 =
+      avg(c1.c11 - c1.c12 * c1.c12 / c1.c11, c2.c11 - c2.c12 * c2.c12 / c2.c11);
+  const double p12 =
+      avg(c1.c12 - c1.c12 * c1.c12 / c1.c11, c2.c12 - c2.c12 * c2.c12 / c2.c11);
   const double c44_a = avg(c1.c44, c2.c44);
   const double inv_c44 = avg(1.0 / c1.c44, 1.0 / c2.c44);
   const double Cnn = 1.0 / inv_c11;
@@ -482,7 +487,8 @@ diagnose_stiffness(const Voigt6 &C, const Voigt6 *C_target = nullptr) {
 }
 
 /**
- * @brief Exact 1-D homogenization of a *graded* laminate \f$h=h(x_{\mathrm{axis}})\f$.
+ * @brief Exact 1-D homogenization of a *graded* laminate
+ * \f$h=h(x_{\mathrm{axis}})\f$.
  *
  * Same algebra as `exact_binary_laminate`, but the averages are taken over
  * the actual cellwise \f$\mathbf C(h_i)\f$ rather than two phases at
@@ -673,9 +679,8 @@ public:
           "PeriodicHomogenizer::objective_sensitivity: compute() has not been "
           "called");
     }
-    const Stiffness dC =
-        Stiffness::blend(m_solver.params().c_solid, 1.0, m_solver.params().c_liquid,
-                         -1.0);
+    const Stiffness dC = Stiffness::blend(m_solver.params().c_solid, 1.0,
+                                          m_solver.params().c_liquid, -1.0);
     const Voigt6 &C = m_last.stiffness;
     Voigt6 dJdC;
     for (int i = 0; i < kVoigtDim; ++i)

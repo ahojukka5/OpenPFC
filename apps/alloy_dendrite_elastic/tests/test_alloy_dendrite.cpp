@@ -1264,7 +1264,7 @@ TEST_CASE("elastic solve: homogeneous modulus, uniform eigenstrain",
                                            opt);
 
   alloy_dendrite::ElasticParams ep;
-  ep.c_solid = pfc::apps::Stiffness::isotropic(100.0, 0.3);
+  ep.c_solid = pfc::solvers::Stiffness::isotropic(100.0, 0.3);
   ep.mu_liquid_fraction = 1.0; // homogeneous: C_liquid == C_solid
   ep.bulk_liquid_fraction = 1.0;
   ep.eps_c = 0.01;
@@ -1291,7 +1291,7 @@ TEST_CASE("elastic solve: homogeneous modulus, uniform eigenstrain",
     REQUIRE(rep.total_energy == Approx(0.0).margin(1e-20));
     REQUIRE(rep.max_dfel_dphi == Approx(0.0).margin(1e-12));
     // eps == eps* everywhere: the body has dilated freely.
-    REQUIRE(ec.solver().strain()[pfc::apps::SYM_XX].data()[0] == Approx(a));
+    REQUIRE(ec.solver().strain()[pfc::solvers::SYM_XX].data()[0] == Approx(a));
   }
 
   SECTION("clamped body: uniform stress, and it is not small") {
@@ -1333,7 +1333,7 @@ TEST_CASE("eps_c = 0 zeroes the isothermal elastic effect", "[unit][elastic]") {
                                            opt);
 
   alloy_dendrite::ElasticParams ep;
-  ep.c_solid = pfc::apps::Stiffness::isotropic(100.0, 0.3);
+  ep.c_solid = pfc::solvers::Stiffness::isotropic(100.0, 0.3);
   ep.eps_c = 0.0;
   ep.eps_T = 0.0;
   ep.U_ref = 0.0;

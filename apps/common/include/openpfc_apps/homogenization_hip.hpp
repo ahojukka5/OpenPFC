@@ -10,10 +10,16 @@
 #include <algorithm>
 #include <array>
 
+#include <openpfc/solvers/microelasticity/microelasticity_hip.hpp>
 #include <openpfc_apps/homogenization.hpp>
-#include <openpfc_apps/microelasticity_hip.hpp>
 
 namespace pfc::apps {
+
+using pfc::solvers::DeviceEigenstrainMicroelasticity;
+using pfc::solvers::EigenstrainMicroelasticity;
+using pfc::solvers::MicroelasticityParams;
+using pfc::solvers::Stiffness;
+using pfc::solvers::Sym3;
 
 class PeriodicHomogenizerHIP {
 public:
@@ -63,11 +69,10 @@ public:
     return m_strain[static_cast<std::size_t>(a)];
   }
 
-  void objective_sensitivity(const RealField &h, const Voigt6 &Cstar, const Voigt6 &W,
-                             RealField &dJdh) const {
-    const Stiffness dC =
-        Stiffness::blend(m_solver.params().c_solid, 1.0, m_solver.params().c_liquid,
-                         -1.0);
+  void objective_sensitivity(const RealField &h, const Voigt6 &Cstar,
+                             const Voigt6 &W, RealField &dJdh) const {
+    const Stiffness dC = Stiffness::blend(m_solver.params().c_solid, 1.0,
+                                          m_solver.params().c_liquid, -1.0);
     const Voigt6 &C = m_last.stiffness;
     Voigt6 dJdC;
     for (int i = 0; i < kVoigtDim; ++i)
@@ -85,8 +90,9 @@ public:
         for (int b = 0; b < kVoigtDim; ++b) {
           Sym3 eb;
           for (int c = 0; c < kVoigtDim; ++c)
-            eb[c] = m_strain[static_cast<std::size_t>(b)][static_cast<std::size_t>(c)]
-                        .data()[i];
+            eb[c] =
+                m_strain[static_cast<std::size_t>(b)][static_cast<std::size_t>(c)]
+                    .data()[i];
           acc += dJdC(a, b) * ddot(dCea, eb) / m_n_global;
         }
       }
@@ -119,9 +125,9 @@ private:
       Sym3 e;
       for (int c = 0; c < kVoigtDim; ++c)
         e[c] = eps[static_cast<std::size_t>(c)].data()[i];
-      const Stiffness C = Stiffness::blend(m_solver.params().c_solid, h.data()[i],
-                                           m_solver.params().c_liquid,
-                                           1.0 - h.data()[i]);
+      const Stiffness C =
+          Stiffness::blend(m_solver.params().c_solid, h.data()[i],
+                           m_solver.params().c_liquid, 1.0 - h.data()[i]);
       const Sym3 si = C.contract(e);
       for (int c = 0; c < kVoigtDim; ++c) s[c] += si[c];
     }
