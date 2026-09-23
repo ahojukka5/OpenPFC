@@ -101,12 +101,11 @@ fitted to any specific material's measured \(\gamma(\theta)\) -- do not read
 \(\epsilon_a\) as a calibrated anisotropy strength.
 
 Because \(B(\theta)\) depends on the field's own gradient, the operator is
-not a reciprocal-space symbol; `surface_diffusion_anisotropic` evaluates it
-with a self-contained spectral-flux stepper
-(`include/surface_diffusion/anisotropic_flux.hpp`) that integrates the
-constant-\(B_0\) part exactly (ETD) and treats the orientation-dependent
-remainder explicitly, the same splitting `openpfc_apps/spectral_flux.hpp`
-uses for `thin_film`'s \(h^3\) mobility. At `eps_a=0` the remainder is zero
+not a reciprocal-space symbol; `surface_diffusion_anisotropic` fills
+\(B(\theta)\) and integrates the constant-\(B_0\) part exactly (ETD). The
+divergence is `pfc::sim::SpectralFlux`
+(`include/openpfc/kernel/simulation/spectral_flux.hpp`), the same operator
+`thin_film` uses for \(h^3\) mobility. At `eps_a=0` the remainder is zero
 (up to FFT round-off) and the stepper reproduces the isotropic verifier's
 exact \(\exp(-B_0k^4t)\) trajectory -- checked in `tests/test_surface_diffusion.cpp`,
 not assumed.

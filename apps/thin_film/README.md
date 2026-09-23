@@ -13,9 +13,9 @@ Binaries: `thin_film` (CPU, linear verifier); `thin_film_nonlinear` (CPU, full
 lubrication, conservative face-flux FD -- integrates *through* rupture where
 the two spectral solvers cannot, see "Two methods, one problem" below);
 `thin_film_hip` / `thin_film_nonlinear_hip` when `OpenPFC_ENABLE_HIP_SPECTRAL`
-is on. The nonlinear flux path (`pfc::apps::SpectralFlux` / `FluxETD`) runs on
+is on. The nonlinear flux path (`pfc::sim::SpectralFlux` / `FluxETD`) runs on
 host and device -- see
-[`spectral_flux.hpp`](../common/include/openpfc_apps/spectral_flux.hpp).
+[`spectral_flux.hpp`](../../include/openpfc/kernel/simulation/spectral_flux.hpp).
 
 ## Dewetting and rupture: problem setup
 
@@ -47,7 +47,7 @@ relaxing. Constant mobility cannot produce that.
 
 Because `M(h)` sits *inside* a divergence it cannot be written as a
 reciprocal-space symbol, so this case uses the shared conservative flux stepper
-[`openpfc_apps/spectral_flux.hpp`](../common/include/openpfc_apps/spectral_flux.hpp)
+[`spectral_flux.hpp`](../../include/openpfc/kernel/simulation/spectral_flux.hpp)
 rather than the pointwise ETD path — four extra transforms per step in 2-D.
 `SpectralFlux` / `FluxETD` are templated on `MemorySpace`, so `thin_film_nonlinear`
 (host) and `thin_film_nonlinear_hip` (device) run the identical physics; the

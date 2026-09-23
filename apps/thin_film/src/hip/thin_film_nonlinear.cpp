@@ -9,7 +9,7 @@
  * `thin_film/nonlinear_driver.hpp` for the shared, `MemorySpace`-templated
  * physics and `apps/thin_film/src/gpu/thin_film_pointwise.inc` for the device
  * instantiations (`ThinFilmPointwise`, `PotentialPointwise`, and
- * `pfc::apps::MobilityGradPointwise<CubicMobility>`) this binary links
+ * `pfc::sim::MobilityGradPointwise<CubicMobility>`) this binary links
  * against.
  */
 

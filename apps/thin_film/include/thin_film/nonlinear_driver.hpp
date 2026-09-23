@@ -55,7 +55,7 @@
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
-#include <openpfc_apps/spectral_flux.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc_apps/structure_factor.hpp>
 
 #include <thin_film/nonlinear.hpp>
@@ -179,7 +179,7 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
     // remainder carries everything the linearisation leaves out, so the
     // nonlinear solver reduces to the linear one when M is constant.
     const double gamma = p.gamma, M0 = p.M0, Pip0 = p.Pip0;
-    pfc::apps::FluxETD<MemorySpace> stepper(domain, stack.fft(), dt, [=](double k_lap) {
+    pfc::sim::FluxETD<MemorySpace> stepper(domain, stack.fft(), dt, [=](double k_lap) {
       return -M0 * gamma * k_lap * k_lap - M0 * Pip0 * k_lap;
     });
 

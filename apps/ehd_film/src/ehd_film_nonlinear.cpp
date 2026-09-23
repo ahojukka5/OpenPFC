@@ -49,7 +49,7 @@
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
-#include <openpfc_apps/spectral_flux.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 
 #include <ehd_film/ehd_film_physics.hpp>
 #include <ehd_film/nonlinear.hpp>
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
     // constant mobility the nonlinear solver reduces to the linear k^6
     // verifier -- asserted in the tests, not assumed.
     const double B = p.B, gamma = p.gamma, M0 = p.M0, Pip0 = p.Pip0;
-    pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double k_lap) {
+    pfc::sim::FluxETD stepper(domain, stack.fft(), dt, [=](double k_lap) {
       const double k2 = k_lap * k_lap;
       return M0 * B * k_lap * k2 - M0 * gamma * k2 - M0 * Pip0 * k_lap;
     });

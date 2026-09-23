@@ -30,9 +30,9 @@
  * reduces to the linear one at \f$h=h_0\f$; in dimensional terms
  * \f$M=h^3/(3\eta)\f$ with \f$M_0=h_0^3/(3\eta)\f$.
  *
- * The flux is evaluated with `pfc::apps::FluxETD`; see
- * `openpfc_apps/spectral_flux.hpp` for why a state-dependent mobility cannot
- * be written as a reciprocal-space symbol.
+ * The flux is evaluated with `pfc::sim::FluxETD`; see
+ * `openpfc/kernel/simulation/spectral_flux.hpp` for why a state-dependent
+ * mobility cannot be written as a reciprocal-space symbol.
  */
 
 #include <algorithm>
@@ -56,7 +56,7 @@ namespace thin_film {
 /// Cubic lubrication mobility, normalised so that \f$M(h_0)=M_0\f$.
 ///
 /// Trivially copyable and `OPENPFC_HD` so it can run through
-/// `pfc::apps::MobilityGradPointwise` on host or device (see
+/// `pfc::sim::MobilityGradPointwise` on host or device (see
 /// `apps/thin_film/src/gpu/thin_film_pointwise.inc`).
 struct CubicMobility {
   double M0{1.0};

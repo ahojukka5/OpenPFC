@@ -96,17 +96,16 @@ stable thin gap instead of the pressure diverging as `h -> 0`.
 * Adhesion enters with the same sign as bending and tension: `-Pi(h)` in
   `p`. `A>0` is attractive at `h0`.
 
-### Numerics: why CPU only
+### Numerics
 
 The nonlinear flux \(\nabla\cdot[M(h)\nabla p]\) is evaluated with the
-shared `pfc::apps::FluxETD` stepper
-(`apps/common/include/openpfc_apps/spectral_flux.hpp`, introduced for
-`#114`): a state-dependent mobility cannot be written as a reciprocal-space
-symbol, so it is applied in real space every step with Orszag 2/3
-dealiasing on the flux transform. That path is host (CPU) only — the
-device `Ops` layer has no complex-\(ik_d\) gradient kernels yet. The
-existing constant-mobility `ehd_film_hip` binary is untouched; the
-nonlinear science driver has no GPU twin.
+shared `pfc::sim::FluxETD` stepper
+(`include/openpfc/kernel/simulation/spectral_flux.hpp`): a state-dependent
+mobility cannot be written as a reciprocal-space symbol, so it is applied
+in real space every step with Orszag 2/3 dealiasing on the flux transform.
+`ehd_film_nonlinear` stays on the host; it does not instantiate a device
+mobility. The existing constant-mobility `ehd_film_hip` binary is
+untouched.
 
 ## Measured results
 

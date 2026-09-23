@@ -35,6 +35,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Public conservative spectral flux `pfc::sim::SpectralFlux` and `FluxETD`
+  (`include/openpfc/kernel/simulation/spectral_flux.hpp`, #142). The
+  coefficient is either \(M(u)\) or a field the caller has filled, so thin
+  film, EHD, and anisotropic surface diffusion share one divergence. The
+  2/3 mask is `fill_two_thirds_mask`.
+
 - Higher-order PFC seed-ensemble driver and $256^2$ same-$dx$ box-control
   inputs (`apps/higher_order_pfc`, research
   #608). Frozen seeds

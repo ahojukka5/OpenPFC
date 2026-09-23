@@ -29,7 +29,7 @@
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc/kernel/simulation/time.hpp>
 #include <thin_film/cosine_mode.hpp>
-#include <openpfc_apps/spectral_flux.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc_apps/structure_factor.hpp>
 #include <thin_film/fd_flux.hpp>
 #include <thin_film/nonlinear.hpp>
@@ -289,7 +289,7 @@ TEST_CASE("Flux stepper reproduces the analytical k^4 decay",
       });
 
   // A = 0, so Pi == 0 and p = -gamma lap h. Constant mobility M0.
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
     return -M0 * gamma * kl * kl;
   });
   auto potential = [&](pfc::data::Field<std::complex<double>> &h_hat,
@@ -346,7 +346,7 @@ TEST_CASE("Cubic mobility conserves liquid volume", "[thin_film][nonlinear]") {
         k_lap[i] = -(kx * kx + ky * ky + kz * kz);
       });
 
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt,
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt,
                              [=](double kl) { return -kl * kl; });
   auto potential = [&](pfc::data::Field<std::complex<double>> &h_hat,
                        pfc::data::Field<double> &,
@@ -677,7 +677,7 @@ TEST_CASE("FD and spectral agree in the smooth pre-rupture regime",
       [&](std::size_t i, double kx, double ky, double kz, int, int, int) {
         k_lap[i] = -(kx * kx + ky * ky + kz * kz);
       });
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
     return -M0 * gamma * kl * kl - M0 * p.Pip0 * kl;
   });
   auto potential = [&](pfc::data::Field<std::complex<double>> &h_hat,
