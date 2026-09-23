@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Frozen Heat3D 1-node GPU cost matrix for research #592 / OpenPFC #124.
+"""Frozen Heat3D 1-node GPU cost matrix for OpenPFC #124.
 
 Eight cells (N in {512,1024} x spectral, FD-2, FD-8, FD-12) times three
 independent repeats. Does not splice onto the historical b91d2575 table.

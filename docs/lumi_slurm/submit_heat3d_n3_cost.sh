@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Issue #124 / research #592: submit the frozen 1-node Heat3D GPU cost
+# Issue #124: submit the frozen 1-node Heat3D GPU cost
 # matrix. Bill project_462001519. Refuse project_462001245.
 #
 # Usage (LUMI login):
@@ -59,7 +59,7 @@ if [[ "${MODE}" == "check" ]]; then
 fi
 if [[ "${MODE}" == "collect" ]]; then
   python3 "${PY}" --harvest "${CAMPAIGN_ROOT}" \
-    --out "${SCRIPT_DIR}/../../docs/report/data"
+    --out "${SCRIPT_DIR}/../../docs/hpc"
   exit 0
 fi
 

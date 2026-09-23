@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the research #592 / OpenPFC #124 N^3 cost-matrix tooling."""
+"""Tests for the OpenPFC #124 N^3 cost-matrix tooling."""
 
 import json
 import os
