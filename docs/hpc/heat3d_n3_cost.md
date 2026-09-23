@@ -3,12 +3,11 @@ SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Heat3D 1-node GPU cost matrix (research #592)
+# Heat3D 1-node GPU cost matrix (issue #124)
 
-Frozen LUMI-G equal-grid timings at \(N=512\) and \(N=1024\) for the
-`periodic-operator-choice` \(N^3\) referee gate. Scientific owner:
-[research#592](https://github.com/ahojukka5/research/issues/592). This
-page is the executable recipe (OpenPFC #124).
+Frozen LUMI-G equal-grid timings at \(N=512\) and \(N=1024\). This
+page is the executable recipe
+([#124](https://github.com/ahojukka5/OpenPFC/issues/124)).
 
 Do **not** splice these numbers onto the historical `b91d2575` GPU table.
 The fresh \(N=1024\) cells are the same-binary anchor for \(N=512\).
@@ -50,8 +49,8 @@ HEAT3D_HIP_BIN=/flash/project_462001519/juaho/build/openpfc-lumi-rocm-n3-cost-59
 ./docs/lumi_slurm/submit_heat3d_n3_cost.sh collect
 ```
 
-`collect` writes `docs/report/data/heat3d_n3_cost_repeats.csv` and
-`heat3d_n3_cost_summary.csv`. Ranking recompute belongs in research #592.
+`collect` writes `docs/hpc/heat3d_n3_cost_repeats.csv` and
+`docs/hpc/heat3d_n3_cost_summary.csv`.
 
 ## Admitted harvest (2026-09-21)
 

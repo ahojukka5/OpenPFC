@@ -93,6 +93,8 @@ path = [
     "docs/hpc/fd_order_overlap_diag.csv",
     "docs/hpc/heffte_bandwidth_calibrate.csv",
     "docs/hpc/heffte_pencils_ab_32n.csv",
+    "docs/hpc/heat3d_n3_cost_repeats.csv",
+    "docs/hpc/heat3d_n3_cost_summary.csv",
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"

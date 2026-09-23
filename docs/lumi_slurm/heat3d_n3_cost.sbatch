@@ -15,7 +15,7 @@
 #SBATCH --output=/scratch/project_462001519/juaho/logs/%x-%j.out
 #SBATCH --error=/scratch/project_462001519/juaho/logs/%x-%j.err
 #
-# OpenPFC #124 / research #592: one independent repeat of the frozen
+# OpenPFC #124: one independent repeat of the frozen
 # 8-cell Heat3D GPU cost matrix on one LUMI-G node.
 
 set -euo pipefail

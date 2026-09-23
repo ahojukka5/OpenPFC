@@ -1,4 +1,4 @@
-# Matched 1-node LUMI-G Heat3D cost matrix, research #592 / OpenPFC #124.
+# Matched 1-node LUMI-G Heat3D cost matrix, OpenPFC #124.
 # N=512 and N=1024, spectral and FD-2/8/12, 3 independent repeats (jobs
 # 22209970-72). 1 node, 8 GCDs, GPU-aware, production slabs, 30 steps,
 # HEAT3D_WARMUP=5, 25 accepted, median wall_step. OpenPFC 040c9b6c,
