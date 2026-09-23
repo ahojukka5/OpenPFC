@@ -36,10 +36,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ### Added
 
 - Public conservative face flux `pfc::field::fd::divergence_separated`
-  (`include/openpfc/kernel/field/face_flux.hpp`, #143). Arithmetic and
-  harmonic face averages are generic. Thin film still owns the pressure,
-  the cubic mobility, and the time step, and calls this operator for the
-  divergence.
+  (`include/openpfc/kernel/field/face_flux.hpp`, #143). Arithmetic
+  averaging is generic; harmonic averaging is for a non-negative
+  transport coefficient. The caller passes which axes are active from
+  the global size, so a rank that owns one cell on an active axis still
+  forms both face fluxes from the halos. Thin film still owns the
+  pressure, the cubic mobility, and the time step.
 
 - Public conservative spectral flux `pfc::sim::SpectralFlux` and `FluxETD`
   (`include/openpfc/kernel/simulation/spectral_flux.hpp`, #142). The

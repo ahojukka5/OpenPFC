@@ -18,16 +18,22 @@
  * Internal faces cancel in a periodic sum, so `sum(rhs)` is zero to
  * round-off when every face value is shared by its two cells.
  *
- * `a_face` is the arithmetic or harmonic average of the coefficient samples
- * on the two cells. The coefficient is whatever the caller stored: a
- * mobility of the transported field, a precomputed field, or a constant.
- * This operator does not know a material law, a pressure, or a boundary
- * condition. Neighbours that lie outside the owned box are read from
- * width-1 separated face halos in the order `+X,-X,+Y,-Y,+Z,-Z`
- * (`halo_face_layout.hpp`). A later non-periodic boundary fills those
- * slots; this function does not.
+ * Arithmetic averaging applies to any real samples. Harmonic averaging is
+ * for a non-negative transport coefficient (mobility, diffusivity,
+ * conductivity). It is not an interpolant for a signed coefficient: if
+ * the two samples sum to zero or less, the face coefficient is zero.
  *
- * An axis of length 1 is skipped. A 2-D problem is `nz == 1`.
+ * This operator does not know a material law, a pressure, or a boundary
+ * condition, and it does not exchange halos. Neighbours outside the owned
+ * box are read from width-1 separated face halos in the order
+ * `+X,-X,+Y,-Y,+Z,-Z` (`halo_face_layout.hpp`). A periodic exchange is one
+ * producer of those slots. A Neumann, reaction, or other non-periodic
+ * boundary can fill the same slots. This function only reads them.
+ *
+ * An axis is skipped only when the caller marks it inactive, which means
+ * the global extent is 1. A local owned extent of 1 on an active axis
+ * still forms both face fluxes, both from the halos. A 2-D grid is the
+ * case where the global z extent is 1.
  */
 
 #include <array>
@@ -42,11 +48,13 @@ enum class FaceAverage { Arithmetic, Harmonic };
  * @brief Face coefficient from the samples on the low-index and high-index
  *        cells.
  *
- * Harmonic averaging is zero when either sample is zero and the other is
- * positive. A non-positive sum returns zero, matching a degenerate
- * coefficient that must not drive a flux.
+ * `Arithmetic` is the mean of the two samples. `Harmonic` is for a
+ * non-negative transport coefficient. It is zero when either sample is
+ * zero and the other is positive, and it returns zero whenever
+ * `low + high <= 0`. That rule is not a signed harmonic mean.
  */
-[[nodiscard]] inline double average_face(FaceAverage kind, double low, double high) {
+[[nodiscard]] constexpr double average_face(FaceAverage kind, double low,
+                                            double high) {
   switch (kind) {
   case FaceAverage::Harmonic: {
     const double sum = low + high;
@@ -58,8 +66,8 @@ enum class FaceAverage { Arithmetic, Harmonic };
 }
 
 /// @brief `a_face * (p_high - p_low) / spacing`.
-[[nodiscard]] inline double face_flux(double face_coefficient, double p_high,
-                                      double p_low, double spacing) {
+[[nodiscard]] constexpr double face_flux(double face_coefficient, double p_high,
+                                         double p_low, double spacing) {
   return face_coefficient * (p_high - p_low) / spacing;
 }
 
@@ -67,23 +75,24 @@ enum class FaceAverage { Arithmetic, Harmonic };
  * @brief Overwrite @p rhs with the conservative divergence of
  *        `a_face * grad p`.
  *
- * Owned arrays are x-fastest, length `nx*ny*nz`. Each halo pointer is the
- * width-1 slab for that face (`nullptr` is allowed only on an axis that is
- * skipped because its length is 1). `dx`, `dy`, and `dz` are the cell
- * spacings.
+ * Owned arrays are x-fastest, length `nx*ny*nz`, and those extents are
+ * the local owned box. `active_axes` is the global topology:
+ * `{Nx > 1, Ny > 1, Nz > 1}`. A halo pointer may be null only on an
+ * inactive axis. `dx`, `dy`, and `dz` are the cell spacings.
  */
 inline void
 divergence_separated(const double *coefficient, const double *potential,
                      const std::array<const double *, 6> &coefficient_halos,
                      const std::array<const double *, 6> &potential_halos,
-                     double *rhs, int nx, int ny, int nz, double dx, double dy,
+                     double *rhs, int nx, int ny, int nz,
+                     std::array<bool, 3> active_axes, double dx, double dy,
                      double dz, FaceAverage average) {
   if (nx <= 0 || ny <= 0 || nz <= 0) return;
   const std::ptrdiff_t sy = nx;
   const std::ptrdiff_t sz = static_cast<std::ptrdiff_t>(nx) * ny;
-  const bool use_x = nx > 1;
-  const bool use_y = ny > 1;
-  const bool use_z = nz > 1;
+  const bool use_x = active_axes[0];
+  const bool use_y = active_axes[1];
+  const bool use_z = active_axes[2];
   const double *cpx = coefficient_halos[0];
   const double *cnx = coefficient_halos[1];
   const double *cpy = coefficient_halos[2];

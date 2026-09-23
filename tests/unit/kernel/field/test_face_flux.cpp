@@ -3,8 +3,8 @@
 
 /**
  * Neutral checks for `pfc::field::fd::divergence_separated`: face averages,
- * a constant-coefficient stencil, discrete conservation, and a split box
- * that sees the same fluxes as the whole periodic grid.
+ * a constant-coefficient stencil, discrete conservation, a split box, and
+ * a rank that owns one cell on an axis the global grid still uses.
  */
 
 #include <array>
@@ -22,6 +22,10 @@ using pfc::field::fd::divergence_separated;
 using pfc::field::fd::FaceAverage;
 
 namespace {
+
+std::array<bool, 3> axes_of_whole_grid(int nx, int ny, int nz) {
+  return {nx > 1, ny > 1, nz > 1};
+}
 
 std::size_t idx(int ix, int iy, int iz, int nx, int ny) {
   return static_cast<std::size_t>(ix) +
@@ -119,7 +123,8 @@ TEST_CASE("constant coefficient matches the three-point second difference",
   ch.wrap(coeff, nx, ny, nz);
   ph.wrap(potential, nx, ny, nz);
   divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs, rhs.data(),
-                       nx, ny, nz, dx, dy, 1.0, FaceAverage::Arithmetic);
+                       nx, ny, nz, axes_of_whole_grid(nx, ny, nz), dx, dy, 1.0,
+                       FaceAverage::Arithmetic);
 
   const double stencil = a * (2.0 * std::cos(k * dx) - 2.0) / (dx * dx);
   double err = 0.0;
@@ -154,7 +159,8 @@ TEST_CASE("variable coefficient matches a scalar face loop", "[face_flux]") {
   ph.wrap(potential, nx, ny, nz);
   std::vector<double> rhs(coeff.size());
   divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs, rhs.data(),
-                       nx, ny, nz, dx, dy, 1.0, FaceAverage::Harmonic);
+                       nx, ny, nz, axes_of_whole_grid(nx, ny, nz), dx, dy, 1.0,
+                       FaceAverage::Harmonic);
 
   auto at = [&](const std::vector<double> &core, const Halos &halo, int ix, int iy,
                 int axis, int side) {
@@ -216,7 +222,8 @@ TEST_CASE("periodic divergence conserves a variable coefficient", "[face_flux]")
   for (const auto kind : {FaceAverage::Arithmetic, FaceAverage::Harmonic}) {
     std::vector<double> rhs(coeff.size());
     divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs,
-                         rhs.data(), nx, ny, nz, 0.4, 0.5, 0.8, kind);
+                         rhs.data(), nx, ny, nz, axes_of_whole_grid(nx, ny, nz), 0.4,
+                         0.5, 0.8, kind);
     REQUIRE(std::abs(sum_of(rhs)) < 1.0e-10);
   }
 }
@@ -280,15 +287,16 @@ TEST_CASE("a split periodic box matches the whole-grid divergence", "[face_flux]
     }
     std::vector<double> rhs(c.size());
     divergence_separated(c.data(), p.data(), hc.ptrs, hp.ptrs, rhs.data(), nloc, ny,
-                         nz, 1.0, 1.0, 1.0, FaceAverage::Harmonic);
+                         nz, axes_of_whole_grid(nx, ny, nz), 1.0, 1.0, 1.0,
+                         FaceAverage::Harmonic);
     return rhs;
   };
 
   // Harmonic on the pieces must match harmonic on the whole grid.
   std::vector<double> full_h(coeff.size());
   divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs,
-                       full_h.data(), nx, ny, nz, 1.0, 1.0, 1.0,
-                       FaceAverage::Harmonic);
+                       full_h.data(), nx, ny, nz, axes_of_whole_grid(nx, ny, nz),
+                       1.0, 1.0, 1.0, FaceAverage::Harmonic);
   const auto left = piece(0, left_n);
   const auto right = piece(left_n, nx - left_n);
   double err = 0.0;
@@ -304,4 +312,80 @@ TEST_CASE("a split periodic box matches the whole-grid divergence", "[face_flux]
   }
   REQUIRE(err < 1.0e-12);
   REQUIRE(std::abs(sum_of(full_h)) < 1.0e-10);
+}
+
+TEST_CASE("a locally owned extent of 1 still fluxes an active global axis",
+          "[face_flux]") {
+  constexpr int nx = 4;
+  constexpr int ny = 3;
+  constexpr int nz = 1;
+  const std::array<bool, 3> active{true, true, false};
+  std::vector<double> coeff(static_cast<std::size_t>(nx * ny));
+  std::vector<double> potential(coeff.size());
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto c = idx(ix, iy, 0, nx, ny);
+      coeff[c] = 0.4 + 0.3 * ix;
+      potential[c] = std::sin(0.8 * ix) + 0.15 * iy;
+    }
+  }
+  Halos ch, ph;
+  ch.wrap(coeff, nx, ny, nz);
+  ph.wrap(potential, nx, ny, nz);
+  std::vector<double> full(coeff.size());
+  divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs, full.data(),
+                       nx, ny, nz, active, 0.5, 0.5, 1.0, FaceAverage::Arithmetic);
+
+  double err = 0.0;
+  double split_sum = 0.0;
+  for (int x0 = 0; x0 < nx; ++x0) {
+    std::vector<double> c(static_cast<std::size_t>(ny));
+    std::vector<double> p(c.size());
+    for (int iy = 0; iy < ny; ++iy) {
+      c[static_cast<std::size_t>(iy)] = coeff[idx(x0, iy, 0, nx, ny)];
+      p[static_cast<std::size_t>(iy)] = potential[idx(x0, iy, 0, nx, ny)];
+    }
+    Halos hc, hp;
+    hc.storage[0].resize(static_cast<std::size_t>(ny));
+    hc.storage[1].resize(static_cast<std::size_t>(ny));
+    hc.storage[2].resize(1);
+    hc.storage[3].resize(1);
+    hc.storage[4].resize(static_cast<std::size_t>(ny));
+    hc.storage[5] = hc.storage[4];
+    hp.storage = hc.storage;
+    const int xp = (x0 + 1) % nx;
+    const int xm = (x0 + nx - 1) % nx;
+    for (int iy = 0; iy < ny; ++iy) {
+      hc.storage[0][static_cast<std::size_t>(iy)] = coeff[idx(xp, iy, 0, nx, ny)];
+      hc.storage[1][static_cast<std::size_t>(iy)] = coeff[idx(xm, iy, 0, nx, ny)];
+      hp.storage[0][static_cast<std::size_t>(iy)] =
+          potential[idx(xp, iy, 0, nx, ny)];
+      hp.storage[1][static_cast<std::size_t>(iy)] =
+          potential[idx(xm, iy, 0, nx, ny)];
+    }
+    hc.storage[2][0] = c[0];
+    hc.storage[3][0] = c[static_cast<std::size_t>(ny - 1)];
+    hp.storage[2][0] = p[0];
+    hp.storage[3][0] = p[static_cast<std::size_t>(ny - 1)];
+    for (int i = 0; i < 6; ++i) {
+      hc.ptrs[static_cast<std::size_t>(i)] =
+          hc.storage[static_cast<std::size_t>(i)].data();
+      hp.ptrs[static_cast<std::size_t>(i)] =
+          hp.storage[static_cast<std::size_t>(i)].data();
+    }
+    std::vector<double> rhs(c.size());
+    divergence_separated(c.data(), p.data(), hc.ptrs, hp.ptrs, rhs.data(), 1, ny, nz,
+                         active, 0.5, 0.5, 1.0, FaceAverage::Arithmetic);
+    for (int iy = 0; iy < ny; ++iy) {
+      err = std::max(err, std::abs(rhs[static_cast<std::size_t>(iy)] -
+                                   full[idx(x0, iy, 0, nx, ny)]));
+      split_sum += rhs[static_cast<std::size_t>(iy)];
+    }
+  }
+  REQUIRE(err < 1.0e-12);
+  REQUIRE(std::abs(split_sum) < 1.0e-10);
+  REQUIRE(std::abs(split_sum - sum_of(full)) < 1.0e-12);
+  double peak = 0.0;
+  for (double v : full) peak = std::max(peak, std::abs(v));
+  REQUIRE(peak > 1.0e-6);
 }

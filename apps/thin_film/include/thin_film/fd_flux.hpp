@@ -294,9 +294,11 @@ public:
     const std::array<const double *, 6> potential_faces{
         p_halos_[0].data(), p_halos_[1].data(), p_halos_[2].data(),
         p_halos_[3].data(), p_halos_[4].data(), p_halos_[5].data()};
+    const auto global = pfc::domain::get_size(domain_);
+    const std::array<bool, 3> active{global[0] > 1, global[1] > 1, global[2] > 1};
     pfc::field::fd::divergence_separated(coeff_.data(), p_.data(), coeff_faces,
                                          potential_faces, dhdt_out.data(), nx_, ny_,
-                                         1, dx_, dy_, 1.0, kind);
+                                         1, active, dx_, dy_, 1.0, kind);
   }
 
   /// One explicit-Euler step of size `dt`.
