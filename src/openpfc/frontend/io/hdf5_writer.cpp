@@ -274,10 +274,6 @@ MPI_Status HDF5Writer::write(int increment, pfc::field::FieldView<double> data) 
   return MPI_Status{};
 }
 
-MPI_Status HDF5Writer::write(int, pfc::field::FieldView<std::complex<double>>) {
-  throw std::invalid_argument("HDF5Writer does not support complex fields");
-}
-
 } // namespace pfc
 
 #endif // OPENPFC_HAS_HDF5

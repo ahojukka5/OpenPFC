@@ -82,7 +82,8 @@ private:
   /**
    * @brief Write VTK data section
    */
-  static void write_vti_data(std::ofstream &file, pfc::field::FieldView<double> data);
+  static void write_vti_data(std::ofstream &file,
+                             pfc::field::FieldView<double> data);
 
   /**
    * @brief Write parallel master file (.pvti)
@@ -141,12 +142,18 @@ public:
   /**
    * @brief Write real field to VTK file
    */
+  [[nodiscard]] bool writes_real() const override { return true; }
+
+  /// Complex values are stored as their magnitude.
+  [[nodiscard]] bool writes_complex() const override { return true; }
+
   MPI_Status write(int increment, pfc::field::FieldView<double> data) override;
 
   /**
    * @brief Write complex field to VTK file (writes magnitude)
    */
-  MPI_Status write(int increment, pfc::field::FieldView<std::complex<double>> data) override;
+  MPI_Status write(int increment,
+                   pfc::field::FieldView<std::complex<double>> data) override;
 };
 
 } // namespace pfc
