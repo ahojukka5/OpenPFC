@@ -16,7 +16,8 @@
  * I/O — use `BinaryWriter` at scale. Complex fields fail closed.
  *
  * Dataset layout is C-order `(nz, ny, nx)` so the last index is x-fastest,
- * matching OpenPFC owned-brick linearization.
+ * matching OpenPFC owned-brick linearization. Complex fields are not
+ * implemented: `writes_complex()` is false and the base `write` rejects them.
  */
 
 #ifndef PFC_HDF5_WRITER_HPP
@@ -46,8 +47,10 @@ public:
                   const std::array<int, 3> &arr_local,
                   const std::array<int, 3> &arr_offset) override;
 
+  [[nodiscard]] bool writes_real() const override { return true; }
+
+  using ResultsWriter::write;
   MPI_Status write(int increment, pfc::field::FieldView<double> data) override;
-  MPI_Status write(int increment, pfc::field::FieldView<std::complex<double>> data) override;
 };
 
 #endif // OPENPFC_HAS_HDF5

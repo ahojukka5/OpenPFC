@@ -388,6 +388,10 @@ private:
       return;
     }
     for (auto &nw : m_writers) {
+      if (!nw.writer->writes_real()) {
+        throw std::invalid_argument("results writer '" + nw.field_name +
+                                    "' does not support real fields");
+      }
       auto &f = real_field(nw.field_name);
       const auto write_view = [&](const double *d, std::size_t n) {
         pfc::field::FieldView<double> view(d, n, f.box().size, f.spacing(),

@@ -48,14 +48,17 @@
 #define PFC_RESULTS_WRITER_HPP
 
 #include <array>
+#include <complex>
 #include <iostream>
 #include <memory>
-#include <mpi.h>
-#include <complex>
-#include <openpfc/kernel/field/state_access.hpp>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <mpi.h>
+
+#include <openpfc/kernel/field/state_access.hpp>
 
 namespace pfc {
 
@@ -258,7 +261,8 @@ public:
    * their local data simultaneously to the correct position in the file.
    *
    * @param[in] increment Time step or frame number
-   * @param[in] data Local real field view (`Field::view()` or a `std::vector<double>`)
+   * @param[in] data Local real field view (`Field::view()` or a
+   * `std::vector<double>`)
    * @return MPI_Status Information about the write operation
    *
    * @example
@@ -275,7 +279,23 @@ public:
    * @note This is a collective MPI operation - all ranks must call it.
    * @note Field size must match local_size specified in set_domain().
    */
-  virtual MPI_Status write(int increment, pfc::field::FieldView<double> data) = 0;
+  /// Real fields. A writer that cannot store them leaves this false.
+  [[nodiscard]] virtual bool writes_real() const { return false; }
+
+  /// Complex fields. A writer that cannot store them leaves this false.
+  [[nodiscard]] virtual bool writes_complex() const { return false; }
+
+  /**
+   * @brief Write a real-valued field.
+   *
+   * The default rejects the call. A subclass overrides this only when
+   * `writes_real()` is true, so an unsupported type is visible before dispatch.
+   */
+  virtual MPI_Status write(int increment, pfc::field::FieldView<double> data) {
+    (void)increment;
+    (void)data;
+    throw std::invalid_argument("writer does not support real fields");
+  }
 
   /**
    * @brief Write a complex-valued field to file at specified time step
@@ -291,7 +311,11 @@ public:
    * @see FFT::forward() - produces the complex hat from the real field
    */
   virtual MPI_Status write(int increment,
-                           pfc::field::FieldView<std::complex<double>> data) = 0;
+                           pfc::field::FieldView<std::complex<double>> data) {
+    (void)increment;
+    (void)data;
+    throw std::invalid_argument("writer does not support complex fields");
+  }
 
   template <typename T> MPI_Status write(const std::vector<T> &data) {
     return write(0, pfc::field::FieldView<T>(data));

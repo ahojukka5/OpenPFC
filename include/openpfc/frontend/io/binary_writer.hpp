@@ -83,10 +83,12 @@ private:
   MPI_Datatype m_etype = MPI_DATATYPE_NULL;
   bool m_type_valid = false;
 
-  static MPI_Datatype get_type([[maybe_unused]] pfc::field::FieldView<double> field) {
+  static MPI_Datatype
+  get_type([[maybe_unused]] pfc::field::FieldView<double> field) {
     return MPI_DOUBLE;
   }
-  static MPI_Datatype get_type([[maybe_unused]] pfc::field::FieldView<std::complex<double>> field) {
+  static MPI_Datatype
+  get_type([[maybe_unused]] pfc::field::FieldView<std::complex<double>> field) {
     return MPI_DOUBLE_COMPLEX;
   }
 
@@ -143,11 +145,15 @@ public:
     m_domain_valid = true;
   }
 
+  [[nodiscard]] bool writes_real() const override { return true; }
+  [[nodiscard]] bool writes_complex() const override { return true; }
+
   MPI_Status write(int increment, pfc::field::FieldView<double> data) override {
     return write_mpi_binary(increment, data);
   }
 
-  MPI_Status write(int increment, pfc::field::FieldView<std::complex<double>> data) override {
+  MPI_Status write(int increment,
+                   pfc::field::FieldView<std::complex<double>> data) override {
     return write_mpi_binary(increment, data);
   }
 
