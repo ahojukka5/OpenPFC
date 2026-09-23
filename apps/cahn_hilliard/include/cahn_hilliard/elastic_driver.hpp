@@ -106,7 +106,9 @@ inline void apply_initial_condition(const nlohmann::json &cfg, pfc::Domain domai
     throw std::invalid_argument(
         "cahn_hilliard_elastic: initial_conditions required");
   const pfc::SimulationContext ctx(comm);
-  for (const auto &ic : cfg.at("initial_conditions")) {
+  for (const auto &raw : cfg.at("initial_conditions")) {
+    nlohmann::json ic = raw;
+    pfc::ui::copy_json_alias(ic, "c0", "offset");
     require_concentration_noise(ic);
     const std::string type = ic.at("type").get<std::string>();
     auto modifier = pfc::ui::create_field_modifier(type, ic);

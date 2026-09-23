@@ -202,8 +202,9 @@ TEST_CASE("Noise without mean removal is the scaled sample", "[field][noise]") {
   std::vector<double> u(8, 0.0);
   fill.apply(u, domain, box, 0.0);
   const auto sample = pfc::field::indexed_noise_sample(9, 0, 0, 0, 4, 2);
-  REQUIRE_THAT(
-      u[0], WithinAbs(1.0 + 0.5 * (static_cast<double>(sample) / 65535.0), 1e-15));
+  const double centered =
+      (static_cast<double>(sample) - pfc::field::indexed_noise_midpoint) / 65535.0;
+  REQUIRE_THAT(u[0], WithinAbs(1.0 + 0.5 * centered, 1e-15));
 }
 
 TEST_CASE("Constant, Fourier modes, and noise compose", "[field][fourier][noise]") {
@@ -263,7 +264,7 @@ TEST_CASE("cosine_mode JSON fills one mode and fourier_modes only adds",
           "[field][fourier]") {
   pfc::FourierSeriesFill legacy;
   pfc::ui::from_json(json{{"type", "cosine_mode"},
-                          {"c0", 0.32},
+                          {"offset", 0.32},
                           {"amplitude", 0.02},
                           {"nx", 3},
                           {"ny", 1},
@@ -277,7 +278,7 @@ TEST_CASE("cosine_mode JSON fills one mode and fourier_modes only adds",
   pfc::FourierSeriesFill several;
   pfc::ui::from_json(
       json{{"type", "cosine_mode"},
-           {"h0", 0.0},
+           {"offset", 0.0},
            {"modes", json::array({{{"nx", 2}, {"ny", 1}, {"amplitude", 0.08}},
                                   {{"nx", 8}, {"ny", 4}, {"amplitude", 0.05}}})}},
       several);
@@ -298,21 +299,22 @@ TEST_CASE("cosine_mode JSON fills one mode and fourier_modes only adds",
       added));
 }
 
-TEST_CASE("seeded_noise JSON accepts a legacy offset and rejects a negative seed",
+TEST_CASE("seeded_noise JSON reads offset and rejects a negative seed",
           "[field][noise]") {
   pfc::IndexedNoiseFill fill;
   pfc::ui::from_json(json{{"type", "seeded_noise"},
-                          {"psi0", -0.05},
+                          {"offset", -0.05},
                           {"amplitude", 0.01},
                           {"seed", 7}},
                      fill);
   REQUIRE_THAT(fill.offset, WithinAbs(-0.05, 1e-15));
   REQUIRE(fill.noise.seed == 7);
   REQUIRE(fill.noise.remove_mean);
-  REQUIRE_THROWS(pfc::ui::from_json(
-      json{
-          {"type", "seeded_noise"}, {"c0", 0.32}, {"amplitude", 0.02}, {"seed", -1}},
-      fill));
+  REQUIRE_THROWS(pfc::ui::from_json(json{{"type", "seeded_noise"},
+                                         {"offset", 0.32},
+                                         {"amplitude", 0.02},
+                                         {"seed", -1}},
+                                    fill));
 
   pfc::IndexedNoiseModifier added;
   pfc::ui::from_json(json{{"type", "indexed_noise"},
@@ -326,4 +328,82 @@ TEST_CASE("seeded_noise JSON accepts a legacy offset and rejects a negative seed
                                          {"amplitude", 0.02},
                                          {"offset", 1.0}},
                                     added));
+}
+
+TEST_CASE("A nonzero Fourier index requires a periodic axis longer than one",
+          "[field][fourier]") {
+  const pfc::field::FourierMode wave{{1, 0, 0}, 1.0, 0.0};
+  const pfc::field::FourierMode flat{{0, 0, 0}, 1.5, 0.0};
+  const auto bounded = pfc::domain::create(
+      pfc::GridSize({8, 4, 1}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+      pfc::GridSpacing({1.0, 1.0, 1.0}), pfc::Bool3{false, true, true});
+  const auto thin = grid(1, 4, 1);
+  REQUIRE_THROWS_AS(
+      pfc::field::fourier_series(bounded, pfc::domain::to_coords(bounded, {0, 0, 0}),
+                                 std::span{&wave, 1}),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::field::fourier_series(thin, pfc::domain::to_coords(thin, {0, 0, 0}),
+                                 std::span{&wave, 1}),
+      std::invalid_argument);
+  REQUIRE_THAT(pfc::field::fourier_series(bounded,
+                                          pfc::domain::to_coords(bounded, {0, 0, 0}),
+                                          std::span{&flat, 1}),
+               WithinAbs(1.5, 1e-12));
+  REQUIRE_THAT(pfc::field::fourier_series(thin,
+                                          pfc::domain::to_coords(thin, {0, 0, 0}),
+                                          std::span{&flat, 1}),
+               WithinAbs(1.5, 1e-12));
+}
+
+TEST_CASE("Fractional Fourier indices are rejected", "[field][fourier]") {
+  pfc::FourierSeriesFill fill;
+  REQUIRE_THROWS_AS(pfc::ui::from_json(json{{"type", "cosine_mode"},
+                                            {"offset", 0.0},
+                                            {"amplitude", 1.0},
+                                            {"nx", 1.5}},
+                                       fill),
+                    std::invalid_argument);
+  pfc::FourierModes modes;
+  REQUIRE_THROWS_AS(pfc::ui::from_json(
+                        json{{"type", "fourier_modes"},
+                             {"modes", json::array({{{"n", json::array({1.5, 0, 0})},
+                                                     {"amplitude", 1.0}}})}},
+                        modes),
+                    std::invalid_argument);
+}
+
+TEST_CASE("Uncentered noise on a local box needs no collective", "[field][noise]") {
+  const auto domain = grid(8, 4, 1);
+  const auto left = pfc::Box3i::from_bounds({0, 0, 0}, {3, 3, 0});
+  pfc::IndexedNoiseFill fill;
+  fill.offset = 0.0;
+  fill.noise = pfc::field::IndexedNoise{5, 1.0, false};
+  std::vector<double> u(static_cast<std::size_t>(left.count()), 0.0);
+  fill.apply(u, domain, left, 0.0);
+  const auto sample = pfc::field::indexed_noise_sample(5, 0, 0, 0, 8, 4);
+  const double centered =
+      (static_cast<double>(sample) - pfc::field::indexed_noise_midpoint) / 65535.0;
+  REQUIRE_THAT(u[0], WithinAbs(centered, 1e-15));
+
+  pfc::IndexedNoiseModifier add;
+  add.noise = pfc::field::IndexedNoise{5, 1.0, true};
+  REQUIRE_THROWS_AS(add.apply(u, domain, left, 0.0), std::invalid_argument);
+  fill.noise.remove_mean = true;
+  REQUIRE_THROWS_AS(fill.apply(u, domain, left, 0.0), std::invalid_argument);
+}
+
+TEST_CASE("An application-supplied alias becomes offset", "[field][fourier]") {
+  const json raw{{"initial_conditions", json::array({{{"type", "cosine_mode"},
+                                                      {"level", 0.2},
+                                                      {"amplitude", 0.1},
+                                                      {"nx", 1}}})}};
+  const auto rewritten = pfc::ui::copy_initial_offset_alias(raw, "level");
+  pfc::FourierSeriesFill fill;
+  pfc::ui::from_json(rewritten["initial_conditions"][0], fill);
+  REQUIRE_THAT(fill.offset, WithinAbs(0.2, 1e-15));
+
+  pfc::FourierSeriesFill ignored;
+  pfc::ui::from_json(raw["initial_conditions"][0], ignored);
+  REQUIRE_THAT(ignored.offset, WithinAbs(0.0, 1e-15));
 }

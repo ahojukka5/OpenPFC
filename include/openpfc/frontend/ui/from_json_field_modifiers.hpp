@@ -148,11 +148,18 @@ namespace detail {
 
 inline int json_mode_index(const json &j, const char *key, int fallback) {
   if (!j.contains(key)) return fallback;
-  if (!j[key].is_number()) {
+  if (!j[key].is_number_integer()) {
     throw std::invalid_argument(std::string("fourier mode: '") + key +
                                 "' must be an integer.");
   }
   return j[key].get<int>();
+}
+
+inline int json_index_component(const json &value) {
+  if (!value.is_number_integer()) {
+    throw std::invalid_argument("fourier mode: 'n' components must be integers.");
+  }
+  return value.get<int>();
 }
 
 inline pfc::field::FourierMode one_fourier_mode(const json &m, int default_nx) {
@@ -161,8 +168,9 @@ inline pfc::field::FourierMode one_fourier_mode(const json &m, int default_nx) {
     if (!m["n"].is_array() || m["n"].size() != 3) {
       throw std::invalid_argument("fourier mode: 'n' must be [nx, ny, nz].");
     }
-    mode.index = {m["n"].at(0).get<int>(), m["n"].at(1).get<int>(),
-                  m["n"].at(2).get<int>()};
+    mode.index = {json_index_component(m["n"].at(0)),
+                  json_index_component(m["n"].at(1)),
+                  json_index_component(m["n"].at(2))};
   } else {
     mode.index = {json_mode_index(m, "nx", default_nx), json_mode_index(m, "ny", 0),
                   json_mode_index(m, "nz", 0)};
@@ -200,33 +208,19 @@ inline std::vector<pfc::field::FourierMode> fourier_terms_from_json(const json &
   return terms;
 }
 
-inline bool has_legacy_offset(const json &j) {
-  for (const char *key : {"offset", "c0", "h0", "psi0", "u0", "g0"}) {
-    if (j.contains(key)) return true;
-  }
-  return false;
-}
+inline bool has_offset(const json &j) { return j.contains("offset"); }
 
-inline double legacy_offset(const json &j, bool required) {
-  const char *found = nullptr;
-  double value = 0.0;
-  for (const char *key : {"offset", "c0", "h0", "psi0", "u0", "g0"}) {
-    if (!j.contains(key)) continue;
-    if (!j[key].is_number()) {
-      throw std::invalid_argument(std::string("offset: '") + key +
-                                  "' must be numeric.");
+inline double json_offset(const json &j, bool required) {
+  if (!j.contains("offset")) {
+    if (required) {
+      throw std::invalid_argument("offset: missing numeric 'offset'.");
     }
-    if (found != nullptr) {
-      throw std::invalid_argument(
-          "offset: give one of offset, c0, h0, psi0, u0, g0.");
-    }
-    found = key;
-    value = j[key].get<double>();
+    return 0.0;
   }
-  if (found == nullptr && required) {
-    throw std::invalid_argument("offset: missing offset (or c0, h0, psi0, u0, g0).");
+  if (!j["offset"].is_number()) {
+    throw std::invalid_argument("offset: 'offset' must be numeric.");
   }
-  return value;
+  return j["offset"].get<double>();
 }
 
 inline std::uint64_t json_seed(const json &j) {
@@ -250,7 +244,7 @@ inline double json_amplitude(const json &j) {
 }
 
 inline void reject_offset_on_additive(const json &j, const char *type) {
-  if (has_legacy_offset(j)) {
+  if (has_offset(j)) {
     throw std::invalid_argument(
         std::string(type) +
         " adds to the field. Set the offset with constant or with the fill form.");
@@ -269,7 +263,7 @@ inline void from_json(const json &j, FourierModes &ic) {
 inline void from_json(const json &j, FourierSeriesFill &ic) {
   detail::throw_unless_json_modifier_type(
       j, "cosine_mode", "Invalid JSON input: missing or incorrect 'type' field.");
-  ic.offset = detail::legacy_offset(j, false);
+  ic.offset = detail::json_offset(j, false);
   ic.terms = detail::fourier_terms_from_json(j);
 }
 
@@ -290,7 +284,7 @@ inline void from_json(const json &j, IndexedNoiseModifier &ic) {
 inline void from_json(const json &j, IndexedNoiseFill &ic) {
   detail::throw_unless_json_modifier_type(
       j, "seeded_noise", "Invalid JSON input: missing or incorrect 'type' field.");
-  ic.offset = detail::legacy_offset(j, true);
+  ic.offset = detail::json_offset(j, true);
   ic.noise.seed = detail::json_seed(j);
   ic.noise.amplitude = detail::json_amplitude(j);
   ic.noise.remove_mean = true;
@@ -300,6 +294,44 @@ inline void from_json(const json &j, IndexedNoiseFill &ic) {
     }
     ic.noise.remove_mean = j["remove_mean"].get<bool>();
   }
+}
+
+/**
+ * @brief Copy @p from onto @p to when @p to is absent.
+ *
+ * The caller names both keys. This function does not know any application
+ * field.
+ */
+inline void copy_json_alias(nlohmann::json &object, std::string_view from,
+                            std::string_view to) {
+  if (!object.is_object()) return;
+  const std::string from_key(from);
+  const std::string to_key(to);
+  if (!object.contains(from_key) || object.contains(to_key)) return;
+  object[to_key] = object[from_key];
+}
+
+/// True for the generic fill forms that read `offset`.
+inline bool reads_generic_offset(const nlohmann::json &object) {
+  if (!object.is_object() || !object.contains("type") ||
+      !object["type"].is_string()) {
+    return false;
+  }
+  const std::string type = object["type"].get<std::string>();
+  return type == "cosine_mode" || type == "seeded_noise";
+}
+
+/// Copy @p alias onto `offset` for each generic fill in `initial_conditions`.
+[[nodiscard]] inline nlohmann::json
+copy_initial_offset_alias(nlohmann::json settings, std::string_view alias) {
+  if (settings.contains("initial_conditions") &&
+      settings["initial_conditions"].is_array()) {
+    for (auto &ic : settings["initial_conditions"]) {
+      if (!reads_generic_offset(ic)) continue;
+      copy_json_alias(ic, alias, "offset");
+    }
+  }
+  return settings;
 }
 
 } // namespace pfc::ui

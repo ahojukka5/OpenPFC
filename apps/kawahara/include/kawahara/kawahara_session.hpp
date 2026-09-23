@@ -56,7 +56,9 @@ public:
 
   KawaharaSession(const nlohmann::json &settings, int rank, int nproc,
                   MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()), m_comm(comm) {}
+      : Base(pfc::ui::copy_initial_offset_alias(settings, "u0"), rank, nproc, comm,
+             etd_options()),
+        m_comm(comm) {}
 
   void run() {
     if (!this->settings().contains("diagnostics")) {
@@ -124,7 +126,8 @@ public:
 
   KawaharaHIPSession(const nlohmann::json &settings, int rank, int nproc,
                      MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()) {}
+      : Base(pfc::ui::copy_initial_offset_alias(settings, "u0"), rank, nproc, comm,
+             etd_options()) {}
 };
 static_assert(pfc::sim::SpectralETDPhysics<KawaharaPhysics<double, pfc::HIPSpace>>);
 #endif

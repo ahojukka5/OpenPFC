@@ -9,9 +9,14 @@
  *
  * The sample at `(i, j, k)` depends on the seed and on those indices, not
  * on which rank owns the cell, so every decomposition writes the same
- * number. `amplitude` scales the sample; it is not an RMS value. Exact
- * mean removal reduces the integer samples over @p comm and is the only
- * step that needs a communicator. Generation itself does not.
+ * number. The integer sample lies in `[0, 65535]`. The written perturbation
+ * is `amplitude * (sample - shift) / 65535`. With mean removal, `shift` is
+ * the exact global mean of those integers and the reduction uses @p comm.
+ * Without it, `shift` is the fixed midpoint 32767.5, so the perturbation
+ * is centered without a collective and stays on the same amplitude scale.
+ * A sample at either end of the integer range is about half an amplitude
+ * away from the shift. `amplitude` is not an RMS value and is not a hard
+ * bound of `±amplitude`.
  */
 
 #include <cmath>
@@ -40,6 +45,9 @@ indexed_noise_mix(std::uint64_t seed, int i, int j, int k, int nx, int ny) noexc
   x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
   return x ^ (x >> 31);
 }
+
+/// Midpoint of the integer sample. Used when the global mean is not removed.
+inline constexpr double indexed_noise_midpoint = 32767.5;
 
 /// Integer sample in `[0, 65535]`. Mean removal sums these.
 [[nodiscard]] constexpr std::uint64_t indexed_noise_sample(std::uint64_t seed, int i,
@@ -79,7 +87,7 @@ inline void check_indexed_noise(const pfc::Domain &domain, double amplitude) {
 
 inline double indexed_noise_shift(const pfc::Domain &domain, const pfc::Box3i &box,
                                   const IndexedNoise &noise, MPI_Comm comm) {
-  if (!noise.remove_mean) return 0.0;
+  if (!noise.remove_mean) return indexed_noise_midpoint;
   const auto n = pfc::domain::get_size(domain);
   std::uint64_t sum = 0;
   for (int k = box.low[2]; k <= box.high[2]; ++k) {

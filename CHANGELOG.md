@@ -39,12 +39,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   (`include/openpfc/kernel/field/fourier_series.hpp`,
   `include/openpfc/kernel/field/indexed_noise.hpp`, #146).
   `FourierModes` and `IndexedNoiseModifier` add to the current field.
-  `cosine_mode` and `seeded_noise` remain the one-shot fill forms, with
-  `offset` and the previous `c0` / `h0` / `psi0` / `u0` / `g0` keys.
-  The sample is a function of the global index and the seed. Mean
-  removal is the only collective, and it uses the communicator the
-  caller passes. A crystal lattice and a mole-fraction bound stay in
-  the applications.
+  `cosine_mode` and `seeded_noise` remain the one-shot fill forms and
+  read `offset` only. A nonzero mode index requires that axis to be
+  periodic and longer than one point. Indexed noise is
+  `amplitude * (sample - shift) / 65535`, with `sample` in `[0, 65535]`.
+  Without mean removal, `shift` is the fixed midpoint 32767.5 and no
+  collective is used. With mean removal, `shift` is the exact mean of
+  the integer samples on the communicator the caller passes. Application
+  names such as `c0` are copied onto `offset` by that application before
+  parsing. A crystal lattice and a mole-fraction bound stay in the
+  applications.
 
 - Public r2c power `pfc::fft::weighted_power`, `radial_average`, and
   `directional_power` (`include/openpfc/kernel/fft/power_spectrum.hpp`,

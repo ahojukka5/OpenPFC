@@ -121,7 +121,8 @@ public:
 
   GradientElasticitySession(const nlohmann::json &settings_in, int rank, int nproc,
                             MPI_Comm comm = MPI_COMM_WORLD)
-      : m_settings(with_backend_default(settings_in)),
+      : m_settings(with_backend_default(
+            pfc::ui::copy_initial_offset_alias(settings_in, "g0"))),
         m_ctx{.comm = comm, .mpi_rank = rank, .rank0 = (rank == 0)}, m_nproc(nproc),
         m_domain(pfc::ui::from_json<pfc::Domain>(m_settings)),
         m_session(

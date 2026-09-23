@@ -64,7 +64,9 @@ public:
 
   HigherOrderPFCSession(const nlohmann::json &settings, int rank, int nproc,
                         MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()), m_comm(comm) {}
+      : Base(pfc::ui::copy_initial_offset_alias(settings, "psi0"), rank, nproc, comm,
+             etd_options()),
+        m_comm(comm) {}
 
   void run() {
     if (!settings().contains("diagnostics")) {
@@ -106,7 +108,8 @@ public:
 
   HigherOrderPFCHIPSession(const nlohmann::json &settings, int rank, int nproc,
                            MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()) {}
+      : Base(pfc::ui::copy_initial_offset_alias(settings, "psi0"), rank, nproc, comm,
+             etd_options()) {}
 };
 static_assert(
     pfc::sim::SpectralETDPhysics<HigherOrderPFCPhysics<double, pfc::HIPSpace>>);

@@ -35,8 +35,8 @@ namespace cahn_hilliard {
 
 inline void register_catalog() {}
 
-inline const nlohmann::json &
-check_concentration_seeds(const nlohmann::json &settings) {
+inline nlohmann::json prepare_settings(nlohmann::json settings) {
+  settings = pfc::ui::copy_initial_offset_alias(std::move(settings), "c0");
   if (settings.contains("initial_conditions") &&
       settings["initial_conditions"].is_array()) {
     for (const auto &ic : settings["initial_conditions"]) {
@@ -62,7 +62,7 @@ public:
 
   DiagnosticSession(const nlohmann::json &settings, int rank, int nproc,
                     MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(check_concentration_seeds(settings), rank, nproc, comm, etd_options()),
+      : Base(prepare_settings(settings), rank, nproc, comm, etd_options()),
         m_comm(comm) {}
 
   void run() {
