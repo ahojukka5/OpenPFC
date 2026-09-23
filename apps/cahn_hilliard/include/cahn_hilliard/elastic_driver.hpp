@@ -47,6 +47,7 @@
 #include <cahn_hilliard/concentration_seed.hpp>
 #include <cahn_hilliard/diagnostics.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
@@ -59,7 +60,6 @@
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
-#include <openpfc_apps/field_snapshots.hpp>
 
 namespace cahn_hilliard {
 
@@ -214,8 +214,10 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
                                       .fpp0 = ch.fpp0};
 
     Diagnostics<pfc::HostSpace> diagnostics(domain, stack.fft(), comm);
-    auto snapshots = pfc::apps::make_field_snapshot_writer(cfg, "c", c, comm);
-    int snapshot_index = 0;
+    pfc::io::SnapshotSeries snapshots(c.domain(), c.box(),
+                                      pfc::io::SnapshotSeriesOptions{.comm = comm});
+    snapshots.bind_json_field(cfg, "c", c);
+    snapshots.finish_json_fields(cfg);
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
     if (rank == 0 && cfg.contains("diagnostics")) {
       const std::filesystem::path path =
@@ -297,7 +299,7 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     };
 
     auto report = [&](int step, double t, int el_iters, double max_mu) {
-      pfc::apps::write_field_snapshot(snapshots.get(), snapshot_index++, c);
+      snapshots.write(step, t);
       if (!out) return;
       auto s = diagnostics.sample(c, ch);
       const auto [p_axis, p_diag] = axis_vs_diag();

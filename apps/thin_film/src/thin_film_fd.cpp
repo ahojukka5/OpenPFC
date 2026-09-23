@@ -35,6 +35,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
@@ -42,7 +43,6 @@
 #include <openpfc/kernel/field/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/field_snapshots.hpp>
 #include <openpfc_apps/gather.hpp>
 
 #include <thin_film/fd_flux.hpp>
@@ -142,13 +142,15 @@ int main(int argc, char *argv[]) {
 
     // Rank-0 full-domain field for optional fields[] VTK dumps (gathered).
     std::unique_ptr<pfc::data::Field<double>> snap_field;
-    std::unique_ptr<pfc::VTKWriter> snapshots;
-    int snapshot_index = 0;
+    std::unique_ptr<pfc::io::SnapshotSeries> snapshots;
     if (rank == 0 && cfg.contains("fields")) {
       snap_field = std::make_unique<pfc::data::Field<double>>(
           domain, pfc::domain::index_box(domain), 0);
-      snapshots = pfc::apps::make_field_snapshot_writer(cfg, "h", *snap_field,
-                                                        MPI_COMM_SELF);
+      snapshots = std::make_unique<pfc::io::SnapshotSeries>(
+          domain, snap_field->box(),
+          pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_SELF});
+      snapshots->bind_json_field(cfg, "h", *snap_field);
+      snapshots->finish_json_fields(cfg);
     }
 
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
@@ -200,8 +202,7 @@ int main(int argc, char *argv[]) {
           const std::size_t m = n < global_xy.size() ? n : global_xy.size();
           for (std::size_t i = 0; i < m; ++i) d[i] = global_xy[i];
         });
-        pfc::apps::write_field_snapshot(snapshots.get(), snapshot_index++,
-                                        *snap_field);
+        snapshots->write(step, t);
       }
       if (out) {
         std::ostringstream line;
