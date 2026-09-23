@@ -548,7 +548,7 @@ TEST_CASE("Seeded noise gives the same field on every decomposition",
   REQUIRE(variance_psi(full) > 0.0);
 
   REQUIRE_THROWS(pfc::ui::from_json(json{{"type", "seeded_noise"},
-                                         {"psi0", 0.0},
+                                         {"offset", 0.0},
                                          {"amplitude", 0.01},
                                          {"seed", -1}},
                                     noise));

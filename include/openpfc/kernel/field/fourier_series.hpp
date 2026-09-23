@@ -17,6 +17,8 @@
 #include <cmath>
 #include <numbers>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <openpfc/kernel/data/domain.hpp>
@@ -32,6 +34,22 @@ struct FourierMode {
   double amplitude{0.0};
   double phase{0.0};
 };
+
+/// A nonzero index is a periodic wave count. A zero index is a constant on that
+/// axis.
+inline void require_periodic_mode(const pfc::Domain &domain,
+                                  const FourierMode &mode) {
+  const auto size = pfc::domain::get_size(domain);
+  const auto periodic = pfc::domain::get_periodic(domain);
+  for (int d = 0; d < 3; ++d) {
+    if (mode.index[d] == 0) continue;
+    if (periodic[d] && size[d] > 1) continue;
+    throw std::invalid_argument(
+        "fourier mode: a nonzero index requires a periodic axis with more than "
+        "one point (axis " +
+        std::to_string(d) + ")");
+  }
+}
 
 /// \f$ 2\pi n / L \f$. Zero when that axis has no length.
 [[nodiscard]] inline double periodic_wavenumber(int index, double spacing,
@@ -49,6 +67,7 @@ struct FourierMode {
   const auto spacing = pfc::domain::get_spacing(domain);
   double sum = 0.0;
   for (const FourierMode &mode : modes) {
+    require_periodic_mode(domain, mode);
     const double kx = periodic_wavenumber(mode.index[0], spacing[0], size[0]);
     const double ky = periodic_wavenumber(mode.index[1], spacing[1], size[1]);
     const double kz = periodic_wavenumber(mode.index[2], spacing[2], size[2]);

@@ -18,6 +18,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <openpfc/frontend/ui/from_json_field_modifiers.hpp>
+
 namespace cahn_hilliard {
 
 inline void require_concentration_noise(double offset, double amplitude) {
@@ -31,9 +33,10 @@ inline void require_concentration_noise(double offset, double amplitude) {
 
 inline void require_concentration_noise(const nlohmann::json &ic) {
   if (ic.value("type", "") != "seeded_noise") return;
-  const double offset = ic.contains("offset") ? ic.at("offset").get<double>()
-                                              : ic.at("c0").get<double>();
-  require_concentration_noise(offset, ic.at("amplitude").get<double>());
+  nlohmann::json copy = ic;
+  pfc::ui::copy_json_alias(copy, "c0", "offset");
+  require_concentration_noise(copy.at("offset").get<double>(),
+                              copy.at("amplitude").get<double>());
 }
 
 } // namespace cahn_hilliard

@@ -43,7 +43,8 @@ public:
 
   EhdFilmSession(const nlohmann::json &settings, int rank, int nproc,
                  MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()) {}
+      : Base(pfc::ui::copy_initial_offset_alias(settings, "h0"), rank, nproc, comm,
+             etd_options()) {}
 };
 
 #if defined(OpenPFC_ENABLE_HIP_SPECTRAL)
@@ -57,7 +58,8 @@ public:
 
   EhdFilmHIPSession(const nlohmann::json &settings, int rank, int nproc,
                     MPI_Comm comm = MPI_COMM_WORLD)
-      : Base(settings, rank, nproc, comm, etd_options()) {}
+      : Base(pfc::ui::copy_initial_offset_alias(settings, "h0"), rank, nproc, comm,
+             etd_options()) {}
 };
 static_assert(pfc::sim::SpectralETDPhysics<EhdFilmPhysics<double, pfc::HIPSpace>>);
 #endif

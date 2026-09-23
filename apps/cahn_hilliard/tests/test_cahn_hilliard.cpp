@@ -336,7 +336,7 @@ TEST_CASE("Seeded noise has the same mean and cells on every decomposition",
                                            MPI_COMM_WORLD);
   pfc::IndexedNoiseFill noise;
   pfc::ui::from_json(json{{"type", "seeded_noise"},
-                          {"c0", 0.32},
+                          {"offset", 0.32},
                           {"amplitude", 0.02},
                           {"seed", 1234}},
                      noise);
@@ -356,10 +356,11 @@ TEST_CASE("Seeded noise has the same mean and cells on every decomposition",
   ++noise.noise.seed;
   pfc::apply_field_modifier(noise, full, 0);
   REQUIRE(full.vec() != before);
-  REQUIRE_THROWS(pfc::ui::from_json(
-      json{
-          {"type", "seeded_noise"}, {"c0", 0.32}, {"amplitude", 0.02}, {"seed", -1}},
-      noise));
+  REQUIRE_THROWS(pfc::ui::from_json(json{{"type", "seeded_noise"},
+                                         {"offset", 0.32},
+                                         {"amplitude", 0.02},
+                                         {"seed", -1}},
+                                    noise));
 }
 
 TEST_CASE("CahnHilliardSession runs a short JSON case", "[cahn_hilliard][session]") {

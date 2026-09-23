@@ -71,8 +71,12 @@ public:
 
   void apply(field::FieldOutput<double> field, const Domain &domain,
              const Box3i &box, double time) override {
-    detail::require_full_box_for_local_noise(domain, box);
-    apply(SimulationContext(MPI_COMM_SELF), field, domain, box, time);
+    if (noise.remove_mean) {
+      detail::require_full_box_for_local_noise(domain, box);
+      apply(SimulationContext(MPI_COMM_SELF), field, domain, box, time);
+      return;
+    }
+    pfc::field::fill_indexed_noise(field, domain, box, offset, noise, MPI_COMM_SELF);
   }
 
   void apply(const SimulationContext &ctx, field::FieldOutput<double> field,
