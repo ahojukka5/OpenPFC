@@ -49,3 +49,15 @@ examples/ns2d_vorticity/figures/generated/
 
 # Local campaign output. Not part of the library.
 out/
+
+# Generated local state. Not source.
+Manifest.toml
+Manifest-*.toml
+LocalPreferences.toml
+*.mem
+.pytest_cache/
+.quarto/
+_build/
+runs/
+run.log
+inst.log
