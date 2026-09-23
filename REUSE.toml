@@ -69,6 +69,7 @@ path = [
     "apps/inverse_homogenization/evidence/2026-09-18-oracle33-rotating-squares-extrusion.png",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d.json",
     "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d-64.png",
+    "apps/inverse_homogenization/evidence/2026-09-20-fixed-domain-protocol.json",
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
