@@ -53,8 +53,10 @@
  *
  * The curvature term `-gamma*lap(h)` inside `p` is formed with the shared
  * order-2 or order-4 central Laplacian
- * (`pfc::field::fd::laplacian2d_xy_periodic_separated`); the face-flux
- * difference itself is always the natural 2-point (second-order) form,
+ * (`pfc::field::fd::laplacian2d_xy_periodic_separated`). The face average
+ * and the conservative divergence are
+ * `pfc::field::fd::divergence_separated`. The face-flux difference itself
+ * is always the natural 2-point (second-order) form,
  * since that is what "flux at a face" means for a finite-volume update --
  * only the curvature operator's order is a free choice here.
  *
@@ -80,6 +82,7 @@
 #include <openpfc/kernel/decomposition/comm_sparse_exchange.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/decomposition/halo_face_layout.hpp>
+#include <openpfc/kernel/field/face_flux.hpp>
 #include <openpfc/kernel/field/finite_difference.hpp>
 
 #include <thin_film/nonlinear.hpp>
@@ -87,8 +90,8 @@
 
 namespace thin_film {
 
-/// How the two cell-centred mobilities either side of a face are combined.
-enum class FaceMobility { Arithmetic, Harmonic };
+/// Thin-film name for the public face average. The formula is generic.
+using FaceMobility = pfc::field::fd::FaceAverage;
 
 /**
  * @brief Combine the mobility on either side of a face into one face value.
@@ -101,15 +104,7 @@ enum class FaceMobility { Arithmetic, Harmonic };
  */
 [[nodiscard]] inline double face_mobility(FaceMobility kind, double m_left,
                                           double m_right) {
-  switch (kind) {
-  case FaceMobility::Harmonic: {
-    const double s = m_left + m_right;
-    return (s > 0.0) ? (2.0 * m_left * m_right / s) : 0.0;
-  }
-  case FaceMobility::Arithmetic:
-  default:
-    return 0.5 * (m_left + m_right);
-  }
+  return pfc::field::fd::average_face(kind, m_left, m_right);
 }
 
 namespace detail {
@@ -182,8 +177,7 @@ public:
   FDFluxSolver(const pfc::Domain &domain,
                const pfc::decomposition::Decomposition &decomp, int rank,
                MPI_Comm comm, std::vector<double> &h, int order = 2)
-      : domain_(domain), decomp_(decomp), rank_(rank), order_(order),
-        hw_(order / 2),
+      : domain_(domain), decomp_(decomp), rank_(rank), order_(order), hw_(order / 2),
         nx_(pfc::decomposition::local_box(decomp_, rank_).size[0]),
         ny_(pfc::decomposition::local_box(decomp_, rank_).size[1]),
         dx_(pfc::domain::get_spacing(domain_)[0]),
@@ -191,6 +185,7 @@ public:
         p_(static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_), 0.0),
         lap_h_(static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_), 0.0),
         dhdt_(static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_), 0.0),
+        coeff_(static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_), 0.0),
         // Analytic (not decomposition-validated) counts: this is a strictly
         // 2-D solver (`nz == 1`), so the Z faces are never exchanged, and
         // `pfc::halo::allocate_face_halos(decomp, rank, hw)` would otherwise
@@ -201,10 +196,12 @@ public:
             pfc::halo::face_halo_counts_analytic(nx_, ny_, 1, hw_))),
         p_halos_(pfc::halo::allocate_face_halos<double>(
             pfc::halo::face_halo_counts_analytic(nx_, ny_, 1, 1))),
+        coeff_halos_(pfc::halo::allocate_face_halos<double>(
+            pfc::halo::face_halo_counts_analytic(nx_, ny_, 1, 1))),
         exch_h_(h.data(), h.size(), decomp_, rank_, comm, hw_,
-               {.dirs = pfc::halo::presets::Axes2D()}),
+                {.dirs = pfc::halo::presets::Axes2D()}),
         exch_p_(p_.data(), p_.size(), decomp_, rank_, comm, 1,
-               {.dirs = pfc::halo::presets::Axes2D()}) {
+                {.dirs = pfc::halo::presets::Axes2D()}) {
     if (order_ != 2 && order_ != 4) {
       throw std::invalid_argument("FDFluxSolver: order must be 2 or 4");
     }
@@ -269,46 +266,37 @@ public:
     exch_p_.exchange();
     pfc::halo::copy_to_face_layout(exch_p_.halos(), p_halos_);
 
-    // 4. Face fluxes and their divergence.
+    // 4. Mobility on owned cells and on the width-1 neighbour layer. The
+    //    curvature halo may be wider than one cell; the flux only needs the
+    //    nearest sample. The divergence itself is the public operator.
     for (int iy = 0; iy < ny_; ++iy) {
       for (int ix = 0; ix < nx_; ++ix) {
         const std::size_t c =
             static_cast<std::size_t>(ix) + static_cast<std::size_t>(iy) * nx_;
-        const double hc = h[c];
-        const double pc = p_[c];
-
-        const double h_xp = detail::at_xp(h.data(), h_halos_[0].data(), ix, iy,
-                                          nx_, hw_);
-        const double h_xm = detail::at_xm(h.data(), h_halos_[1].data(), ix, iy,
-                                          nx_, hw_);
-        const double h_yp = detail::at_yp(h.data(), h_halos_[2].data(), ix, iy,
-                                          nx_, ny_, hw_);
-        const double h_ym = detail::at_ym(h.data(), h_halos_[3].data(), ix, iy,
-                                          nx_, hw_);
-
-        const double p_xp = detail::at_xp(p_.data(), p_halos_[0].data(), ix, iy,
-                                          nx_, 1);
-        const double p_xm = detail::at_xm(p_.data(), p_halos_[1].data(), ix, iy,
-                                          nx_, 1);
-        const double p_yp = detail::at_yp(p_.data(), p_halos_[2].data(), ix, iy,
-                                          nx_, ny_, 1);
-        const double p_ym = detail::at_ym(p_.data(), p_halos_[3].data(), ix, iy,
-                                          nx_, 1);
-
-        const double Mc = mobility(hc);
-        const double Mxp = face_mobility(kind, Mc, mobility(h_xp));
-        const double Mxm = face_mobility(kind, mobility(h_xm), Mc);
-        const double Myp = face_mobility(kind, Mc, mobility(h_yp));
-        const double Mym = face_mobility(kind, mobility(h_ym), Mc);
-
-        const double Fxp = Mxp * (p_xp - pc) / dx_;
-        const double Fxm = Mxm * (pc - p_xm) / dx_;
-        const double Fyp = Myp * (p_yp - pc) / dy_;
-        const double Fym = Mym * (pc - p_ym) / dy_;
-
-        dhdt_out[c] = (Fxp - Fxm) / dx_ + (Fyp - Fym) / dy_;
+        coeff_[c] = mobility(h[c]);
       }
     }
+    for (int iy = 0; iy < ny_; ++iy) {
+      coeff_halos_[0][static_cast<std::size_t>(iy)] = mobility(
+          detail::at_xp(h.data(), h_halos_[0].data(), nx_ - 1, iy, nx_, hw_));
+      coeff_halos_[1][static_cast<std::size_t>(iy)] =
+          mobility(detail::at_xm(h.data(), h_halos_[1].data(), 0, iy, nx_, hw_));
+    }
+    for (int ix = 0; ix < nx_; ++ix) {
+      coeff_halos_[2][static_cast<std::size_t>(ix)] = mobility(
+          detail::at_yp(h.data(), h_halos_[2].data(), ix, ny_ - 1, nx_, ny_, hw_));
+      coeff_halos_[3][static_cast<std::size_t>(ix)] =
+          mobility(detail::at_ym(h.data(), h_halos_[3].data(), ix, 0, nx_, hw_));
+    }
+    const std::array<const double *, 6> coeff_faces{
+        coeff_halos_[0].data(), coeff_halos_[1].data(), coeff_halos_[2].data(),
+        coeff_halos_[3].data(), coeff_halos_[4].data(), coeff_halos_[5].data()};
+    const std::array<const double *, 6> potential_faces{
+        p_halos_[0].data(), p_halos_[1].data(), p_halos_[2].data(),
+        p_halos_[3].data(), p_halos_[4].data(), p_halos_[5].data()};
+    pfc::field::fd::divergence_separated(coeff_.data(), p_.data(), coeff_faces,
+                                         potential_faces, dhdt_out.data(), nx_, ny_,
+                                         1, dx_, dy_, 1.0, kind);
   }
 
   /// One explicit-Euler step of size `dt`.
@@ -328,16 +316,16 @@ private:
   int hw_;
   int nx_, ny_;
   double dx_, dy_;
-  std::vector<double> p_, lap_h_, dhdt_;
-  std::array<std::vector<double>, 6> h_halos_, p_halos_;
+  std::vector<double> p_, lap_h_, dhdt_, coeff_;
+  std::array<std::vector<double>, 6> h_halos_, p_halos_, coeff_halos_;
   pfc::comm::SparseExchange<pfc::HostSpace, double> exch_h_;
   pfc::comm::SparseExchange<pfc::HostSpace, double> exch_p_;
 };
 
 /// Same observables as `thin_film::sample_film`, for a raw FD state vector.
-[[nodiscard]] inline FilmSample
-sample_film_fd(const std::vector<double> &h, const pfc::Domain &domain, double h0,
-               double rupture_frac, MPI_Comm comm) {
+[[nodiscard]] inline FilmSample sample_film_fd(const std::vector<double> &h,
+                                               const pfc::Domain &domain, double h0,
+                                               double rupture_frac, MPI_Comm comm) {
   double lo = std::numeric_limits<double>::infinity(), hi = -lo;
   double local_sum = 0.0, local_holes = 0.0, local_cells = 0.0;
   for (double v : h) {
@@ -376,9 +364,9 @@ sample_film_fd(const std::vector<double> &h, const pfc::Domain &domain, double h
  * diagnostic cadence this application uses it at (every `saveat`, not every
  * step) on grids up to a few hundred thousand cells; call only on rank 0.
  */
-[[nodiscard]] inline int count_dry_regions_rank0(const std::vector<double> &global_xy,
-                                                 int nx_glob, int ny_glob,
-                                                 double threshold) {
+[[nodiscard]] inline int
+count_dry_regions_rank0(const std::vector<double> &global_xy, int nx_glob,
+                        int ny_glob, double threshold) {
   const std::size_t n =
       static_cast<std::size_t>(nx_glob) * static_cast<std::size_t>(ny_glob);
   std::vector<int> parent(n);

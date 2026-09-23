@@ -35,6 +35,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Public conservative face flux `pfc::field::fd::divergence_separated`
+  (`include/openpfc/kernel/field/face_flux.hpp`, #143). Arithmetic and
+  harmonic face averages are generic. Thin film still owns the pressure,
+  the cubic mobility, and the time step, and calls this operator for the
+  divergence.
+
 - Public conservative spectral flux `pfc::sim::SpectralFlux` and `FluxETD`
   (`include/openpfc/kernel/simulation/spectral_flux.hpp`, #142). The
   coefficient is either \(M(u)\) or a field the caller has filled, so thin
