@@ -30,7 +30,6 @@
 #include <openpfc/kernel/simulation/time.hpp>
 #include <thin_film/cosine_mode.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
-#include <openpfc_apps/structure_factor.hpp>
 #include <thin_film/fd_flux.hpp>
 #include <thin_film/nonlinear.hpp>
 #include <thin_film/thin_film_physics.hpp>

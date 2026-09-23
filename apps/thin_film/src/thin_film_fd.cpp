@@ -36,13 +36,13 @@
 #include <nlohmann/json.hpp>
 
 #include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
 #include <openpfc_apps/gather.hpp>
-#include <openpfc_apps/structure_factor.hpp>
-#include <openpfc/kernel/data/grid_field.hpp>
 
 #include <thin_film/fd_flux.hpp>
 #include <thin_film/nonlinear.hpp>
@@ -90,7 +90,8 @@ int main(int argc, char *argv[]) {
     const auto &d = cfg.at("domain");
     const int Lx = d.at("Lx"), Ly = d.at("Ly"), Lz = d.value("Lz", 1);
     const double dx = d.value("dx", 1.0);
-    if (Lz != 1) throw std::invalid_argument("thin_film_fd: 2-D only (Lz must be 1)");
+    if (Lz != 1)
+      throw std::invalid_argument("thin_film_fd: 2-D only (Lz must be 1)");
     const auto domain = pfc::domain::create(pfc::GridSize({Lx, Ly, Lz}),
                                             pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
                                             pfc::GridSpacing({dx, dx, dx}));
@@ -100,7 +101,8 @@ int main(int argc, char *argv[]) {
     thin_film::apply_thin_film_json(cfg.at("model").at("params"), p);
 
     const auto &ts = cfg.at("timestepping");
-    const double t1 = ts.at("t1"), dt = ts.at("dt"), saveat = ts.value("saveat", -1.0);
+    const double t1 = ts.at("t1"), dt = ts.at("dt"),
+                 saveat = ts.value("saveat", -1.0);
 
     const auto &ic = cfg.at("initial_conditions");
     const double amp = ic.value("amplitude", 0.01);
@@ -117,7 +119,8 @@ int main(int argc, char *argv[]) {
 
     const auto &box = pfc::decomposition::local_box(decomp, rank);
     const int nx = box.size[0], ny = box.size[1];
-    std::vector<double> h(static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny));
+    std::vector<double> h(static_cast<std::size_t>(nx) *
+                          static_cast<std::size_t>(ny));
 
     const auto defect =
         thin_film::GaussianDefect::centred(domain, defect_amp, defect_sigma);
@@ -134,9 +137,8 @@ int main(int argc, char *argv[]) {
 
     thin_film::FDFluxSolver solver(domain, decomp, rank, MPI_COMM_WORLD, h, order);
     const thin_film::CubicMobility mobility{p.M0, p.h0};
-    const thin_film::ThinFilmPointwise pw{.A = p.A, .h0 = p.h0,
-                                          .h_star = p.h_star, .Pi0 = p.Pi0,
-                                          .Pip0 = p.Pip0};
+    const thin_film::ThinFilmPointwise pw{
+        .A = p.A, .h0 = p.h0, .h_star = p.h_star, .Pi0 = p.Pi0, .Pip0 = p.Pip0};
 
     // Rank-0-only serial FFT for the dominant-spacing diagnostic: the FD
     // solver's Cartesian decomposition has nothing to do with heffte's
@@ -145,9 +147,8 @@ int main(int argc, char *argv[]) {
     // solve. `MPI_COMM_SELF` keeps it entirely local to rank 0.
     std::unique_ptr<pfc::sim::stacks::SpectralCPUStack> diag_stack;
     if (rank == 0) {
-      diag_stack =
-          std::make_unique<pfc::sim::stacks::SpectralCPUStack>(domain, 0, 1,
-                                                                MPI_COMM_SELF);
+      diag_stack = std::make_unique<pfc::sim::stacks::SpectralCPUStack>(
+          domain, 0, 1, MPI_COMM_SELF);
     }
 
     // Rank-0 full-domain field for optional fields[] VTK dumps (gathered).
@@ -194,14 +195,15 @@ int main(int argc, char *argv[]) {
         pfc::data::Field<std::complex<double>> hh(
             domain, diag_stack->fft().get_outbox_bounds(), 0);
         pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(diag_stack->fft(), diag_u,
-                                                           hh);
+                                                          hh);
         hh.with_host_view([&](std::complex<double> *hv, std::size_t) {
-          const auto sf = pfc::apps::shell_average(diag_stack->fft().get_outbox_bounds(),
-                                                    domain, hv, MPI_COMM_SELF, sf_bins);
-          s.dominant_spacing = sf.dominant_wavelength();
+          const auto spectrum =
+              pfc::spectral::radial_average(diag_stack->fft().get_outbox_bounds(),
+                                            domain, hv, MPI_COMM_SELF, sf_bins);
+          s.dominant_spacing = spectrum.dominant_wavelength();
         });
-        n_holes = thin_film::count_dry_regions_rank0(
-            global_xy, Lx, Ly, hole_threshold_frac * p.h0);
+        n_holes = thin_film::count_dry_regions_rank0(global_xy, Lx, Ly,
+                                                     hole_threshold_frac * p.h0);
       }
       if (s.ruptured && rupture_time < 0.0) rupture_time = t;
       if (rank == 0 && snapshots && snap_field && !global_xy.empty()) {

@@ -15,19 +15,44 @@
 #include <vector>
 
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
-#include <openpfc_apps/structure_factor.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
 
 namespace cahn_hilliard {
 
 struct DiagnosticSample {
   double mean{}, mass{}, minimum{}, maximum{}, bulk_energy{}, gradient_energy{};
   double invalid_cells{};
-  /// Structure-factor observables; zero when the spectrum carries no power.
+  /// Spectral observables; zero when the spectrum carries no power.
   double k1{}, domain_length{}, k_peak{}, dominant_wavelength{};
   [[nodiscard]] double total_energy() const { return bulk_energy + gradient_energy; }
 };
+
+/**
+ * @brief Least-squares exponent n in L(t) proportional to t^n.
+ *
+ * Fits (ln t, ln L). Non-positive samples are ignored. Returns 0 when fewer
+ * than two usable points remain. The caller chooses the time window.
+ */
+[[nodiscard]] inline double coarsening_exponent(const std::vector<double> &t,
+                                                const std::vector<double> &L) {
+  const std::size_t n = std::min(t.size(), L.size());
+  double sx = 0, sy = 0, sxx = 0, sxy = 0, count = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    if (t[i] <= 0.0 || L[i] <= 0.0) continue;
+    const double x = std::log(t[i]), y = std::log(L[i]);
+    sx += x;
+    sy += y;
+    sxx += x * x;
+    sxy += x * y;
+    count += 1.0;
+  }
+  if (count < 2.0) return 0.0;
+  const double denom = count * sxx - sx * sx;
+  if (std::abs(denom) < 1.0e-300) return 0.0;
+  return (count * sxy - sx * sy) / denom;
+}
 
 /** @brief Collective diagnostics of the current field, not the lagged ETD RHS.
  * Computes the periodic spectral energy as integral(f(c)-kappa*c*lap(c)/2).
@@ -91,16 +116,15 @@ public:
     }
     result.bulk_energy = global[1] * cell_volume;
     Ops::forward(m_fft, field, m_hat);
-    // The same transform serves the gradient energy and the structure factor;
-    // shell_average drops k=0, so the mean composition does not have to be
-    // subtracted from the field first.
+    // The same transform serves the gradient energy and the spectrum.
+    // radial_average drops k=0, so the mean does not have to be removed first.
     m_hat.with_host_view([&](typename Ops::Complex *hat, std::size_t) {
-      const auto sf = pfc::apps::shell_average(m_fft.get_outbox_bounds(), m_domain, hat,
-                                    m_comm, m_sf_bins);
-      result.k1 = sf.k1;
-      result.domain_length = sf.domain_length();
-      result.k_peak = sf.k_peak;
-      result.dominant_wavelength = sf.dominant_wavelength();
+      const auto spectrum = pfc::spectral::radial_average(
+          m_fft.get_outbox_bounds(), m_domain, hat, m_comm, m_sf_bins);
+      result.k1 = spectrum.first_moment;
+      result.domain_length = spectrum.mean_wavelength();
+      result.k_peak = spectrum.peak_wavenumber;
+      result.dominant_wavelength = spectrum.dominant_wavelength();
     });
     Ops::multiply(m_hat, m_weights, m_work);
     Ops::backward(m_fft, m_work, m_lap);

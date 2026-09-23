@@ -53,10 +53,10 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
-#include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
-#include <openpfc_apps/field_snapshots.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
-#include <openpfc_apps/structure_factor.hpp>
+#include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
+#include <openpfc_apps/field_snapshots.hpp>
 
 #include <thin_film/nonlinear.hpp>
 #include <thin_film/thin_film_physics.hpp>
@@ -134,7 +134,8 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
     thin_film::apply_thin_film_json(cfg.at("model").at("params"), p);
 
     const auto &ts = cfg.at("timestepping");
-    const double t1 = ts.at("t1"), dt = ts.at("dt"), saveat = ts.value("saveat", -1.0);
+    const double t1 = ts.at("t1"), dt = ts.at("dt"),
+                 saveat = ts.value("saveat", -1.0);
 
     const auto &ic = cfg.at("initial_conditions");
     const double amp = ic.value("amplitude", 0.01);
@@ -179,14 +180,14 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
     // remainder carries everything the linearisation leaves out, so the
     // nonlinear solver reduces to the linear one when M is constant.
     const double gamma = p.gamma, M0 = p.M0, Pip0 = p.Pip0;
-    pfc::sim::FluxETD<MemorySpace> stepper(domain, stack.fft(), dt, [=](double k_lap) {
-      return -M0 * gamma * k_lap * k_lap - M0 * Pip0 * k_lap;
-    });
+    pfc::sim::FluxETD<MemorySpace> stepper(
+        domain, stack.fft(), dt, [=](double k_lap) {
+          return -M0 * gamma * k_lap * k_lap - M0 * Pip0 * k_lap;
+        });
 
     const thin_film::CubicMobility mobility{p.M0, p.h0};
-    const thin_film::ThinFilmPointwise pw{.A = p.A, .h0 = p.h0,
-                                          .h_star = p.h_star, .Pi0 = p.Pi0,
-                                          .Pip0 = p.Pip0};
+    const thin_film::ThinFilmPointwise pw{
+        .A = p.A, .h0 = p.h0, .h_star = p.h_star, .Pi0 = p.Pi0, .Pip0 = p.Pip0};
     const thin_film::PotentialPointwise potential_pw{pw};
 
     // p_hat = -gamma * k_lap * h_hat - FFT(Pi(h))
@@ -244,9 +245,9 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
       ComplexField hh(domain, stack.fft().get_outbox_bounds(), 0);
       Ops::forward(stack.fft(), h, hh);
       hh.with_host_view([&](std::complex<double> *hv, std::size_t) {
-        const auto sf = pfc::apps::shell_average(stack.fft().get_outbox_bounds(),
-                                                 domain, hv, comm, 64);
-        s.dominant_spacing = sf.dominant_wavelength();
+        const auto spectrum = pfc::spectral::radial_average(
+            stack.fft().get_outbox_bounds(), domain, hv, comm, 64);
+        s.dominant_spacing = spectrum.dominant_wavelength();
       });
       if (s.ruptured && rupture_time < 0.0) rupture_time = t;
       pfc::apps::write_field_snapshot(snapshots.get(), snapshot_index++, h);

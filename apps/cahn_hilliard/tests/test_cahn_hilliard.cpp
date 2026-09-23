@@ -30,7 +30,6 @@
 #include <cahn_hilliard/cosine_mode.hpp>
 #include <cahn_hilliard/elastic_driver.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
-#include <openpfc_apps/structure_factor.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/simulation/simulation_state.hpp>
@@ -403,10 +402,9 @@ TEST_CASE("Redlich-Kister with L1 = 0 is exactly the regular solution",
   for (int i = 1; i < 100; ++i) {
     const double c = i / 100.0;
     const double u = c;
-    REQUIRE_THAT(regular.f_bulk(c),
-                 WithinRel(omega * u * (1 - u) + u * std::log(u) +
-                               (1 - u) * std::log(1 - u),
-                           1e-13));
+    REQUIRE_THAT(regular.f_bulk(c), WithinRel(omega * u * (1 - u) + u * std::log(u) +
+                                                  (1 - u) * std::log(1 - u),
+                                              1e-13));
     REQUIRE_THAT(regular.f_prime(c),
                  WithinRel(omega * (1 - 2 * u) + std::log(u / (1 - u)), 1e-13));
     REQUIRE_THAT(regular.f_double_prime(c),
@@ -502,65 +500,20 @@ TEST_CASE("Redlich-Kister JSON drives the model and reports its spinodal",
   REQUIRE_THAT(q.l1_nd, WithinAbs(0.0, 1e-15));
 }
 
-// ---------------------------------------------------------------------------
-// Structure factor (#113)
-// ---------------------------------------------------------------------------
-
-TEST_CASE("Structure factor finds the wave number of a single mode",
-          "[cahn_hilliard][structure_factor]") {
-  if (world_size() != 1) {
-    SKIP("single-rank spectral check");
-  }
-  constexpr int N = 64;
-  constexpr int nx = 6;
-  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
-                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                                          pfc::GridSpacing({1.0, 1.0, 1.0}));
-  pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
-  auto &c = stack.u();
-  const double twopi = 2.0 * std::numbers::pi;
-  const double L = static_cast<double>(N);
-  c.apply([&](double x, double, double) {
-    return 0.32 + 0.01 * std::cos(twopi * nx * x / L);
-  });
-
-  pfc::data::Field<std::complex<double>> hat(domain,
-                                             stack.fft().get_outbox_bounds(), 0);
-  pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(stack.fft(), c, hat);
-  pfc::apps::StructureFactor sf;
-  hat.with_host_view([&](std::complex<double> *h, std::size_t) {
-    sf = pfc::apps::shell_average(stack.fft().get_outbox_bounds(), domain, h,
-                                      MPI_COMM_WORLD, 64);
-  });
-
-  const double k_expected = twopi * nx / L;
-  REQUIRE(sf.total_power > 0.0);
-  // The peak shell must bracket the imposed wave number.
-  const double bin = (std::numbers::pi / 1.0) / 64.0;
-  REQUIRE_THAT(sf.k_peak, WithinAbs(k_expected, bin));
-  REQUIRE_THAT(sf.dominant_wavelength(), WithinRel(L / nx, 0.1));
-  // A single mode puts essentially all power in one shell, so the first
-  // moment lands on it too.
-  REQUIRE_THAT(sf.k1, WithinAbs(k_expected, 2 * bin));
-  REQUIRE(sf.domain_length() > 0.0);
-}
-
 TEST_CASE("Coarsening exponent recovers a known power law",
-          "[cahn_hilliard][structure_factor]") {
+          "[cahn_hilliard][coarsening]") {
   std::vector<double> t, L;
   for (int i = 1; i <= 50; ++i) {
     const double ti = 0.5 * i;
     t.push_back(ti);
     L.push_back(3.7 * std::pow(ti, 1.0 / 3.0));
   }
-  REQUIRE_THAT(pfc::apps::coarsening_exponent(t, L),
-               WithinRel(1.0 / 3.0, 1e-9));
+  REQUIRE_THAT(cahn_hilliard::coarsening_exponent(t, L), WithinRel(1.0 / 3.0, 1e-9));
   // A t=0 sample is ignored rather than poisoning the log fit.
   t.insert(t.begin(), 0.0);
   L.insert(L.begin(), 0.0);
-  REQUIRE_THAT(pfc::apps::coarsening_exponent(t, L),
-               WithinRel(1.0 / 3.0, 1e-9));
-  REQUIRE(pfc::apps::coarsening_exponent({1.0}, {2.0}) == 0.0);
+  REQUIRE_THAT(cahn_hilliard::coarsening_exponent(t, L), WithinRel(1.0 / 3.0, 1e-9));
+  REQUIRE(cahn_hilliard::coarsening_exponent({1.0}, {2.0}) == 0.0);
 }
 
 TEST_CASE("Elastic CH converts Pa stiffness into RT/Vm units",
@@ -591,7 +544,8 @@ TEST_CASE("Uniform composition does not move under a uniform eigenstrain",
       "elasticity": {"eps0": 0.04, "c_ref": 0.4, "E": 2.0e11, "nu": 0.3},
       "domain": {"Lx": 16, "Ly": 16, "Lz": 1, "dx": 1.0},
       "timestepping": {"t1": 0.5, "dt": 0.1, "saveat": 0.5},
-      "diagnostics": {"csv": ")" + (dir / "d.csv").string() + R"("},
+      "diagnostics": {"csv": ")" +
+             (dir / "d.csv").string() + R"("},
       "initial_conditions": [{"type": "cosine_mode", "c0": 0.5, "amplitude": 0.0,
                               "nx": 1, "ny": 0, "nz": 0}]
     })";
@@ -628,7 +582,8 @@ TEST_CASE("Elastic CH conserves mass on a noisy cell", "[cahn_hilliard][elastic]
       "elasticity": {"eps0": 0.04, "c_ref": 0.5, "c11": 2.3e11, "c12": 1.35e11, "c44": 1.17e11},
       "domain": {"Lx": 32, "Ly": 32, "Lz": 1, "dx": 1.0},
       "timestepping": {"t1": 2.0, "dt": 0.1, "saveat": 2.0},
-      "diagnostics": {"csv": ")" + (dir / "d.csv").string() + R"("},
+      "diagnostics": {"csv": ")" +
+             (dir / "d.csv").string() + R"("},
       "initial_conditions": [{"type": "seeded_noise", "c0": 0.5, "amplitude": 0.01, "seed": 7}]
     })";
   }

@@ -59,8 +59,8 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
-#include <openpfc_apps/structure_factor.hpp>
 
 #include <surface_diffusion/anisotropic_flux.hpp>
 #include <surface_diffusion/anisotropy.hpp>
@@ -109,54 +109,22 @@ Sample sample_surface(pfc::data::Field<double> &h, const pfc::Domain &domain,
   pfc::data::Field<std::complex<double>> h_hat(domain, fft.get_outbox_bounds(), 0);
   pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(fft, h, h_hat);
 
-  pfc::apps::StructureFactor sf;
+  pfc::spectral::RadialSpectrum spectrum;
+  pfc::spectral::DirectionalPower axes;
   h_hat.with_host_view([&](const std::complex<double> *hv, std::size_t) {
-    sf = pfc::apps::shell_average(fft.get_outbox_bounds(), domain, hv, comm, 64);
+    spectrum =
+        pfc::spectral::radial_average(fft.get_outbox_bounds(), domain, hv, comm, 64);
+    axes =
+        pfc::spectral::directional_power(fft.get_outbox_bounds(), domain, hv, comm);
   });
-  s.dominant_wavelength = sf.dominant_wavelength();
-  s.domain_length = sf.domain_length();
+  s.dominant_wavelength = spectrum.dominant_wavelength();
+  s.domain_length = spectrum.mean_wavelength();
 
-  // Directional spectral energy: split |h_hat|^2 by which axis dominates the
-  // local wavevector. The k=0 (mean height) bin carries no orientation and is
-  // excluded, matching `shell_average`'s convention.
-  //
-  // HeFFTe's r2c transform halves storage along x only: the outbox carries
-  // kx in [0, Nyquist_x] with ky (and kz) spanning their full signed range.
-  // A mode at kx=0 or kx=Nyquist is its own conjugate and appears once in
-  // the *full* complex spectrum; every 0<kx<Nyquist mode has an unstored
-  // conjugate at -kx that carries equal power. A y-oriented ridge
-  // (kx=0, ky=+-k) is therefore stored as *two* explicit points while an
-  // x-oriented ridge (kx=+-k, ky=0) is stored as *one* (its -kx twin is
-  // implicit) -- weighting interior kx modes by 2 corrects for that, or the
-  // kx/ky split is biased 2:1 toward ky regardless of any real anisotropy.
-  const int Nx = pfc::domain::get_size(domain)[0];
-  const int kx_nyquist = Nx / 2;
-  double p_kx = 0.0, p_ky = 0.0, p_diag = 0.0;
-  h_hat.with_host_view([&](const std::complex<double> *hv, std::size_t) {
-    pfc::fft::kspace::for_each_kpoint(
-        fft.get_outbox_bounds(), domain,
-        [&](std::size_t i, double kx, double ky, double kz, int ix, int, int) {
-          (void)kz;
-          const double ax = std::abs(kx), ay = std::abs(ky);
-          if (ax == 0.0 && ay == 0.0) return;
-          const double weight = (ix == 0 || ix == kx_nyquist) ? 1.0 : 2.0;
-          const double power = weight * std::norm(hv[i]);
-          if (ax > ay) {
-            p_kx += power;
-          } else if (ay > ax) {
-            p_ky += power;
-          } else {
-            p_diag += power;
-          }
-        });
-  });
-  double gp[3]{}, lp[3]{p_kx, p_ky, p_diag};
-  MPI_Allreduce(lp, gp, 3, MPI_DOUBLE, MPI_SUM, comm);
-  const double total = gp[0] + gp[1] + gp[2];
+  const double total = axes.along_x + axes.along_y + axes.unresolved;
   if (total > 0.0) {
-    s.energy_kx_frac = gp[0] / total;
-    s.energy_ky_frac = gp[1] / total;
-    s.energy_diag_frac = gp[2] / total;
+    s.energy_kx_frac = axes.along_x / total;
+    s.energy_ky_frac = axes.along_y / total;
+    s.energy_diag_frac = axes.unresolved / total;
   }
 
   // max|grad h|, evaluated spectrally from the same transform.
@@ -226,7 +194,8 @@ int main(int argc, char *argv[]) {
     surface_diffusion::apply_anisotropy_json(cfg.at("model").at("params"), params);
 
     const auto &ts = cfg.at("timestepping");
-    const double t1 = ts.at("t1"), dt = ts.at("dt"), saveat = ts.value("saveat", -1.0);
+    const double t1 = ts.at("t1"), dt = ts.at("dt"),
+                 saveat = ts.value("saveat", -1.0);
 
     const auto &ic = cfg.at("initial_conditions");
     const double h0 = ic.value("h0", 0.0);
@@ -275,10 +244,9 @@ int main(int argc, char *argv[]) {
         std::filesystem::create_directories(path.parent_path());
       out.reset(std::fopen(path.string().c_str(), "w"));
       if (!out) throw std::runtime_error("cannot open diagnostics csv");
-      std::fprintf(out.get(),
-                   "step,time,mean_h,rms_roughness,max_grad_h,"
-                   "dominant_wavelength,domain_length,energy_kx_frac,"
-                   "energy_ky_frac,energy_diag_frac\n");
+      std::fprintf(out.get(), "step,time,mean_h,rms_roughness,max_grad_h,"
+                              "dominant_wavelength,domain_length,energy_kx_frac,"
+                              "energy_ky_frac,energy_diag_frac\n");
     }
 
     auto report = [&](int step, double t) {
@@ -320,7 +288,8 @@ int main(int argc, char *argv[]) {
           final_sample.energy_diag_frac);
     }
   } catch (const std::exception &e) {
-    if (rank == 0) std::cerr << "surface_diffusion_anisotropic: " << e.what() << "\n";
+    if (rank == 0)
+      std::cerr << "surface_diffusion_anisotropic: " << e.what() << "\n";
     status = 2;
   }
   MPI_Finalize();
