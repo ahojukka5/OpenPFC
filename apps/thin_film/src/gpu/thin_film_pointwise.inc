@@ -10,16 +10,16 @@
  *    (JSON session, constant mobility);
  *  - `PotentialPointwise`       — the full disjoining pressure \f$\Pi(h)\f$,
  *    used by `thin_film_nonlinear[_hip]`'s potential evaluation;
- *  - `pfc::apps::MobilityGradPointwise<CubicMobility>` — the fused
- *    \f$M(h)\cdot\nabla p\f$ kernel behind `pfc::apps::SpectralFlux`.
+ *  - `pfc::sim::MobilityGradPointwise<CubicMobility>` — the fused
+ *    \f$M(h)\cdot\nabla p\f$ kernel behind `pfc::sim::SpectralFlux`.
  */
 
 #include <openpfc/runtime/gpu/spectral_pointwise_gpu.hpp>
-#include <openpfc_apps/spectral_flux.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <thin_film/nonlinear.hpp>
 #include <thin_film/thin_film_pointwise.hpp>
 
 OPENPFC_INSTANTIATE_SPECTRAL_POINTWISE(thin_film::ThinFilmPointwise)
 OPENPFC_INSTANTIATE_SPECTRAL_POINTWISE(thin_film::PotentialPointwise)
 OPENPFC_INSTANTIATE_SPECTRAL_POINTWISE(
-    pfc::apps::MobilityGradPointwise<thin_film::CubicMobility>)
+    pfc::sim::MobilityGradPointwise<thin_film::CubicMobility>)

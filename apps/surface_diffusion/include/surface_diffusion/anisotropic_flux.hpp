@@ -26,15 +26,10 @@
  * \f]
  * \f$B(\theta)\f$ depends on the field itself (through its gradient), so the
  * operator cannot be written as a single reciprocal-space multiplier the way
- * `SurfaceDiffusionPhysics::linear_symbol` is; it is evaluated the same way
- * `openpfc_apps/spectral_flux.hpp` evaluates a state-dependent mobility
- * inside a divergence, generalised so the coefficient depends on the local
- * gradient *orientation* rather than on the field value. This header does not
- * reuse `pfc::apps::SpectralFlux` because that class's `mobility` callback is
- * a function of the transported field's value, not of a separately derived
- * orientation field; duplicating the small kernel here keeps the shared
- * `apps/common` helper's contract unchanged for the other applications that
- * already depend on it.
+ * `SurfaceDiffusionPhysics::linear_symbol` is. This stepper fills
+ * \f$B(\theta)\f$ and the linear split; `pfc::sim::SpectralFlux` evaluates
+ * the divergence. The coefficient is a field, not a function of the height
+ * value, so `FluxETD` (which always applies \f$M(u)\f$) is not used.
  *
  * ## Splitting for the exponential integrator
  *
@@ -55,15 +50,13 @@
  *
  * 2-D height fields only (`Lz == 1`): \f$\theta\f$ is defined from the
  * in-plane gradient `(h_x, h_y)`, matching the small-slope 2-D patterned-
- * surface preset this model was built for. Host (CPU) only, like the shared
- * flux helper it parallels; a directional mobility needs a complex `i*k_d`
- * multiply that the device `Ops` layer does not expose.
+ * surface preset this model was built for. The orientation law is evaluated
+ * on the host. The divergence itself is `pfc::sim::SpectralFlux`.
  */
 
 #include <cmath>
 #include <complex>
 #include <cstddef>
-#include <numbers>
 #include <stdexcept>
 #include <vector>
 
@@ -71,6 +64,7 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 
 #include <surface_diffusion/anisotropy.hpp>
 
@@ -94,13 +88,11 @@ public:
    */
   AnisotropicSurfaceDiffusionETD(const pfc::Domain &domain, FFT &fft, double dt,
                                  SurfaceStiffness stiffness)
-      : m_dt(dt), m_stiffness(stiffness), m_fft(fft),
+      : m_dt(dt), m_stiffness(stiffness), m_fft(fft), m_flux(domain, fft),
         m_h_hat(domain, fft.get_outbox_bounds(), 0),
         m_p_hat(domain, fft.get_outbox_bounds(), 0),
         m_grad_hat(domain, fft.get_outbox_bounds(), 0),
-        m_flux_hat(domain, fft.get_outbox_bounds(), 0),
         m_div_hat(domain, fft.get_outbox_bounds(), 0),
-        m_grad_real(domain, fft.get_inbox_bounds(), 0),
         m_hx(domain, fft.get_inbox_bounds(), 0),
         m_hy(domain, fft.get_inbox_bounds(), 0),
         m_theta(domain, fft.get_inbox_bounds(), 0),
@@ -115,14 +107,9 @@ public:
     m_kx.assign(n, 0.0);
     m_ky.assign(n, 0.0);
     m_k_lap.assign(n, 0.0);
-    m_mask.assign(n, 1.0);
     m_expL.assign(n, 1.0);
     m_phi1.assign(n, dt);
     m_L0.assign(n, 0.0);
-
-    const auto dx = pfc::domain::get_spacing(domain);
-    const double cutx = (2.0 / 3.0) * (std::numbers::pi / dx[0]);
-    const double cuty = (2.0 / 3.0) * (std::numbers::pi / dx[1]);
 
     pfc::fft::kspace::for_each_kpoint(
         fft.get_outbox_bounds(), domain,
@@ -130,10 +117,6 @@ public:
           m_kx[i] = kx;
           m_ky[i] = ky;
           m_k_lap[i] = -(kx * kx + ky * ky + kz * kz);
-          // Orszag 2/3 dealiasing mask: B(theta)*grad(lap h) is a strongly
-          // nonlinear product (theta itself is a ratio of gradients), so its
-          // transform carries wavenumbers the grid cannot represent.
-          if (std::abs(kx) > cutx || std::abs(ky) > cuty) m_mask[i] = 0.0;
           const double l0 = -stiffness.B0 * m_k_lap[i] * m_k_lap[i];
           m_L0[i] = l0;
           const double a = l0 * dt;
@@ -173,33 +156,8 @@ public:
       });
     });
 
-    m_div_hat.with_host_view([&](Complex *d, std::size_t) {
-      for (std::size_t i = 0; i < n_out; ++i) d[i] = Complex{0.0, 0.0};
-    });
-
-    const std::vector<double> *k_axes[2]{&m_kx, &m_ky};
-    for (const auto *k : k_axes) {
-      m_p_hat.with_host_view([&](const Complex *p, std::size_t) {
-        m_grad_hat.with_host_view([&](Complex *g, std::size_t) {
-          for (std::size_t i = 0; i < n_out; ++i) g[i] = Complex{0.0, (*k)[i]} * p[i];
-        });
-      });
-      Ops::backward(m_fft, m_grad_hat, m_grad_real);
-
-      m_Btheta.with_host_view([&](const double *b, std::size_t count) {
-        m_grad_real.with_host_view([&](double *g, std::size_t) {
-          for (std::size_t i = 0; i < count; ++i) g[i] *= b[i];
-        });
-      });
-      Ops::forward(m_fft, m_grad_real, m_flux_hat);
-
-      m_flux_hat.with_host_view([&](const Complex *f, std::size_t) {
-        m_div_hat.with_host_view([&](Complex *d, std::size_t) {
-          for (std::size_t i = 0; i < n_out; ++i)
-            d[i] += Complex{0.0, (*k)[i]} * (m_mask[i] * f[i]);
-        });
-      });
-    }
+    // p_hat = FFT(-lap h), so div(B grad p) = -div(B grad(lap h)).
+    m_flux.divergence(m_p_hat, m_Btheta, m_div_hat);
 
     // ETD1: h_hat_new = expL*h_hat + phi1*(div_hat - L0*h_hat).
     m_h_hat.with_host_view([&](Complex *hh, std::size_t) {
@@ -254,9 +212,10 @@ private:
   double m_dt;
   SurfaceStiffness m_stiffness;
   FFT &m_fft;
-  std::vector<double> m_kx, m_ky, m_k_lap, m_mask, m_expL, m_phi1, m_L0;
-  ComplexField m_h_hat, m_p_hat, m_grad_hat, m_flux_hat, m_div_hat;
-  RealField m_grad_real, m_hx, m_hy, m_theta, m_Btheta;
+  pfc::sim::SpectralFlux<pfc::HostSpace> m_flux;
+  std::vector<double> m_kx, m_ky, m_k_lap, m_expL, m_phi1, m_L0;
+  ComplexField m_h_hat, m_p_hat, m_grad_hat, m_div_hat;
+  RealField m_hx, m_hy, m_theta, m_Btheta;
 };
 
 } // namespace surface_diffusion

@@ -31,7 +31,7 @@
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc/kernel/simulation/time.hpp>
-#include <openpfc_apps/spectral_flux.hpp>
+#include <openpfc/kernel/simulation/spectral_flux.hpp>
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
@@ -281,7 +281,7 @@ TEST_CASE("EHD flux stepper reproduces the analytical k^6 decay",
       });
 
   // gamma = A = 0, so p = B lap^2 h. Constant mobility M0.
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
     return M0 * B * kl * kl * kl;
   });
   auto potential = [&](pfc::data::Field<std::complex<double>> &h_hat,
@@ -347,7 +347,7 @@ TEST_CASE("EHD cubic mobility conserves liquid volume under bending, tension "
         k_lap[i] = -(kx * kx + ky * ky + kz * kz);
       });
 
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
     return B * kl * kl * kl - gamma * kl * kl - Pip0 * kl;
   });
   pfc::data::Field<double> pi_real(domain, stack.fft().get_inbox_bounds(), 0);
@@ -406,7 +406,7 @@ TEST_CASE("EHD localized load thins the gap at its centre and conserves volume",
   h.apply([&](double, double, double) { return h0; });
 
   // No bending, tension or adhesion here: isolate the load's own sign.
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt,
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt,
                              [](double) { return 0.0; });
   const auto load = ehd_film::GaussianLoad::centred(domain, /*p0=*/0.5,
                                                      /*a=*/6.0, /*t_load=*/1.0e9);
@@ -522,7 +522,7 @@ TEST_CASE("Constant-mobility flux path matches the forced linear oracle",
         k_lap[i] = -(kx * kx + ky * ky + kz * kz);
       });
 
-  pfc::apps::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
+  pfc::sim::FluxETD stepper(domain, stack.fft(), dt, [=](double kl) {
     const double kl2 = kl * kl;
     return M0 * B * kl * kl2 - M0 * gamma * kl2;
   });

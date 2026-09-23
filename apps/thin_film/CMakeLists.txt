@@ -38,7 +38,7 @@ thin_film_cpu_executable(thin_film src/thin_film.cpp)
 install(TARGETS thin_film DESTINATION bin)
 
 # Science driver for #114: full h^3 lubrication mobility through the shared
-# conservative flux stepper (pfc::apps::SpectralFlux / FluxETD), templated on
+# conservative flux stepper (pfc::sim::SpectralFlux / FluxETD), templated on
 # MemorySpace -- host build here, HIP twin below.
 thin_film_cpu_executable(thin_film_nonlinear src/thin_film_nonlinear.cpp)
 install(TARGETS thin_film_nonlinear DESTINATION bin)

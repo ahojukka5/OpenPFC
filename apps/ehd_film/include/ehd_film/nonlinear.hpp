@@ -48,12 +48,12 @@
  *
  * ## Numerics
  *
- * The flux is evaluated with `pfc::apps::FluxETD`
- * (`openpfc_apps/spectral_flux.hpp`): state-dependent \f$M\f$ cannot be
+ * The flux is evaluated with `pfc::sim::FluxETD`
+ * (`openpfc/kernel/simulation/spectral_flux.hpp`): state-dependent \f$M\f$ cannot be
  * written as a reciprocal-space symbol, so it is applied in real space every
- * step with Orszag 2/3 dealiasing on the flux transform. Host (CPU) only —
- * see that header for why. The existing constant-mobility `ehd_film_hip`
- * binary is untouched; the nonlinear science preset has no GPU twin.
+ * step with Orszag 2/3 dealiasing on the flux transform. This preset does
+ * not instantiate a device mobility. The existing constant-mobility
+ * `ehd_film_hip` binary is untouched.
  */
 
 #include <algorithm>

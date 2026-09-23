@@ -26,6 +26,9 @@ if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
     add_executable(test_spectral_etd_system_cuda
         test_spectral_etd_system_gpu.cpp
         spectral_etd_toys_pointwise.cu)
+    add_executable(test_spectral_flux_cuda
+        test_spectral_flux_gpu.cpp
+        spectral_flux_pointwise.cu)
     target_include_directories(test_spectral_etd_system_cuda PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/unit/runtime/gpu
         ${CMAKE_SOURCE_DIR}/tests
@@ -40,6 +43,21 @@ if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
         CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON)
     add_test(NAME CUDA_SpectralETD COMMAND test_spectral_etd_system_cuda)
+
+    target_include_directories(test_spectral_flux_cuda PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests/unit/runtime/gpu
+        ${CMAKE_SOURCE_DIR}/tests
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(test_spectral_flux_cuda PRIVATE
+        Catch2::Catch2 openpfc openpfc_gpu_kernels CUDA::cudart MPI::MPI_CXX
+        Heffte::Heffte)
+    target_compile_definitions(test_spectral_flux_cuda PRIVATE
+        OPENPFC_TEST_SPECTRAL_FLUX_CUDA)
+    set_target_properties(test_spectral_flux_cuda PROPERTIES
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME CUDA_SpectralFlux COMMAND test_spectral_flux_cuda)
 
     add_executable(test_gpu_spectral_stack_cuda test_gpu_spectral_stack.cpp)
     target_include_directories(test_gpu_spectral_stack_cuda PRIVATE
@@ -173,6 +191,9 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
         add_executable(test_spectral_etd_system_hip
             test_spectral_etd_system_gpu.cpp
             spectral_etd_toys_pointwise.hip)
+        add_executable(test_spectral_flux_hip
+            test_spectral_flux_gpu.cpp
+            spectral_flux_pointwise.hip)
         target_include_directories(test_spectral_etd_system_hip PRIVATE
             ${CMAKE_SOURCE_DIR}/tests/unit/runtime/gpu
             ${CMAKE_SOURCE_DIR}/tests
@@ -187,6 +208,21 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
             HIP_STANDARD 20
             HIP_STANDARD_REQUIRED ON)
         add_test(NAME HIP_SpectralETD COMMAND test_spectral_etd_system_hip)
+
+        target_include_directories(test_spectral_flux_hip PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests/unit/runtime/gpu
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/include
+        )
+        target_link_libraries(test_spectral_flux_hip PRIVATE
+            Catch2::Catch2 openpfc openpfc_hip_kernels hip::host MPI::MPI_CXX
+            Heffte::Heffte)
+        target_compile_definitions(test_spectral_flux_hip PRIVATE
+            OPENPFC_TEST_SPECTRAL_FLUX_HIP)
+        set_target_properties(test_spectral_flux_hip PROPERTIES
+            HIP_STANDARD 20
+            HIP_STANDARD_REQUIRED ON)
+        add_test(NAME HIP_SpectralFlux COMMAND test_spectral_flux_hip)
 
         add_executable(test_gpu_spectral_stack_hip test_gpu_spectral_stack.cpp)
         target_include_directories(test_gpu_spectral_stack_hip PRIVATE
