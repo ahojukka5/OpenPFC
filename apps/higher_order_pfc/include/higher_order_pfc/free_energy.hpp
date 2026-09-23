@@ -22,7 +22,7 @@
  * `cahn_hilliard::Diagnostics` evaluates its gradient energy: apply the
  * kernel to the transform, invert, and dot with \f$\psi\f$ in real space,
  * rather than trusting a hand-rolled Parseval normalisation. The same
- * transform feeds `pfc::apps::shell_average` for the reciprocal-space report,
+ * transform feeds `pfc::spectral::radial_average` for the reciprocal-space report,
  * so this costs one extra FFT pair per sample, not two.
  *
  * Single-rank use only (see `higher_order_pfc_benchmark.cpp`): the benchmark
@@ -44,7 +44,7 @@
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 
 #include <higher_order_pfc/higher_order_pfc_physics.hpp>
-#include <openpfc_apps/structure_factor.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
 
 namespace higher_order_pfc {
 
@@ -53,35 +53,10 @@ namespace higher_order_pfc {
 struct FreeEnergySample {
   double mean_psi{0.0};
   double free_energy_density{0.0};
-  pfc::apps::StructureFactor sf{};
-  double S_at_1{0.0};   ///< shell power in the bin nearest \f$|k|=1\f$
-  double S_at_q1{0.0};  ///< shell power in the bin nearest \f$|k|=q_1\f$
+  pfc::spectral::RadialSpectrum sf{};
+  double S_at_1{0.0};  ///< shell power in the bin nearest \f$|k|=1\f$
+  double S_at_q1{0.0}; ///< shell power in the bin nearest \f$|k|=q_1\f$
 };
-
-/// Nearest-bin lookup: `sf.k`/`sf.S` are shell centres, not a dense grid, so
-/// picking a value at a target wavenumber means finding the closest shell.
-///
-/// A target that sits exactly on a bin boundary (as `k=1` does for the
-/// shipped grid's default `n_bins=64`, where the bin width divides 1 evenly)
-/// is equidistant from two shells. Break that tie towards the shell that
-/// actually carries power, not the lower-index one: for a sharp, nearly
-/// single-mode field (a `lattice_seed` run, say) the "wrong" neighbour of an
-/// exact-boundary target can be essentially empty, which would silently
-/// report zero at a wavenumber that is, in fact, the dominant peak.
-[[nodiscard]] inline double power_near(const pfc::apps::StructureFactor &sf,
-                                       double k_target) {
-  if (sf.k.empty()) return 0.0;
-  std::size_t best = 0;
-  double best_d = std::abs(sf.k[0] - k_target);
-  for (std::size_t i = 1; i < sf.k.size(); ++i) {
-    const double d = std::abs(sf.k[i] - k_target);
-    if (d < best_d || (d == best_d && sf.S[i] > sf.S[best])) {
-      best_d = d;
-      best = i;
-    }
-  }
-  return sf.S[best];
-}
 
 template <class MemorySpace = pfc::HostSpace> class FreeEnergySampler {
   using Ops = pfc::sim::SpectralETDOps<MemorySpace>;
@@ -92,8 +67,8 @@ public:
         m_hat(domain, fft.get_outbox_bounds(), 0),
         m_quad(domain, fft.get_inbox_bounds(), 0) {}
 
-  FreeEnergySample sample(typename Ops::RealField &psi, const HigherOrderPFCParams &p,
-                          int sf_bins = 64) {
+  FreeEnergySample sample(typename Ops::RealField &psi,
+                          const HigherOrderPFCParams &p, int sf_bins = 64) {
     FreeEnergySample out;
     const auto n = pfc::domain::get_size(m_domain);
     const double count = double(n[0]) * n[1] * n[2];
@@ -125,15 +100,14 @@ public:
 
     double local_quad = 0.0;
     psi.with_host_view([&](double *v, std::size_t m) {
-      m_quad.with_host_view(
-          [&](double *lv, std::size_t) {
-            for (std::size_t i = 0; i < m; ++i) local_quad += 0.5 * v[i] * lv[i];
-          });
+      m_quad.with_host_view([&](double *lv, std::size_t) {
+        for (std::size_t i = 0; i < m; ++i) local_quad += 0.5 * v[i] * lv[i];
+      });
     });
 
     m_hat.with_host_view([&](std::complex<double> *hat, std::size_t) {
-      out.sf = pfc::apps::shell_average(m_fft.get_outbox_bounds(), m_domain, hat,
-                                        m_comm, sf_bins);
+      out.sf = pfc::spectral::radial_average(m_fft.get_outbox_bounds(), m_domain,
+                                             hat, m_comm, sf_bins);
     });
 
     double global[2]{};
@@ -141,8 +115,8 @@ public:
     MPI_Allreduce(local, global, 2, MPI_DOUBLE, MPI_SUM, m_comm);
     out.mean_psi = global[0] / count;
     out.free_energy_density = global[1] / count;
-    out.S_at_1 = power_near(out.sf, 1.0);
-    out.S_at_q1 = power_near(out.sf, p.q1);
+    out.S_at_1 = pfc::spectral::power_near(out.sf, 1.0);
+    out.S_at_q1 = pfc::spectral::power_near(out.sf, p.q1);
     return out;
   }
 

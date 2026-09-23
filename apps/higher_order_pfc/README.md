@@ -29,7 +29,7 @@ complexity here.** The physical story is in the next section.
 | **Boundary conditions** | Periodic on both active axes |
 | **Initial condition** | Either `seeded_noise` (decomposition-independent hashed noise, polycrystalline nucleation-like) or `lattice_seed` (an explicit sum of 2–3 plane waves at the target symmetry's reciprocal vectors, a controlled single-crystal seed) |
 | **Key parameters** | `eps` (quench depth), `q1`/`r1` (second-peak position/weight), `n_modes` (1 = single-mode, 2 = two-mode); mean density \(\bar\psi\) (see below) |
-| **Observable** | Free-energy density after relaxation; reciprocal-space peak amplitudes at \(\|k\|=1\) and \(\|k\|=q_1\) (`pfc::apps::shell_average`); real-space bond-orientational order \(\psi_4\)/\(\psi_6\) (`order_parameter.hpp`) |
+| **Observable** | Free-energy density after relaxation; reciprocal-space peak amplitudes at \(\|k\|=1\) and \(\|k\|=q_1\) (`pfc::spectral::radial_average`); real-space bond-orientational order \(\psi_4\)/\(\psi_6\) (`order_parameter.hpp`) |
 | **Model maturity** | numerical verification: **analytical** (kernel/symbol tests, exact-lattice order-parameter tests) · physical completeness: **reduced** (2D, one order parameter, no elastic/thermal coupling) · calibration: **representative** — see "Literature model" below |
 
 ## Literature model and mapping to OpenPFC's kernel
@@ -206,7 +206,7 @@ Two averages are reported for each harmonic:
 Peak detection (`detect_peaks`) is a periodic 8-neighbour local-maximum test
 at grid resolution — no sub-pixel refinement, so this module reports
 *symmetry* (a normalised ratio), not a calibrated lattice constant; the
-reciprocal-space peak positions from `shell_average` already give that.
+reciprocal-space peak positions from `radial_average` already give that.
 
 ## Timestepping: why ETD
 

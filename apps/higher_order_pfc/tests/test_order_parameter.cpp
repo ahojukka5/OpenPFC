@@ -75,8 +75,9 @@ TEST_CASE("Bond-orientational order is exactly (1,0) for an ideal square lattice
   REQUIRE_THAT(bo.psi6.local, WithinAbs(0.0, 1e-9));
 }
 
-TEST_CASE("Bond-orientational order is exactly (0,1) for an ideal triangular lattice",
-          "[higher_order_pfc][order][analytical]") {
+TEST_CASE(
+    "Bond-orientational order is exactly (0,1) for an ideal triangular lattice",
+    "[higher_order_pfc][order][analytical]") {
   constexpr double a = 0.9;
   constexpr int n_x = 12, n_y = 12;
   const auto pts = hop::ideal_triangular_lattice(a, n_x, n_y);
@@ -138,24 +139,25 @@ TEST_CASE("A polycrystalline mix of two square grains suppresses the global "
   both.insert(both.end(), grain_b.begin(), grain_b.end());
   const double L = 1.0e7; // effectively non-periodic across the two grains
   const auto bo = hop::bond_orientational_order(both, L, L, 1.3);
-  REQUIRE(bo.psi4.local > 0.9);   // each grain is still locally square
-  REQUIRE(bo.psi4.global < 0.5);  // but the two grains disagree on orientation
+  REQUIRE(bo.psi4.local > 0.9);  // each grain is still locally square
+  REQUIRE(bo.psi4.global < 0.5); // but the two grains disagree on orientation
 }
 
 // ---------------------------------------------------------------------------
 // End-to-end: peak detection on a lattice_seed field (looser tolerance)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Peak detection + bond order recover psi4 ~ 1 on a lattice_seed square field",
-          "[higher_order_pfc][order][pipeline]") {
+TEST_CASE(
+    "Peak detection + bond order recover psi4 ~ 1 on a lattice_seed square field",
+    "[higher_order_pfc][order][pipeline]") {
   if (world_size() != 1) {
     SKIP("single-rank whole-grid peak detection");
   }
   constexpr int N = 64;
   constexpr double dx = 2.0 * std::numbers::pi / 8.0; // |k|=1 on mode N/8
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({dx, dx, dx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({dx, dx, dx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
   auto &psi = stack.u();
 
@@ -173,27 +175,6 @@ TEST_CASE("Peak detection + bond order recover psi4 ~ 1 on a lattice_seed square
 }
 
 // ---------------------------------------------------------------------------
-// power_near tie-breaking (regression: an exact-boundary target must not
-// silently read the empty neighbouring shell)
-// ---------------------------------------------------------------------------
-
-TEST_CASE("power_near breaks an exact-distance tie towards the shell that "
-          "carries power",
-          "[higher_order_pfc][energy][analytical]") {
-  pfc::apps::StructureFactor sf;
-  // Two shells equidistant from k=1.0 (0.5 and 1.5), the lower-index one
-  // empty: exactly the situation a lattice_seed run produces on the shipped
-  // grid, where k=1 sits precisely on a shell boundary.
-  sf.k = {0.5, 1.5};
-  sf.S = {0.0, 42.0};
-  REQUIRE_THAT(hop::power_near(sf, 1.0), WithinAbs(42.0, 1e-15));
-
-  // And the reverse: empty neighbour on the high side.
-  sf.S = {42.0, 0.0};
-  REQUIRE_THAT(hop::power_near(sf, 1.0), WithinAbs(42.0, 1e-15));
-}
-
-// ---------------------------------------------------------------------------
 // FreeEnergySampler against an elementary case
 // ---------------------------------------------------------------------------
 
@@ -206,24 +187,25 @@ TEST_CASE("Free-energy density on a constant field matches the elementary "
   constexpr int N = 16;
   constexpr double dx = 2.0 * std::numbers::pi / 8.0;
   constexpr double psi0 = -0.12;
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({dx, dx, dx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({dx, dx, dx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
   auto &psi = stack.u();
   psi.apply([&](double, double, double) { return psi0; });
 
   const auto p = hop::HigherOrderPFCParams{}; // defaults: eps=0.25, two-mode, g=0
-  hop::FreeEnergySampler<pfc::HostSpace> sampler(domain, stack.fft(), MPI_COMM_WORLD);
+  hop::FreeEnergySampler<pfc::HostSpace> sampler(domain, stack.fft(),
+                                                 MPI_COMM_WORLD);
   const auto sample = sampler.sample(psi, p, 32);
 
   REQUIRE_THAT(sample.mean_psi, WithinAbs(psi0, 1e-12));
   // Constant field: all spectral weight at k=0, so the quadratic term is
   // Lambda(0) * psi0^2 / 2 exactly.
   const double lambda0 = p.kernel(0.0);
-  const double expected =
-      0.5 * lambda0 * psi0 * psi0 - (p.g / 3.0) * psi0 * psi0 * psi0 +
-      0.25 * psi0 * psi0 * psi0 * psi0;
+  const double expected = 0.5 * lambda0 * psi0 * psi0 -
+                          (p.g / 3.0) * psi0 * psi0 * psi0 +
+                          0.25 * psi0 * psi0 * psi0 * psi0;
   REQUIRE_THAT(sample.free_energy_density, WithinAbs(expected, 1e-9));
 }
 
@@ -235,12 +217,12 @@ TEST_CASE("Diagnostics mean_psi tracks exact mass conservation through ETD steps
   constexpr int N = 32;
   constexpr double dx = 2.0 * std::numbers::pi / 8.0;
   constexpr double dt = 0.05;
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({N, N, 1}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({dx, dx, dx}));
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({dx, dx, dx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
-  auto phys = hop::HigherOrderPFCPhysics<>::from_json(json{{"g", 0.5}}, domain,
-                                                       stack.fft().get_inbox_bounds());
+  auto phys = hop::HigherOrderPFCPhysics<>::from_json(
+      json{{"g", 0.5}}, domain, stack.fft().get_inbox_bounds());
   pfc::SimulationState state;
   phys.declare_fields(state);
   auto &psi = state.get_field<double>("psi");
@@ -253,9 +235,10 @@ TEST_CASE("Diagnostics mean_psi tracks exact mass conservation through ETD steps
   pfc::sim::SpectralETDOptions opt;
   opt.psi_name = "psi";
   opt.dealias = true;
-  pfc::sim::SpectralETDSystem<hop::HigherOrderPFCPhysics<>> sys(phys, stack.fft(), state,
-                                                                dt, opt);
-  hop::FreeEnergySampler<pfc::HostSpace> sampler(domain, stack.fft(), MPI_COMM_WORLD);
+  pfc::sim::SpectralETDSystem<hop::HigherOrderPFCPhysics<>> sys(phys, stack.fft(),
+                                                                state, dt, opt);
+  hop::FreeEnergySampler<pfc::HostSpace> sampler(domain, stack.fft(),
+                                                 MPI_COMM_WORLD);
   const double mean0 = sampler.sample(psi, phys.params, 16).mean_psi;
   REQUIRE_THAT(mean0, WithinAbs(-0.05, 1e-12));
 

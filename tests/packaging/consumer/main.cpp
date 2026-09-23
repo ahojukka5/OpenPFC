@@ -8,6 +8,7 @@
 #include <openpfc/kernel/field/face_flux.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
 
 #include <cstdio>
 #include <type_traits>
@@ -18,6 +19,14 @@ int main() {
                 static_cast<int>(pfc::solvers::MicroelasticityScheme::Basic));
   static_assert(pfc::field::fd::average_face(pfc::field::fd::FaceAverage::Harmonic,
                                              0.0, 1.0) == 0.0);
+  static_assert(pfc::spectral::r2c_multiplicity(0, 64) == 1.0);
+  static_assert(pfc::spectral::r2c_multiplicity(1, 64) == 2.0);
+  pfc::spectral::RadialSpectrum spectrum;
+  spectrum.wavenumber = {1.0};
+  spectrum.power = {1.0};
+  if (pfc::spectral::power_near(spectrum, 1.0) != 1.0) {
+    return 1;
+  }
   pfc::solvers::MicroelasticityParams elastic;
   elastic.stiffness_at_one = pfc::solvers::Stiffness::isotropic(1.0, 0.3);
   elastic.stiffness_at_zero = elastic.stiffness_at_one;

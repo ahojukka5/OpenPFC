@@ -35,6 +35,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Public spectral observables `pfc::spectral::radial_average`,
+  `directional_power`, and `r2c_multiplicity`
+  (`include/openpfc/spectral/power_spectrum.hpp`, #145). Shell means,
+  the first moment, the dominant wavelength, and the real-to-complex
+  weight live in that header. Coarsening exponents and crystal-band
+  labels stay in the applications.
+
 - Public periodic eigenstrain solver
   `pfc::solvers::EigenstrainMicroelasticity`
   (`include/openpfc/solvers/microelasticity/`, #144). The host Green

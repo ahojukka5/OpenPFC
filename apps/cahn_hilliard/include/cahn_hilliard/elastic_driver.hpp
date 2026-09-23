@@ -48,8 +48,6 @@
 #include <cahn_hilliard/diagnostics.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
 #include <cahn_hilliard/seeded_noise.hpp>
-#include <openpfc_apps/field_snapshots.hpp>
-#include <openpfc/solvers/microelasticity/microelasticity.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/dealias.hpp>
@@ -60,15 +58,17 @@
 #include <openpfc/kernel/simulation/simulation_context.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
+#include <openpfc/solvers/microelasticity/microelasticity.hpp>
+#include <openpfc_apps/field_snapshots.hpp>
 
 namespace cahn_hilliard {
 
 struct ElasticCHParams {
-  double eps0{0.04};     ///< Vegard slope; illustrative, not a fitted da/dc
-  double c_ref{-1.0};    ///< eigenstrain zero; <0 means use the alloy c0
-  double E{2.0e11};      ///< Young's modulus (Pa); used if c11==0
+  double eps0{0.04};  ///< Vegard slope; illustrative, not a fitted da/dc
+  double c_ref{-1.0}; ///< eigenstrain zero; <0 means use the alloy c0
+  double E{2.0e11};   ///< Young's modulus (Pa); used if c11==0
   double nu{0.3};
-  double c11{0.0};       ///< cubic C11 (Pa); nonzero selects cubic over E,ν
+  double c11{0.0}; ///< cubic C11 (Pa); nonzero selects cubic over E,ν
   double c12{0.0};
   double c44{0.0};
 };
@@ -91,7 +91,7 @@ inline ElasticCHParams parse_elasticity(const nlohmann::json &cfg) {
 
 /// Convert a physical cubic/isotropic stiffness (Pa) into CH energy units.
 inline pfc::solvers::Stiffness stiffness_in_rt_vm(const ElasticCHParams &el,
-                                               const CahnHilliardParams &ch) {
+                                                  const CahnHilliardParams &ch) {
   const double f0 = ch.scales().f0(ch.T);
   if (!(f0 > 0.0)) throw std::invalid_argument("RT/Vm energy scale must be > 0");
   if (el.c11 > 0.0) {
@@ -103,7 +103,8 @@ inline pfc::solvers::Stiffness stiffness_in_rt_vm(const ElasticCHParams &el,
 inline void apply_initial_condition(const nlohmann::json &cfg, pfc::Domain domain,
                                     pfc::data::Field<double> &c, MPI_Comm comm) {
   if (!cfg.contains("initial_conditions") || cfg.at("initial_conditions").empty())
-    throw std::invalid_argument("cahn_hilliard_elastic: initial_conditions required");
+    throw std::invalid_argument(
+        "cahn_hilliard_elastic: initial_conditions required");
   const auto &ic = cfg.at("initial_conditions").front();
   const std::string type = ic.at("type").get<std::string>();
   const pfc::SimulationContext ctx(comm);
@@ -179,8 +180,8 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     pfc::solvers::MicroelasticityParams mp;
     mp.stiffness_at_one = C;
     mp.stiffness_at_zero = C;
-    mp.eigenstrain_pattern = pfc::solvers::Sym3{
-        {el.eps0, el.eps0, el.eps0, 0.0, 0.0, 0.0}};
+    mp.eigenstrain_pattern =
+        pfc::solvers::Sym3{{el.eps0, el.eps0, el.eps0, 0.0, 0.0, 0.0}};
     mp.comm = comm;
     mp.warm_start = true;
     pfc::solvers::EigenstrainMicroelasticity solver(domain, stack.fft(), mp);
@@ -192,7 +193,8 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     auto n_weight = Ops::make_real(n_out);
     auto mask = Ops::make_real(n_out);
     {
-      std::vector<double> L(n_out), Mnl(n_out), expv(n_out), w(n_out), msk(n_out, 1.0);
+      std::vector<double> L(n_out), Mnl(n_out), expv(n_out), w(n_out),
+          msk(n_out, 1.0);
       pfc::fft::kspace::for_each_kpoint(
           stack.fft().get_outbox_bounds(), domain,
           [&](std::size_t i, double kx, double ky, double kz, int, int, int) {
@@ -203,10 +205,9 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
             expv[i] = coeff.exp_Ldt;
             w[i] = Mnl[i] * coeff.phi1_L;
           });
-      pfc::fft::kspace::fill_two_thirds_mask(stack.fft().get_outbox_bounds(),
-                                             pfc::domain::get_size(domain),
-                                             pfc::domain::get_spacing(domain),
-                                             msk.data(), msk.size());
+      pfc::fft::kspace::fill_two_thirds_mask(
+          stack.fft().get_outbox_bounds(), pfc::domain::get_size(domain),
+          pfc::domain::get_spacing(domain), msk.data(), msk.size());
       Ops::upload(exp_Ldt, expv);
       Ops::upload(n_weight, w);
       Ops::upload(mask, msk);
@@ -237,8 +238,7 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     }
 
     auto assemble_amp = [&] {
-      for (std::size_t i = 0; i < n_in; ++i)
-        amp.data()[i] = c.data()[i] - c_ref;
+      for (std::size_t i = 0; i < n_in; ++i) amp.data()[i] = c.data()[i] - c_ref;
     };
 
     auto project_c = [&] {
@@ -284,8 +284,10 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
       double loc[2]{};
       pfc::fft::kspace::for_each_kpoint(
           stack.fft().get_outbox_bounds(), domain,
-          [&](std::size_t i, double kx, double ky, double, int, int, int) {
-            const double p = std::norm(c_hat.data()[i]);
+          [&](std::size_t i, double kx, double ky, double, int ix, int, int) {
+            const double p = pfc::spectral::r2c_multiplicity(
+                                 ix, pfc::domain::get_size(domain)[0]) *
+                             std::norm(c_hat.data()[i]);
             const double akx = std::abs(kx), aky = std::abs(ky);
             if (akx + aky < 1.0e-15) return;
             if (akx > 2.0 * aky || aky > 2.0 * akx)
@@ -311,15 +313,15 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
                    "%.17g,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
                    step, t, s.mean, s.mass, s.minimum, s.maximum, s.bulk_energy,
                    s.gradient_energy, s.total_energy() + el_e, el_e, el_iters,
-                   max_mu, s.k1, s.domain_length, s.k_peak,
-                   s.dominant_wavelength, p_axis, p_diag);
+                   max_mu, s.k1, s.domain_length, s.k_peak, s.dominant_wavelength,
+                   p_axis, p_diag);
       std::fflush(out.get());
     };
 
     const int n_steps = static_cast<int>(std::llround(t1 / dt));
-    const int every =
-        (saveat > 0.0) ? std::max(1, static_cast<int>(std::llround(saveat / dt)))
-                       : n_steps;
+    const int every = (saveat > 0.0)
+                          ? std::max(1, static_cast<int>(std::llround(saveat / dt)))
+                          : n_steps;
 
     auto elastic_step = [&]() -> std::pair<int, double> {
       assemble_amp();

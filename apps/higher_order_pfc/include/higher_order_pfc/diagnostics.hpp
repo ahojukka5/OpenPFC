@@ -62,15 +62,16 @@ public:
   Diagnostics(const pfc::Domain &domain, typename Ops::FFT &fft, MPI_Comm comm)
       : m_domain(domain), m_comm(comm), m_energy(domain, fft, comm) {}
 
-  DiagnosticSample sample(typename Ops::RealField &psi, const HigherOrderPFCParams &p,
-                          int sf_bins = 64, double neighbour_cutoff_factor = 1.3) {
+  DiagnosticSample sample(typename Ops::RealField &psi,
+                          const HigherOrderPFCParams &p, int sf_bins = 64,
+                          double neighbour_cutoff_factor = 1.3) {
     DiagnosticSample out;
     const auto fe = m_energy.sample(psi, p, sf_bins);
     out.mean_psi = fe.mean_psi;
     out.free_energy_density = fe.free_energy_density;
-    out.k1 = fe.sf.k1;
-    out.domain_length = fe.sf.domain_length();
-    out.k_peak = fe.sf.k_peak;
+    out.k1 = fe.sf.first_moment;
+    out.domain_length = fe.sf.mean_wavelength();
+    out.k_peak = fe.sf.peak_wavenumber;
     out.dominant_wavelength = fe.sf.dominant_wavelength();
     out.S_at_1 = fe.S_at_1;
     out.S_at_q1 = fe.S_at_q1;
@@ -84,7 +85,8 @@ public:
       const auto peaks = detect_peaks(psi, n[0], n[1], dx[0], dx[1]);
       const double Lx = dx[0] * double(n[0]);
       const double Ly = dx[1] * double(n[1]);
-      const auto bo = bond_orientational_order(peaks, Lx, Ly, neighbour_cutoff_factor);
+      const auto bo =
+          bond_orientational_order(peaks, Lx, Ly, neighbour_cutoff_factor);
       out.psi4_global = bo.psi4.global;
       out.psi4_local = bo.psi4.local;
       out.psi6_global = bo.psi6.global;
@@ -117,10 +119,10 @@ public:
           std::filesystem::create_directories(path.parent_path());
         m_out.reset(std::fopen(path.string().c_str(), "wx"));
         if (!m_out) throw std::runtime_error("open failed");
-        ok = publish(
-            "step,time,mean_psi,free_energy_density,k1,domain_length,k_peak,"
-            "dominant_wavelength,S_at_1,S_at_q1,psi4_global,psi4_local,"
-            "psi6_global,psi6_local,n_peaks,mean_neighbours\n");
+        ok =
+            publish("step,time,mean_psi,free_energy_density,k1,domain_length,k_peak,"
+                    "dominant_wavelength,S_at_1,S_at_q1,psi4_global,psi4_local,"
+                    "psi6_global,psi6_local,n_peaks,mean_neighbours\n");
       } catch (const std::exception &) {
         ok = 0;
       }

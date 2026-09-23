@@ -58,7 +58,7 @@
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/structure_factor.hpp>
+#include <openpfc/spectral/power_spectrum.hpp>
 #include <tungsten/resolution.hpp>
 #include <tungsten/tungsten_physics.hpp>
 
@@ -107,8 +107,8 @@ Outcome run_case(int n, double dx, int n_steps, bool dealias, int rank, int npro
                                           pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
                                           pfc::GridSpacing({dx, dx, dx}));
   pfc::sim::stacks::SpectralCPUStack stack(domain, rank, nproc, MPI_COMM_WORLD);
-  auto phys = Physics::from_json(shipped_params(), domain,
-                                 stack.fft().get_inbox_bounds());
+  auto phys =
+      Physics::from_json(shipped_params(), domain, stack.fft().get_inbox_bounds());
   pfc::SimulationState state;
   phys.declare_fields(state);
   auto &psi = state.get_field<double>("psi");
@@ -117,10 +117,9 @@ Outcome run_case(int n, double dx, int n_steps, bool dealias, int rank, int npro
   // undercooled vapour. A small perturbation about n0 simply decays -- the
   // cubic term needs an amplitude to act on before any of this is visible.
   const pfc::Box3i box = stack.fft().get_inbox_bounds();
-  for (const auto &j : {json{{"type", "constant"}, {"n0", -0.4}},
-                        json{{"type", "single_seed"},
-                             {"amp_eq", 0.215936},
-                             {"rho_seed", -0.047}}}) {
+  for (const auto &j :
+       {json{{"type", "constant"}, {"n0", -0.4}},
+        json{{"type", "single_seed"}, {"amp_eq", 0.215936}, {"rho_seed", -0.047}}}) {
     auto mod = pfc::ui::create_field_modifier(j["type"].get<std::string>(), j);
     mod->apply(psi.vec(), domain, box, 0.0);
   }
@@ -143,10 +142,10 @@ Outcome run_case(int n, double dx, int n_steps, bool dealias, int rank, int npro
   pfc::data::Field<std::complex<double>> hat(domain, stack.fft().get_outbox_bounds(),
                                              0);
   pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(stack.fft(), psi, hat);
-  pfc::apps::StructureFactor sf{};
+  pfc::spectral::RadialSpectrum sf{};
   hat.with_host_view([&](std::complex<double> *h, std::size_t) {
-    sf = pfc::apps::shell_average(stack.fft().get_outbox_bounds(), domain, h,
-                                  MPI_COMM_WORLD, 96);
+    sf = pfc::spectral::radial_average(stack.fft().get_outbox_bounds(), domain, h,
+                                       MPI_COMM_WORLD, 96);
   });
 
   double lo = 1e300, hi = -1e300, sum = 0.0, cnt = 0.0;
@@ -174,9 +173,9 @@ Outcome run_case(int n, double dx, int n_steps, bool dealias, int rank, int npro
   MPI_Allreduce(l2l, l2g, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   const double checksum_l2 = std::sqrt(l2g[0] / l2g[1]);
 
-  return Outcome{sf.k_peak, sf.k1,          sf.S_peak, sf.total_power,
-                 glo,       ghi,            g[0] / g[1],
-                 median_of(step_s), checksum_l2};
+  return Outcome{
+      sf.peak_wavenumber, sf.first_moment,   sf.peak_power, sf.total_power, glo, ghi,
+      g[0] / g[1],        median_of(step_s), checksum_l2};
 }
 
 } // namespace
@@ -187,13 +186,11 @@ int main(int argc, char *argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
-  const bool reserved =
-      (argc > 1 && std::string(argv[1]) == "--reserved");
-  const std::string out_path = reserved
-      ? ((argc > 2) ? argv[2] : "tungsten_dealias_reserved.csv")
-      : ((argc > 1) ? argv[1] : "tungsten_dealias_resolution.csv");
-  const int n_steps = reserved ? 30
-      : ((argc > 2) ? std::atoi(argv[2]) : 1000);
+  const bool reserved = (argc > 1 && std::string(argv[1]) == "--reserved");
+  const std::string out_path =
+      reserved ? ((argc > 2) ? argv[2] : "tungsten_dealias_reserved.csv")
+               : ((argc > 1) ? argv[1] : "tungsten_dealias_resolution.csv");
+  const int n_steps = reserved ? 30 : ((argc > 2) ? std::atoi(argv[2]) : 1000);
   const int warmup = reserved ? env_warmup(5) : 0;
 
   if (reserved) {
@@ -213,8 +210,8 @@ int main(int argc, char *argv[]) {
     if (rank == 0) {
       const std::filesystem::path p{out_path};
       if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path());
-      std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(std::fopen(out_path.c_str(), "w"),
-                                                           std::fclose);
+      std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(
+          std::fopen(out_path.c_str(), "w"), std::fclose);
       if (!out) {
         std::fprintf(stderr, "cannot open %s\n", out_path.c_str());
         MPI_Abort(MPI_COMM_WORLD, 1);
@@ -229,14 +226,14 @@ int main(int argc, char *argv[]) {
       line.imbue(std::locale::classic());
       line << std::setprecision(10) << n << ',' << dx << ',' << n_steps << ','
            << warmup << ',' << tungsten::resolution::points_per_lattice(dx) << ','
-           << f_before << ',' << f_after << ','
-           << (1000.0 * off.wall_step_s_median) << ','
-           << (1000.0 * on.wall_step_s_median) << ',' << r << ',' << off.k1
-           << ',' << on.k1 << ',' << rel(off.k1, on.k1) << ',' << off.s_peak
-           << ',' << on.s_peak << ',' << rel(off.s_peak, on.s_peak) << ','
+           << f_before << ',' << f_after << ',' << (1000.0 * off.wall_step_s_median)
+           << ',' << (1000.0 * on.wall_step_s_median) << ',' << r << ',' << off.k1
+           << ',' << on.k1 << ',' << rel(off.k1, on.k1) << ',' << off.s_peak << ','
+           << on.s_peak << ',' << rel(off.s_peak, on.s_peak) << ','
            << off.checksum_l2 << ',' << on.checksum_l2 << '\n';
       std::fputs(line.str().c_str(), out.get());
-      std::printf("TUNGSTEN_WALL_STEP_MS_OFF=%.6f\n", 1000.0 * off.wall_step_s_median);
+      std::printf("TUNGSTEN_WALL_STEP_MS_OFF=%.6f\n",
+                  1000.0 * off.wall_step_s_median);
       std::printf("TUNGSTEN_WALL_STEP_MS_ON=%.6f\n", 1000.0 * on.wall_step_s_median);
       std::printf("TUNGSTEN_R=%.6f\n", r);
       std::printf("TUNGSTEN_F_NL_BEFORE=%.6f TUNGSTEN_F_NL_AFTER=%.6f\n", f_before,
@@ -272,13 +269,12 @@ int main(int argc, char *argv[]) {
     std::fprintf(out.get(),
                  "# Effect of 2/3 dealiasing on tungsten PFC, by resolution, "
                  "from tungsten_dealias_study.\n");
-    std::fprintf(out.get(),
-                 "N,dx,points_per_lattice,k_nyquist,two_thirds_cut,steps,"
-                 "third_harmonic_resolved,mask_spares_second,"
-                 "k1_off,k1_on,rel_dk1,"
-                 "s_peak_off,s_peak_on,rel_ds_peak,"
-                 "power_off,power_on,rel_dpower,"
-                 "max_off,max_on,rel_dmax\n");
+    std::fprintf(out.get(), "N,dx,points_per_lattice,k_nyquist,two_thirds_cut,steps,"
+                            "third_harmonic_resolved,mask_spares_second,"
+                            "k1_off,k1_on,rel_dk1,"
+                            "s_peak_off,s_peak_on,rel_ds_peak,"
+                            "power_off,power_on,rel_dpower,"
+                            "max_off,max_on,rel_dmax\n");
   }
 
   for (const auto &pt : points) {
@@ -298,9 +294,9 @@ int main(int argc, char *argv[]) {
            << (tungsten::resolution::mask_spares_second_harmonic(pt.dx) ? 1 : 0)
            << ',' << off.k1 << ',' << on.k1 << ',' << rel(off.k1, on.k1) << ','
            << off.s_peak << ',' << on.s_peak << ',' << rel(off.s_peak, on.s_peak)
-           << ',' << off.power << ',' << on.power << ','
-           << rel(off.power, on.power) << ',' << off.max_psi << ',' << on.max_psi
-           << ',' << rel(off.max_psi, on.max_psi) << '\n';
+           << ',' << off.power << ',' << on.power << ',' << rel(off.power, on.power)
+           << ',' << off.max_psi << ',' << on.max_psi << ','
+           << rel(off.max_psi, on.max_psi) << '\n';
       std::fputs(line.str().c_str(), out.get());
       std::fflush(out.get());
       std::printf("N=%3d dx=%.6f  pts/lattice=%.2f  |dpower|=%.4f%%  "
