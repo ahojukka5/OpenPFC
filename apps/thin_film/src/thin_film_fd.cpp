@@ -38,9 +38,9 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc/spectral/power_spectrum.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
 #include <openpfc_apps/gather.hpp>
 
@@ -198,8 +198,8 @@ int main(int argc, char *argv[]) {
                                                           hh);
         hh.with_host_view([&](std::complex<double> *hv, std::size_t) {
           const auto spectrum =
-              pfc::spectral::radial_average(diag_stack->fft().get_outbox_bounds(),
-                                            domain, hv, MPI_COMM_SELF, sf_bins);
+              pfc::fft::radial_average(diag_stack->fft().get_outbox_bounds(), domain,
+                                       hv, MPI_COMM_SELF, sf_bins);
           s.dominant_spacing = spectrum.dominant_wavelength();
         });
         n_holes = thin_film::count_dry_regions_rank0(global_xy, Lx, Ly,

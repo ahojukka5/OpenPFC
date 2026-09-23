@@ -58,8 +58,8 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc/spectral/power_spectrum.hpp>
 #include <openpfc_apps/field_snapshots.hpp>
 
 #include <surface_diffusion/anisotropic_flux.hpp>
@@ -109,13 +109,12 @@ Sample sample_surface(pfc::data::Field<double> &h, const pfc::Domain &domain,
   pfc::data::Field<std::complex<double>> h_hat(domain, fft.get_outbox_bounds(), 0);
   pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(fft, h, h_hat);
 
-  pfc::spectral::RadialSpectrum spectrum;
-  pfc::spectral::DirectionalPower axes;
+  pfc::fft::RadialSpectrum spectrum;
+  pfc::fft::DirectionalPower axes;
   h_hat.with_host_view([&](const std::complex<double> *hv, std::size_t) {
     spectrum =
-        pfc::spectral::radial_average(fft.get_outbox_bounds(), domain, hv, comm, 64);
-    axes =
-        pfc::spectral::directional_power(fft.get_outbox_bounds(), domain, hv, comm);
+        pfc::fft::radial_average(fft.get_outbox_bounds(), domain, hv, comm, 64);
+    axes = pfc::fft::directional_power(fft.get_outbox_bounds(), domain, hv, comm);
   });
   s.dominant_wavelength = spectrum.dominant_wavelength();
   s.domain_length = spectrum.mean_wavelength();

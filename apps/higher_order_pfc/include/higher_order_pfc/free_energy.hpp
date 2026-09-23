@@ -22,7 +22,7 @@
  * `cahn_hilliard::Diagnostics` evaluates its gradient energy: apply the
  * kernel to the transform, invert, and dot with \f$\psi\f$ in real space,
  * rather than trusting a hand-rolled Parseval normalisation. The same
- * transform feeds `pfc::spectral::radial_average` for the reciprocal-space report,
+ * transform feeds `pfc::fft::radial_average` for the reciprocal-space report,
  * so this costs one extra FFT pair per sample, not two.
  *
  * Single-rank use only (see `higher_order_pfc_benchmark.cpp`): the benchmark
@@ -44,7 +44,7 @@
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 
 #include <higher_order_pfc/higher_order_pfc_physics.hpp>
-#include <openpfc/spectral/power_spectrum.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 
 namespace higher_order_pfc {
 
@@ -53,7 +53,7 @@ namespace higher_order_pfc {
 struct FreeEnergySample {
   double mean_psi{0.0};
   double free_energy_density{0.0};
-  pfc::spectral::RadialSpectrum sf{};
+  pfc::fft::RadialSpectrum sf{};
   double S_at_1{0.0};  ///< shell power in the bin nearest \f$|k|=1\f$
   double S_at_q1{0.0}; ///< shell power in the bin nearest \f$|k|=q_1\f$
 };
@@ -106,8 +106,8 @@ public:
     });
 
     m_hat.with_host_view([&](std::complex<double> *hat, std::size_t) {
-      out.sf = pfc::spectral::radial_average(m_fft.get_outbox_bounds(), m_domain,
-                                             hat, m_comm, sf_bins);
+      out.sf = pfc::fft::radial_average(m_fft.get_outbox_bounds(), m_domain, hat,
+                                        m_comm, sf_bins);
     });
 
     double global[2]{};
@@ -115,8 +115,8 @@ public:
     MPI_Allreduce(local, global, 2, MPI_DOUBLE, MPI_SUM, m_comm);
     out.mean_psi = global[0] / count;
     out.free_energy_density = global[1] / count;
-    out.S_at_1 = pfc::spectral::power_near(out.sf, 1.0);
-    out.S_at_q1 = pfc::spectral::power_near(out.sf, p.q1);
+    out.S_at_1 = pfc::fft::power_near(out.sf, 1.0);
+    out.S_at_q1 = pfc::fft::power_near(out.sf, p.q1);
     return out;
   }
 

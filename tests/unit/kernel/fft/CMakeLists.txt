@@ -5,6 +5,7 @@
 target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_kspace.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_kspace_iterator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_power_spectrum.cpp
 )
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE

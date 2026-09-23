@@ -285,9 +285,9 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
       pfc::fft::kspace::for_each_kpoint(
           stack.fft().get_outbox_bounds(), domain,
           [&](std::size_t i, double kx, double ky, double, int ix, int, int) {
-            const double p = pfc::spectral::r2c_multiplicity(
-                                 ix, pfc::domain::get_size(domain)[0]) *
-                             std::norm(c_hat.data()[i]);
+            const double p =
+                pfc::fft::r2c_multiplicity(ix, pfc::domain::get_size(domain)[0]) *
+                std::norm(c_hat.data()[i]);
             const double akx = std::abs(kx), aky = std::abs(ky);
             if (akx + aky < 1.0e-15) return;
             if (akx > 2.0 * aky || aky > 2.0 * akx)
