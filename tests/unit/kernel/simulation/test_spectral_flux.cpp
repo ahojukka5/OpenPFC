@@ -18,6 +18,7 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
+#include <openpfc/kernel/fft/dealias.hpp>
 #include <openpfc/kernel/fft/fft_fftw.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
@@ -83,6 +84,78 @@ double zero_mode_abs(pfc::fft::IHostFFT &fft, const pfc::Domain &domain,
       });
   REQUIRE(found);
   return std::abs(hat.data()[iz]);
+}
+
+/// Old app-local rule (`|k| > cutoff` drops) against `two_thirds_keep`
+/// (`|k| < cutoff` keeps). They differ only when a stored mode sits on
+/// the cutoff.
+struct CutoffCompare {
+  int kept_by_both = 0;
+  int dropped_by_both = 0;
+  int exact_cutoff_only = 0;
+  bool unexpected = false;
+};
+
+CutoffCompare compare_cutoff(int n) {
+  auto domain = pfc::domain::create(pfc::GridSize({n, n, 1}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({1.0, 1.0, 1.0}));
+  auto decomp = pfc::decomposition::create(domain, 1);
+  auto fft = pfc::fft::create(decomp);
+  auto spacing = pfc::domain::get_spacing(domain);
+  const bool active[3] = {true, true, false};
+  if (!active[2]) spacing[2] = 1.0;
+  double cut[3];
+  for (int d = 0; d < 3; ++d) cut[d] = (2.0 / 3.0) * (pfc::pi / spacing[d]);
+
+  CutoffCompare result;
+  pfc::fft::kspace::for_each_kpoint(
+      fft.get_outbox_bounds(), domain,
+      [&](std::size_t, double kx, double ky, double kz, int, int, int) {
+        const double ks[3] = {kx, ky, kz};
+        bool old_drop = false;
+        bool on_cutoff = false;
+        for (int d = 0; d < 3; ++d) {
+          if (!active[d]) continue;
+          const double a = std::abs(ks[d]);
+          if (a > cut[d]) old_drop = true;
+          if (a == cut[d]) on_cutoff = true;
+        }
+        const bool dropped =
+            !pfc::fft::kspace::two_thirds_keep(kx, ky, kz, spacing);
+        if (old_drop == dropped) {
+          if (dropped) ++result.dropped_by_both;
+          else ++result.kept_by_both;
+        } else if (on_cutoff && !old_drop && dropped) {
+          ++result.exact_cutoff_only;
+        } else {
+          result.unexpected = true;
+        }
+      });
+  return result;
+}
+
+double max_abs_divergence(int n, int mode) {
+  auto domain = pfc::domain::create(pfc::GridSize({n, n, 1}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({1.0, 1.0, 1.0}));
+  auto decomp = pfc::decomposition::create(domain, 1);
+  auto fft = pfc::fft::create(decomp);
+  const double k = 2.0 * pfc::pi * static_cast<double>(mode) / static_cast<double>(n);
+  Field<double> potential(domain, fft.get_inbox_bounds(), 0);
+  potential.apply([k](double x, double, double) { return std::cos(k * x); });
+  Field<double> state(domain, fft.get_inbox_bounds(), 0);
+  state.apply([](double, double, double) { return 1.0; });
+  Field<std::complex<double>> p_hat(domain, fft.get_outbox_bounds(), 0);
+  Field<std::complex<double>> out_hat(domain, fft.get_outbox_bounds(), 0);
+  SpectralETDOps<pfc::HostSpace>::forward(fft, potential, p_hat);
+  SpectralFlux<> flux(domain, fft);
+  flux.divergence(p_hat, state, ScaleMobility{1.0}, out_hat);
+  Field<double> got(domain, fft.get_inbox_bounds(), 0);
+  SpectralETDOps<pfc::HostSpace>::backward(fft, out_hat, got);
+  double m = 0.0;
+  for (std::size_t i = 0; i < got.size(); ++i) m = std::max(m, std::abs(got.data()[i]));
+  return m;
 }
 
 } // namespace
@@ -178,4 +251,52 @@ TEST_CASE("zero mobility ETD step leaves the field unchanged", "[spectral_flux]"
       },
       ScaleMobility{0.0});
   REQUIRE(max_abs_against(u, before) < 1.0e-12);
+}
+
+TEST_CASE("film grids have no mode on the 2/3 cutoff", "[spectral_flux][dealias]") {
+  for (const int n : {32, 64, 128, 256, 512}) {
+    const auto compared = compare_cutoff(n);
+    INFO("N=" << n);
+    REQUIRE_FALSE(compared.unexpected);
+    REQUIRE(compared.exact_cutoff_only == 0);
+    REQUIRE(compared.kept_by_both > 0);
+    REQUIRE(compared.dropped_by_both > 0);
+  }
+}
+
+TEST_CASE("an exactly-on-cutoff mode is removed", "[spectral_flux][dealias]") {
+  constexpr int n = 12;
+  const auto compared = compare_cutoff(n);
+  REQUIRE_FALSE(compared.unexpected);
+  REQUIRE(compared.exact_cutoff_only > 0);
+
+  const double k_cut =
+      2.0 * pfc::pi * static_cast<double>(n / 3) / static_cast<double>(n);
+  const double cutoff = (2.0 / 3.0) * pfc::pi;
+  REQUIRE(std::abs(k_cut) == cutoff);
+
+  REQUIRE(max_abs_divergence(n, n / 3) < 1.0e-8);
+
+  auto domain = pfc::domain::create(pfc::GridSize({n, n, 1}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({1.0, 1.0, 1.0}));
+  auto decomp = pfc::decomposition::create(domain, 1);
+  auto fft = pfc::fft::create(decomp);
+  const int mode = n / 3 - 1;
+  const double k = 2.0 * pfc::pi * static_cast<double>(mode) / static_cast<double>(n);
+  Field<double> potential(domain, fft.get_inbox_bounds(), 0);
+  potential.apply([k](double x, double, double) { return std::cos(k * x); });
+  Field<double> state(domain, fft.get_inbox_bounds(), 0);
+  state.apply([](double, double, double) { return 1.0; });
+  Field<std::complex<double>> p_hat(domain, fft.get_outbox_bounds(), 0);
+  Field<std::complex<double>> out_hat(domain, fft.get_outbox_bounds(), 0);
+  SpectralETDOps<pfc::HostSpace>::forward(fft, potential, p_hat);
+  SpectralFlux<> flux(domain, fft);
+  flux.divergence(p_hat, state, ScaleMobility{1.0}, out_hat);
+  Field<double> got(domain, fft.get_inbox_bounds(), 0);
+  SpectralETDOps<pfc::HostSpace>::backward(fft, out_hat, got);
+  const auto expected = sample(potential, [k](double x, double) {
+    return (-k * k) * std::cos(k * x);
+  });
+  REQUIRE(max_abs_against(got, expected) < 1.0e-8);
 }
