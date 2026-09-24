@@ -5,6 +5,7 @@
 target_sources(openpfc-tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/test_hdf5_writer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/test_snapshot_series.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/test_diagnostics_series.cpp
 )
 add_executable(test_vtk_writer test_vtk_writer.cpp)
 target_link_libraries(test_vtk_writer PRIVATE openpfc Catch2::Catch2 MPI::MPI_CXX)
