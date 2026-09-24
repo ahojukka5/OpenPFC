@@ -174,7 +174,7 @@ measurement definitions, and the caveats.
 \(f_s(x, v_x, v_y, t)\) on one OpenPFC 3-D `Domain`, coupled to \(E_x, E_y, B_z\). One stepper; `--case` selects the
 validation rung (`wave`, `landau`, `twostream`, `gyro`, `weibel`, `filament`). The electrostatic reduction is a runtime
 flag, not a second code path. Linear rates are checked against a dispersion relation solved at run time
-(`openpfc_apps/plasma_dispersion.hpp`). HIP builds add `--device=hip` on the science driver plus `vlasov_hip_parity`
+(`vlasov_maxwell/plasma_dispersion.hpp`). HIP builds add `--device=hip` on the science driver plus `vlasov_hip_parity`
 and `vlasov_hip_cost`. See [`apps/vlasov_maxwell/README.md`](../../apps/vlasov_maxwell/README.md) and
 [`../hpc/vlasov_gpu.md`](../hpc/vlasov_gpu.md).
 
@@ -188,4 +188,4 @@ mpirun -n 1 ./apps/vlasov_maxwell/vlasov_run --case=landau --summary=results/lan
 
 ## Building your own application
 
-If none of these binaries matches your problem, the next step is not to copy an application wholesale. First read [`app_pipeline.md`](app_pipeline.md) so you understand how JSON and TOML become a `Simulator`, then work through [`../tutorials/custom_app_minimal.md`](../tutorials/custom_app_minimal.md). The extension overview is [`../extending_openpfc/README.md`](../extending_openpfc/README.md).
+If none of these binaries matches your problem, the next step is not to copy an application wholesale. First read [`app_pipeline.md`](app_pipeline.md) so you understand how JSON and TOML become a session and `pfc::sim::run`, then work through [`../tutorials/custom_app_minimal.md`](../tutorials/custom_app_minimal.md). The extension overview is [`../extending_openpfc/README.md`](../extending_openpfc/README.md).

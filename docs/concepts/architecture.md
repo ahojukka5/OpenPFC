@@ -119,6 +119,29 @@ The end-to-end configuration path is documented in
 [`app_pipeline.md`](../user_guide/app_pipeline.md). Result formats and writer
 selection are documented in [`io_results.md`](../user_guide/io_results.md).
 
+### Solvers
+
+`solvers/` is a public family of reusable numerical modules. A module here
+implements a method another application can call without taking on the donor
+application's physics, materials, or case files. Periodic microelasticity is
+the current member. A solver may use kernel and runtime facilities. It is not
+a place for one application's calibration or acceptance thresholds.
+
+### Applications
+
+`apps/<name>` is one scientific application: physics, material data, cases,
+and its `main`. It links OpenPFC and its own headers. It does not include
+another application's tree, and there is no shared `apps/common` target.
+`scripts/check_app_self_containment.sh` fails the build when that boundary
+is crossed.
+
+An out-of-tree application is the same shape as an in-tree one:
+
+```cmake
+find_package(OpenPFC CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE OpenPFC::openpfc)
+```
+
 ## Primary workflows
 
 ### Spectral workflow
@@ -177,6 +200,10 @@ Use these rules when adding functionality:
 - put CUDA/HIP/CPU realization details in runtime;
 - put configuration, user interaction, and concrete application I/O in
   frontend;
+- put a reusable numerical method that is not one application's physics in
+  `solvers/`;
+- keep application physics, materials, and cases in that application's
+  directory;
 - keep virtual interfaces narrow and delegate implementation to testable free
   functions;
 - avoid introducing a generic catch-all directory such as `core`, `common`, or

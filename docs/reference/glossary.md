@@ -19,9 +19,11 @@ Short definitions for OpenPFC and PFC simulation vocabulary. Deeper design detai
 | Finite difference (FD) | Spatial derivatives on the grid with halos; coexists with spectral workflows when layouts match the docs. |
 | Abstract spatial operators (direction) | Roadmap: choose **spectral vs FD** for gradients/Laplacians behind a unified interface where supported — see [`adr/0002-gradient-operators-fd-vs-spectral.md`](../adr/0002-gradient-operators-fd-vs-spectral.md). |
 | HeFFTe | Library for distributed FFT; OpenPFC’s FFT backend selection goes through HeFFTe (FFTW / CUDA / ROCm). |
-| Kernel / runtime / frontend | Kernel: portable abstractions. Runtime: CPU/CUDA/HIP execution and FFT. Frontend: optional JSON/TOML `App`, I/O helpers — see [`architecture.md`](../concepts/architecture.md). |
+| Kernel / runtime / frontend / solvers | Kernel: portable abstractions. Runtime: CPU/CUDA/HIP execution and FFT. Frontend: JSON/TOML sessions and I/O. Solvers: reusable numerical modules such as periodic microelasticity. See [`architecture.md`](../concepts/architecture.md). |
 | Model | Your physics: fields, time step, spectral or FD operators (`kernel/simulation`). |
-| Simulator | Orchestrates Model, Time, FieldModifier (IC/BC), ResultsWriter. |
+| SimulationDriver | Free-function time loop (`pfc::sim::run`) plus an optional non-owning bundle of `Time`. |
+| SimulationSession | Owns `Time` and a computational stack when OpenPFC builds that backend. |
+| SimulationLifecycle | Owns `Time`, named fields, modifiers, and save / accepted-step hooks for a custom stepper. |
 | FieldModifier | Applies initial or boundary updates each step or at startup. |
 | SimulationContext | Small bundle (MPI comm, rank-0) passed with `Model` to modifiers for rank-aware I/O; see `simulation_context.hpp` and [`app_pipeline.md`](../user_guide/app_pipeline.md). |
 | Simulation session | JSON/TOML → `make_simulation_session` / ETD session + `pfc::sim::run`. |
@@ -36,5 +38,5 @@ Short definitions for OpenPFC and PFC simulation vocabulary. Deeper design detai
 - [Documentation index](../index.md) — full documentation map
 - [`class_tour.md`](class_tour.md) — main types, headers, and runnable references
 - [`configuration.md`](../user_guide/configuration.md) — config file sections
-- [`app_pipeline.md`](../user_guide/app_pipeline.md) — JSON/TOML → `Simulator`
+- [`app_pipeline.md`](../user_guide/app_pipeline.md) — JSON/TOML → session and `pfc::sim::run`
 - [`faq.md`](../faq.md) — practical Q&A

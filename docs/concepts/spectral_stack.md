@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # The spectral stack (mental model)
 
-This page is the **narrative spine** for OpenPFC’s primary path: **distributed FFT-based models** driven by `Simulator`, optionally from JSON/TOML through the spectral `App` frontend. It complements the **layer diagram** in [`architecture.md`](architecture.md) (kernel / runtime / frontend).
+This page is the **narrative spine** for OpenPFC’s primary path: **distributed FFT-based models** driven by `SimulationDriver` or `SimulationSession<Stack>`, optionally from JSON/TOML through the spectral session frontend. It complements the **layer diagram** in [`architecture.md`](architecture.md) (kernel / runtime / frontend / solvers).
 
 ## One picture: data and control flow
 
@@ -17,8 +17,8 @@ flowchart LR
   subgraph kernel [Kernel]
     W[Domain + Decomposition]
     F[FFT plan HeFFTe]
-    M[Model + fields]
-    S[Simulator + Time]
+    M[Physics + fields]
+    S[SimulationDriver + Time]
   end
   subgraph out [Output]
     R[ResultsWriter binary / VTK / ...]
@@ -34,8 +34,8 @@ Reading order for **declarative apps**:
 
 1. **Domain + decomposition** — global grid and which ranks own which brick (`kernel/data`, `kernel/decomposition`).  
 2. **FFT** — HeFFTe plan and backend (CPU / CUDA / HIP) must match how you built OpenPFC and HeFFTe ([`build_cpu_gpu.md`](../hpc/build_cpu_gpu.md), [`tutorials/fft_heffte_plan_options.md`](../tutorials/fft_heffte_plan_options.md)).  
-3. **Model** — physics in Fourier or real space; registers fields and hooks the integrator ([`class_tour.md`](../reference/class_tour.md)).  
-4. **Simulator** — owns time loop, calls modifiers, invokes writers at `saveat` boundaries.  
+3. **Physics** — the model in Fourier or real space; registers fields and hooks the integrator ([`class_tour.md`](../reference/class_tour.md)).  
+4. **Driver** — `pfc::sim::run` / `SimulationDriver` owns the time loop. A `SimulationSession<Stack>` owns the clock and a standard stack. Writers run on the save observer.  
 5. **Writers** — `ResultsWriter` implementations (MPI-IO binary, VTK, …) ([`io_results.md`](../user_guide/io_results.md)).
 
 JSON/TOML wiring (spectral CPU stack, session, wiring helpers) is summarized in [`app_pipeline.md`](../user_guide/app_pipeline.md).
@@ -52,5 +52,5 @@ JSON/TOML wiring (spectral CPU stack, session, wiring helpers) is summarized in 
 | First successful `mpirun` | [`start_here_15_minutes.md`](../start_here_15_minutes.md) |
 | Runnable “recipes” | [`recipes/README.md`](../recipes/README.md) |
 | Config keys for spectral `App` | [`spectral_app_config_reference.md`](../reference/spectral_app_config_reference.md) |
-| API map (`Model`, `Simulator`, …) | [`class_tour.md`](../reference/class_tour.md) |
+| API map | [`class_tour.md`](../reference/class_tour.md) |
 | Examples ladder | [`examples_catalog.md`](../reference/examples_catalog.md), [`tutorials/spectral_examples_sequence.md`](../tutorials/spectral_examples_sequence.md) |
