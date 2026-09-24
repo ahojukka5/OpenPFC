@@ -49,7 +49,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
-#include <openpfc/frontend/io/snapshot_series.hpp>
+#include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
@@ -209,8 +209,8 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
 
     pfc::io::SnapshotSeries snapshots(h.domain(), h.box(),
                                       pfc::io::SnapshotSeriesOptions{.comm = comm});
-    snapshots.bind_json_field(cfg, "h", h);
-    snapshots.finish_json_fields(cfg);
+    pfc::ui::bind_snapshot_field(snapshots, cfg, "h", h);
+    pfc::ui::finish_snapshot_fields(snapshots, cfg);
 
     // Diagnostics CSV, rank 0, never overwriting.
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
@@ -269,6 +269,7 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
     } else {
       (void)thin_film::sample_film(h, domain, p.h0, 0.05, comm);
     }
+    snapshots.close();
   } catch (const std::exception &e) {
     if (rank == 0) std::cerr << "thin_film_nonlinear: " << e.what() << "\n";
     status = 2;

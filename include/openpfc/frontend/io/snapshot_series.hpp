@@ -9,17 +9,21 @@
  *
  * A driver registers fields and calls `write(step, time)`. The series owns
  * the output directory, the owned-cell pack, the writer, and the time-series
- * manifest. It does not know which stepper produced the field.
+ * manifest. It does not know which stepper produced the field, and it does
+ * not parse application configuration.
  *
  * The registered field is not owned. It must outlive every `write`. Device
  * fields are read through `with_host_read`, so a device backend is not
- * special-cased here. `BinaryWriter::~BinaryWriter` can still throw; that
- * cleanup belongs to issue #171.
+ * special-cased here. Call `close()` on the successful path so a manifest
+ * or XDMF failure is reported. The destructor also calls `close()` and
+ * swallows that error; it does not throw. `BinaryWriter::~BinaryWriter`
+ * can still throw; that cleanup belongs to issue #171.
  */
 
-#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -36,6 +40,7 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/field/state_access.hpp>
+#include <openpfc/kernel/mpi/mpi_io_helpers.hpp>
 #include <openpfc/kernel/simulation/results_writer_domain.hpp>
 
 namespace pfc::io {
@@ -100,47 +105,11 @@ public:
     add_packed(std::move(name), std::move(pattern), format, std::move(pack));
   }
 
-  /**
-   * @brief Register @p field when `fields[]` asks for @p name.
-   *
-   * `.vti` selects VTK and `.bin` selects raw binary. Call
-   * `finish_json_fields` afterwards so a listed name with no source fails.
-   */
-  template <typename Space>
-  void bind_json_field(const nlohmann::json &cfg, std::string_view name,
-                       data::Field<double, Space> &field) {
-    if (!cfg.contains("fields")) return;
-    for (const auto &entry : json_field_entries(cfg)) {
-      if (entry.at("name").get<std::string>() != name) continue;
-      const std::string path = entry.at("data").get<std::string>();
-      const auto ext = std::filesystem::path(path).extension().string();
-      const std::string owned(name);
-      if (ext == ".vti") {
-        add_field(owned, field, path, SnapshotFormat::Vtk);
-      } else if (ext == ".bin") {
-        add_field(owned, field, path, SnapshotFormat::Binary);
-      } else {
-        throw std::invalid_argument("fields: '" + path +
-                                    "' must be a .vti or .bin pattern");
-      }
-      m_bound.push_back(owned);
+  [[nodiscard]] bool has_field(std::string_view name) const {
+    for (const Slot &slot : m_slots) {
+      if (slot.name == name) return true;
     }
-  }
-
-  /// Fail if `fields[]` names a source that was not bound.
-  void finish_json_fields(const nlohmann::json &cfg) const {
-    if (!cfg.contains("fields")) return;
-    for (const auto &entry : json_field_entries(cfg)) {
-      const std::string name = entry.at("name").get<std::string>();
-      bool found = false;
-      for (const auto &bound : m_bound) {
-        if (bound == name) found = true;
-      }
-      if (!found) {
-        throw std::invalid_argument("fields: no registered source named '" + name +
-                                    "'");
-      }
-    }
+    return false;
   }
 
   [[nodiscard]] bool empty() const noexcept { return m_slots.empty(); }
@@ -156,11 +125,23 @@ public:
     }
     if (m_slots.empty()) return;
     for (Slot &slot : m_slots) {
-      slot.pack(m_packed);
-      if (!slot.writer->writes_real()) {
-        throw std::invalid_argument("snapshot series: '" + slot.name +
-                                    "' writer does not support real fields");
+      int local_ok = 1;
+      std::string error;
+      try {
+        if (!slot.writer->writes_real()) {
+          throw std::invalid_argument("snapshot series: '" + slot.name +
+                                      "' writer does not support real fields");
+        }
+        slot.pack(m_packed);
+      } catch (const std::exception &ex) {
+        local_ok = 0;
+        error = ex.what();
+      } catch (...) {
+        local_ok = 0;
+        error = "snapshot series: pack failed for '" + slot.name + "'";
       }
+      agree_(local_ok, error,
+             "snapshot series: a peer failed while packing '" + slot.name + "'");
       slot.writer->write(m_index, pfc::field::FieldView<double>(m_packed));
     }
     m_steps.push_back(step);
@@ -169,44 +150,33 @@ public:
   }
 
   /// Rank 0 writes the manifest and, for binary frames, one XDMF series.
+  /// Every rank throws if that write fails. The failing rank keeps its
+  /// error text; the others report a collective failure.
   void close() {
     if (m_closed) return;
     m_closed = true;
     if (m_slots.empty()) return;
-    int failed = 0;
+    std::string error;
     if (m_rank == 0) {
       try {
         write_manifest_();
+      } catch (const std::exception &ex) {
+        error = ex.what();
       } catch (...) {
-        failed = 1;
+        error = "snapshot series: manifest write failed";
       }
     }
-    MPI_Bcast(&failed, 1, MPI_INT, 0, m_options.comm);
+    int failed = error.empty() ? 0 : 1;
+    pfc::mpi::throw_on_mpi_error(MPI_Bcast(&failed, 1, MPI_INT, 0, m_options.comm),
+                                 "snapshot series: MPI_Bcast");
     if (failed != 0) {
-      throw std::runtime_error("snapshot series: manifest write failed");
+      if (!error.empty()) throw std::runtime_error(error);
+      throw std::runtime_error(
+          "snapshot series: manifest or XDMF write failed on another rank");
     }
   }
 
 private:
-  static std::vector<nlohmann::json> json_field_entries(const nlohmann::json &cfg) {
-    const auto &fields = cfg.at("fields");
-    if (!fields.is_array()) {
-      throw std::invalid_argument(
-          "fields: must be an array of {name, data} objects");
-    }
-    std::vector<nlohmann::json> entries;
-    entries.reserve(fields.size());
-    for (const auto &entry : fields) {
-      if (!entry.is_object() || !entry.contains("name") || !entry.contains("data") ||
-          !entry.at("name").is_string() || !entry.at("data").is_string()) {
-        throw std::invalid_argument(
-            "fields: each entry needs string 'name' and 'data'");
-      }
-      entries.push_back(entry);
-    }
-    return entries;
-  }
-
   struct Slot {
     std::string name;
     SnapshotFormat format{SnapshotFormat::Binary};
@@ -214,6 +184,16 @@ private:
     std::unique_ptr<ResultsWriter> writer;
     std::function<void(std::vector<double> &)> pack;
   };
+
+  void agree_(int local_ok, const std::string &error, const std::string &peer) {
+    int global_ok = 0;
+    pfc::mpi::throw_on_mpi_error(
+        MPI_Allreduce(&local_ok, &global_ok, 1, MPI_INT, MPI_MIN, m_options.comm),
+        "snapshot series: MPI_Allreduce");
+    if (global_ok != 0) return;
+    if (local_ok == 0 && !error.empty()) throw std::runtime_error(error);
+    throw std::runtime_error(peer);
+  }
 
   template <typename Space>
   static void pack_owned(data::Field<double, Space> &field,
@@ -275,8 +255,10 @@ private:
       std::filesystem::create_directories(parent, ec);
       if (ec) failed = 1;
     }
-    MPI_Bcast(&failed, 1, MPI_INT, 0, m_options.comm);
-    MPI_Barrier(m_options.comm);
+    pfc::mpi::throw_on_mpi_error(MPI_Bcast(&failed, 1, MPI_INT, 0, m_options.comm),
+                                 "snapshot series: MPI_Bcast");
+    pfc::mpi::throw_on_mpi_error(MPI_Barrier(m_options.comm),
+                                 "snapshot series: MPI_Barrier");
     if (failed != 0) {
       throw std::runtime_error("snapshot series: cannot create output directory '" +
                                parent.string() + "'");
@@ -285,48 +267,38 @@ private:
 
   void write_manifest_() const {
     const std::filesystem::path path = manifest_path_();
-    if (path.has_parent_path()) {
-      std::filesystem::create_directories(path.parent_path());
-    }
-    std::FILE *fp = std::fopen(path.string().c_str(), "w");
-    if (fp == nullptr) {
-      throw std::runtime_error("snapshot series: cannot open '" + path.string() +
-                               "'");
-    }
     const auto n = domain::get_size(m_domain);
     const auto spacing = domain::get_spacing(m_domain);
     const auto origin = domain::get_origin(m_domain);
-    std::fprintf(fp, "{\n  \"prefix\": \"%s\",\n", m_options.prefix.c_str());
-    std::fprintf(fp, "  \"nx\": %d,\n  \"ny\": %d,\n  \"nz\": %d,\n", n[0], n[1],
-                 n[2]);
-    std::fprintf(fp, "  \"dx\": %.17g,\n  \"dy\": %.17g,\n  \"dz\": %.17g,\n",
-                 spacing[0], spacing[1], spacing[2]);
-    std::fprintf(fp, "  \"origin\": [%.17g, %.17g, %.17g],\n", origin[0], origin[1],
-                 origin[2]);
-    std::fprintf(fp, "  \"order\": \"fortran\",\n  \"dtype\": \"float64\",\n");
-    std::fprintf(fp, "  \"fields\": [");
-    for (std::size_t i = 0; i < m_slots.size(); ++i) {
-      std::fprintf(fp, "%s\"%s\"", i ? ", " : "", m_slots[i].name.c_str());
+    nlohmann::json fields = nlohmann::json::array();
+    nlohmann::json patterns = nlohmann::json::array();
+    for (const Slot &slot : m_slots) {
+      fields.push_back(slot.name);
+      patterns.push_back(slot.pattern);
     }
-    std::fprintf(fp, "],\n  \"steps\": [");
-    for (std::size_t i = 0; i < m_steps.size(); ++i) {
-      std::fprintf(fp, "%s%d", i ? ", " : "", m_steps[i]);
-    }
-    std::fprintf(fp, "],\n  \"times\": [");
-    for (std::size_t i = 0; i < m_times.size(); ++i) {
-      std::fprintf(fp, "%s%.17g", i ? ", " : "", m_times[i]);
-    }
-    std::fprintf(fp, "],\n  \"patterns\": [");
-    for (std::size_t i = 0; i < m_slots.size(); ++i) {
-      std::fprintf(fp, "%s\"%s\"", i ? ", " : "", m_slots[i].pattern.c_str());
-    }
-    std::fprintf(fp, "]\n}\n");
-    std::fclose(fp);
+    nlohmann::json doc = {{"prefix", m_options.prefix},
+                          {"nx", n[0]},
+                          {"ny", n[1]},
+                          {"nz", n[2]},
+                          {"dx", spacing[0]},
+                          {"dy", spacing[1]},
+                          {"dz", spacing[2]},
+                          {"origin", {origin[0], origin[1], origin[2]}},
+                          {"order", "fortran"},
+                          {"dtype", "float64"},
+                          {"fields", std::move(fields)},
+                          {"steps", m_steps},
+                          {"times", m_times},
+                          {"patterns", std::move(patterns)}};
+    write_text_file(path, doc.dump(2) + '\n');
     write_xdmf_();
   }
 
   void write_xdmf_() const {
     if (m_times.empty()) return;
+    const std::filesystem::path xdmf = xdmf_path_();
+    const auto base =
+        xdmf.parent_path().empty() ? std::filesystem::path(".") : xdmf.parent_path();
     std::vector<std::string> names;
     std::vector<std::vector<std::string>> rels;
     for (const Slot &slot : m_slots) {
@@ -334,22 +306,35 @@ private:
       names.push_back(slot.name);
       std::vector<std::string> frames;
       frames.reserve(m_times.size());
-      const auto parent = std::filesystem::path(slot.pattern).parent_path();
       for (int frame = 0; frame < m_index; ++frame) {
         const auto file =
             std::filesystem::path(utils::format_with_number(slot.pattern, frame));
-        frames.push_back(parent.empty() ? file.string()
-                                        : file.lexically_relative(parent).string());
+        const auto rel = file.lexically_relative(base);
+        if (rel.empty()) {
+          throw std::runtime_error("snapshot series: cannot express '" +
+                                   file.string() + "' relative to '" +
+                                   xdmf.string() + "'");
+        }
+        frames.push_back(rel.generic_string());
       }
       rels.push_back(std::move(frames));
     }
     if (names.empty()) return;
     const auto n = domain::get_size(m_domain);
     const auto spacing = domain::get_spacing(m_domain);
+    const auto origin = domain::get_origin(m_domain);
     const double dz = n[2] > 1 ? spacing[2] : 1.0;
-    pfc::io::write_xdmf_binary_series(xdmf_path_().string(), n[0], n[1], n[2],
-                                      spacing[0], spacing[1], dz, names, rels,
-                                      m_times);
+    write_xdmf_binary_series(xdmf.string(),
+                             BinarySeriesGeometry{.nx = n[0],
+                                                  .ny = n[1],
+                                                  .nz = n[2],
+                                                  .x0 = origin[0],
+                                                  .y0 = origin[1],
+                                                  .z0 = origin[2],
+                                                  .dx = spacing[0],
+                                                  .dy = spacing[1],
+                                                  .dz = dz},
+                             names, rels, m_times);
   }
 
   [[nodiscard]] std::filesystem::path manifest_path_() const {
@@ -379,7 +364,6 @@ private:
   std::vector<int> m_steps;
   std::vector<double> m_times;
   std::vector<double> m_packed;
-  std::vector<std::string> m_bound;
 };
 
 } // namespace pfc::io

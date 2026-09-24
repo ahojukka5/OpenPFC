@@ -55,7 +55,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
-#include <openpfc/frontend/io/snapshot_series.hpp>
+#include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
@@ -233,8 +233,8 @@ int main(int argc, char *argv[]) {
     // anneal is erasing.
     pfc::io::SnapshotSeries snapshots(
         h.domain(), h.box(), pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_WORLD});
-    snapshots.bind_json_field(cfg, "h", h);
-    snapshots.finish_json_fields(cfg);
+    pfc::ui::bind_snapshot_field(snapshots, cfg, "h", h);
+    pfc::ui::finish_snapshot_fields(snapshots, cfg);
 
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
     if (rank == 0 && cfg.contains("diagnostics")) {
@@ -287,6 +287,7 @@ int main(int argc, char *argv[]) {
           final_sample.energy_kx_frac, final_sample.energy_ky_frac,
           final_sample.energy_diag_frac);
     }
+    snapshots.close();
   } catch (const std::exception &e) {
     if (rank == 0)
       std::cerr << "surface_diffusion_anisotropic: " << e.what() << "\n";

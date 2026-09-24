@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cstdint>
 #include <cstring>
@@ -15,11 +16,14 @@
 #include <nlohmann/json.hpp>
 #include <unistd.h>
 
+#include <openpfc/frontend/io/hdf5_writer.hpp>
 #include <openpfc/frontend/io/snapshot_series.hpp>
+#include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/field/state_access.hpp>
 
+using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinAbs;
 using nlohmann::json;
 
@@ -86,6 +90,20 @@ TEST_CASE("A writer that omits complex fields rejects them before use",
   pfc::ResultsWriter &sink = writer;
   std::vector<std::complex<double>> z(2);
   REQUIRE_THROWS_AS(sink.write(0, z), std::invalid_argument);
+
+  pfc::BinaryWriter binary("unused_%04d.bin", MPI_COMM_SELF);
+  REQUIRE(binary.writes_real());
+  REQUIRE(binary.writes_complex());
+  pfc::VTKWriter vtk("unused_%04d.vti", MPI_COMM_SELF);
+  REQUIRE(vtk.writes_real());
+  REQUIRE(vtk.writes_complex());
+#ifdef OPENPFC_HAS_HDF5
+  pfc::HDF5Writer hdf5("unused.h5", MPI_COMM_SELF);
+  REQUIRE(hdf5.writes_real());
+  REQUIRE_FALSE(hdf5.writes_complex());
+  pfc::ResultsWriter &hdf5_sink = hdf5;
+  REQUIRE_THROWS_AS(hdf5_sink.write(0, z), std::invalid_argument);
+#endif
 }
 
 TEST_CASE("One scalar field is written with step and time metadata", "[snapshot]") {
@@ -199,8 +217,8 @@ TEST_CASE("JSON fields keep their names and VTK payload", "[snapshot]") {
   {
     pfc::io::SnapshotSeries series(
         domain, box, pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_SELF});
-    series.bind_json_field(cfg, "h", h);
-    series.finish_json_fields(cfg);
+    pfc::ui::bind_snapshot_field(series, cfg, "h", h);
+    pfc::ui::finish_snapshot_fields(series, cfg);
     series.write(0, 0.0);
     series.close();
   }
@@ -224,8 +242,9 @@ TEST_CASE("JSON fields keep their names and VTK payload", "[snapshot]") {
       {"fields", json::array({{{"name", "c"}, {"data", pattern}}})}};
   pfc::io::SnapshotSeries missing(
       domain, box, pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_SELF});
-  missing.bind_json_field(missing_name, "h", h);
-  REQUIRE_THROWS_AS(missing.finish_json_fields(missing_name), std::invalid_argument);
+  pfc::ui::bind_snapshot_field(missing, missing_name, "h", h);
+  REQUIRE_THROWS_AS(pfc::ui::finish_snapshot_fields(missing, missing_name),
+                    std::invalid_argument);
   std::filesystem::remove_all(dir);
 }
 
@@ -246,6 +265,97 @@ TEST_CASE("Output directory creation fails closed", "[snapshot]") {
   REQUIRE_THROWS_AS(series.add_field("u", u, (blocker / "u_%04d.bin").string(),
                                      pfc::io::SnapshotFormat::Binary),
                     std::runtime_error);
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("XDMF records a non-zero domain origin", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto dir = shared_temp("origin");
+  const auto domain = pfc::domain::create(pfc::GridSize({2, 2, 2}),
+                                          pfc::PhysicalOrigin({1.5, -2.0, 0.25}),
+                                          pfc::GridSpacing({0.5, 0.25, 0.125}));
+  const auto box = pfc::domain::index_box(domain);
+  pfc::data::Field<double> phi(domain, box, 0);
+  phi.apply([](double, double, double) { return 1.0; });
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+    series.add_field("phi", phi);
+    series.write(0, 0.0);
+    series.close();
+  }
+  const auto manifest = json::parse(std::ifstream(dir / "run_manifest.json"));
+  REQUIRE_THAT(manifest.at("origin").at(0).get<double>(), WithinAbs(1.5, 1e-15));
+  REQUIRE_THAT(manifest.at("origin").at(1).get<double>(), WithinAbs(-2.0, 1e-15));
+  REQUIRE_THAT(manifest.at("origin").at(2).get<double>(), WithinAbs(0.25, 1e-15));
+  std::ifstream in(dir / "run.xdmf");
+  const std::string text((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+  const auto geo = text.find("ORIGIN_DXDYDZ");
+  REQUIRE(geo != std::string::npos);
+  REQUIRE(text.find("0.25 -2 1.5", geo) != std::string::npos);
+  REQUIRE(text.find("0.125 0.25 0.5", geo) != std::string::npos);
+  REQUIRE(text.find(">0 0 0<", geo) == std::string::npos);
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("XDMF paths are relative to the XDMF file", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto root = shared_temp("xdmfrel");
+  const auto domain = pfc::domain::create({2, 2, 2});
+  const auto box = pfc::domain::index_box(domain);
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(root, "series", MPI_COMM_SELF));
+    series.add_field("one", (root / "data1" / "one_%04d.bin").string(),
+                     pfc::io::SnapshotFormat::Binary,
+                     [](std::vector<double> &out) { out.assign(8, 1.0); });
+    series.add_field("two", (root / "data2" / "two_%04d.bin").string(),
+                     pfc::io::SnapshotFormat::Binary,
+                     [](std::vector<double> &out) { out.assign(8, 2.0); });
+    series.write(0, 0.0);
+    series.close();
+  }
+  const auto xdmf = root / "series.xdmf";
+  std::ifstream in(xdmf);
+  const std::string text((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+  for (const char *rel : {"data1/one_0000.bin", "data2/two_0000.bin"}) {
+    REQUIRE(text.find(rel) != std::string::npos);
+    REQUIRE(std::filesystem::exists(xdmf.parent_path() / rel));
+  }
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Manifest JSON escapes names and paths", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto dir = shared_temp("escape");
+  const auto domain = pfc::domain::create({2, 1, 1});
+  const auto box = pfc::domain::index_box(domain);
+  const auto pattern = (dir / "odd\"name_%04d.bin").string();
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+    series.add_field("phi\"a", pattern, pfc::io::SnapshotFormat::Binary,
+                     [](std::vector<double> &out) { out.assign(2, 1.0); });
+    series.write(0, 0.0);
+    series.close();
+  }
+  const auto manifest = json::parse(std::ifstream(dir / "run_manifest.json"));
+  REQUIRE(manifest.at("fields").at(0) == "phi\"a");
+  REQUIRE(manifest.at("patterns").at(0) == pattern);
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("close reports a manifest that cannot be written", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto dir = shared_temp("manifest-fail");
+  const auto domain = pfc::domain::create({2, 1, 1});
+  const auto box = pfc::domain::index_box(domain);
+  pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+  series.add_field("u", (dir / "u_%04d.bin").string(),
+                   pfc::io::SnapshotFormat::Binary,
+                   [](std::vector<double> &out) { out.assign(2, 1.0); });
+  series.write(0, 0.0);
+  std::filesystem::create_directory(dir / "run_manifest.json");
+  REQUIRE_THROWS_WITH(series.close(), ContainsSubstring("cannot open"));
   std::filesystem::remove_all(dir);
 }
 
@@ -286,5 +396,62 @@ TEST_CASE("Two ranks write one owned brick", "[snapshot][MPI]") {
     REQUIRE(std::filesystem::exists(dir / "run.xdmf"));
     std::filesystem::remove_all(dir);
   }
+  MPI_Barrier(MPI_COMM_WORLD);
+}
+
+TEST_CASE("A pack failure on one rank does not enter the writer",
+          "[snapshot][MPI]") {
+  if (world_size() != 2) SKIP("two-rank snapshot");
+  const auto dir = shared_temp("packfail");
+  const int rank = world_rank();
+  const auto domain = pfc::domain::create({4, 2, 1});
+  const auto local = pfc::Box3i::from_bounds({rank * 2, 0, 0}, {rank * 2 + 1, 1, 0});
+  {
+    pfc::io::SnapshotSeries series(domain, local, opts(dir, "run", MPI_COMM_WORLD));
+    series.add_field("phi", (dir / "run_phi_%04d.bin").string(),
+                     pfc::io::SnapshotFormat::Binary, [&](std::vector<double> &out) {
+                       if (rank == 1) {
+                         throw std::runtime_error("rank 1 pack refused");
+                       }
+                       out.assign(4, 1.0);
+                     });
+    if (rank == 1) {
+      REQUIRE_THROWS_WITH(series.write(0, 0.0),
+                          ContainsSubstring("rank 1 pack refused"));
+    } else {
+      REQUIRE_THROWS_WITH(series.write(0, 0.0),
+                          ContainsSubstring("a peer failed while packing"));
+    }
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) {
+    REQUIRE_FALSE(std::filesystem::exists(dir / "run_phi_0000.bin"));
+    std::filesystem::remove_all(dir);
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+}
+
+TEST_CASE("close reports an XDMF failure on every rank", "[snapshot][MPI]") {
+  if (world_size() != 2) SKIP("two-rank snapshot");
+  const auto dir = shared_temp("xdmffail");
+  const int rank = world_rank();
+  const auto domain = pfc::domain::create({4, 2, 1});
+  const auto local = pfc::Box3i::from_bounds({rank * 2, 0, 0}, {rank * 2 + 1, 1, 0});
+  pfc::data::Field<double> phi(domain, local, 0);
+  phi.apply([](double, double, double) { return 1.0; });
+  {
+    pfc::io::SnapshotSeries series(domain, local, opts(dir, "run", MPI_COMM_WORLD));
+    series.add_field("phi", phi);
+    series.write(0, 0.0);
+    if (rank == 0) std::filesystem::create_directory(dir / "run.xdmf");
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank == 0) {
+      REQUIRE_THROWS_WITH(series.close(), ContainsSubstring("cannot open"));
+    } else {
+      REQUIRE_THROWS_WITH(series.close(), ContainsSubstring("another rank"));
+    }
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) std::filesystem::remove_all(dir);
   MPI_Barrier(MPI_COMM_WORLD);
 }

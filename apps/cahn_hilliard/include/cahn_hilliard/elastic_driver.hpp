@@ -47,8 +47,8 @@
 #include <cahn_hilliard/concentration_seed.hpp>
 #include <cahn_hilliard/diagnostics.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
-#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
+#include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/dealias.hpp>
@@ -216,8 +216,8 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
     Diagnostics<pfc::HostSpace> diagnostics(domain, stack.fft(), comm);
     pfc::io::SnapshotSeries snapshots(c.domain(), c.box(),
                                       pfc::io::SnapshotSeriesOptions{.comm = comm});
-    snapshots.bind_json_field(cfg, "c", c);
-    snapshots.finish_json_fields(cfg);
+    pfc::ui::bind_snapshot_field(snapshots, cfg, "c", c);
+    pfc::ui::finish_snapshot_fields(snapshots, cfg);
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
     if (rank == 0 && cfg.contains("diagnostics")) {
       const std::filesystem::path path =
@@ -361,6 +361,7 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
       (void)diagnostics.sample(c, ch);
       (void)solver.total_elastic_energy();
     }
+    snapshots.close();
   } catch (const std::exception &e) {
     if (rank == 0) std::cerr << "cahn_hilliard_elastic: " << e.what() << "\n";
     status = 2;
