@@ -142,6 +142,11 @@ find_package(OpenPFC CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE OpenPFC::openpfc)
 ```
 
+That link propagates HeFFTe when the installed library was built with it.
+Public spectral headers still include HeFFTe. The downstream target does not
+name HeFFTe itself. `OpenPFCConfig` finds the dependency before the exported
+targets.
+
 ## Primary workflows
 
 ### Spectral workflow

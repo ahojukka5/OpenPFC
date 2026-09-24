@@ -155,8 +155,8 @@ if(OpenPFC_NAN_CHECK_ACTIVE)
 endif()
 
 # Layering: openpfc is the compiled implementation; public include path is on the
-# target above. HeFFTe stays PRIVATE (see block below) so only TUs that include
-# fft_fftw.hpp need to link HeFFTe.
+# target above. When HeFFTe is enabled, openpfc links it PUBLIC so an installed
+# consumer that includes a spectral header does not name Heffte itself.
 
 # Set the library version
 set_target_properties(openpfc PROPERTIES
@@ -238,26 +238,27 @@ if(OpenPFC_ENABLE_HEFFTE)
   target_compile_definitions(openpfc_frontend_obj PUBLIC OpenPFC_ENABLE_HEFFTE)
   # Prefer already-fetched target; fall back to find_package if needed
   if(TARGET Heffte::Heffte)
-    target_link_libraries(openpfc PRIVATE Heffte::Heffte)
+    target_link_libraries(openpfc PUBLIC Heffte::Heffte)
     target_link_libraries(openpfc_kernel_obj PRIVATE Heffte::Heffte)
     target_link_libraries(openpfc_frontend_obj PRIVATE Heffte::Heffte)
   elseif(TARGET Heffte)
-    target_link_libraries(openpfc PRIVATE Heffte)
+    target_link_libraries(openpfc PUBLIC Heffte)
     target_link_libraries(openpfc_kernel_obj PRIVATE Heffte)
     target_link_libraries(openpfc_frontend_obj PRIVATE Heffte)
   elseif(TARGET heffte)
-    target_link_libraries(openpfc PRIVATE heffte)
+    target_link_libraries(openpfc PUBLIC heffte)
     target_link_libraries(openpfc_kernel_obj PRIVATE heffte)
     target_link_libraries(openpfc_frontend_obj PRIVATE heffte)
   else()
     find_package(Heffte REQUIRED)
-    target_link_libraries(openpfc PRIVATE Heffte::Heffte)
+    target_link_libraries(openpfc PUBLIC Heffte::Heffte)
     target_link_libraries(openpfc_kernel_obj PRIVATE Heffte::Heffte)
     target_link_libraries(openpfc_frontend_obj PRIVATE Heffte::Heffte)
   endif()
-  # HeFFTe is linked PRIVATE only; public headers that need <heffte.h> live in
-  # fft_fftw.hpp (include explicitly or use openpfc.hpp). Downstream TUs must link
-  # HeFFTe themselves if they include fft_fftw.hpp.
+  # Public spectral headers include <heffte.h>, and the static library needs
+  # HeFFTe symbols at final link. PUBLIC propagates both. OpenPFCConfig finds
+  # Heffte before the exported targets, so a consumer links only OpenPFC::openpfc.
+  # The headers still name HeFFTe types; this does not hide that include.
 endif()
 
 if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
