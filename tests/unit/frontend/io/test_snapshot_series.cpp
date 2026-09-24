@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include <openpfc/frontend/io/hdf5_writer.hpp>
+#include <openpfc/frontend/io/scalar_field_file.hpp>
 #include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
@@ -451,6 +452,178 @@ TEST_CASE("close reports an XDMF failure on every rank", "[snapshot][MPI]") {
       REQUIRE_THROWS_WITH(series.close(), ContainsSubstring("another rank"));
     }
   }
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) std::filesystem::remove_all(dir);
+  MPI_Barrier(MPI_COMM_WORLD);
+}
+
+TEST_CASE("Cadence counts samples and can be skipped", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  REQUIRE_THROWS_AS(pfc::io::SnapshotCadence(0), std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::io::SnapshotCadence(-1), std::invalid_argument);
+  const auto dir = shared_temp("cadence");
+  const auto domain = pfc::domain::create({2, 1, 1});
+  const auto box = pfc::domain::index_box(domain);
+  pfc::data::Field<double> u(domain, box, 0);
+  u.apply([](double, double, double) { return 1.0; });
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+    series.set_cadence(pfc::io::SnapshotCadence(2));
+    REQUIRE(series.due(0));
+    REQUIRE_FALSE(series.due(1));
+    REQUIRE(series.due(2));
+    series.add_field("u", u);
+    REQUIRE(series.write_if_due(0, 4, 0.4));
+    REQUIRE_FALSE(series.write_if_due(1, 5, 0.5));
+    REQUIRE(series.write_if_due(2, 6, 0.6));
+    series.close();
+    REQUIRE(series.steps() == std::vector<int>{4, 6});
+    REQUIRE(series.frames() == 2);
+  }
+  REQUIRE(std::filesystem::exists(dir / "run_u_0000.bin"));
+  REQUIRE(std::filesystem::exists(dir / "run_u_0001.bin"));
+  REQUIRE_FALSE(std::filesystem::exists(dir / "run_u_0002.bin"));
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Restored progress continues at the next frame", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto dir = shared_temp("progress");
+  const auto domain = pfc::domain::create({2, 1, 1});
+  const auto box = pfc::domain::index_box(domain);
+  pfc::data::Field<double> u(domain, box, 0);
+  u.apply([](double, double, double) { return 3.0; });
+  pfc::io::SnapshotProgress saved;
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+    series.add_field("u", u);
+    series.write(10, 0.1);
+    series.write(20, 0.2);
+    saved = series.progress();
+    series.close();
+  }
+  REQUIRE(saved.next_frame == 2);
+  u.apply([](double, double, double) { return 9.0; });
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+    series.add_field("u", u);
+    series.restore(saved);
+    series.write(30, 0.3);
+    series.close();
+    REQUIRE(series.steps() == std::vector<int>{10, 20, 30});
+    REQUIRE(series.frames() == 3);
+  }
+  const auto first = read_doubles(dir / "run_u_0000.bin");
+  const auto third = read_doubles(dir / "run_u_0002.bin");
+  REQUIRE(first.size() == 2);
+  REQUIRE(third.size() == 2);
+  for (double v : first) REQUIRE_THAT(v, WithinAbs(3.0, 1e-15));
+  for (double v : third) REQUIRE_THAT(v, WithinAbs(9.0, 1e-15));
+  const auto manifest = json::parse(std::ifstream(dir / "run_manifest.json"));
+  REQUIRE(manifest.at("steps") == json::array({10, 20, 30}));
+  REQUIRE(manifest.at("times").size() == 3);
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("A raw host buffer is written without a field object", "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto dir = shared_temp("raw");
+  const auto domain = pfc::domain::create({2, 2, 1});
+  const auto box = pfc::domain::index_box(domain);
+  const double raw[4] = {1.0, 2.0, 3.0, 4.0};
+  {
+    pfc::io::SnapshotSeries series(domain, box, opts(dir, "run", MPI_COMM_SELF));
+    series.add_field("u", (dir / "run_u_%04d.bin").string(),
+                     pfc::io::SnapshotFormat::Binary,
+                     [&](std::vector<double> &out) { out.assign(raw, raw + 4); });
+    series.write(1, 0.5);
+    series.close();
+  }
+  const auto values = read_doubles(dir / "run_u_0000.bin");
+  REQUIRE(values.size() == 4);
+  REQUIRE_THAT(values[0], WithinAbs(1.0, 1e-15));
+  REQUIRE_THAT(values[3], WithinAbs(4.0, 1e-15));
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("A named brick and its XDMF sidecar keep the domain origin",
+          "[snapshot]") {
+  if (world_size() != 1) SKIP("single-rank snapshot");
+  const auto dir = shared_temp("once");
+  const auto domain = pfc::domain::create(pfc::GridSize({2, 1, 1}),
+                                          pfc::PhysicalOrigin({1.5, -2.0, 0.25}),
+                                          pfc::GridSpacing({0.5, 0.25, 0.125}));
+  const auto box = pfc::domain::index_box(domain);
+  pfc::data::Field<double> u(domain, box, 1);
+  u.with_host_view([&](double *data, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i) data[i] = -7.0;
+  });
+  u.apply([](double, double, double) { return 4.0; });
+  pfc::io::write_scalar_brick(u, MPI_COMM_SELF, dir / "h_final.bin");
+  const auto origin = pfc::domain::get_origin(domain);
+  const auto spacing = pfc::domain::get_spacing(domain);
+  const auto n = pfc::domain::get_size(domain);
+  pfc::io::write_scalar_xdmf(MPI_COMM_SELF, dir / "h_final.xdmf",
+                             pfc::io::BinarySeriesGeometry{.nx = n[0],
+                                                           .ny = n[1],
+                                                           .nz = n[2],
+                                                           .x0 = origin[0],
+                                                           .y0 = origin[1],
+                                                           .z0 = origin[2],
+                                                           .dx = spacing[0],
+                                                           .dy = spacing[1],
+                                                           .dz = 1.0},
+                             "h", "h_final.bin");
+  const auto values = read_doubles(dir / "h_final.bin");
+  REQUIRE(values.size() == 2);
+  for (double v : values) REQUIRE_THAT(v, WithinAbs(4.0, 1e-15));
+  std::ifstream in(dir / "h_final.xdmf");
+  const std::string text((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+  REQUIRE(text.find("h_final.bin") != std::string::npos);
+  REQUIRE(text.find("0.25 -2 1.5") != std::string::npos);
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Two ranks write VTK pieces of the owned brick", "[snapshot][MPI]") {
+  if (world_size() != 2) SKIP("two-rank snapshot");
+  const auto dir = shared_temp("vtkmpi");
+  const int rank = world_rank();
+  const auto domain = pfc::domain::create({4, 2, 1});
+  const auto local = pfc::Box3i::from_bounds({rank * 2, 0, 0}, {rank * 2 + 1, 1, 0});
+  pfc::data::Field<double> phi(domain, local, 1);
+  phi.with_host_view([&](double *data, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i) data[i] = -99.0;
+  });
+  for (int j = 0; j < local.size[1]; ++j) {
+    for (int i = 0; i < local.size[0]; ++i) {
+      phi(i, j, 0) = static_cast<double>(local.low[0] + i + 10 * j);
+    }
+  }
+  {
+    pfc::io::SnapshotSeries series(domain, local, opts(dir, "run", MPI_COMM_WORLD));
+    series.add_field("phi", phi, (dir / "phi_%04d.vti").string(),
+                     pfc::io::SnapshotFormat::Vtk);
+    series.write(2, 0.25);
+    series.close();
+  }
+  const auto piece = dir / ("phi_0000_" + std::to_string(rank) + ".vti");
+  REQUIRE(std::filesystem::exists(piece));
+  std::ifstream in(piece, std::ios::binary);
+  std::string text((std::istreambuf_iterator<char>(in)),
+                   std::istreambuf_iterator<char>());
+  REQUIRE(text.find("-99") == std::string::npos);
+  const auto marker = text.find("\n_");
+  REQUIRE(marker != std::string::npos);
+  const auto *raw =
+      reinterpret_cast<const unsigned char *>(text.data() + marker + 2);
+  std::uint64_t bytes = 0;
+  for (int i = 0; i < 8; ++i) bytes |= static_cast<std::uint64_t>(raw[i]) << (8 * i);
+  REQUIRE(bytes == 4 * sizeof(double));
+  double first = 0.0;
+  std::memcpy(&first, raw + 8, sizeof(double));
+  REQUIRE_THAT(first, WithinAbs(static_cast<double>(rank * 2), 1e-12));
+  if (rank == 0) REQUIRE(std::filesystem::exists(dir / "phi_0000.pvti"));
   MPI_Barrier(MPI_COMM_WORLD);
   if (rank == 0) std::filesystem::remove_all(dir);
   MPI_Barrier(MPI_COMM_WORLD);

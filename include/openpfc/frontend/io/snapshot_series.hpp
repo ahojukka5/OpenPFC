@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -46,6 +47,36 @@
 namespace pfc::io {
 
 enum class SnapshotFormat { Binary, Vtk };
+
+/// How many output opportunities elapse between saves. `every` counts calls
+/// the driver chooses, not a stepper's internal substeps. A non-positive
+/// count is rejected.
+struct SnapshotCadence {
+  int every{1};
+
+  explicit SnapshotCadence(int every_sample) : every(every_sample) {
+    if (every < 1) {
+      throw std::invalid_argument(
+          "snapshot cadence: every sample count must be positive");
+    }
+  }
+
+  [[nodiscard]] bool due(int sample_ordinal) const {
+    if (sample_ordinal < 0) {
+      throw std::invalid_argument("snapshot cadence: sample ordinal must be >= 0");
+    }
+    return sample_ordinal % every == 0;
+  }
+};
+
+/// File ordinal and the step/time rows already written. The caller stores
+/// this and passes it back to `restore`. The series does not search the
+/// output directory.
+struct SnapshotProgress {
+  int next_frame{0};
+  std::vector<int> steps;
+  std::vector<double> times;
+};
 
 struct SnapshotSeriesOptions {
   std::filesystem::path directory;
@@ -114,6 +145,47 @@ public:
 
   [[nodiscard]] bool empty() const noexcept { return m_slots.empty(); }
   [[nodiscard]] int frames() const noexcept { return m_index; }
+
+  void set_cadence(SnapshotCadence cadence) { m_cadence = cadence; }
+
+  /// True when @p sample_ordinal is a save. Requires `set_cadence`.
+  [[nodiscard]] bool due(int sample_ordinal) const {
+    if (!m_cadence) {
+      throw std::invalid_argument("snapshot series: set a cadence before due()");
+    }
+    return m_cadence->due(sample_ordinal);
+  }
+
+  /// `write` when `due(sample_ordinal)` and at least one field is registered.
+  bool write_if_due(int sample_ordinal, int step, double time) {
+    if (!due(sample_ordinal) || empty()) return false;
+    write(step, time);
+    return true;
+  }
+
+  [[nodiscard]] SnapshotProgress progress() const {
+    return SnapshotProgress{m_index, m_steps, m_times};
+  }
+
+  /// Continue numbering at @p saved.next_frame and keep the earlier rows.
+  /// Call it before the first `write` on this series.
+  void restore(SnapshotProgress saved) {
+    if (m_closed) {
+      throw std::invalid_argument("snapshot series: restore after close");
+    }
+    if (m_index != 0 || !m_steps.empty() || !m_times.empty()) {
+      throw std::invalid_argument("snapshot series: restore before the first write");
+    }
+    if (saved.next_frame < 0 ||
+        static_cast<int>(saved.steps.size()) != saved.next_frame ||
+        saved.times.size() != saved.steps.size()) {
+      throw std::invalid_argument("snapshot series: progress next_frame must match "
+                                  "the saved steps and times");
+    }
+    m_index = saved.next_frame;
+    m_steps = std::move(saved.steps);
+    m_times = std::move(saved.times);
+  }
   [[nodiscard]] const std::vector<int> &steps() const noexcept { return m_steps; }
   [[nodiscard]] const std::vector<double> &times() const noexcept { return m_times; }
 
@@ -360,6 +432,7 @@ private:
   int m_rank{0};
   int m_index{0};
   bool m_closed{false};
+  std::optional<SnapshotCadence> m_cadence;
   std::vector<Slot> m_slots;
   std::vector<int> m_steps;
   std::vector<double> m_times;
