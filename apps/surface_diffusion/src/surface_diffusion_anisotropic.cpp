@@ -50,6 +50,7 @@
 #include <numbers>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -259,9 +260,20 @@ int main(int argc, char *argv[]) {
                      final_sample.energy_ky_frac, final_sample.energy_diag_frac});
       }
     };
+    const double span = t1;
+    const double n_fixed = std::round(span / dt);
+    if (!(dt > 0.0) || std::abs(span - n_fixed * dt) > 1e-8 * std::max(1.0, span)) {
+      throw std::invalid_argument(
+          "surface_diffusion_anisotropic: t1 must be an integer multiple of dt");
+    }
     pfc::sim::run(
         clock,
-        [&](double t_now) {
+        [&](double t_now, double interval) {
+          if (std::abs(interval - dt) > 1e-8 * std::max(1.0, dt)) {
+            throw std::invalid_argument(
+                "surface_diffusion_anisotropic: refusing a clipped step; the "
+                "ETD coefficients use the full dt");
+          }
           stepper.step(t_prev, h);
           t_prev = t_now;
         },
