@@ -7,6 +7,33 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-24
+
+Source-level break from 0.2.0 for application code. This is not an
+ABI-compatible update. C++20 remains the language baseline. OpenPFC is
+still pre-1.0.
+
+**Highlights**
+
+- Installed out-of-tree applications are the supported boundary:
+  `find_package(OpenPFC CONFIG REQUIRED)` and link
+  `OpenPFC::openpfc`.
+- `SimulationLifecycle` is the reusable run loop, with fixed and
+  adaptive custom-step runners.
+- `SnapshotSeries` and `DiagnosticsSeries` are the reusable output and
+  diagnostics services.
+- Generic numerical pieces now sit outside any one application:
+  owned-cell reductions, a spectral flux, a conservative
+  finite-difference face flux, a periodic microelasticity solver,
+  Fourier and noise primitives, and spectral observables.
+- `solvers/` is the public family for those reusable numerical modules.
+- `apps/common` is gone. Each application keeps its own helpers.
+- The installed `OpenPFC::openpfc` target propagates HeFFTe, so a
+  spectral consumer does not link HeFFTe itself.
+- Selected host pointer-and-size APIs take `std::span`.
+
+The entries below are the development record since 0.2.0.
+
 ### Changed
 
 - `divergence_separated` and host `SparseExchange` take `std::span` for
