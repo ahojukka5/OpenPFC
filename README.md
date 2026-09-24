@@ -21,6 +21,10 @@ combines MPI domain decomposition with HeFFTe-based distributed FFTs and can be
 used either as a library or through the configuration-driven applications
 shipped under `apps/`.
 
+**0.3 is a source-level break from 0.2.** Installed applications link
+`OpenPFC::openpfc` only. ABI compatibility is not claimed. The 0.3.0
+changelog highlights are the application-facing summary.
+
 **0.2 is a breaking release.** The 0.1 `Model` / `Simulator` / `App` / `World`
 path is gone. See [Migrating from 0.1 to 0.2](docs/MIGRATION_0.1_to_0.2.md).
 
