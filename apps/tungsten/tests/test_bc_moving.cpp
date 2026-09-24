@@ -15,6 +15,7 @@
 
 using namespace pfc;
 using Catch::Approx;
+using tungsten::MovingBC;
 
 TEST_CASE("MovingBC rejects incomplete or invalid restart state", "[bc_moving]") {
   MovingBC bc(0.0, 1.0);

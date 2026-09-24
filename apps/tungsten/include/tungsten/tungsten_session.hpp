@@ -24,7 +24,7 @@
 namespace tungsten {
 
 /// Register tungsten's JSON `boundary_conditions` types on the default catalog.
-inline void register_catalog() { pfc::ui::register_solidification_bcs(); }
+inline void register_catalog() { register_solidification_bcs(); }
 
 using TungstenSession =
     pfc::ui::SpectralETDSession<TungstenPhysics<double, pfc::HostSpace>,

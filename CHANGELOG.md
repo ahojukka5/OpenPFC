@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
+- Directional-solidification `FixedBC` and `MovingBC` live in `tungsten::`
+  and `aluminum::`. JSON `from_json` and catalog registration stay with
+  those types.
 - Applications no longer share `apps/common`. Homogenization stays in
   inverse homogenization, the plasma dispersion oracle stays in
   Vlasov–Maxwell, and the directional-solidification reservoir modifiers

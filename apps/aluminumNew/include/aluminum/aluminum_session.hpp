@@ -28,7 +28,7 @@ namespace aluminum {
 
 inline void register_catalog() {
   pfc::ui::register_field_modifier<SeedGridFCC>("seed_grid_fcc");
-  pfc::ui::register_solidification_bcs();
+  register_solidification_bcs();
 }
 
 using AluminumSession =
