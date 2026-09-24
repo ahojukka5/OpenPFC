@@ -20,6 +20,7 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_parameter_schema.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_observable_reduce.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_simulation_driver.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_simulation_lifecycle.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_session_selection.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_results_writer_domain.cpp
 )

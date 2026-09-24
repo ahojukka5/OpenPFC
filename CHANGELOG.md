@@ -35,6 +35,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `pfc::sim::SimulationLifecycle` composes the fixed and adaptive runners
+  with named fields, `FieldModifier` initial and boundary conditions, a
+  save observer, a checkpoint hook, and an optional profiling frame.
+  `prepare_stage` applies boundary data for an internal stage without
+  saving. Nonlinear thin film and anisotropic surface diffusion use it
+  for the clock and the save hook. Physics stays in the applications.
+
 - `pfc::sim::run_attempts` drives a custom stepper with `Time`'s
   attempt/commit/reject contract and owns the accepted/rejected
   counters. A rejected attempt does not save. An exception from

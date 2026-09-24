@@ -42,7 +42,9 @@ pfc::sim::run(time, step, on_start, apply, on_save);
 
 There is no `Simulator` class and no virtual `Model::step`; sessions compose the
 hooks from a `SimulationState`, a stepper (or a spectral ETD system), condition
-lists, writers, and a `CheckpointService`.
+lists, writers, and a `CheckpointService`. A custom stepper that also wants
+named fields and modifier application uses
+[`SimulationLifecycle`](custom_stepper.md) around these same hooks.
 
 ## 2. Driver hook semantics
 

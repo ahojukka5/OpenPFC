@@ -1,20 +1,27 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Smallest possible use of the installed OpenPFC public API: construct a Domain
-// and query it. If this configures, links, and runs, find_package(OpenPFC) and
-// the exported targets/transitive deps are wired correctly.
+// Smallest possible use of the installed OpenPFC public API: construct a Domain,
+// run a two-field SimulationLifecycle, and query the result. If this configures,
+// links, and runs, find_package(OpenPFC) and the exported targets are wired.
 #include <openpfc/frontend/io/snapshot_series.hpp>
+#include <openpfc/kernel/data/box3i.hpp>
 #include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/field/face_flux.hpp>
 #include <openpfc/kernel/field/fourier_series.hpp>
 #include <openpfc/kernel/field/indexed_noise.hpp>
+#include <openpfc/kernel/simulation/initial_conditions/constant.hpp>
 #include <openpfc/kernel/simulation/simulation_driver.hpp>
+#include <openpfc/kernel/simulation/simulation_lifecycle.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
+#include <mpi.h>
+
 #include <cstdio>
+#include <memory>
 #include <type_traits>
 
 int main() {
@@ -63,8 +70,35 @@ int main() {
   if (saves != 2 || clock.get_increment() != 2) {
     return 1;
   }
+  int mpi_ready = 0;
+  MPI_Initialized(&mpi_ready);
+  if (mpi_ready == 0) {
+    MPI_Init(nullptr, nullptr);
+  }
   auto domain = pfc::domain::create({8, 8, 8});
   const auto size = pfc::domain::get_size(domain);
-  std::printf("OpenPFC consumer OK: domain %dx%dx%d\n", size[0], size[1], size[2]);
-  return (size[0] == 8 && size[1] == 8 && size[2] == 8) ? 0 : 1;
+  const auto box =
+      pfc::Box3i::from_bounds({0, 0, 0}, {size[0] - 1, size[1] - 1, size[2] - 1});
+  pfc::data::Field<double> density(domain, box, 0);
+  pfc::data::Field<double> solute(domain, box, 0);
+  pfc::sim::SimulationLifecycle life(
+      pfc::sim::SimulationLifecycle::schedule(0.0, 0.2, 0.1, 0.2), MPI_COMM_WORLD);
+  life.bind_field("density", density);
+  life.bind_field("solute", solute);
+  life.add_initial_condition("density", std::make_unique<pfc::Constant>(1.0));
+  life.add_initial_condition("solute", std::make_unique<pfc::Constant>(2.0));
+  int life_saves = 0;
+  life.set_save_observer([&](const pfc::Time &) { ++life_saves; });
+  life.run([](double, double) {});
+  const bool fields_ok = density(0, 0, 0) == 1.0 && solute(0, 0, 0) == 2.0;
+  const bool domain_ok = size[0] == 8 && size[1] == 8 && size[2] == 8;
+  if (fields_ok && domain_ok && life_saves == 2) {
+    std::printf("OpenPFC consumer OK: domain %dx%dx%d\n", size[0], size[1], size[2]);
+  }
+  int mpi_done = 0;
+  MPI_Finalized(&mpi_done);
+  if (mpi_ready == 0 && mpi_done == 0) {
+    MPI_Finalize();
+  }
+  return (fields_ok && domain_ok && life_saves == 2) ? 0 : 1;
 }
