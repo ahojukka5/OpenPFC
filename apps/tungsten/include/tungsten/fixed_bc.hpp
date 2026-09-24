@@ -19,7 +19,7 @@
  *
  * Usage:
  * @code
- * auto bc = std::make_unique<pfc::FixedBC>(0.0, 1.0);  // low, high values
+ * auto bc = std::make_unique<tungsten::FixedBC>(0.0, 1.0);  // low, high values
  * bc->set_field_name("density");
  * simulator.add_boundary_condition(std::move(bc));
  * @endcode
@@ -40,11 +40,9 @@
 #include <openpfc/kernel/field/operations.hpp>
 #include <openpfc/kernel/simulation/field_modifier.hpp>
 
-namespace pfc {
+namespace tungsten {
 
-using pfc::types::Int3;
-
-class FixedBC : public FieldModifier {
+class FixedBC : public pfc::FieldModifier {
 
 private:
   double xwidth = 20.0;
@@ -63,8 +61,8 @@ public:
 
   const std::string &get_modifier_name() const override { return m_name; }
 
-  void apply(pfc::field::FieldOutput<double> field, const Domain &domain, const Box3i &box,
-             double time = 0.0) override {
+  void apply(pfc::field::FieldOutput<double> field, const pfc::Domain &domain,
+             const pfc::Box3i &box, double time = 0.0) override {
     (void)time;
     const double Lx = pfc::domain::get_size(domain, 0);
     const double dx = pfc::domain::get_spacing(domain, 0);
@@ -80,8 +78,6 @@ public:
           return current;
         });
   }
-
-
 };
 
-} // namespace pfc
+} // namespace tungsten

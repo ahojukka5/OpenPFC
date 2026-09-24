@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <type_traits>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +14,11 @@
 #include <tungsten/solidification_bc_json.hpp>
 
 using namespace pfc;
+using tungsten::FixedBC;
+using tungsten::MovingBC;
+
+static_assert(std::is_base_of_v<pfc::FieldModifier, tungsten::FixedBC>);
+static_assert(std::is_base_of_v<pfc::FieldModifier, tungsten::MovingBC>);
 
 TEST_CASE("FixedBC - Basic functionality", "[boundary_conditions][unit]") {
   SECTION("FixedBC can be constructed with default values") {
@@ -72,8 +78,7 @@ TEST_CASE("FixedBC - apply method", "[boundary_conditions][unit]") {
     bc.set_field_name("psi");
     REQUIRE_NOTHROW(bc.apply(field_data, domain, box));
     bool values_in_range = true;
-    for (const auto &val : field_data)
-      values_in_range &= val >= -2.6 && val <= 3.6;
+    for (const auto &val : field_data) values_in_range &= val >= -2.6 && val <= 3.6;
     REQUIRE(values_in_range);
   }
 

@@ -10,17 +10,17 @@
 
 #include <stdexcept>
 
-#include <openpfc/frontend/ui/field_modifier_registry.hpp>
-#include <openpfc/frontend/ui/from_json_field_modifiers.hpp>
 #include <aluminum/fixed_bc.hpp>
 #include <aluminum/moving_bc.hpp>
+#include <openpfc/frontend/ui/field_modifier_registry.hpp>
+#include <openpfc/frontend/ui/from_json_field_modifiers.hpp>
 
-namespace pfc {
+namespace aluminum {
 
-// ADL via FixedBC/MovingBC: register_field_modifier calls from_json on
-// nlohmann::json, whose associated namespace is nlohmann, not pfc::ui.
-inline void from_json(const ui::json &j, FixedBC &bc) {
-  ui::detail::throw_unless_json_modifier_type(
+// `from_json` lives next to the type so ADL finds it from
+// `pfc::ui::register_field_modifier`.
+inline void from_json(const pfc::ui::json &j, FixedBC &bc) {
+  pfc::ui::detail::throw_unless_json_modifier_type(
       j, "fixed", "Invalid JSON input: missing or incorrect 'type' field.");
 
   if (!j.contains("rho_low") || !j["rho_low"].is_number()) {
@@ -35,8 +35,8 @@ inline void from_json(const ui::json &j, FixedBC &bc) {
   bc.set_rho_high(j["rho_high"]);
 }
 
-inline void from_json(const ui::json &j, MovingBC &bc) {
-  ui::detail::throw_unless_json_modifier_type(
+inline void from_json(const pfc::ui::json &j, MovingBC &bc) {
+  pfc::ui::detail::throw_unless_json_modifier_type(
       j, "moving", "Invalid JSON input: missing or incorrect 'type' field.");
 
   if (!j.contains("rho_low") || !j["rho_low"].is_number()) {
@@ -71,14 +71,10 @@ inline void from_json(const ui::json &j, MovingBC &bc) {
   bc.set_xpos(j["xpos"]);
 }
 
-} // namespace pfc
-
-namespace pfc::ui {
-
 /** Register JSON `"fixed"` / `"moving"` on the process-wide catalog. */
 inline void register_solidification_bcs() {
-  register_field_modifier<FixedBC>("fixed");
-  register_field_modifier<MovingBC>("moving");
+  pfc::ui::register_field_modifier<FixedBC>("fixed");
+  pfc::ui::register_field_modifier<MovingBC>("moving");
 }
 
-} // namespace pfc::ui
+} // namespace aluminum

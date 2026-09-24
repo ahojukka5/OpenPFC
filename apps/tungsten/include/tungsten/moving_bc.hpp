@@ -19,7 +19,7 @@
  *
  * Usage:
  * @code
- * auto bc = std::make_unique<pfc::MovingBC>();
+ * auto bc = std::make_unique<tungsten::MovingBC>();
  * bc->set_rho_low(0.0);
  * bc->set_rho_high(1.0);
  * bc->set_field_name("density");
@@ -33,8 +33,7 @@
  * @date 2025
  */
 
-#ifndef PFC_BOUNDARY_CONDITIONS_MOVING_BC_HPP
-#define PFC_BOUNDARY_CONDITIONS_MOVING_BC_HPP
+#pragma once
 
 #include <algorithm>
 #include <cmath>
@@ -50,9 +49,9 @@
 #include <openpfc/kernel/simulation/field_modifier.hpp>
 #include <openpfc/kernel/utils/logging.hpp>
 
-namespace pfc {
+namespace tungsten {
 
-class MovingBC : public FieldModifier {
+class MovingBC : public pfc::FieldModifier {
 
 private:
   double m_rho_low, m_rho_high;
@@ -65,8 +64,8 @@ private:
   bool m_first = true;
   std::vector<double> xline, global_xline;
   MPI_Comm comm = MPI_COMM_WORLD;
-  int rank = mpi::get_comm_rank(comm);
-  int size = mpi::get_comm_size(comm);
+  int rank = pfc::mpi::get_comm_rank(comm);
+  int size = pfc::mpi::get_comm_size(comm);
   std::string m_name = "MovingBC";
 
 public:
@@ -118,15 +117,15 @@ public:
 
   void set_mpi_comm(MPI_Comm c) noexcept override {
     comm = c;
-    rank = mpi::get_comm_rank(comm);
-    size = mpi::get_comm_size(comm);
+    rank = pfc::mpi::get_comm_rank(comm);
+    size = pfc::mpi::get_comm_size(comm);
   }
 
-  void apply(pfc::field::FieldOutput<double> field, const Domain &domain,
-             const Box3i &box, double time = 0.0) override {
+  void apply(pfc::field::FieldOutput<double> field, const pfc::Domain &domain,
+             const pfc::Box3i &box, double time = 0.0) override {
     (void)time;
-    const Int3 low = box.low;
-    const Int3 high = box.high;
+    const pfc::Int3 low = box.low;
+    const pfc::Int3 high = box.high;
 
     const auto Lx = pfc::domain::get_size(domain, 0);
     const auto dx = pfc::domain::get_spacing(domain, 0);
@@ -196,17 +195,17 @@ public:
     }
 
     if (rank == 0) {
-      const Logger lg{LogLevel::Debug, 0};
+      const pfc::Logger lg{pfc::LogLevel::Debug, 0};
       std::ostringstream oss;
       oss << "Boundary position: " << m_xpos;
-      log_debug(lg, oss.str());
+      pfc::log_debug(lg, oss.str());
     }
 
     fill_bc(field, domain, box);
   }
 
-  void fill_bc(pfc::field::FieldOutput<double> field, const Domain &domain,
-               const Box3i &box) {
+  void fill_bc(pfc::field::FieldOutput<double> field, const pfc::Domain &domain,
+               const pfc::Box3i &box) {
     const double Lx = pfc::domain::get_size(domain, 0);
     const double dx = pfc::domain::get_spacing(domain, 0);
     const double l = Lx * dx;
@@ -237,6 +236,4 @@ public:
   }
 };
 
-} // namespace pfc
-
-#endif // PFC_BOUNDARY_CONDITIONS_MOVING_BC_HPP
+} // namespace tungsten
