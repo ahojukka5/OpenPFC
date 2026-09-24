@@ -64,7 +64,7 @@
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/observable_reduce.hpp>
-#include <openpfc/kernel/simulation/simulation_driver.hpp>
+#include <openpfc/kernel/simulation/simulation_lifecycle.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
 #include <surface_diffusion/anisotropic_flux.hpp>
@@ -244,9 +244,10 @@ int main(int argc, char *argv[]) {
     }
 
     Sample final_sample{};
-    const double cadence = saveat > 0.0 ? saveat : t1;
-    pfc::Time clock({0.0, t1, dt}, cadence);
-    double t_prev = 0.0;
+    pfc::sim::SimulationLifecycle life(
+        pfc::sim::SimulationLifecycle::schedule(0.0, t1, dt, saveat),
+        MPI_COMM_WORLD);
+    life.bind_field("h", h);
     auto report = [&](const pfc::Time &now) {
       const int step = pfc::time::increment(now);
       const double t = pfc::time::current(now);
@@ -266,18 +267,15 @@ int main(int argc, char *argv[]) {
       throw std::invalid_argument(
           "surface_diffusion_anisotropic: t1 must be an integer multiple of dt");
     }
-    pfc::sim::run(
-        clock,
-        [&](double t_now, double interval) {
-          if (std::abs(interval - dt) > 1e-8 * std::max(1.0, dt)) {
-            throw std::invalid_argument(
-                "surface_diffusion_anisotropic: refusing a clipped step; the "
-                "ETD coefficients use the full dt");
-          }
-          stepper.step(t_prev, h);
-          t_prev = t_now;
-        },
-        pfc::sim::NoopHook{}, pfc::sim::NoopHook{}, report);
+    life.set_save_observer(report);
+    life.run([&](double t_now, double interval) {
+      if (std::abs(interval - dt) > 1e-8 * std::max(1.0, dt)) {
+        throw std::invalid_argument(
+            "surface_diffusion_anisotropic: refusing a clipped step; the "
+            "ETD coefficients use the full dt");
+      }
+      stepper.step(t_now - interval, h);
+    });
 
     if (rank == 0) {
       std::printf(

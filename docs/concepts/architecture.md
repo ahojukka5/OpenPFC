@@ -164,6 +164,12 @@ OpenPFC favors data-centric types and free functions for queries and operations.
 Inheritance is reserved for stable out-of-tree extension seams such as
 `Model`, `FieldModifier`, and `ResultsWriter`.
 
+A custom numerical stepper uses `pfc::sim::run` or `pfc::sim::run_attempts`
+for the time loop, and `pfc::sim::SimulationLifecycle` when it also wants
+named fields, initial and boundary modifiers, and save or checkpoint
+hooks. `SnapshotSeries` and `DiagnosticsSeries` stay separate types. See
+[Custom stepper lifecycle](custom_stepper.md).
+
 Use these rules when adding functionality:
 
 - put backend-independent contracts and algorithms in kernel;
