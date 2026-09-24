@@ -9,6 +9,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- `SimulationLifecycle` no longer runs the accepted-step hook on the
+  output cadence. `set_accepted_step_hook` runs after every accepted
+  step, and `set_save_observer` still follows `do_save()`. Checkpoint
+  cadence is `CheckpointService::maybe_save` inside the accepted-step
+  hook.
+
 - Stop submitting four-protocol sequential #106 `srun`s at 480+ nodes.
   A 90 s HIP drain still exits 143 on the first protocol
   (`switch_g_job_postfini`); jobs 22199235--22199237 were cancelled.

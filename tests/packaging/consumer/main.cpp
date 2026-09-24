@@ -82,17 +82,20 @@ int main() {
   pfc::data::Field<double> density(domain, box, 0);
   pfc::data::Field<double> solute(domain, box, 0);
   pfc::sim::SimulationLifecycle life(
-      pfc::sim::SimulationLifecycle::schedule(0.0, 0.2, 0.1, 0.2), MPI_COMM_WORLD);
+      pfc::sim::SimulationLifecycle::schedule(0.0, 0.4, 0.1, 0.4), MPI_COMM_WORLD);
   life.bind_field("density", density);
   life.bind_field("solute", solute);
   life.add_initial_condition("density", std::make_unique<pfc::Constant>(1.0));
   life.add_initial_condition("solute", std::make_unique<pfc::Constant>(2.0));
   int life_saves = 0;
+  int accepted_steps = 0;
   life.set_save_observer([&](const pfc::Time &) { ++life_saves; });
+  life.set_accepted_step_hook([&](const pfc::Time &) { ++accepted_steps; });
   life.run([](double, double) {});
   const bool fields_ok = density(0, 0, 0) == 1.0 && solute(0, 0, 0) == 2.0;
   const bool domain_ok = size[0] == 8 && size[1] == 8 && size[2] == 8;
-  if (fields_ok && domain_ok && life_saves == 2) {
+  const bool cadence_ok = life_saves == 2 && accepted_steps == 4;
+  if (fields_ok && domain_ok && cadence_ok) {
     std::printf("OpenPFC consumer OK: domain %dx%dx%d\n", size[0], size[1], size[2]);
   }
   int mpi_done = 0;
@@ -100,5 +103,5 @@ int main() {
   if (mpi_ready == 0 && mpi_done == 0) {
     MPI_Finalize();
   }
-  return (fields_ok && domain_ok && life_saves == 2) ? 0 : 1;
+  return (fields_ok && domain_ok && cadence_ok) ? 0 : 1;
 }

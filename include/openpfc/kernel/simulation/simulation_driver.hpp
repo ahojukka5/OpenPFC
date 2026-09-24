@@ -103,9 +103,9 @@ struct AttemptGuard {
  * `Time &` / `const Time &`.
  */
 template <class Step, class OnStart = NoopHook, class Apply = NoopHook,
-          class OnSave = NoopHook>
+          class OnSave = NoopHook, class OnAccepted = NoopHook>
 void run(Time &time, Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
-         OnSave &&on_save = {}) {
+         OnSave &&on_save = {}, OnAccepted &&on_accepted = {}) {
   while (!pfc::time::done(time)) {
     if (pfc::time::increment(time) == 0) {
       on_start(time);
@@ -118,6 +118,7 @@ void run(Time &time, Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
     apply(time);
     detail::call_fixed_step(step, pfc::time::current(time),
                             pfc::time::current(time) - t_before);
+    on_accepted(time);
     if (pfc::time::do_save(time)) {
       on_save(time);
     }
@@ -135,9 +136,10 @@ void run(Time &time, Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
  * `increment_step_rejection`.
  */
 template <class Step, class OnStart = NoopHook, class Apply = NoopHook,
-          class OnSave = NoopHook>
+          class OnSave = NoopHook, class OnAccepted = NoopHook>
 void run_attempts(Time &time, Step &&step, OnStart &&on_start = {},
                   Apply &&apply = {}, OnSave &&on_save = {},
+                  OnAccepted &&on_accepted = {},
                   int max_consecutive_rejections = 10000) {
   if (max_consecutive_rejections < 1) {
     throw std::invalid_argument(
@@ -167,6 +169,7 @@ void run_attempts(Time &time, Step &&step, OnStart &&on_start = {},
     time.commit_attempt();
     time.increment_step_success();
     guard.dismiss();
+    on_accepted(time);
     if (pfc::time::do_save(time)) on_save(time);
   }
 }
@@ -181,11 +184,12 @@ public:
       : m_time(&time), m_state(state) {}
 
   template <class Step, class OnStart = NoopHook, class Apply = NoopHook,
-            class OnSave = NoopHook>
+            class OnSave = NoopHook, class OnAccepted = NoopHook>
   void run(Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
-           OnSave &&on_save = {}) {
+           OnSave &&on_save = {}, OnAccepted &&on_accepted = {}) {
     pfc::sim::run(*m_time, std::forward<Step>(step), std::forward<OnStart>(on_start),
-                  std::forward<Apply>(apply), std::forward<OnSave>(on_save));
+                  std::forward<Apply>(apply), std::forward<OnSave>(on_save),
+                  std::forward<OnAccepted>(on_accepted));
   }
 
   /**
@@ -194,13 +198,14 @@ public:
    *        of the attempt and `get_attempted_dt()` is the clipped interval.
    */
   template <class Step, class OnStart = NoopHook, class Apply = NoopHook,
-            class OnSave = NoopHook>
+            class OnSave = NoopHook, class OnAccepted = NoopHook>
   void run_attempts(Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
-                    OnSave &&on_save = {}, int max_consecutive_rejections = 10000) {
-    pfc::sim::run_attempts(*m_time, std::forward<Step>(step),
-                           std::forward<OnStart>(on_start),
-                           std::forward<Apply>(apply), std::forward<OnSave>(on_save),
-                           max_consecutive_rejections);
+                    OnSave &&on_save = {}, OnAccepted &&on_accepted = {},
+                    int max_consecutive_rejections = 10000) {
+    pfc::sim::run_attempts(
+        *m_time, std::forward<Step>(step), std::forward<OnStart>(on_start),
+        std::forward<Apply>(apply), std::forward<OnSave>(on_save),
+        std::forward<OnAccepted>(on_accepted), max_consecutive_rejections);
   }
 
   [[nodiscard]] Time &time() noexcept { return *m_time; }

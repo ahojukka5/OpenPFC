@@ -17,7 +17,15 @@ It is not a requirement for a custom step.
 |------|-----|
 | Fixed step, clock already built | `pfc::sim::run` |
 | Accept or reject a step | `pfc::sim::run_attempts` |
-| Fields, modifiers, save, checkpoint, profiling | `pfc::sim::SimulationLifecycle` |
+| Fields, modifiers, save and accepted-step hooks, profiling | `pfc::sim::SimulationLifecycle` |
+| A standard backend stack owned by OpenPFC | `pfc::sim::SimulationSession<Stack>` |
+
+`SimulationSession<Stack>` and `SimulationLifecycle` are peers. The
+session owns `Time` and a computational stack. The lifecycle owns `Time`
+and the modifier/hook loop, and does not own a stack. A frontend may use
+either one, or build a lifecycle around a session's `time()` and the
+fields that live on the stack. There is no third session type for custom
+steppers.
 
 Header: `openpfc/kernel/simulation/simulation_lifecycle.hpp`.
 
@@ -43,8 +51,9 @@ interval is `min(dt, t1 - t_before)` on the last step. A one-argument
 to `t1` and to the next save. The stepper returns `StepDecision`. The
 lifecycle's runner owns `increment_step_success` and
 `increment_step_rejection`. A rejection does not call the save observer
-or the checkpoint hook. An exception from the step closes the attempt
-and propagates.
+or the accepted-step hook. An acceptance calls the accepted-step hook
+once, then the save observer only when `do_save()` is true. An exception
+from the step closes the attempt and propagates.
 
 `SimulationLifecycle::schedule(t0, t1, dt, saveat)` builds that clock.
 A non-positive `saveat` still saves the initial state and the final
@@ -78,16 +87,19 @@ life.set_save_observer([&](const pfc::Time &now) {
   snapshots.write(step, t);
   diagnostics.write(step, t, columns);
 });
-life.set_checkpoint_hook([&](const pfc::Time &now) {
-  checkpoint.save(state, now);
+life.set_accepted_step_hook([&](const pfc::Time &now) {
+  checkpoint.maybe_save(state, now);
 });
 life.set_profiling(&profiling_session); // optional; nullptr leaves it off
 ```
 
-The checkpoint hook is the integration point for `CheckpointService`.
-The lifecycle does not invent a payload. Both hooks run only after an
-accepted state that `do_save()` accepts.
+The save observer follows output cadence, including `t0` when
+`do_save()` is true. The accepted-step hook follows the physical step:
+once per acceptance, not at `t0`, and not on a rejection.
+`CheckpointService::maybe_save` decides its own `every` from that hook.
+The lifecycle does not own the service and does not invent a payload.
 
-Profiling frames each step callback when a session is set. A rejected
-attempt is framed, because the step ran. `prepare_stage` is not a frame.
-Output and checkpoint progress do not move on a rejection.
+Profiling frames each step callback when a session is set, including a
+rejected attempt, because that work ran. `prepare_stage` is not a frame.
+The accepted-step hook is outside the frame. Output does not move on a
+rejection.
