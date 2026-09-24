@@ -14,6 +14,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   step, and `set_save_observer` still follows `do_save()`. Checkpoint
   cadence is `CheckpointService::maybe_save` inside the accepted-step
   hook.
+- The Cahn–Hilliard diagnostics smoke test matches the current
+  `DiagnosticsSeries` open failure, which reports that the file already
+  exists.
 
 - Stop submitting four-protocol sequential #106 `srun`s at 480+ nodes.
   A 90 s HIP drain still exits 143 on the first protocol
