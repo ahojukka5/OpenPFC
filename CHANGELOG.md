@@ -38,6 +38,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - Owned-cell reductions `pfc::sim::reduce_owned` (sum, mean, min, max,
   L1, L2, RMS, variance, integral) and a rank-0 diagnostics CSV
   (`include/openpfc/frontend/io/diagnostics_series.hpp`, #148).
+  Variance is a Welford/Chan population moment. The optional map sends
+  one cell to one scalar. A diagnostics series agrees on its
+  configuration before opening the file.
   The reduction is over owned cells and takes an explicit communicator.
   A per-cell map can feed it. The CSV records step, time, and named
   columns the caller already computed. It refuses an existing file

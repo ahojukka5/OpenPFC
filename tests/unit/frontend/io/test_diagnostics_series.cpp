@@ -23,6 +23,12 @@ int world_size() {
   return n;
 }
 
+int world_rank() {
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  return rank;
+}
+
 std::filesystem::path temp_dir(const char *name) {
   const auto dir =
       std::filesystem::temp_directory_path() / (std::string("pfc-diag-") + name);
@@ -74,11 +80,11 @@ TEST_CASE("A diagnostics series rejects a short row and a bad column name",
           "[diagnostics]") {
   if (world_size() != 1) SKIP("single-rank diagnostics");
   const auto dir = temp_dir("reject");
-  REQUIRE_THROWS_AS(
+  REQUIRE_THROWS_WITH(
       pfc::io::DiagnosticsSeries(
           {"a,b"}, pfc::io::DiagnosticsSeriesOptions{.path = dir / "x.csv",
                                                      .comm = MPI_COMM_SELF}),
-      std::invalid_argument);
+      ContainsSubstring("column name"));
   pfc::io::DiagnosticsSeries series(
       {"mean"}, pfc::io::DiagnosticsSeriesOptions{.path = dir / "ok.csv",
                                                   .comm = MPI_COMM_SELF});
@@ -97,4 +103,56 @@ TEST_CASE("Opening a diagnostics file that is a directory fails", "[diagnostics]
                                                       .overwrite = true}),
       ContainsSubstring("cannot open"));
   std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("A bad column on one rank fails before any writer", "[diagnostics][MPI]") {
+  if (world_size() != 2) SKIP("two-rank diagnostics");
+  const int rank = world_rank();
+  const auto path =
+      std::filesystem::temp_directory_path() / "pfc-diag-mpi-column.csv";
+  const std::vector<std::string> columns =
+      rank == 0 ? std::vector<std::string>{"mean"} : std::vector<std::string>{"a,b"};
+  if (rank == 0) {
+    REQUIRE_THROWS_WITH(
+        pfc::io::DiagnosticsSeries(
+            columns,
+            pfc::io::DiagnosticsSeriesOptions{.path = path, .comm = MPI_COMM_WORLD}),
+        ContainsSubstring("a peer rejected the configuration"));
+  } else {
+    REQUIRE_THROWS_WITH(
+        pfc::io::DiagnosticsSeries(
+            columns,
+            pfc::io::DiagnosticsSeriesOptions{.path = path, .comm = MPI_COMM_WORLD}),
+        ContainsSubstring("column name"));
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+}
+
+TEST_CASE("CSV open failure is reported on every rank", "[diagnostics][MPI]") {
+  if (world_size() != 2) SKIP("two-rank diagnostics");
+  const int rank = world_rank();
+  const auto dir = std::filesystem::temp_directory_path() / "pfc-diag-mpi-open-dir";
+  if (rank == 0) {
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) {
+    REQUIRE_THROWS_WITH(
+        pfc::io::DiagnosticsSeries(
+            {"mean"}, pfc::io::DiagnosticsSeriesOptions{.path = dir,
+                                                        .comm = MPI_COMM_WORLD,
+                                                        .overwrite = true}),
+        ContainsSubstring("cannot open"));
+  } else {
+    REQUIRE_THROWS_WITH(
+        pfc::io::DiagnosticsSeries(
+            {"mean"}, pfc::io::DiagnosticsSeriesOptions{.path = dir,
+                                                        .comm = MPI_COMM_WORLD,
+                                                        .overwrite = true}),
+        ContainsSubstring("another rank"));
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) std::filesystem::remove_all(dir);
+  MPI_Barrier(MPI_COMM_WORLD);
 }
