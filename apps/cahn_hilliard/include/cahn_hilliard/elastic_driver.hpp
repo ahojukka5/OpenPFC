@@ -36,6 +36,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -47,6 +48,7 @@
 #include <cahn_hilliard/concentration_seed.hpp>
 #include <cahn_hilliard/diagnostics.hpp>
 #include <cahn_hilliard/fe_cr_thermo.hpp>
+#include <openpfc/frontend/io/diagnostics_series.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
@@ -218,19 +220,18 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
                                       pfc::io::SnapshotSeriesOptions{.comm = comm});
     pfc::ui::bind_snapshot_field(snapshots, cfg, "c", c);
     pfc::ui::finish_snapshot_fields(snapshots, cfg);
-    std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
-    if (rank == 0 && cfg.contains("diagnostics")) {
+    std::optional<pfc::io::DiagnosticsSeries> diag;
+    if (cfg.contains("diagnostics")) {
       const std::filesystem::path path =
           cfg.at("diagnostics").at("csv").get<std::string>();
-      if (path.has_parent_path())
-        std::filesystem::create_directories(path.parent_path());
-      out.reset(std::fopen(path.string().c_str(), "w"));
-      if (!out) throw std::runtime_error("cannot open diagnostics csv");
-      std::fprintf(out.get(),
-                   "step,time,mean,mass,min,max,bulk_energy,gradient_energy,"
-                   "total_energy,el_energy,el_iterations,max_abs_mu_el,"
-                   "k1,domain_length,k_peak,dominant_wavelength,"
-                   "axis_power,diag_power\n");
+      diag.emplace(
+          std::vector<std::string>{"mean", "mass", "min", "max", "bulk_energy",
+                                   "gradient_energy", "total_energy", "el_energy",
+                                   "el_iterations", "max_abs_mu_el", "k1",
+                                   "domain_length", "k_peak", "dominant_wavelength",
+                                   "axis_power", "diag_power"},
+          pfc::io::DiagnosticsSeriesOptions{
+              .path = path, .comm = comm, .overwrite = true});
     }
 
     auto assemble_amp = [&] {
@@ -300,18 +301,15 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
 
     auto report = [&](int step, double t, int el_iters, double max_mu) {
       snapshots.write(step, t);
-      if (!out) return;
+      if (!diag) return;
       auto s = diagnostics.sample(c, ch);
       const auto [p_axis, p_diag] = axis_vs_diag();
       const double el_e = solver.total_elastic_energy();
-      std::fprintf(out.get(),
-                   "%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,"
-                   "%.17g,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
-                   step, t, s.mean, s.mass, s.minimum, s.maximum, s.bulk_energy,
-                   s.gradient_energy, s.total_energy() + el_e, el_e, el_iters,
-                   max_mu, s.k1, s.domain_length, s.k_peak, s.dominant_wavelength,
-                   p_axis, p_diag);
-      std::fflush(out.get());
+      diag->write(step, t,
+                  {s.mean, s.mass, s.minimum, s.maximum, s.bulk_energy,
+                   s.gradient_energy, s.total_energy() + el_e, el_e,
+                   static_cast<double>(el_iters), max_mu, s.k1, s.domain_length,
+                   s.k_peak, s.dominant_wavelength, p_axis, p_diag});
     };
 
     const int n_steps = static_cast<int>(std::llround(t1 / dt));
@@ -361,6 +359,7 @@ inline int run_cahn_hilliard_elastic(int rank, int nproc, MPI_Comm comm,
       (void)diagnostics.sample(c, ch);
       (void)solver.total_elastic_energy();
     }
+    if (diag) diag->close();
     snapshots.close();
   } catch (const std::exception &e) {
     if (rank == 0) std::cerr << "cahn_hilliard_elastic: " << e.what() << "\n";

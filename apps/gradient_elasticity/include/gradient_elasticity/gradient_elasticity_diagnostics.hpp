@@ -42,6 +42,7 @@
 #include <gradient_elasticity/gradient_elasticity_physics.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/simulation/observable_reduce.hpp>
 
 namespace gradient_elasticity {
 
@@ -80,8 +81,8 @@ void compute_stress_fields(const Physics &phys,
                   stress_vm.with_host_view([&](double *vmp, std::size_t) {
                     energy_density.with_host_view([&](double *wp, std::size_t) {
                       for (std::size_t idx = 0; idx < n; ++idx) {
-                        const auto s =
-                            phys.stress_state(exxp[idx], eyyp[idx], exyp[idx], gp[idx]);
+                        const auto s = phys.stress_state(exxp[idx], eyyp[idx],
+                                                         exyp[idx], gp[idx]);
                         sxxp[idx] = s.sxx;
                         syyp[idx] = s.syy;
                         sxyp[idx] = s.sxy;
@@ -108,33 +109,15 @@ StressSummary summarize_stress(pfc::data::Field<double, MemorySpace> &stress_hyd
                                pfc::data::Field<double, MemorySpace> &stress_vm,
                                pfc::data::Field<double, MemorySpace> &energy_density,
                                const pfc::Domain &domain, MPI_Comm comm) {
-  double local_hydro = 0.0;
-  double local_vm = 0.0;
-  double local_energy = 0.0;
-  stress_hydro.with_host_view([&](double *p, std::size_t n) {
-    for (std::size_t i = 0; i < n; ++i) {
-      local_hydro = std::max(local_hydro, std::abs(p[i]));
-    }
-  });
-  stress_vm.with_host_view([&](double *p, std::size_t n) {
-    for (std::size_t i = 0; i < n; ++i) {
-      local_vm = std::max(local_vm, p[i]);
-    }
-  });
-  energy_density.with_host_view([&](double *p, std::size_t n) {
-    for (std::size_t i = 0; i < n; ++i) {
-      local_energy += p[i];
-    }
-  });
+  const auto hydro = pfc::sim::reduce_owned(stress_hydro, comm,
+                                            [](double v) { return std::fabs(v); });
+  const auto vm = pfc::sim::reduce_owned(stress_vm, comm);
+  const auto energy = pfc::sim::reduce_owned(energy_density, comm);
   const auto dx = pfc::domain::get_spacing(domain);
-  const double cell_volume = dx[0] * dx[1] * dx[2];
   StressSummary global{};
-  MPI_Allreduce(&local_hydro, &global.peak_abs_hydrostatic, 1, MPI_DOUBLE, MPI_MAX,
-               comm);
-  MPI_Allreduce(&local_vm, &global.peak_von_mises, 1, MPI_DOUBLE, MPI_MAX, comm);
-  double global_energy_sum = 0.0;
-  MPI_Allreduce(&local_energy, &global_energy_sum, 1, MPI_DOUBLE, MPI_SUM, comm);
-  global.total_elastic_energy = global_energy_sum * cell_volume;
+  global.peak_abs_hydrostatic = hydro.count == 0 ? 0.0 : hydro.max;
+  global.peak_von_mises = vm.count == 0 ? 0.0 : vm.max;
+  global.total_elastic_energy = energy.sum * dx[0] * dx[1] * dx[2];
   return global;
 }
 

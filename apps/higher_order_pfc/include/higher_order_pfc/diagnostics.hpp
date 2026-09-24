@@ -12,8 +12,7 @@
  * Wraps `FreeEnergySampler` (free-energy density, mean density, the
  * azimuthally averaged structure factor) and `bond_orientational_order`
  * (real-space \f$\psi_4\f$/\f$\psi_6\f$) into one collective sample plus a
- * never-overwriting rank-0 CSV, the same shape as
- * `cahn_hilliard::Diagnostics`/`DiagnosticCSV`.
+ * never-overwriting rank-0 CSV written by `DiagnosticsSeries`.
  *
  * The real-space order metric needs the whole grid on one rank -- finding a
  * peak's nearest neighbours across a rank boundary is not a reduction, unlike
@@ -105,59 +104,6 @@ private:
   pfc::Domain m_domain;
   MPI_Comm m_comm;
   FreeEnergySampler<MemorySpace> m_energy;
-};
-
-/// Rank-zero CSV with collective failure propagation. Never replaces old data.
-class DiagnosticCSV {
-public:
-  DiagnosticCSV(const std::filesystem::path &path, MPI_Comm comm) : m_comm(comm) {
-    MPI_Comm_rank(comm, &m_rank);
-    int ok = 1;
-    if (m_rank == 0) {
-      try {
-        if (path.has_parent_path())
-          std::filesystem::create_directories(path.parent_path());
-        m_out.reset(std::fopen(path.string().c_str(), "wx"));
-        if (!m_out) throw std::runtime_error("open failed");
-        ok =
-            publish("step,time,mean_psi,free_energy_density,k1,domain_length,k_peak,"
-                    "dominant_wavelength,S_at_1,S_at_q1,psi4_global,psi4_local,"
-                    "psi6_global,psi6_local,n_peaks,mean_neighbours\n");
-      } catch (const std::exception &) {
-        ok = 0;
-      }
-    }
-    MPI_Bcast(&ok, 1, MPI_INT, 0, comm);
-    if (!ok)
-      throw std::runtime_error("diagnostics: cannot create fresh CSV: " +
-                               path.string());
-  }
-
-  void write(int step, double time, const DiagnosticSample &s) {
-    int ok = 1;
-    if (m_rank == 0) {
-      std::ostringstream line;
-      line.imbue(std::locale::classic());
-      line << std::setprecision(17) << step << ',' << time << ',' << s.mean_psi
-           << ',' << s.free_energy_density << ',' << s.k1 << ',' << s.domain_length
-           << ',' << s.k_peak << ',' << s.dominant_wavelength << ',' << s.S_at_1
-           << ',' << s.S_at_q1 << ',' << s.psi4_global << ',' << s.psi4_local << ','
-           << s.psi6_global << ',' << s.psi6_local << ',' << s.n_peaks << ','
-           << s.mean_neighbours << '\n';
-      ok = publish(line.str());
-    }
-    MPI_Bcast(&ok, 1, MPI_INT, 0, m_comm);
-    if (!ok) throw std::runtime_error("diagnostics: CSV write failed");
-  }
-
-private:
-  bool publish(const std::string &line) {
-    return std::fputs(line.c_str(), m_out.get()) >= 0 &&
-           std::fflush(m_out.get()) == 0;
-  }
-  MPI_Comm m_comm;
-  int m_rank{};
-  std::unique_ptr<std::FILE, decltype(&std::fclose)> m_out{nullptr, &std::fclose};
 };
 
 } // namespace higher_order_pfc

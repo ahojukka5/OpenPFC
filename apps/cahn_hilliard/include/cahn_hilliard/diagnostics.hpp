@@ -17,6 +17,7 @@
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
+#include <openpfc/kernel/simulation/observable_reduce.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 
 namespace cahn_hilliard {
@@ -82,39 +83,32 @@ public:
 
   DiagnosticSample sample(RealField &field, const CahnHilliardParams &params) {
     DiagnosticSample result;
-    double local[3]{}; // sum, bulk density sum, invalid count
-    double lo = std::numeric_limits<double>::infinity(), hi = -lo;
-    field.with_host_view([&](double *data, std::size_t n) {
-      for (std::size_t i = 0; i < n; ++i) {
-        const double c = data[i];
-        local[0] += c;
-        if (!std::isfinite(c) || c <= 0 || c >= 1)
-          ++local[2];
-        else
-          // No evaluator clamp: report the actual logarithmic energy for
-          // every admissible concentration, including values near 0 and 1.
-          local[1] += params.omega_nd * c * (1 - c) + c * std::log(c) +
-                      (1 - c) * std::log1p(-c);
-        lo = std::min(lo, c);
-        hi = std::max(hi, c);
-      }
+    const auto stats = pfc::sim::reduce_owned(field, m_comm);
+    const auto invalid = pfc::sim::reduce_owned(field, m_comm, [](double c) {
+      return (!std::isfinite(c) || c <= 0.0 || c >= 1.0) ? 1.0 : 0.0;
     });
-    double global[3]{};
-    MPI_Allreduce(local, global, 3, MPI_DOUBLE, MPI_SUM, m_comm);
-    MPI_Allreduce(&lo, &result.minimum, 1, MPI_DOUBLE, MPI_MIN, m_comm);
-    MPI_Allreduce(&hi, &result.maximum, 1, MPI_DOUBLE, MPI_MAX, m_comm);
+    const auto bulk = pfc::sim::reduce_owned(field, m_comm, [&](double c) {
+      if (!std::isfinite(c) || c <= 0.0 || c >= 1.0) return 0.0;
+      // No evaluator clamp: report the actual logarithmic energy for
+      // every admissible concentration, including values near 0 and 1.
+      return params.omega_nd * c * (1.0 - c) + c * std::log(c) +
+             (1.0 - c) * std::log1p(-c);
+    });
     const auto n = pfc::domain::get_size(m_domain);
     const auto dx = pfc::domain::get_spacing(m_domain);
     const double cell_volume = dx[0] * dx[1] * dx[2];
-    result.mean = global[0] / (double(n[0]) * n[1] * n[2]);
-    result.mass = global[0] * cell_volume;
-    result.invalid_cells = global[2];
-    if (global[2] != 0) {
+    const double ncell = double(n[0]) * n[1] * n[2];
+    result.mean = stats.sum / ncell;
+    result.mass = stats.sum * cell_volume;
+    result.minimum = stats.min;
+    result.maximum = stats.max;
+    result.invalid_cells = invalid.sum;
+    if (result.invalid_cells != 0.0) {
       result.bulk_energy = result.gradient_energy =
           std::numeric_limits<double>::quiet_NaN();
       return result;
     }
-    result.bulk_energy = global[1] * cell_volume;
+    result.bulk_energy = bulk.sum * cell_volume;
     Ops::forward(m_fft, field, m_hat);
     // The same transform serves the gradient energy and the spectrum.
     // radial_average drops k=0, so the mean does not have to be removed first.
@@ -151,59 +145,4 @@ private:
   int m_sf_bins{64};
 };
 
-/// Rank-zero CSV with collective failure propagation. Never replaces old data.
-class DiagnosticCSV {
-public:
-  DiagnosticCSV(const std::filesystem::path &path, MPI_Comm comm) : m_comm(comm) {
-    MPI_Comm_rank(comm, &m_rank);
-    int ok = 1;
-    if (m_rank == 0) {
-      try {
-        if (path.has_parent_path())
-          std::filesystem::create_directories(path.parent_path());
-        // Exclusive creation also protects against concurrent jobs and links.
-        m_out.reset(std::fopen(path.string().c_str(), "wx"));
-        if (!m_out) throw std::runtime_error("open failed");
-        ok = publish("step,time,mean,mass,min,max,bulk_energy,gradient_energy,"
-                     "total_energy,invalid_cells,k1,domain_length,k_peak,"
-                     "dominant_wavelength\n");
-      } catch (const std::exception &) {
-        ok = 0;
-      }
-    }
-    MPI_Bcast(&ok, 1, MPI_INT, 0, comm);
-    if (!ok)
-      throw std::runtime_error("diagnostics: cannot create fresh CSV: " +
-                               path.string());
-  }
-
-  void write(int step, double time, const DiagnosticSample &s) {
-    int ok = 1;
-    if (m_rank == 0) {
-      std::ostringstream line;
-      line.imbue(std::locale::classic());
-      line << std::setprecision(17) << step << ',' << time << ',' << s.mean << ','
-           << s.mass << ',' << s.minimum << ',' << s.maximum << ',' << s.bulk_energy
-           << ',' << s.gradient_energy << ',' << s.total_energy() << ','
-           << s.invalid_cells << ',' << s.k1 << ',' << s.domain_length << ','
-           << s.k_peak << ',' << s.dominant_wavelength << '\n';
-      ok = publish(line.str());
-    }
-    MPI_Bcast(&ok, 1, MPI_INT, 0, m_comm);
-    if (!ok) throw std::runtime_error("diagnostics: CSV write failed");
-    if (s.invalid_cells != 0)
-      throw std::runtime_error(
-          "Cahn-Hilliard diagnostics: nonfinite or out-of-range composition; "
-          "require 0<c<1 (reduce dt/check input)");
-  }
-
-private:
-  bool publish(const std::string &line) {
-    return std::fputs(line.c_str(), m_out.get()) >= 0 &&
-           std::fflush(m_out.get()) == 0;
-  }
-  MPI_Comm m_comm;
-  int m_rank{};
-  std::unique_ptr<std::FILE, decltype(&std::fclose)> m_out{nullptr, &std::fclose};
-};
 } // namespace cahn_hilliard
