@@ -156,7 +156,7 @@ The complete catalog and suggested curriculum are in
 - [`../concepts/spectral_stack.md`](../concepts/spectral_stack.md) — spectral
   data flow
 - [`../user_guide/app_pipeline.md`](../user_guide/app_pipeline.md) —
-  configuration to `Simulator`
+  configuration to a session and `pfc::sim::run`
 - [`api_examples_walkthrough.md`](api_examples_walkthrough.md) — curated API
   examples
 - [`../getting_started/01-basics/README.md`](../getting_started/01-basics/README.md)

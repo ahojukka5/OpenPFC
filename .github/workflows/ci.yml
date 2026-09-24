@@ -56,6 +56,12 @@ jobs:
       - name: GPU memcpy checker self-test
         run: bash scripts/check_gpu_memcpy_single_source.sh --self-test
 
+      - name: App self-containment
+        run: bash scripts/check_app_self_containment.sh
+
+      - name: App self-containment self-test
+        run: bash scripts/check_app_self_containment.sh --self-test
+
   # ============================================================================
   # CMake Build Matrix
   # ============================================================================
