@@ -15,7 +15,7 @@
 #include <string>
 #include <string_view>
 
-#include <openpfc_apps/cli.hpp>
+#include <wave2d/parse_support.hpp>
 #include <wave2d/wave_boundary.hpp>
 
 namespace wave2d {
@@ -56,7 +56,7 @@ inline void print_usage(std::ostream &os, const char *exe, bool with_fd_order) {
 namespace detail {
 
 [[nodiscard]] inline bool is_cli_flag(const char *s) noexcept {
-  return pfc::apps::is_long_flag(s);
+  return wave2d::is_long_flag(s);
 }
 
 inline bool parse_vtk_tail(int argc, char **argv, int start, RunConfig &c) {
@@ -99,7 +99,7 @@ inline bool valid_grid(const RunConfig &c) noexcept {
 }
 
 inline bool valid_fd_order(const RunConfig &c) noexcept {
-  return pfc::apps::even_fd_order(c.fd_order);
+  return wave2d::even_fd_order(c.fd_order);
 }
 
 } // namespace detail
@@ -147,14 +147,14 @@ inline std::optional<RunConfig> parse_manual(int argc, char **argv) {
 
 inline std::optional<RunConfig> parse_fd_or_print_usage(int argc, char **argv,
                                                         int rank) {
-  return pfc::apps::parse_or_print_usage(
+  return wave2d::parse_or_print_usage(
       argc, argv, rank, parse_fd,
       [](std::ostream &os, const char *exe) { print_usage(os, exe, true); });
 }
 
 inline std::optional<RunConfig> parse_manual_or_print_usage(int argc, char **argv,
                                                             int rank) {
-  return pfc::apps::parse_or_print_usage(
+  return wave2d::parse_or_print_usage(
       argc, argv, rank, parse_manual,
       [](std::ostream &os, const char *exe) { print_usage(os, exe, false); });
 }

@@ -16,7 +16,7 @@
 #include <vector>
 
 #include <kobayashi/defaults.hpp>
-#include <openpfc_apps/cli.hpp>
+#include <kobayashi/parse_support.hpp>
 
 namespace kobayashi {
 
@@ -144,7 +144,7 @@ inline std::optional<RunConfig> parse_args(int argc, char **argv) {
 
 inline std::optional<RunConfig> parse_or_print_usage(int argc, char **argv,
                                                      int rank) {
-  return pfc::apps::parse_or_print_usage(argc, argv, rank, parse_args, print_usage);
+  return kobayashi::parse_or_print_usage(argc, argv, rank, parse_args, print_usage);
 }
 
 /**

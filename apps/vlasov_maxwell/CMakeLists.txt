@@ -18,7 +18,7 @@ endif()
 function(vlasov_add_driver name source)
   add_executable(${name} ${source})
   target_include_directories(${name} PRIVATE ${VLASOV_INCLUDE_DIR})
-  target_link_libraries(${name} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${name} PRIVATE OpenPFC
                         ${_vlasov_heffte_tgt})
   install(TARGETS ${name} DESTINATION bin)
 endfunction()
@@ -30,13 +30,20 @@ foreach(_src ${_vlasov_drivers})
 endforeach()
 
 option(VLASOV_ENABLE_TESTS "Build vlasov_maxwell unit tests" ON)
+if(VLASOV_ENABLE_TESTS AND OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2WithMain)
+  add_executable(test_plasma_dispersion tests/plasma_dispersion_oracle.cpp)
+  target_include_directories(test_plasma_dispersion PRIVATE ${VLASOV_INCLUDE_DIR})
+  target_link_libraries(test_plasma_dispersion PRIVATE Catch2::Catch2WithMain)
+  add_test(NAME vlasov-plasma-dispersion COMMAND test_plasma_dispersion)
+  set_tests_properties(vlasov-plasma-dispersion PROPERTIES TIMEOUT 300)
+endif()
 if(VLASOV_ENABLE_TESTS AND OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
   file(GLOB _vlasov_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp)
   foreach(_src ${_vlasov_tests})
     get_filename_component(_name ${_src} NAME_WE)
     add_executable(${_name} ${_src})
     target_include_directories(${_name} PRIVATE ${VLASOV_INCLUDE_DIR})
-    target_link_libraries(${_name} PRIVATE OpenPFC openpfc_apps_common
+    target_link_libraries(${_name} PRIVATE OpenPFC
                           Catch2::Catch2 ${_vlasov_heffte_tgt})
     include(CTest)
     add_test(NAME ${_name} COMMAND ${_name})
@@ -79,7 +86,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
   foreach(_drv IN ITEMS vlasov_hip_parity vlasov_hip_cost)
     add_executable(${_drv} src/hip/${_drv}.cpp ${_vlasov_hip_kernels})
     target_include_directories(${_drv} PRIVATE ${VLASOV_INCLUDE_DIR})
-    target_link_libraries(${_drv} PRIVATE OpenPFC openpfc_apps_common hip::host
+    target_link_libraries(${_drv} PRIVATE OpenPFC hip::host
                           hip::hipfft ${_vlasov_heffte_tgt})
     set_target_properties(${_drv} PROPERTIES
       HIP_STANDARD 20

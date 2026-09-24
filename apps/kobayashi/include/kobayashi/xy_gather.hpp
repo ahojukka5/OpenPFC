@@ -5,7 +5,7 @@
 
 /**
  * @file gather.hpp
- * @brief Rank-0 XY gather and ordered field stats for FD demo apps.
+ * @brief Rank-0 XY gather local to this application.
  */
 
 #include <algorithm>

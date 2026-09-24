@@ -45,7 +45,7 @@ option(HEAT3D_ENABLE_TESTS "Enable building heat3d tests" ON)
 foreach(_target IN LISTS _heat3d_binaries)
   add_executable(${_target} src/cpu/${_target}.cpp)
   target_include_directories(${_target} PRIVATE ${HEAT3D_INCLUDE_DIR})
-  target_link_libraries(${_target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${_target} PRIVATE OpenPFC
                                            ${_heat3d_heffte_tgt})
   if(OpenMP_CXX_FOUND)
     target_link_libraries(${_target} PRIVATE OpenMP::OpenMP_CXX)
@@ -59,7 +59,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     src/hip/heat3d_fd_hip_kernels.hip
   )
   target_include_directories(heat3d_fd_hip PRIVATE ${HEAT3D_INCLUDE_DIR})
-  target_link_libraries(heat3d_fd_hip PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(heat3d_fd_hip PRIVATE OpenPFC
                         hip::host openpfc_hip_kernels ${_heat3d_heffte_tgt})
   set_target_properties(heat3d_fd_hip PROPERTIES
     HIP_STANDARD 20
@@ -98,7 +98,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
   if(OpenPFC_ENABLE_HIP_SPECTRAL)
     add_executable(heat3d_spectral_hip src/hip/heat3d_spectral_hip.cpp)
     target_include_directories(heat3d_spectral_hip PRIVATE ${HEAT3D_INCLUDE_DIR})
-    target_link_libraries(heat3d_spectral_hip PRIVATE OpenPFC openpfc_apps_common
+    target_link_libraries(heat3d_spectral_hip PRIVATE OpenPFC
                           hip::host openpfc_hip_kernels ${_heat3d_heffte_tgt})
     set_target_properties(heat3d_spectral_hip PROPERTIES
       HIP_STANDARD 20
@@ -134,7 +134,7 @@ if(HEAT3D_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
       target_include_directories(test_heat3d PRIVATE ${HEAT3D_INCLUDE_DIR})
       target_link_libraries(test_heat3d PRIVATE
         OpenPFC
-        openpfc_apps_common
+       
         ${_heat3d_heffte_tgt}
         Catch2::Catch2
       )
@@ -151,7 +151,7 @@ if(HEAT3D_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     target_include_directories(test_heat3d_operator_evaluation PRIVATE ${HEAT3D_INCLUDE_DIR})
     target_link_libraries(test_heat3d_operator_evaluation PRIVATE
       OpenPFC
-      openpfc_apps_common
+     
       ${_heat3d_heffte_tgt}
       Catch2::Catch2
     )
@@ -162,7 +162,7 @@ if(HEAT3D_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     target_include_directories(test_heat3d_rhs_pattern PRIVATE ${HEAT3D_INCLUDE_DIR})
     target_link_libraries(test_heat3d_rhs_pattern PRIVATE
       OpenPFC
-      openpfc_apps_common
+     
       ${_heat3d_heffte_tgt}
       Catch2::Catch2
     )
@@ -173,7 +173,7 @@ if(HEAT3D_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     target_include_directories(test_heat3d_fd_convergence PRIVATE ${HEAT3D_INCLUDE_DIR})
     target_link_libraries(test_heat3d_fd_convergence PRIVATE
       OpenPFC
-      openpfc_apps_common
+     
       ${_heat3d_heffte_tgt}
       Catch2::Catch2
     )
@@ -188,7 +188,7 @@ if(HEAT3D_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     target_include_directories(test_heat3d_spectral_content PRIVATE ${HEAT3D_INCLUDE_DIR})
     target_link_libraries(test_heat3d_spectral_content PRIVATE
       OpenPFC
-      openpfc_apps_common
+     
       ${_heat3d_heffte_tgt}
       Catch2::Catch2
     )

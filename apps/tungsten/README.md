@@ -134,7 +134,7 @@ fall on the same step.
 |------|------|
 | Physics (schema, k-space symbols, `pointwise()`) | `include/tungsten/tungsten_physics.hpp`, `tungsten_pointwise.hpp` |
 | Session aliases + catalog registration | `include/tungsten/tungsten_session.hpp` (`pfc::ui::SpectralETDSession`) |
-| ICs / BCs / writers | Framework catalogs: `constant`, `single_seed`, `seed_grid` ICs; `fixed` / `moving` BCs from `apps/common` (`tungsten::register_catalog()`); `fields[]` writers (`binary`, `vtk`, `hdf5`) |
+| ICs / BCs / writers | Framework catalogs: `constant`, `single_seed`, `seed_grid` ICs; `fixed` / `moving` reservoir BCs local to this app (`tungsten::register_catalog()`); `fields[]` writers (`binary`, `vtk`, `hdf5`) |
 | Device instantiation of the nonlinearity | `src/gpu/tungsten_pointwise.inc` (stamped into `.cu` / `.hip`) |
 | Grid criteria for dealiasing | `include/tungsten/resolution.hpp`, pinned by `test_tungsten_resolution.cpp` (`[resolution]`) |
 | Resolution study | `src/cpu/tungsten_dealias_study.cpp` -> `out/report/data/tungsten_dealias_resolution.csv` |

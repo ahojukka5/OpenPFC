@@ -555,7 +555,7 @@ Karma–Rappel anisotropy, so that the residual difference between the two
 paths measures compiler reassociation and nothing else.
 
 Coupled elasticity has a device path (issue #157):
-`DeviceEigenstrainMicroelasticity` in `apps/common` runs the Eyre–Milton
+`DeviceEigenstrainMicroelasticity` in `solvers/microelasticity` runs the Eyre–Milton
 fixed point on rocFFT HeFFTe with HIP kernels for polarisation, Green
 contraction, local reflection, residual reduction, and `d f_el/d phi`.
 The inner loop does not copy the six tensor fields to the host.

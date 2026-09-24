@@ -93,7 +93,7 @@ A grid that does not resolve the velocity spacing is refused
 (`require_resolved_spacing`); that is not the same check as the tail
 occupancy. The transverse Weibel relation used as the Stage-4 oracle is
 **derived in this repository**, not quoted — see
-`openpfc_apps/plasma_dispersion.hpp`.
+`vlasov_maxwell/plasma_dispersion.hpp`.
 
 ## Qualified dispersion suite ()
 

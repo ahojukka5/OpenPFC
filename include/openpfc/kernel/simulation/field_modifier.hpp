@@ -15,8 +15,8 @@
  *
  * Concrete implementations include:
  * - Initial conditions: Constant, Seed, SeedGrid, RandomSeeds, FileReader
- * - Directional-solidification BCs are app-local (`apps/common`) and
- *   catalog-registered by tungsten/aluminum, not by the kernel.
+ * - Directional-solidification reservoir modifiers live in the tungsten
+ *   and aluminum applications, not in the kernel.
  *
  * Typical usage:
  * @code

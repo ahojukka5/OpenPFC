@@ -11,7 +11,7 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/strong_types.hpp>
 #include <openpfc/kernel/data/types.hpp>
-#include <openpfc_apps/moving_bc.hpp>
+#include <tungsten/moving_bc.hpp>
 
 using namespace pfc;
 using Catch::Approx;

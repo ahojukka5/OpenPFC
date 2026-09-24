@@ -162,7 +162,7 @@ OPENPFC_INLINE_HD bool is_nyquist_index(int index, int size) noexcept {
  * inverse transform silently projects the anti-Hermitian part away.
  *
  * Nothing errors. What you see instead is a small, resolution-insensitive
- * floor on a quantity that should be at round-off: in `apps/common`'s
+ * floor on a quantity that should be at round-off: in the periodic
  * eigenstrain microelasticity solver `|div sigma|` sat at 3.4e-4 of the terms
  * it must cancel, and an energy identity that should have been exact agreed
  * only to 5.5e-9. Zeroing the Nyquist component per axis took both to

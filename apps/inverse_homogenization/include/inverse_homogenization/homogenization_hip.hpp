@@ -11,7 +11,7 @@
 #include <array>
 
 #include <openpfc/solvers/microelasticity/microelasticity_hip.hpp>
-#include <openpfc_apps/homogenization.hpp>
+#include <inverse_homogenization/homogenization.hpp>
 
 namespace pfc::apps {
 

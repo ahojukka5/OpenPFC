@@ -8,13 +8,13 @@
  * @brief Tungsten = `TungstenPhysics` on the generic `SpectralETDSession`.
  *
  * One physics source, three backends. Directional-solidification boundary
- * conditions (`fixed` / `moving`) are catalog modifiers from `apps/common`;
+ * conditions (`fixed` / `moving`) are catalog modifiers local to this app;
  * call `tungsten::register_catalog()` once before constructing a session.
  */
 
 #include <openpfc/frontend/ui/json_spectral_etd_session.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/solidification_bc_json.hpp>
+#include <tungsten/solidification_bc_json.hpp>
 #include <tungsten/tungsten_physics.hpp>
 
 #if defined(OpenPFC_ENABLE_CUDA_SPECTRAL) || defined(OpenPFC_ENABLE_HIP_SPECTRAL)

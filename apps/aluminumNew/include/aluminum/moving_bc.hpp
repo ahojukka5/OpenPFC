@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @file openpfc_apps/moving_bc.hpp
+ * @file aluminum/moving_bc.hpp
  * @brief Directional-solidification moving BC (tungsten / aluminum JSON App path)
  *
  * @details

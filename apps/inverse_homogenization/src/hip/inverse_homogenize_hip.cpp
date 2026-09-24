@@ -49,7 +49,7 @@
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/gpu_spectral_stack.hpp>
-#include <openpfc_apps/homogenization_hip.hpp>
+#include <inverse_homogenization/homogenization_hip.hpp>
 
 namespace {
 

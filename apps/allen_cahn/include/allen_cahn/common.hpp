@@ -19,7 +19,7 @@
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/decomposition/halo_face_layout.hpp>
 #include <openpfc/kernel/field/finite_difference.hpp>
-#include <openpfc_apps/mpi_report.hpp>
+#include <allen_cahn/rank_report.hpp>
 
 namespace allen_cahn {
 
@@ -612,7 +612,7 @@ inline void report_interface_kinetics(int rank, const AreaSamples &a,
 
 inline void report_step_timing(MPI_Comm comm, int rank, int n_steps,
                                double elapsed_local_s) {
-  pfc::apps::report_step_timing(comm, rank, n_steps, elapsed_local_s);
+  allen_cahn::report_step_timing(comm, rank, n_steps, elapsed_local_s);
 }
 
 inline void

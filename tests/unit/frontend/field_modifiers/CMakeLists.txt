@@ -10,7 +10,5 @@ if(OpenPFC_ENABLE_HEFFTE)
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ic_random_seeds.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ic_seed_grid.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ic_file_reader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_boundary_conditions.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_bc_moving.cpp
   )
 endif()

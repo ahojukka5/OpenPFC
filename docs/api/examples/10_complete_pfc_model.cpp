@@ -11,7 +11,7 @@
  * 3. FFT - Spectral transforms and k-space operations
  * 4. Physics - single-mode PFC on the stack field
  * 5. Initial Conditions - Seed-based nucleation
- * 6. Boundary Conditions - periodic (FFT); FixedBC is available in apps
+ * 6. Boundary Conditions - periodic (FFT)
  * 7. Time - Time stepping and output scheduling
  * 8. SimulationDriver - `pfc::sim::run` time loop
  * 9. ResultsWriter - Parallel output to binary files
@@ -48,7 +48,6 @@
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc/kernel/simulation/time.hpp>
 #include <openpfc/openpfc.hpp>
-#include <openpfc_apps/fixed_bc.hpp>
 
 using namespace pfc;
 
@@ -191,11 +190,7 @@ int main(int argc, char **argv) {
 
     if (rank == 0) {
       std::cout << "\n[5] Boundary conditions: periodic (via FFT)\n";
-      std::cout << "    (FixedBC is available in apps/common but unused here)\n";
     }
-    FixedBC unused_walls(0.0, 0.0);
-    unused_walls.set_field_name("density");
-    (void)unused_walls;
 
     if (rank == 0) {
       std::cout << "\n[6] Configuring time integration and output...\n";
@@ -220,8 +215,8 @@ int main(int argc, char **argv) {
     }
 
     pfc::sim::run(
-        time,
-        [&](double) { pfc_step(fft, psi, psi_k, n_k, nonlinear, ops); }, {}, {},
+        time, [&](double) { pfc_step(fft, psi, psi_k, n_k, nonlinear, ops); }, {},
+        {},
         [&](const Time &clock) {
           writer.write(pfc::time::increment(clock), psi.vec());
           if (rank == 0) {

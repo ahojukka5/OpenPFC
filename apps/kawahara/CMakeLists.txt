@@ -19,14 +19,14 @@ endif()
 function(kawahara_cpu_executable target)
   add_executable(${target} ${ARGN})
   target_include_directories(${target} PRIVATE ${KAWAHARA_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_kawahara_heffte_tgt})
 endfunction()
 
 function(kawahara_hip_executable target)
   add_executable(${target} ${ARGN} src/gpu/kawahara_pointwise.hip)
   target_include_directories(${target} PRIVATE ${KAWAHARA_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_kawahara_heffte_tgt}
                         hip::host openpfc_hip_kernels)
   set_target_properties(${target} PROPERTIES

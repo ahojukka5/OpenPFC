@@ -49,7 +49,7 @@
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
-#include <openpfc_apps/homogenization.hpp>
+#include <inverse_homogenization/homogenization.hpp>
 
 namespace pfc::apps::inverse {
 

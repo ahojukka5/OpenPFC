@@ -19,14 +19,14 @@ endif()
 function(thin_film_cpu_executable target)
   add_executable(${target} ${ARGN})
   target_include_directories(${target} PRIVATE ${THIN_FILM_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_thin_film_heffte_tgt})
 endfunction()
 
 function(thin_film_hip_executable target)
   add_executable(${target} ${ARGN} src/gpu/thin_film_pointwise.hip)
   target_include_directories(${target} PRIVATE ${THIN_FILM_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_thin_film_heffte_tgt}
                         hip::host openpfc_hip_kernels)
   set_target_properties(${target} PROPERTIES

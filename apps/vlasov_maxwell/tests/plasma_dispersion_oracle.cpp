@@ -3,7 +3,7 @@
 
 /**
  * @file test_plasma_dispersion.cpp
- * @brief Verification ladder for `openpfc_apps/plasma_dispersion.hpp`.
+ * @brief Verification ladder for `vlasov_maxwell/plasma_dispersion.hpp`.
  *
  * @details
  * These are the *oracles* of the Vlasov-Maxwell validation ladder (issue #84),
@@ -54,7 +54,7 @@
 #include <string>
 #include <vector>
 
-#include <openpfc_apps/plasma_dispersion.hpp>
+#include <vlasov_maxwell/plasma_dispersion.hpp>
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;

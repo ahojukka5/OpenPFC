@@ -76,7 +76,7 @@ inline const double kInvSqrt2Pi = 1.0 / std::sqrt(2.0 * std::acos(-1.0));
  * @brief Temperature ratio `A = T_y/T_x = (vthy/vthx)^2` of @ref bi_maxwellian.
  *
  * **This is the `A` the transverse dispersion relation is written in**
- * (`openpfc_apps/plasma_dispersion.hpp`, `BiMaxwellian::anisotropy`), and
+ * (`vlasov_maxwell/plasma_dispersion.hpp`, `BiMaxwellian::anisotropy`), and
  * the two must agree or the Weibel growth rate is compared against the
  * wrong oracle. An earlier revision of this header defined `anisotropy` as
  * `A - 1` -- the *excess* -- which is the form the marginal-stability

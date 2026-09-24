@@ -28,7 +28,7 @@ function(alloy_dendrite_add_driver name source)
   add_executable(${name} ${source})
   target_include_directories(${name} PRIVATE ${ALLOY_DENDRITE_INCLUDE_DIR})
   target_compile_definitions(${name} PRIVATE ${_alloy_dendrite_elastic_def})
-  target_link_libraries(${name} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${name} PRIVATE OpenPFC
                         ${_alloy_dendrite_heffte_tgt})
   install(TARGETS ${name} DESTINATION bin)
 endfunction()
@@ -60,7 +60,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
   target_compile_definitions(alloy_dendrite_hip_parity PRIVATE
                              ${_alloy_dendrite_elastic_def})
   target_link_libraries(alloy_dendrite_hip_parity PRIVATE OpenPFC
-                        openpfc_apps_common hip::host openpfc_hip_kernels
+                        hip::host openpfc_hip_kernels
                         ${_alloy_dendrite_heffte_tgt})
   set_target_properties(alloy_dendrite_hip_parity PROPERTIES
     HIP_STANDARD 17
@@ -77,7 +77,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     target_compile_definitions(alloy_dendrite_coupled_cost PRIVATE
                                ${_alloy_dendrite_elastic_def})
     target_link_libraries(alloy_dendrite_coupled_cost PRIVATE OpenPFC
-                          openpfc_apps_common hip::host openpfc_hip_kernels
+                          hip::host openpfc_hip_kernels
                           ${_alloy_dendrite_heffte_tgt})
     if(TARGET openpfc_microelasticity_hip)
       target_link_libraries(alloy_dendrite_coupled_cost PRIVATE
@@ -101,7 +101,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
                              ${_alloy_dendrite_elastic_def}
                              OpenPFC_ENABLE_HIP_SPECTRAL)
       target_link_libraries(alloy_dendrite_hip_growth PRIVATE OpenPFC
-                            openpfc_apps_common hip::host openpfc_hip_kernels
+                            hip::host openpfc_hip_kernels
                             openpfc_microelasticity_hip
                             ${_alloy_dendrite_heffte_tgt})
       set_target_properties(alloy_dendrite_hip_growth PROPERTIES
@@ -124,7 +124,7 @@ if(ALLOY_DENDRITE_ENABLE_TESTS AND OpenPFC_BUILD_TESTS
                              ${ALLOY_DENDRITE_INCLUDE_DIR})
   target_compile_definitions(test_alloy_dendrite PRIVATE
                              ${_alloy_dendrite_elastic_def})
-  target_link_libraries(test_alloy_dendrite PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(test_alloy_dendrite PRIVATE OpenPFC
                         Catch2::Catch2 ${_alloy_dendrite_heffte_tgt})
   include(CTest)
   # The Catch binary is the Stage-1 planar run *and* the coupled elastic
