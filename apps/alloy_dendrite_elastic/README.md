@@ -976,7 +976,7 @@ Energy-balance CSV (job **22045158**):
 | `openpfc/frontend/utils/cli_options.hpp` | Library `--key=value` parsing that rejects unknown keys (`pfc::utils::CliOptions`). |
 | `include/alloy_dendrite/elasticity.hpp` | Equations (5)-(7) wired onto the FD stack: the layout contract between the padded FD field and the HeFFTe inbox, the eigenstrain assembly, the macroscopic-strain condition, and the `lambda_el` calibration. |
 | `include/alloy_dendrite/material.hpp` | Al-4.5 wt% Cu in SI with provenance, and the arithmetic that turns it into the dimensionless inputs of (5)-(7). Every value is cited or derived next to its use; values that are representative rather than assessed say so. |
-| `include/alloy_dendrite/field_output.hpp` | Raw-brick snapshots plus a JSON manifest, correct at any rank count. |
+| `include/openpfc/frontend/io/snapshot_series.hpp` | Owned-cell snapshots, manifest, and XDMF. Hydrostatic and von Mises stress are computed in this app and stored as scalars. |
 | `include/alloy_dendrite/device_step_hip.hpp` | The HIP launch surface: three trivially copyable descriptors and four launchers. Explains why the stencil weights travel unscaled. |
 | `include/alloy_dendrite/device_stepper_hip.hpp` | Device twin of `Stepper`: the sixteen device fields, the three halo groups, the residency bookkeeping. Explains why it takes a decomposition rather than a stack. |
 | `include/alloy_dendrite/device_elasticity_hip.hpp` | Device adapter: padded `phi`/`U`/`theta` → Green solve → padded `d f_el/d phi`. |

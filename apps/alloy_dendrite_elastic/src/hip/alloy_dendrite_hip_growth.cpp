@@ -39,9 +39,9 @@
 #include <alloy_dendrite/device_stepper_hip.hpp>
 #include <alloy_dendrite/diagnostics.hpp>
 #include <alloy_dendrite/elasticity.hpp>
-#include <alloy_dendrite/field_output.hpp>
 #include <alloy_dendrite/material.hpp>
 #include <alloy_dendrite/parameters.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/frontend/utils/cli_options.hpp>
 
 namespace {
@@ -77,7 +77,11 @@ struct Cfg {
   double lambda_el = 0.0;
   std::string csv;
   std::string run_id = "hip-growth";
-  alloy_dendrite::FieldOutputConfig fields{};
+  struct FieldDump {
+    std::string dir;
+    int every{1};
+  };
+  FieldDump fields{};
 };
 
 void download_owned(DevField &src, RealField &dst) {
@@ -249,18 +253,23 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
       domain, pfc::decomposition::local_box(decomp, rank));
   RealField host_U = pfc::data::field_from_inbox<double>(
       domain, pfc::decomposition::local_box(decomp, rank));
-  const auto nloc = host_phi.local_size();
-  const auto lo = host_phi.lower_global();
-  if (rank == 0 && !cfg.fields.dir.empty())
-    std::filesystem::create_directories(cfg.fields.dir);
-  MPI_Barrier(comm);
-  alloy_dendrite::FieldSnapshotWriter snap(
-      cfg.fields, cfg.run_id, {cfg.nx, cfg.ny, cfg.nz}, {nloc[0], nloc[1], nloc[2]},
-      {lo[0], lo[1], lo[2]}, cfg.dx, rank, comm);
-  std::vector<std::string> snap_fields{"phi", "U"};
-  if (cfg.elastic) snap_fields.insert(snap_fields.end(), {"f_el", "dfel_dphi"});
+  pfc::io::SnapshotSeries snapshots(
+      host_phi.domain(), host_phi.box(),
+      pfc::io::SnapshotSeriesOptions{
+          .directory = cfg.fields.dir, .prefix = cfg.run_id, .comm = comm});
+  snapshots.set_cadence(
+      pfc::io::SnapshotCadence(cfg.fields.every < 1 ? 1 : cfg.fields.every));
+  if (!cfg.fields.dir.empty()) {
+    snapshots.add_field("phi", host_phi);
+    snapshots.add_field("U", host_U);
+    if (cfg.elastic && elastic) {
+      snapshots.add_field("f_el", const_cast<pfc::data::Field<double> &>(
+                                      elastic->elastic_energy_density()));
+      snapshots.add_field(
+          "dfel_dphi", const_cast<pfc::data::Field<double> &>(elastic->dfel_host()));
+    }
+  }
   int n_seen = 0;
-  int n_snap = 0;
 
   double t_pf_sum = 0.0, t_el_sum = 0.0;
   int n_el = 0;
@@ -320,20 +329,11 @@ int run(const Cfg &cfg, int rank, int nproc, MPI_Comm comm) {
             el.max_dfel_dphi, el.mean_stress_trace,
             elastic ? elastic->max_von_mises() : 0.0, x_tip, v_tip, rho));
       }
-      if (snap.due(n_seen)) {
-        snap.note_time(step * dt);
-        snap.write("phi", n_snap, host_phi);
-        snap.write("U", n_snap, host_U);
-        if (elastic) {
-          snap.write("f_el", n_snap, elastic->elastic_energy_density());
-          snap.write("dfel_dphi", n_snap, elastic->dfel_host());
-        }
-        ++n_snap;
-      }
+      snapshots.write_if_due(n_seen, step, step * dt);
       ++n_seen;
     }
   }
-  snap.write_manifest(snap_fields);
+  snapshots.close();
 
   if (rank == 0) {
     std::cout << std::setprecision(6);

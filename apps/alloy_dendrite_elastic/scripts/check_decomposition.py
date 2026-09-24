@@ -50,6 +50,28 @@ def load_manifest(d: Path) -> dict:
     return json.loads(hits[0].read_text())
 
 
+def frame_file(directory: Path, man: dict, name: str, idx: int) -> Path:
+    fields = list(man["fields"])
+    patterns = man.get("patterns")
+    if isinstance(patterns, list):
+        rendered = str(patterns[fields.index(name)])
+        rendered = rendered % idx if "%" in rendered else rendered
+        path = Path(rendered)
+        return path if path.is_absolute() else directory / rendered
+    pat = (
+        str(man["pattern"])
+        .replace("{field}", name)
+        .replace("{index:04d}", f"{idx:04d}")
+    )
+    return directory / pat
+
+
+def run_identity(man: dict):
+    if "prefix" in man:
+        return man["prefix"]
+    return man["run_id"]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("ref", type=Path)
@@ -59,7 +81,11 @@ def main() -> int:
     args = ap.parse_args()
 
     ma, mb = load_manifest(args.ref), load_manifest(args.test)
-    for key in ("run_id", "nx", "ny", "nz", "fields"):
+    if run_identity(ma) != run_identity(mb):
+        raise SystemExit(
+            f"manifests disagree on run identity: {run_identity(ma)} vs {run_identity(mb)}"
+        )
+    for key in ("nx", "ny", "nz", "fields"):
         if ma[key] != mb[key]:
             raise SystemExit(f"manifests disagree on {key!r}: {ma[key]} vs {mb[key]}")
     shape = (ma["nx"], ma["ny"], ma["nz"])
@@ -71,10 +97,8 @@ def main() -> int:
     rows = []
     for name in ma["fields"]:
         for idx in range(nsnap):
-            pat = ma["pattern"].replace("{field}", name)
-            fn = pat.replace("{index:04d}", f"{idx:04d}")
-            a = np.fromfile(args.ref / fn).reshape(shape, order="F")
-            b = np.fromfile(args.test / fn).reshape(shape, order="F")
+            a = np.fromfile(frame_file(args.ref, ma, name, idx)).reshape(shape, order="F")
+            b = np.fromfile(frame_file(args.test, mb, name, idx)).reshape(shape, order="F")
             d = np.abs(a - b)
             scale = max(float(np.abs(a).max()), 1e-300)
             rel = float(d.max()) / scale

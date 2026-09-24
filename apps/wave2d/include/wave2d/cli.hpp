@@ -30,8 +30,7 @@ struct RunConfig {
   YBoundaryKind y_bc = YBoundaryKind::Dirichlet;
   /** Dirichlet value on y walls (Neumann ignores). */
   double u_wall = 0.0;
-  /** Empty disables VTK; pattern may include `%04d` for time index (see
-   * `VTKWriter`). */
+  /** Empty disables VTK. `%04d` is the save count, not the solver step. */
   std::string vtk_pattern;
   /** Write VTK every this many completed steps (after initial frame 0). */
   int vtk_every = 1;

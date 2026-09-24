@@ -3,8 +3,8 @@
 
 /**
  * @file wave2d_fd_manual.cpp
- * @brief 2D wave equation — manual 5-point Laplacian on `pfc::data::Field` + periodic
- *        halos in x,z and physical y-boundary ghosts (Dirichlet or Neumann).
+ * @brief 2D wave equation — manual 5-point Laplacian on `pfc::data::Field` +
+ * periodic halos in x,z and physical y-boundary ghosts (Dirichlet or Neumann).
  */
 
 #include <cmath>
@@ -12,21 +12,20 @@
 #include <memory>
 #include <mpi.h>
 
-#include <openpfc/frontend/io/vtk_writer.hpp>
-#include <vector>
-#include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/box3i.hpp>
-#include <openpfc/kernel/decomposition/decomposition_factory.hpp>
-#include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
+#include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
-#include <openpfc/kernel/field/field_factory.hpp>
+#include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
+#include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/field/brick_iteration.hpp>
+#include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/common/mpi_timer.hpp>
+#include <vector>
 
 #include <wave2d/cli.hpp>
 #include <wave2d/reporting.hpp>
-#include <wave2d/vtk_snapshot.hpp>
 #include <wave2d/wave_boundary.hpp>
 #include <wave2d/wave_model.hpp>
 
@@ -42,9 +41,9 @@ int run_fd_manual(const RunConfig &cfg, int rank, int nproc) {
   model.inv_dx2 = 1.0;
   model.inv_dy2 = 1.0;
 
-  const auto global_domain =
-      pfc::domain::create(GridSize({cfg.Nx, cfg.Ny, 1}), PhysicalOrigin({0.0, 0.0, 0.0}),
-                    GridSpacing({1.0, 1.0, 1.0}));
+  const auto global_domain = pfc::domain::create(GridSize({cfg.Nx, cfg.Ny, 1}),
+                                                 PhysicalOrigin({0.0, 0.0, 0.0}),
+                                                 GridSpacing({1.0, 1.0, 1.0}));
   const auto decomp = decomposition::create(global_domain, nproc);
 
   constexpr int hw = 1;
@@ -73,13 +72,12 @@ int run_fd_manual(const RunConfig &cfg, int rank, int nproc) {
                                             static_cast<double>(cfg.u_wall));
   }
 
-  std::vector<double> vtk_buf;
-  std::unique_ptr<pfc::VTKWriter> vtk_writer;
+  pfc::io::SnapshotSeries snapshots(
+      u.domain(), u.box(), pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_WORLD});
   if (!cfg.vtk_pattern.empty()) {
-    vtk_writer = std::make_unique<pfc::VTKWriter>(cfg.vtk_pattern);
-    wave2d::vtk_configure_writer(*vtk_writer, u);
-    wave2d::mkdir_vtk_parent_rank0(cfg.vtk_pattern, rank);
-    wave2d::vtk_write_increment(*vtk_writer, 0, u, vtk_buf);
+    snapshots.add_field("u", u, cfg.vtk_pattern, pfc::io::SnapshotFormat::Vtk);
+    snapshots.set_cadence(pfc::io::SnapshotCadence(cfg.vtk_every));
+    snapshots.write(0, 0.0);
   }
 
   auto stencil_lap = [&](int i, int j, int k) {
@@ -108,16 +106,17 @@ int run_fd_manual(const RunConfig &cfg, int rank, int nproc) {
                                               static_cast<double>(cfg.u_wall));
     }
 
-    if (vtk_writer && (step + 1) % cfg.vtk_every == 0) {
-      wave2d::vtk_write_increment(*vtk_writer, step + 1, u, vtk_buf);
+    if (!snapshots.empty()) {
+      snapshots.write_if_due(step + 1, step + 1,
+                             cfg.dt * static_cast<double>(step + 1));
     }
   }
+  snapshots.close();
   const double max_elapsed = runtime::toc(timer);
 
-  const bool observable_ok =
-      wave2d::report(rank, nproc, cfg, "fd_manual", "manual 5-point + padded halos",
-                     max_elapsed, "(y physical BC; interior RMS u)",
-                     wave2d::interior_stats(u, hw));
+  const bool observable_ok = wave2d::report(
+      rank, nproc, cfg, "fd_manual", "manual 5-point + padded halos", max_elapsed,
+      "(y physical BC; interior RMS u)", wave2d::interior_stats(u, hw));
   return observable_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
