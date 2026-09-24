@@ -44,11 +44,12 @@ TEST_CASE("a rejected attempt does not save or advance time", "[driver][unit]") 
 
 TEST_CASE("endless rejection stops", "[driver][unit]") {
   pfc::Time time({0.0, 1.0, 0.5}, 1.0);
-  REQUIRE_THROWS_AS(
-      pfc::sim::run_attempts(
-          time, [](pfc::Time &) { return pfc::sim::StepDecision{false}; },
-          pfc::sim::NoopHook{}, pfc::sim::NoopHook{}, pfc::sim::NoopHook{}, 2),
-      std::runtime_error);
+  REQUIRE_THROWS_AS(pfc::sim::run_attempts(
+                        time,
+                        [](pfc::Time &) { return pfc::sim::StepDecision{false}; },
+                        pfc::sim::NoopHook{}, pfc::sim::NoopHook{},
+                        pfc::sim::NoopHook{}, pfc::sim::NoopHook{}, 2),
+                    std::runtime_error);
   REQUIRE(time.get_increment() == 0);
   REQUIRE(time.get_accepted_time() == Catch::Approx(0.0));
   REQUIRE(time.get_accepted_steps() == 0);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -15,9 +16,11 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/profiling/session.hpp>
+#include <openpfc/kernel/simulation/checkpoint_service.hpp>
 #include <openpfc/kernel/simulation/field_modifier.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/constant.hpp>
 #include <openpfc/kernel/simulation/simulation_lifecycle.hpp>
+#include <openpfc/kernel/simulation/simulation_state.hpp>
 
 namespace {
 
@@ -125,10 +128,10 @@ TEST_CASE("rejected attempt retries with a new dt and does not save",
       pfc::sim::SimulationLifecycle::schedule(0.0, 1.0, 0.3, 1.0), MPI_COMM_WORLD);
   life.bind_field("density", density);
   std::vector<double> saved;
-  int checkpoints = 0;
+  int accepted_hooks = 0;
   life.set_save_observer(
       [&](const pfc::Time &now) { saved.push_back(pfc::time::current(now)); });
-  life.set_checkpoint_hook([&](const pfc::Time &) { ++checkpoints; });
+  life.set_accepted_step_hook([&](const pfc::Time &) { ++accepted_hooks; });
 
   pfc::profiling::ProfilingSession profile(pfc::profiling::ProfilingMetricCatalog{},
                                            {"step"});
@@ -155,9 +158,71 @@ TEST_CASE("rejected attempt retries with a new dt and does not save",
   REQUIRE(saved.size() == 2);
   REQUIRE(saved.front() == Catch::Approx(0.0));
   REQUIRE(saved.back() == Catch::Approx(1.0));
-  REQUIRE(checkpoints == 2);
+  REQUIRE(accepted_hooks == 5);
   REQUIRE(profile.num_frames() == intervals.size());
   REQUIRE_FALSE(life.time().attempt_active());
+}
+
+TEST_CASE("accepted steps are independent of the save cadence",
+          "[lifecycle][unit]") {
+  ensure_mpi();
+  const auto domain = pfc::domain::create({2, 2, 1});
+  pfc::SimulationState state;
+  state.add_field("density", pfc::data::Field<double>(domain, whole_box(2), 0));
+  const auto directory =
+      std::filesystem::temp_directory_path() / "openpfc-lifecycle-checkpoint";
+  std::filesystem::remove_all(directory);
+  std::filesystem::create_directories(directory);
+  pfc::sim::CheckpointConfig config;
+  config.every = 2;
+  config.directory = directory;
+  pfc::sim::CheckpointService checkpoint(config, MPI_COMM_WORLD);
+
+  pfc::sim::SimulationLifecycle life(
+      pfc::sim::SimulationLifecycle::schedule(0.0, 1.0, 0.2, 1.0), MPI_COMM_WORLD);
+  std::vector<double> saved;
+  std::vector<int> accepted;
+  int checkpoint_writes = 0;
+  life.set_save_observer(
+      [&](const pfc::Time &now) { saved.push_back(pfc::time::current(now)); });
+  life.set_accepted_step_hook([&](const pfc::Time &now) {
+    accepted.push_back(now.get_increment());
+    if (checkpoint.maybe_save(state, now)) ++checkpoint_writes;
+  });
+  life.run([](double) {});
+
+  REQUIRE(accepted.size() == 5);
+  REQUIRE(accepted.front() == 1);
+  REQUIRE(accepted.back() == 5);
+  REQUIRE(saved.size() == 2);
+  REQUIRE(saved.front() == Catch::Approx(0.0));
+  REQUIRE(saved.back() == Catch::Approx(1.0));
+  REQUIRE(checkpoint_writes == 2);
+  REQUIRE(std::filesystem::exists(directory / "step_2"));
+  REQUIRE(std::filesystem::exists(directory / "step_4"));
+  REQUIRE_FALSE(std::filesystem::exists(directory / "step_0"));
+  REQUIRE_FALSE(std::filesystem::exists(directory / "step_1"));
+  REQUIRE_FALSE(std::filesystem::exists(directory / "step_5"));
+  std::filesystem::remove_all(directory);
+}
+
+TEST_CASE("the final clipped interval is one accepted step", "[lifecycle][unit]") {
+  ensure_mpi();
+  pfc::sim::SimulationLifecycle life(
+      pfc::sim::SimulationLifecycle::schedule(0.0, 1.0, 0.3, 1.0), MPI_COMM_WORLD);
+  std::vector<double> saved;
+  std::vector<double> accepted_times;
+  life.set_save_observer(
+      [&](const pfc::Time &now) { saved.push_back(pfc::time::current(now)); });
+  life.set_accepted_step_hook([&](const pfc::Time &now) {
+    accepted_times.push_back(pfc::time::current(now));
+  });
+  life.run([](double, double) {});
+  REQUIRE(accepted_times.size() == 4);
+  REQUIRE(accepted_times.back() == Catch::Approx(1.0));
+  REQUIRE(saved.size() == 2);
+  REQUIRE(saved.front() == Catch::Approx(0.0));
+  REQUIRE(saved.back() == Catch::Approx(1.0));
 }
 
 TEST_CASE("an unknown field name is rejected before the run", "[lifecycle][unit]") {

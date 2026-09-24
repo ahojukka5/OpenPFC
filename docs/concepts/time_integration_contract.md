@@ -45,6 +45,10 @@ hooks from a `SimulationState`, a stepper (or a spectral ETD system), condition
 lists, writers, and a `CheckpointService`. A custom stepper that also wants
 named fields and modifier application uses
 [`SimulationLifecycle`](custom_stepper.md) around these same hooks.
+`SimulationSession<Stack>` is the peer that also owns a backend stack.
+The lifecycle's save observer follows `do_save()`. Its accepted-step
+hook runs after every accepted step, including steps that do not save,
+and is the place to call `CheckpointService::maybe_save`.
 
 ## 2. Driver hook semantics
 

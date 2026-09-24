@@ -164,11 +164,12 @@ OpenPFC favors data-centric types and free functions for queries and operations.
 Inheritance is reserved for stable out-of-tree extension seams such as
 `Model`, `FieldModifier`, and `ResultsWriter`.
 
-A custom numerical stepper uses `pfc::sim::run` or `pfc::sim::run_attempts`
-for the time loop, and `pfc::sim::SimulationLifecycle` when it also wants
-named fields, initial and boundary modifiers, and save or checkpoint
-hooks. `SnapshotSeries` and `DiagnosticsSeries` stay separate types. See
-[Custom stepper lifecycle](custom_stepper.md).
+`SimulationSession<Stack>` owns `Time` and a computational stack when
+OpenPFC constructs that backend. `SimulationLifecycle` owns `Time`, named
+fields, field modifiers, and generic hooks for a solver-independent step.
+They are peer primitives: a frontend may use one, or compose a lifecycle
+with a session's clock and fields. Neither replaces `SnapshotSeries` or
+`DiagnosticsSeries`. See [Custom stepper lifecycle](custom_stepper.md).
 
 Use these rules when adding functionality:
 
