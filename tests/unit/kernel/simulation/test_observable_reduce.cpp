@@ -218,3 +218,53 @@ TEST_CASE("owned reductions agree across two ranks", "[observable][MPI]") {
   REQUIRE(r.mean == Approx(2.5));
   REQUIRE(r.sum == Approx(10.0));
 }
+
+TEST_CASE("variance of a large baseline keeps the fluctuation",
+          "[observable][unit]") {
+  int size = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1) SKIP("needs 1 rank");
+  constexpr double base = 1.0e12;
+  const double devs[4] = {-2.0, -1.0, 1.0, 2.0};
+  double naive_mean = 0.0;
+  double naive_sq = 0.0;
+  for (double d : devs) {
+    const double x = base + d;
+    naive_mean += x;
+    naive_sq += x * x;
+  }
+  naive_mean /= 4.0;
+  const double naive_var = naive_sq / 4.0 - naive_mean * naive_mean;
+  REQUIRE(std::abs(naive_var - 2.5) > 1.0);
+
+  const auto domain = pfc::domain::create({4, 1, 1});
+  const auto box = pfc::domain::index_box(domain);
+  Field<double> u(domain, box, 0);
+  for (int i = 0; i < 4; ++i) u(i, 0, 0) = base + devs[i];
+  const auto r = pfc::sim::reduce_owned(u, MPI_COMM_WORLD);
+  REQUIRE(r.count == 4);
+  REQUIRE(r.mean == Approx(base).margin(1e-3));
+  REQUIRE(r.variance == Approx(2.5).margin(1e-8));
+  REQUIRE(r.min == Approx(base - 2.0));
+  REQUIRE(r.max == Approx(base + 2.0));
+  REQUIRE(r.variance >= 0.0);
+}
+
+TEST_CASE("shifted variance agrees across two ranks", "[observable][MPI]") {
+  int size = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 2) SKIP("needs 2 ranks");
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  constexpr double base = 1.0e12;
+  const auto domain = pfc::domain::create({4, 1, 1});
+  const auto local = Box3i::from_bounds({rank * 2, 0, 0}, {rank * 2 + 1, 0, 0});
+  Field<double> u(domain, local, 0);
+  const double devs[4] = {-2.0, -1.0, 1.0, 2.0};
+  u(0, 0, 0) = base + devs[rank * 2];
+  u(1, 0, 0) = base + devs[rank * 2 + 1];
+  const auto r = pfc::sim::reduce_owned(u, MPI_COMM_WORLD);
+  REQUIRE(r.count == 4);
+  REQUIRE(r.variance == Approx(2.5).margin(1e-6));
+  REQUIRE(r.mean == Approx(base).margin(1e-2));
+}
