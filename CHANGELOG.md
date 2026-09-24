@@ -35,6 +35,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Owned-cell reductions `pfc::sim::reduce_owned` (sum, mean, min, max,
+  L1, L2, RMS, variance, integral) and a rank-0 diagnostics CSV
+  (`include/openpfc/frontend/io/diagnostics_series.hpp`, #148).
+  The reduction is over owned cells and takes an explicit communicator.
+  A per-cell map can feed it. The CSV records step, time, and named
+  columns the caller already computed. It refuses an existing file
+  unless overwrite is requested, and an open or write failure is
+  reported on every rank. Thin film, EHD film, and anisotropic surface
+  diffusion write their scalar rows through it. Hole fraction, rupture,
+  tip motion, and orientation energy stay in those applications.
+
 - Solver-independent field snapshots
   (`include/openpfc/frontend/io/snapshot_series.hpp`, #147).
   A driver registers scalar fields and calls `write(step, time)`. The
