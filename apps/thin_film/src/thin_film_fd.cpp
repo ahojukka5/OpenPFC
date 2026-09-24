@@ -35,7 +35,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
-#include <openpfc/frontend/io/snapshot_series.hpp>
+#include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
@@ -149,8 +149,8 @@ int main(int argc, char *argv[]) {
       snapshots = std::make_unique<pfc::io::SnapshotSeries>(
           domain, snap_field->box(),
           pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_SELF});
-      snapshots->bind_json_field(cfg, "h", *snap_field);
-      snapshots->finish_json_fields(cfg);
+      pfc::ui::bind_snapshot_field(*snapshots, cfg, "h", *snap_field);
+      pfc::ui::finish_snapshot_fields(*snapshots, cfg);
     }
 
     std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
@@ -230,6 +230,7 @@ int main(int argc, char *argv[]) {
                   "rupture_time=%.17g\n",
                   s.min_h, s.volume, s.hole_area_fraction, rupture_time);
     }
+    if (snapshots) snapshots->close();
   } catch (const std::exception &e) {
     if (rank == 0) std::cerr << "thin_film_fd: " << e.what() << "\n";
     status = 2;

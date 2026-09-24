@@ -40,7 +40,7 @@ struct ReducedOutputConfig {
 
 /// `f(x, v_x) = int f dv_y` on this rank (partial `v_y` slab).
 inline void accumulate_f_xvx(const PhaseSpace &ps, const PhaseField &f,
-                              std::vector<double> &local) {
+                             std::vector<double> &local) {
   const int nx = ps.nx();
   const int nvx = ps.nvx();
   const int nvy = ps.nvy_local();
@@ -56,7 +56,7 @@ inline void accumulate_f_xvx(const PhaseSpace &ps, const PhaseField &f,
 
 /// `f(x, v_y) = int f dv_x` on this rank's `v_y` slab (complete in `x`).
 inline void accumulate_f_xvy(const PhaseSpace &ps, const PhaseField &f,
-                              std::vector<double> &local) {
+                             std::vector<double> &local) {
   const int nx = ps.nx();
   const int nvx = ps.nvx();
   const int nvy = ps.nvy_local();
@@ -77,8 +77,7 @@ public:
       : m_cfg(std::move(cfg)), m_run(std::move(run_id)), m_rank(rank),
         m_comm(ps.comm()), m_nx(ps.nx()), m_nvx(ps.nvx()), m_nvy(ps.nvy_global()),
         m_nvy_local(ps.nvy_local()), m_vy_off(ps.vy_offset()),
-        m_dx(ps.params().dx()), m_dvx(ps.params().dvx()),
-        m_dvy(ps.params().dvy()) {}
+        m_dx(ps.params().dx()), m_dvx(ps.params().dvx()), m_dvy(ps.params().dvy()) {}
 
   [[nodiscard]] bool active() const noexcept { return !m_cfg.dir.empty(); }
 
@@ -130,8 +129,8 @@ public:
   }
 
 private:
-  void write_xdmf_field_(const std::string &field, int nx, int ny, int nz,
-                         double dx, double dy, double dz) const {
+  void write_xdmf_field_(const std::string &field, int nx, int ny, int nz, double dx,
+                         double dy, double dz) const {
     if (m_times.empty()) return;
     std::vector<std::string> rels;
     rels.reserve(m_times.size());
@@ -141,9 +140,20 @@ private:
                     field.c_str(), i);
       rels.push_back(tail);
     }
-    pfc::io::write_xdmf_binary_series(
-        m_cfg.dir + "/" + m_run + "_" + field + ".xdmf", nx, ny, nz, dx, dy, dz,
-        {field}, {rels}, m_times);
+    // Reduced diagnostics have no stored physical origin. Pass zero
+    // until this writer uses SnapshotSeries.
+    pfc::io::write_xdmf_binary_series(m_cfg.dir + "/" + m_run + "_" + field +
+                                          ".xdmf",
+                                      pfc::io::BinarySeriesGeometry{.nx = nx,
+                                                                    .ny = ny,
+                                                                    .nz = nz,
+                                                                    .x0 = 0.0,
+                                                                    .y0 = 0.0,
+                                                                    .z0 = 0.0,
+                                                                    .dx = dx,
+                                                                    .dy = dy,
+                                                                    .dz = dz},
+                                      {field}, {rels}, m_times);
   }
 
   void write_xdmf_() const {
@@ -166,7 +176,7 @@ private:
     if (m_rank != 0) return;
     std::ofstream out(path, std::ios::binary);
     out.write(reinterpret_cast<const char *>(v.data()),
-                static_cast<std::streamsize>(v.size() * sizeof(double)));
+              static_cast<std::streamsize>(v.size() * sizeof(double)));
   }
 
   ReducedOutputConfig m_cfg;

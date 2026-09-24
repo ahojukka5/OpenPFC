@@ -148,9 +148,20 @@ private:
       }
     }
     const double dz = m_global[2] > 1 ? m_dx : 1.0;
-    pfc::io::write_xdmf_binary_series(m_cfg.dir + "/" + m_run + ".xdmf", m_global[0],
-                                      m_global[1], m_global[2], m_dx, m_dx, dz,
-                                      fields, rels, times);
+    // This writer does not store a physical origin. Pass zero until it
+    // uses SnapshotSeries.
+    pfc::io::write_xdmf_binary_series(
+        m_cfg.dir + "/" + m_run + ".xdmf",
+        pfc::io::BinarySeriesGeometry{.nx = m_global[0],
+                                      .ny = m_global[1],
+                                      .nz = m_global[2],
+                                      .x0 = 0.0,
+                                      .y0 = 0.0,
+                                      .z0 = 0.0,
+                                      .dx = m_dx,
+                                      .dy = m_dx,
+                                      .dz = dz},
+        fields, rels, times);
   }
 
   void write_buffer_(const std::string &name, int idx) {

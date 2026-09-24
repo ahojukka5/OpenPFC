@@ -40,7 +40,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   A driver registers scalar fields and calls `write(step, time)`. The
   series packs owned cells, including a storage halo and a device field
   read through `with_host_read`, and writes raw binary or VTK. Rank 0
-  records steps, times, and one XDMF series for binary frames.
+  records steps, times, and one XDMF series for binary frames. The XDMF
+  origin is the domain origin, and each binary path is relative to the
+  XDMF file. A pack failure is agreed across the communicator before
+  any rank enters the writer. `close()` reports a manifest or XDMF
+  failure; the destructor still does not throw. JSON `fields[]` wiring
+  lives in `frontend/ui/json_snapshot_fields.hpp`.
   `ResultsWriter` reports `writes_real()` / `writes_complex()` so a
   format does not have to implement a value type it cannot store.
   HDF5 stays real-only. The standalone `fields[]` VTK helper and the
