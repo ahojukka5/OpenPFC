@@ -9,8 +9,14 @@
  *
  * The caller computes each column. This writer records step, time, and
  * those numbers. It does not know what a column means.
+ *
+ * Construction is collective on `options.comm`. Local checks (path,
+ * column names, overwrite) are agreed before any rank opens the file.
+ * A null communicator cannot be agreed, so that one check throws on the
+ * rank that passed it. Every other mismatch waits for the peers.
  */
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <iomanip>
@@ -19,6 +25,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -44,19 +51,21 @@ public:
       throw std::invalid_argument(
           "diagnostics series: pass an explicit communicator");
     }
-    if (m_options.path.empty()) {
-      throw std::invalid_argument("diagnostics series: path is empty");
-    }
-    if (m_columns.empty()) {
-      throw std::invalid_argument("diagnostics series: need at least one column");
-    }
-    for (const std::string &name : m_columns) {
-      if (name.empty() || name.find_first_of(",\r\n\"") != std::string::npos) {
-        throw std::invalid_argument("diagnostics series: column name '" + name +
-                                    "' is empty or not a single CSV field");
-      }
-    }
     MPI_Comm_rank(m_options.comm, &m_rank);
+    m_collective = true;
+    std::string error;
+    int local_ok = 1;
+    try {
+      validate_local_();
+    } catch (const std::exception &ex) {
+      local_ok = 0;
+      error = ex.what();
+    } catch (...) {
+      local_ok = 0;
+      error = "diagnostics series: invalid configuration";
+    }
+    agree_(local_ok, error, "diagnostics series: a peer rejected the configuration");
+    agree_same_config_();
     open_();
   }
 
@@ -105,6 +114,7 @@ public:
   void close() {
     if (m_closed) return;
     m_closed = true;
+    if (!m_collective) return;
     std::string error;
     if (m_rank == 0 && m_file != nullptr) {
       if (std::fclose(m_file) != 0) {
@@ -122,6 +132,55 @@ private:
   std::FILE *m_file{nullptr};
   int m_rank{0};
   bool m_closed{false};
+  bool m_collective{false};
+
+  void validate_local_() const {
+    if (m_options.path.empty()) {
+      throw std::invalid_argument("diagnostics series: path is empty");
+    }
+    if (m_columns.empty()) {
+      throw std::invalid_argument("diagnostics series: need at least one column");
+    }
+    for (const std::string &name : m_columns) {
+      if (name.empty() || name.find_first_of(",\r\n\"") != std::string::npos) {
+        throw std::invalid_argument("diagnostics series: column name '" + name +
+                                    "' is empty or not a single CSV field");
+      }
+    }
+  }
+
+  [[nodiscard]] std::uint64_t config_fingerprint_() const {
+    std::uint64_t sig = 14695981039346656037ull;
+    auto mix = [&](std::string_view text) {
+      for (unsigned char c : text) {
+        sig ^= c;
+        sig *= 1099511628211ull;
+      }
+      sig ^= 0xff;
+    };
+    mix(m_options.path.generic_string());
+    for (const std::string &name : m_columns) mix(name);
+    sig ^= m_options.overwrite ? 1ull : 0ull;
+    return sig;
+  }
+
+  void agree_same_config_() {
+    const unsigned long long local = config_fingerprint_();
+    unsigned long long lo = 0;
+    unsigned long long hi = 0;
+    pfc::mpi::throw_on_mpi_error(MPI_Allreduce(&local, &lo, 1,
+                                               MPI_UNSIGNED_LONG_LONG, MPI_MIN,
+                                               m_options.comm),
+                                 "diagnostics series: MPI_Allreduce");
+    pfc::mpi::throw_on_mpi_error(MPI_Allreduce(&local, &hi, 1,
+                                               MPI_UNSIGNED_LONG_LONG, MPI_MAX,
+                                               m_options.comm),
+                                 "diagnostics series: MPI_Allreduce");
+    if (lo != hi) {
+      throw std::runtime_error(
+          "diagnostics series: configuration differs across ranks");
+    }
+  }
 
   void open_() {
     std::string error;
