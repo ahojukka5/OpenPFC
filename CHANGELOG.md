@@ -35,6 +35,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `pfc::sim::run_attempts` drives a custom stepper with `Time`'s
+  attempt/commit/reject contract. A rejected attempt does not save.
+  `run` remains the fixed-step loop. Neither owns snapshot or
+  diagnostics writers. Nonlinear thin film and anisotropic surface
+  diffusion use `run` for the time loop.
+
 - Owned-cell reductions `pfc::sim::reduce_owned` (sum, mean, min, max,
   L1, L2, RMS, variance, integral) and a rank-0 diagnostics CSV
   (`include/openpfc/frontend/io/diagnostics_series.hpp`, #148).

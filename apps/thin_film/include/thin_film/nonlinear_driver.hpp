@@ -57,6 +57,7 @@
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/field/indexed_noise.hpp>
+#include <openpfc/kernel/simulation/simulation_driver.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_ops.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/runtime/gpu/spectral_etd_ops_gpu.hpp>
@@ -226,11 +227,12 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
     }
 
     double rupture_time = -1.0;
-    const int n_steps = int(std::llround(t1 / dt));
-    const int every =
-        (saveat > 0.0) ? std::max(1, int(std::llround(saveat / dt))) : n_steps;
-
-    auto report = [&](int step, double t) {
+    const double cadence = saveat > 0.0 ? saveat : t1;
+    pfc::Time clock({0.0, t1, dt}, cadence);
+    double t_prev = 0.0;
+    auto report = [&](const pfc::Time &now) {
+      const int step = pfc::time::increment(now);
+      const double t = pfc::time::current(now);
       auto s = thin_film::sample_film(h, domain, p.h0, 0.05, comm);
       ComplexField hh(domain, stack.fft().get_outbox_bounds(), 0);
       Ops::forward(stack.fft(), h, hh);
@@ -247,13 +249,13 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
                      s.dominant_spacing, s.ruptured ? 1.0 : 0.0});
       }
     };
-
-    report(0, 0.0);
-    double t = 0.0;
-    for (int step = 1; step <= n_steps; ++step) {
-      t = stepper.step(t, h, potential, mobility);
-      if (step % every == 0 || step == n_steps) report(step, t);
-    }
+    pfc::sim::run(
+        clock,
+        [&](double t_now) {
+          stepper.step(t_prev, h, potential, mobility);
+          t_prev = t_now;
+        },
+        pfc::sim::NoopHook{}, pfc::sim::NoopHook{}, report);
 
     if (rank == 0) {
       auto s = thin_film::sample_film(h, domain, p.h0, 0.05, comm);
