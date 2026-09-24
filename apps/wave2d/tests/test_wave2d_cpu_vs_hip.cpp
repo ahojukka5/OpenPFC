@@ -98,7 +98,7 @@ TEST_CASE("wave2d CPU vs HIP (Neumann y, single rank)", "[wave2d][HIP]") {
   std::vector<double> lap_cpu(nlocal);
   auto face_cpu = pfc::halo::allocate_face_halos<double>(decomp, rank, halo_width);
   pfc::comm::SparseExchange<pfc::HostSpace, double> exch_cpu(
-      u_cpu.data(), u_cpu.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u_cpu, decomp, rank, MPI_COMM_WORLD, halo_width);
   for (int s = 0; s < n_steps; ++s) {
     (void)s;
     wave2d::step_wave_separated_order2_cpu(u_cpu, v_cpu, lap_cpu, face_cpu, exch_cpu,

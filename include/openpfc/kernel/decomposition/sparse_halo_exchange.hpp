@@ -55,6 +55,7 @@
 
 #include <cstddef>
 #include <mpi.h>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -182,14 +183,12 @@ public:
    * `finish_halo_exchange()`; convenience for callers that don't
    * overlap halo wait time with computation.
    *
-   * @param field_ptr  Local field pointer (row-major; layout opaque to
-   *                   the exchanger — only the indices matter).
-   * @param field_size Total number of accessible elements at
-   *                   `field_ptr`; used for index bounds checks in
-   *                   `core::gather` / `core::scatter`.
+   * @param field Local field (layout opaque to the exchanger — only the
+   *               indices matter). The span is pointer + extent. It does
+   *               not keep the buffer alive until `finish_halo_exchange`.
    */
-  void exchange_halos(T *field_ptr, std::size_t field_size) {
-    start_halo_exchange(field_ptr, field_size);
+  void exchange_halos(std::span<T> field) {
+    start_halo_exchange(field);
     finish_halo_exchange();
   }
 
@@ -197,13 +196,13 @@ public:
    * @brief Post all `Irecv`, then all `Isend`; return immediately for
    *        compute/communication overlap.
    *
-   * Pair with `finish_halo_exchange()` after the inner work. The data
-   * pointer must remain valid until the matching `finish_halo_exchange`
-   * returns; the exchanger does not copy the field.
+   * Pair with `finish_halo_exchange()` after the inner work. `field` is
+   * pointer + extent only. The buffer must stay alive until the matching
+   * `finish_halo_exchange` returns; storing the span does not extend that
+   * lifetime, and the exchanger does not copy the field.
    */
-  void start_halo_exchange(T *field_ptr, std::size_t field_size) {
-    m_pending_field = field_ptr;
-    m_pending_size = field_size;
+  void start_halo_exchange(std::span<T> field) {
+    m_pending = field;
     const std::size_t n = m_halos.size();
     if (n == 0) {
       m_request_count = 0;
@@ -214,7 +213,7 @@ public:
     //    buffer. After this the SparseVector send_values.data() holds
     //    the contiguous bytes that MPI_Isend will ship.
     for (std::size_t i = 0; i < n; ++i) {
-      core::gather(m_halos[i].send_values, field_ptr, field_size);
+      core::gather(m_halos[i].send_values, field.data(), field.size());
     }
 
     // 2. Post all Irecvs first (deadlock-free pattern).
@@ -250,15 +249,14 @@ public:
   void finish_halo_exchange() {
     const double t0 = MPI_Wtime();
     exchange::wait_all(m_requests.data(), m_request_count);
-    if (m_pending_field != nullptr) {
+    if (m_pending.data() != nullptr) {
       for (auto &h : m_halos) {
         if (h.scatter_after_recv && !h.recv_values.empty()) {
-          core::scatter(h.recv_values, m_pending_field, m_pending_size);
+          core::scatter(h.recv_values, m_pending.data(), m_pending.size());
         }
       }
     }
-    m_pending_field = nullptr;
-    m_pending_size = 0;
+    m_pending = {};
     m_request_count = 0;
     profiling::record_time(profiling::kProfilingRegionCommunication,
                            MPI_Wtime() - t0);
@@ -282,8 +280,10 @@ private:
   std::vector<halo_type> m_halos;
   std::vector<MPI_Request> m_requests;
   int m_request_count{0};
-  T *m_pending_field{nullptr};
-  std::size_t m_pending_size{0};
+  /// Non-owning pointer + extent of the field passed to
+  /// `start_halo_exchange`. Cleared in `finish_halo_exchange`. The span
+  /// does not own the buffer and does not keep it alive across the wait.
+  std::span<T> m_pending{};
 };
 
 } // namespace pfc::comm::detail

@@ -85,7 +85,7 @@ TEST_CASE("Allen–Cahn CPU vs CUDA agreement (single rank)", "[AllenCahn][CUDA]
   constexpr int halo_width = allen_cahn::RunConfig::kHaloWidth;
   auto face_cpu = pfc::halo::allocate_face_halos<double>(decomp, rank, halo_width);
   pfc::comm::SparseExchange<pfc::HostSpace, double> exch_cpu(
-      u_cpu.data(), u_cpu.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u_cpu, decomp, rank, MPI_COMM_WORLD, halo_width);
 
   for (int step = 0; step < cfg.n_steps; ++step) {
     allen_cahn::step_explicit_euler_cpu(&u_cpu, &lap, &face_cpu, &exch_cpu, nx, ny,

@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
   }
 
   comm::SparseExchange<HostSpace, double> exchanger(
-      u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u, decomp, rank, MPI_COMM_WORLD, halo_width);
 
   std::array<const double *, 6> face_ptrs;
   for (int i = 0; i < 6; ++i) {

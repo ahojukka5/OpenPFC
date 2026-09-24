@@ -7,7 +7,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <mpi.h>
 
+#include <span>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include <openpfc/kernel/data/domain.hpp>
@@ -121,8 +123,43 @@ TEST_CASE("SparseExchange HostSpace: start/finish and unbound start throw",
   h2.scatter_after_recv = true;
   comm::SparseExchange<HostSpace, double> ex(u, {std::move(h2)}, rank,
                                              MPI_COMM_WORLD);
+  // `start` stores a span (pointer + extent). `u` must still be alive at
+  // `finish`; the span does not extend that lifetime.
   ex.start();
   ex.finish();
   REQUIRE(u(6, 0, 0) == 3.0);
   REQUIRE(u(7, 0, 0) == 6.0);
+}
+
+TEST_CASE("SparseExchange HostSpace: empty and short spans", "[sparse_exchange]") {
+  using Ex = comm::SparseExchange<HostSpace, double>;
+  static_assert(
+      std::is_invocable_v<void (Ex::*)(std::span<double>), Ex &, std::span<double>>);
+  static_assert(!std::is_invocable_v<void (Ex::*)(std::span<double>), Ex &,
+                                     std::span<const double>>);
+
+  int rank = 0, size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1) {
+    return;
+  }
+
+  auto domain = domain::create({8, 1, 1});
+  auto decomp = decomposition::create(domain, 1);
+  Ex empty_field(std::span<double>{}, decomp, rank, MPI_COMM_WORLD, 1);
+  REQUIRE_THROWS_AS(empty_field.exchange(), std::runtime_error);
+
+  auto u = data::field_from_subdomain_unpadded<double>(decomp, rank, 0);
+  halo::RemoteHalo<double> h;
+  h.peer_rank = rank;
+  h.send_tag = 9;
+  h.recv_tag = 9;
+  h.send_values =
+      core::SparseVector<backend::CPUTag, double>(std::vector<std::size_t>{2});
+  h.recv_values =
+      core::SparseVector<backend::CPUTag, double>(std::vector<std::size_t>{3});
+  Ex short_field({std::move(h)}, rank, MPI_COMM_WORLD);
+  REQUIRE_THROWS_AS(short_field.exchange(std::span<double>(u.data(), 1)),
+                    std::runtime_error);
 }

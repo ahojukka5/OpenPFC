@@ -38,6 +38,8 @@
 
 #include <array>
 #include <cstddef>
+#include <span>
+#include <stdexcept>
 
 namespace pfc::field::fd {
 
@@ -78,16 +80,24 @@ enum class FaceAverage { Arithmetic, Harmonic };
  * Owned arrays are x-fastest, length `nx*ny*nz`, and those extents are
  * the local owned box. `active_axes` is the global topology:
  * `{Nx > 1, Ny > 1, Nz > 1}`. A halo pointer may be null only on an
- * inactive axis. `dx`, `dy`, and `dz` are the cell spacings.
+ * inactive axis, so those six slots stay raw pointers: a span would
+ * require an extent for a pointer that is intentionally absent.
+ * `dx`, `dy`, and `dz` are the cell spacings.
  */
-inline void
-divergence_separated(const double *coefficient, const double *potential,
-                     const std::array<const double *, 6> &coefficient_halos,
-                     const std::array<const double *, 6> &potential_halos,
-                     double *rhs, int nx, int ny, int nz,
-                     std::array<bool, 3> active_axes, double dx, double dy,
-                     double dz, FaceAverage average) {
+inline void divergence_separated(
+    std::span<const double> coefficient, std::span<const double> potential,
+    const std::array<const double *, 6> &coefficient_halos,
+    const std::array<const double *, 6> &potential_halos, std::span<double> rhs,
+    int nx, int ny, int nz, std::array<bool, 3> active_axes, double dx, double dy,
+    double dz, FaceAverage average) {
   if (nx <= 0 || ny <= 0 || nz <= 0) return;
+  const std::size_t n = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) *
+                        static_cast<std::size_t>(nz);
+  if (coefficient.size() != n || potential.size() != n || rhs.size() != n) {
+    throw std::invalid_argument(
+        "pfc::field::fd::divergence_separated: owned arrays must have length "
+        "nx*ny*nz");
+  }
   const std::ptrdiff_t sy = nx;
   const std::ptrdiff_t sz = static_cast<std::ptrdiff_t>(nx) * ny;
   const bool use_x = active_axes[0];

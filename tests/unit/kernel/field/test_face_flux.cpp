@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <stdexcept>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -122,8 +123,8 @@ TEST_CASE("constant coefficient matches the three-point second difference",
   Halos ch, ph;
   ch.wrap(coeff, nx, ny, nz);
   ph.wrap(potential, nx, ny, nz);
-  divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs, rhs.data(),
-                       nx, ny, nz, axes_of_whole_grid(nx, ny, nz), dx, dy, 1.0,
+  divergence_separated(coeff, potential, ch.ptrs, ph.ptrs, rhs, nx, ny, nz,
+                       axes_of_whole_grid(nx, ny, nz), dx, dy, 1.0,
                        FaceAverage::Arithmetic);
 
   const double stencil = a * (2.0 * std::cos(k * dx) - 2.0) / (dx * dx);
@@ -158,8 +159,8 @@ TEST_CASE("variable coefficient matches a scalar face loop", "[face_flux]") {
   ch.wrap(coeff, nx, ny, nz);
   ph.wrap(potential, nx, ny, nz);
   std::vector<double> rhs(coeff.size());
-  divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs, rhs.data(),
-                       nx, ny, nz, axes_of_whole_grid(nx, ny, nz), dx, dy, 1.0,
+  divergence_separated(coeff, potential, ch.ptrs, ph.ptrs, rhs, nx, ny, nz,
+                       axes_of_whole_grid(nx, ny, nz), dx, dy, 1.0,
                        FaceAverage::Harmonic);
 
   auto at = [&](const std::vector<double> &core, const Halos &halo, int ix, int iy,
@@ -221,9 +222,8 @@ TEST_CASE("periodic divergence conserves a variable coefficient", "[face_flux]")
   ph.wrap(potential, nx, ny, nz);
   for (const auto kind : {FaceAverage::Arithmetic, FaceAverage::Harmonic}) {
     std::vector<double> rhs(coeff.size());
-    divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs,
-                         rhs.data(), nx, ny, nz, axes_of_whole_grid(nx, ny, nz), 0.4,
-                         0.5, 0.8, kind);
+    divergence_separated(coeff, potential, ch.ptrs, ph.ptrs, rhs, nx, ny, nz,
+                         axes_of_whole_grid(nx, ny, nz), 0.4, 0.5, 0.8, kind);
     REQUIRE(std::abs(sum_of(rhs)) < 1.0e-10);
   }
 }
@@ -286,17 +286,17 @@ TEST_CASE("a split periodic box matches the whole-grid divergence", "[face_flux]
           hp.storage[static_cast<std::size_t>(i)].data();
     }
     std::vector<double> rhs(c.size());
-    divergence_separated(c.data(), p.data(), hc.ptrs, hp.ptrs, rhs.data(), nloc, ny,
-                         nz, axes_of_whole_grid(nx, ny, nz), 1.0, 1.0, 1.0,
+    divergence_separated(c, p, hc.ptrs, hp.ptrs, rhs, nloc, ny, nz,
+                         axes_of_whole_grid(nx, ny, nz), 1.0, 1.0, 1.0,
                          FaceAverage::Harmonic);
     return rhs;
   };
 
   // Harmonic on the pieces must match harmonic on the whole grid.
   std::vector<double> full_h(coeff.size());
-  divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs,
-                       full_h.data(), nx, ny, nz, axes_of_whole_grid(nx, ny, nz),
-                       1.0, 1.0, 1.0, FaceAverage::Harmonic);
+  divergence_separated(coeff, potential, ch.ptrs, ph.ptrs, full_h, nx, ny, nz,
+                       axes_of_whole_grid(nx, ny, nz), 1.0, 1.0, 1.0,
+                       FaceAverage::Harmonic);
   const auto left = piece(0, left_n);
   const auto right = piece(left_n, nx - left_n);
   double err = 0.0;
@@ -333,8 +333,8 @@ TEST_CASE("a locally owned extent of 1 still fluxes an active global axis",
   ch.wrap(coeff, nx, ny, nz);
   ph.wrap(potential, nx, ny, nz);
   std::vector<double> full(coeff.size());
-  divergence_separated(coeff.data(), potential.data(), ch.ptrs, ph.ptrs, full.data(),
-                       nx, ny, nz, active, 0.5, 0.5, 1.0, FaceAverage::Arithmetic);
+  divergence_separated(coeff, potential, ch.ptrs, ph.ptrs, full, nx, ny, nz, active,
+                       0.5, 0.5, 1.0, FaceAverage::Arithmetic);
 
   double err = 0.0;
   double split_sum = 0.0;
@@ -374,8 +374,8 @@ TEST_CASE("a locally owned extent of 1 still fluxes an active global axis",
           hp.storage[static_cast<std::size_t>(i)].data();
     }
     std::vector<double> rhs(c.size());
-    divergence_separated(c.data(), p.data(), hc.ptrs, hp.ptrs, rhs.data(), 1, ny, nz,
-                         active, 0.5, 0.5, 1.0, FaceAverage::Arithmetic);
+    divergence_separated(c, p, hc.ptrs, hp.ptrs, rhs, 1, ny, nz, active, 0.5, 0.5,
+                         1.0, FaceAverage::Arithmetic);
     for (int iy = 0; iy < ny; ++iy) {
       err = std::max(err, std::abs(rhs[static_cast<std::size_t>(iy)] -
                                    full[idx(x0, iy, 0, nx, ny)]));
@@ -388,4 +388,25 @@ TEST_CASE("a locally owned extent of 1 still fluxes an active global axis",
   double peak = 0.0;
   for (double v : full) peak = std::max(peak, std::abs(v));
   REQUIRE(peak > 1.0e-6);
+}
+
+TEST_CASE("divergence_separated span extents", "[face_flux]") {
+  std::array<const double *, 6> absent{};
+  const std::array<bool, 3> idle{false, false, false};
+  // A non-positive extent returns before any span is read.
+  divergence_separated({}, {}, absent, absent, {}, 0, 2, 2, idle, 1.0, 1.0, 1.0,
+                       FaceAverage::Arithmetic);
+
+  const std::vector<double> coeff{1.0};
+  const std::vector<double> potential{4.0};
+  std::vector<double> rhs{9.0};
+  divergence_separated(coeff, potential, absent, absent, rhs, 1, 1, 1, idle, 1.0,
+                       1.0, 1.0, FaceAverage::Arithmetic);
+  REQUIRE(rhs[0] == 0.0);
+
+  const std::vector<double> too_long{1.0, 2.0};
+  REQUIRE_THROWS_AS(divergence_separated(too_long, potential, absent, absent, rhs, 1,
+                                         1, 1, idle, 1.0, 1.0, 1.0,
+                                         FaceAverage::Arithmetic),
+                    std::invalid_argument);
 }

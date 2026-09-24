@@ -147,7 +147,7 @@ TEST_CASE("laplacian_periodic_separated<2> matches analytic Laplacian on every "
   constexpr int halo_width = 1;
   auto face_halos = halo::allocate_face_halos<double>(decomp, rank, halo_width);
   comm::SparseExchange<HostSpace, double> sex(
-      u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u, decomp, rank, MPI_COMM_WORLD, halo_width);
   sex.exchange();
   halo::copy_to_face_layout(sex.halos(), face_halos);
 
