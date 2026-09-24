@@ -3,15 +3,10 @@
 
 #pragma once
 
-/**
- * @file mpi_report.hpp
- * @brief Rank-0 timing / scalar reductions for FD demo apps.
- */
-
 #include <iostream>
 #include <mpi.h>
 
-namespace pfc::apps {
+namespace wave2d {
 
 [[nodiscard]] inline double reduce_sum(double local, MPI_Comm comm, int root = 0) {
   double global = 0.0;
@@ -31,7 +26,6 @@ inline void print_timing_line(std::ostream &os, double max_elapsed, int n_steps)
      << " (MPI_MAX across ranks)\n";
 }
 
-/// Min/max/avg wall time of the time-step loop; rank 0 prints `Step timing:`.
 inline void report_step_timing(MPI_Comm comm, int rank, int n_steps,
                                double elapsed_local_s) {
   double elapsed_min_s = 0.0;
@@ -53,4 +47,4 @@ inline void report_step_timing(MPI_Comm comm, int rank, int n_steps,
   }
 }
 
-} // namespace pfc::apps
+} // namespace wave2d

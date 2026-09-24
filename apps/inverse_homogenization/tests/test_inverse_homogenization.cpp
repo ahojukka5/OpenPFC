@@ -37,7 +37,7 @@
 #include <inverse_homogenization/spinodal_generator.hpp>
 #include <inverse_homogenization/target_io.hpp>
 #include <inverse_homogenization/yang_reentrant.hpp>
-#include <openpfc_apps/homogenization.hpp>
+#include <inverse_homogenization/homogenization.hpp>
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;

@@ -18,7 +18,7 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/data/strong_types.hpp>
 #include <openpfc/runtime/gpu/gpu_spectral_stack.hpp>
-#include <openpfc_apps/homogenization_hip.hpp>
+#include <inverse_homogenization/homogenization_hip.hpp>
 #include <inverse_homogenization/auxetic_geometry.hpp>
 
 int main(int argc, char **argv) {

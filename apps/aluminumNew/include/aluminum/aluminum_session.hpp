@@ -15,10 +15,10 @@
 
 #include <aluminum/aluminum_physics.hpp>
 #include <aluminum/seed_grid_fcc.hpp>
+#include <aluminum/solidification_bc_json.hpp>
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/frontend/ui/json_spectral_etd_session.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/solidification_bc_json.hpp>
 
 #if defined(OpenPFC_ENABLE_CUDA_SPECTRAL) || defined(OpenPFC_ENABLE_HIP_SPECTRAL)
 #include <openpfc/runtime/gpu/gpu_spectral_stack.hpp>

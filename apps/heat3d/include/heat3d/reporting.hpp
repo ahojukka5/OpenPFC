@@ -40,7 +40,7 @@
 
 #include <heat3d/cli.hpp>
 #include <heat3d/heat_model.hpp>
-#include <openpfc_apps/mpi_report.hpp>
+#include <heat3d/rank_report.hpp>
 
 namespace heat3d {
 
@@ -128,7 +128,7 @@ void report(int rank, int nproc, const RunConfig &cfg, const char *method_tag,
     const double e = u_val - uex;
     sum_err2 += e * e;
   });
-  const double g_err2 = pfc::apps::reduce_sum(sum_err2, MPI_COMM_WORLD);
+  const double g_err2 = heat3d::reduce_sum(sum_err2, MPI_COMM_WORLD);
 
   if (rank == 0) {
     std::cout << "heat3d method=" << method_tag;
@@ -141,7 +141,7 @@ void report(int rank, int nproc, const RunConfig &cfg, const char *method_tag,
               << " mpi_ranks=" << nproc;
     if (!extra_metadata.empty()) std::cout << " " << extra_metadata;
     std::cout << "\n";
-    pfc::apps::print_timing_line(std::cout, max_elapsed, cfg.n_steps);
+    heat3d::print_timing_line(std::cout, max_elapsed, cfg.n_steps);
     const double ncells = static_cast<double>(cfg.Nx) * cfg.Ny * cfg.Nz;
     const double rms = std::sqrt(g_err2 / ncells);
     std::cout << "l2_error_vs_R3_analytic_rms=" << rms << " " << l2_note << "\n";

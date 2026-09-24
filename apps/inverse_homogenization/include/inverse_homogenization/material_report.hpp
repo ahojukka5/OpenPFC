@@ -9,7 +9,7 @@
 
 #include <inverse_homogenization/inverse_convergence.hpp>
 #include <nlohmann/json.hpp>
-#include <openpfc_apps/homogenization.hpp>
+#include <inverse_homogenization/homogenization.hpp>
 
 namespace pfc::apps::inverse {
 

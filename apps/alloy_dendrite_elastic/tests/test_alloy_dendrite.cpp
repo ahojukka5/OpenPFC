@@ -27,7 +27,7 @@
  * identity for `lambda_el = 0` *with the solver running*, not merely a
  * small difference, and then asserts that the coupling does something when
  * it is turned on. The solver itself is verified against Eshelby in
- * `apps/common/tests/test_microelasticity.cpp`; none of that is repeated
+ * the public microelasticity tests; none of that is repeated
  * here.
  *
  * Bands are set from the measured convergence study in the app README, at

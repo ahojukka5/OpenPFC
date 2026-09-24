@@ -8,9 +8,9 @@
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/strong_types.hpp>
-#include <openpfc_apps/fixed_bc.hpp>
-#include <openpfc_apps/moving_bc.hpp>
-#include <openpfc_apps/solidification_bc_json.hpp>
+#include <tungsten/fixed_bc.hpp>
+#include <tungsten/moving_bc.hpp>
+#include <tungsten/solidification_bc_json.hpp>
 
 using namespace pfc;
 

@@ -39,7 +39,7 @@
 
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
-#include <openpfc_apps/mpi_report.hpp>
+#include <wave2d/rank_report.hpp>
 #include <wave2d/cli.hpp>
 #include <wave2d/wave_model.hpp>
 
@@ -111,7 +111,7 @@ interior_stats(const pfc::data::Field<T, pfc::HostSpace> &u, int margin) {
                                  const std::string &extra_metadata,
                                  double max_elapsed, const char *note,
                                  const InteriorStats &local) {
-  const double g_sum = pfc::apps::reduce_sum(local.sum_sq, MPI_COMM_WORLD);
+  const double g_sum = wave2d::reduce_sum(local.sum_sq, MPI_COMM_WORLD);
   std::int64_t g_count = 0;
   MPI_Allreduce(&local.count, &g_count, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
 
@@ -123,7 +123,7 @@ interior_stats(const pfc::data::Field<T, pfc::HostSpace> &u, int margin) {
               << " c=" << kC << " mpi_ranks=" << nproc;
     if (!extra_metadata.empty()) std::cout << " " << extra_metadata;
     std::cout << "\n";
-    pfc::apps::print_timing_line(std::cout, max_elapsed, cfg.n_steps);
+    wave2d::print_timing_line(std::cout, max_elapsed, cfg.n_steps);
     if (g_count == 0) {
       std::cerr << "wave2d: interior reduction visited no cells; "
                    "global_rms_u_interior is undefined for this configuration\n";

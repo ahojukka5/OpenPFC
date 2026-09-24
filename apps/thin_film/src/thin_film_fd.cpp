@@ -45,7 +45,7 @@
 #include <openpfc/kernel/field/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
-#include <openpfc_apps/gather.hpp>
+#include <thin_film/xy_gather.hpp>
 
 #include <thin_film/fd_flux.hpp>
 #include <thin_film/nonlinear.hpp>

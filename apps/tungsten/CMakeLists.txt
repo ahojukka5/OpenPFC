@@ -8,7 +8,6 @@
 # device `SpectralETDSystem`.
 
 set(TUNGSTEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/apps/common/include)
 
 set(_tungsten_heffte_tgt $<IF:$<TARGET_EXISTS:Heffte::Heffte>,Heffte::Heffte,heffte>)
 if(NOT TARGET Heffte::Heffte AND NOT TARGET heffte)
@@ -18,14 +17,14 @@ endif()
 function(tungsten_cpu_executable target)
   add_executable(${target} ${ARGN})
   target_include_directories(${target} PRIVATE ${TUNGSTEN_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_tungsten_heffte_tgt})
 endfunction()
 
 function(tungsten_cuda_executable target)
   add_executable(${target} ${ARGN} src/gpu/tungsten_pointwise.cu)
   target_include_directories(${target} PRIVATE ${TUNGSTEN_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_tungsten_heffte_tgt}
                         CUDA::cudart openpfc_gpu_kernels)
   set_target_properties(${target} PROPERTIES
@@ -36,7 +35,7 @@ endfunction()
 function(tungsten_hip_executable target)
   add_executable(${target} ${ARGN} src/gpu/tungsten_pointwise.hip)
   target_include_directories(${target} PRIVATE ${TUNGSTEN_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_tungsten_heffte_tgt}
                         hip::host openpfc_hip_kernels)
   set_target_properties(${target} PROPERTIES
@@ -110,7 +109,9 @@ if(TUNGSTEN_ENABLE_TESTS)
     tungsten_cpu_executable(test_tungsten tests/test_tungsten.cpp
                                           tests/test_tungsten_physics.cpp
                                           tests/test_tungsten_inputs.cpp
-                                          tests/test_tungsten_resolution.cpp)
+                                          tests/test_tungsten_resolution.cpp
+                                          tests/test_boundary_conditions.cpp
+                                          tests/test_bc_moving.cpp)
     target_link_libraries(test_tungsten PRIVATE Catch2::Catch2)
     # The shipped inputs are part of the product, so a test loads them from the
     # source tree rather than from a copy that could drift.

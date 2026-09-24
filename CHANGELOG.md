@@ -7,6 +7,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Changed
+
+- Applications no longer share `apps/common`. Homogenization stays in
+  inverse homogenization, the plasma dispersion oracle stays in
+  Vlasov–Maxwell, and the directional-solidification reservoir modifiers
+  stay in tungsten and aluminum. CLI parsing, rank timing lines, and the
+  XY gather used by Kobayashi and thin-film FD are local to those apps.
+
 ### Fixed
 
 - `SimulationLifecycle` no longer runs the accepted-step hook on the

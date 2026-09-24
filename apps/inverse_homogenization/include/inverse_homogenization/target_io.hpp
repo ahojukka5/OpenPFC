@@ -21,7 +21,7 @@
 #include <mpi.h>
 
 #include <openpfc/kernel/data/grid_field.hpp>
-#include <openpfc_apps/homogenization.hpp>
+#include <inverse_homogenization/homogenization.hpp>
 
 namespace pfc::apps::inverse {
 

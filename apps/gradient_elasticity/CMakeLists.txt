@@ -19,14 +19,14 @@ endif()
 function(gradient_elasticity_cpu_executable target)
   add_executable(${target} ${ARGN})
   target_include_directories(${target} PRIVATE ${GRADIENT_ELASTICITY_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_gradient_elasticity_heffte_tgt})
 endfunction()
 
 function(gradient_elasticity_hip_executable target)
   add_executable(${target} ${ARGN})
   target_include_directories(${target} PRIVATE ${GRADIENT_ELASTICITY_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         nlohmann_json::nlohmann_json ${_gradient_elasticity_heffte_tgt}
                         hip::host openpfc_hip_kernels)
   set_target_properties(${target} PROPERTIES

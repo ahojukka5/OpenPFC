@@ -4,7 +4,7 @@
 #pragma once
 
 /**
- * @file openpfc_apps/solidification_bc_json.hpp
+ * @file aluminum/solidification_bc_json.hpp
  * @brief JSON `from_json` and catalog registration for app-local FixedBC/MovingBC.
  */
 
@@ -12,8 +12,8 @@
 
 #include <openpfc/frontend/ui/field_modifier_registry.hpp>
 #include <openpfc/frontend/ui/from_json_field_modifiers.hpp>
-#include <openpfc_apps/fixed_bc.hpp>
-#include <openpfc_apps/moving_bc.hpp>
+#include <aluminum/fixed_bc.hpp>
+#include <aluminum/moving_bc.hpp>
 
 namespace pfc {
 

@@ -21,7 +21,7 @@ endif()
 function(inverse_homogenization_cpu_executable target)
   add_executable(${target} ${ARGN})
   target_include_directories(${target} PRIVATE ${INVERSE_HOMOGENIZATION_INCLUDE_DIR})
-  target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+  target_link_libraries(${target} PRIVATE OpenPFC
                         ${_invhom_heffte_tgt})
 endfunction()
 
@@ -48,7 +48,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
   function(inverse_homogenization_hip_executable target)
     add_executable(${target} ${ARGN})
     target_include_directories(${target} PRIVATE ${INVERSE_HOMOGENIZATION_INCLUDE_DIR})
-    target_link_libraries(${target} PRIVATE OpenPFC openpfc_apps_common
+    target_link_libraries(${target} PRIVATE OpenPFC
                           openpfc_microelasticity_hip
                           ${_invhom_heffte_tgt} hip::host openpfc_hip_kernels)
     set_target_properties(${target} PROPERTIES
@@ -147,6 +147,20 @@ if(INVERSE_HOMOGENIZATION_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     add_test(NAME inverse-homogenization-ac-tests
              COMMAND test_inverse_homogenization)
     set_tests_properties(inverse-homogenization-ac-tests PROPERTIES TIMEOUT 600)
+    inverse_homogenization_cpu_executable(test_homogenization
+                                          tests/test_homogenization.cpp)
+    target_link_libraries(test_homogenization PRIVATE Catch2::Catch2)
+    add_test(NAME inverse-homogenization-forward COMMAND test_homogenization)
+    set_tests_properties(inverse-homogenization-forward PROPERTIES TIMEOUT 300)
+    if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE AND
+       (OpenPFC_MPI_TEST_MAX_WORLD_SIZE EQUAL 0 OR
+        OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER_EQUAL 2))
+      add_test(NAME inverse-homogenization-forward-mpi
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:test_homogenization> ${MPIEXEC_POSTFLAGS})
+      set_tests_properties(inverse-homogenization-forward-mpi PROPERTIES
+        TIMEOUT 300 PROCESSORS 2)
+    endif()
     add_executable(test_finite_strain_forward
                    tests/test_finite_strain_forward.cpp)
     target_include_directories(test_finite_strain_forward PRIVATE

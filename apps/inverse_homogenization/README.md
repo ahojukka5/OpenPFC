@@ -25,7 +25,7 @@ Limitations in the report chapter, not as missing stages.
 
 | Stage | What | Where |
 |-------|------|--------|
-| 1 | Forward periodic \(C_H\) | `openpfc_apps/homogenization.hpp`, `openpfc_homogenize` |
+| 1 | Forward periodic \(C_H\) | `inverse_homogenization/homogenization.hpp`, `openpfc_homogenize` |
 | 2–3 | Allen–Cahn descent on the tensor-mismatch objective, volume penalty, perimeter | `phase_field_inverse.hpp`, `openpfc_inverse_homogenize` |
 | 4 | Discrete mutual-energy \(\delta J/\delta h\) + finite-difference check | homogenization.hpp; Catch2 `apps-common-homogenization` |
 | 5 | Free-topology campaigns (isotropic / auxetic / orthotropic; two seeds) | `openpfc_inverse_homogenize`, `auxetic_geometry.hpp`; jobs in the table below |
@@ -161,7 +161,7 @@ The frozen family does **not** produce \(\nu_t>0\) then \(\nu_t<0\).
 ## Reuse
 
 The elliptic solve is `EigenstrainMicroelasticity` in
-[`apps/common/include/openpfc/solvers/microelasticity/microelasticity.hpp`](../common/include/openpfc/solvers/microelasticity/microelasticity.hpp).
+[`include/openpfc/solvers/microelasticity/microelasticity.hpp`](../../include/openpfc/solvers/microelasticity/microelasticity.hpp).
 Homogenization is the same Green-operator problem with **zero eigenstrain**
 and an imposed macroscopic strain (`applied_strain`). There is no second
 elasticity implementation, no FEM, and no unstructured mesh.

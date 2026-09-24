@@ -34,7 +34,7 @@
 
 #include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/frontend/utils/cli_options.hpp>
-#include <openpfc_apps/plasma_dispersion.hpp>
+#include <vlasov_maxwell/plasma_dispersion.hpp>
 #include <vlasov_maxwell/diagnostics.hpp>
 #include <vlasov_maxwell/ics.hpp>
 #include <vlasov_maxwell/reduced_output.hpp>

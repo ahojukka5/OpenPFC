@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @file openpfc_apps/fixed_bc.hpp
+ * @file aluminum/fixed_bc.hpp
  * @brief Directional-solidification fixed BC (tungsten / aluminum JSON App path)
  *
  * @details
