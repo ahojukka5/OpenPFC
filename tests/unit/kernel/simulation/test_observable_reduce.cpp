@@ -94,8 +94,8 @@ TEST_CASE("observable Gaussian integral 4 ranks matches 1-rank discrete sum",
   fill_gaussian(psi);
   const double got = integrate_owned(psi, MPI_COMM_WORLD);
 
-  Field<double> full(domain,
-                     Box3i::from_bounds({0, 0, 0}, {N - 1, N - 1, N - 1}), 0);
+  Field<double> full(domain, Box3i::from_bounds({0, 0, 0}, {N - 1, N - 1, N - 1}),
+                     0);
   fill_gaussian(full);
   const double ref = integrate_owned(full, MPI_COMM_SELF);
   REQUIRE(got == Approx(ref).margin(1e-12));
@@ -170,3 +170,51 @@ TEST_CASE("observable Gaussian integral CUDASpace 1 rank",
   REQUIRE(got == Approx(analytic_gaussian_r3()).margin(1e-4));
 }
 #endif
+
+TEST_CASE("owned reductions exclude a halo and match a known field",
+          "[observable][unit]") {
+  int size = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 1) SKIP("needs 1 rank");
+  const auto domain = pfc::domain::create({2, 1, 1});
+  const auto box = pfc::domain::index_box(domain);
+  Field<double> u(domain, box, 1);
+  u.with_host_view([&](double *data, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i) data[i] = -99.0;
+  });
+  u(0, 0, 0) = 1.0;
+  u(1, 0, 0) = 3.0;
+  const auto r = pfc::sim::reduce_owned(u, MPI_COMM_WORLD);
+  REQUIRE(r.count == 2);
+  REQUIRE(r.min == Approx(1.0));
+  REQUIRE(r.max == Approx(3.0));
+  REQUIRE(r.sum == Approx(4.0));
+  REQUIRE(r.mean == Approx(2.0));
+  REQUIRE(r.l1 == Approx(4.0));
+  REQUIRE(r.l2 == Approx(std::sqrt(10.0)));
+  REQUIRE(r.rms == Approx(std::sqrt(5.0)));
+  REQUIRE(r.variance == Approx(1.0));
+  const auto squares =
+      pfc::sim::reduce_owned(u, MPI_COMM_WORLD, [](double v) { return v * v; });
+  REQUIRE(squares.sum == Approx(10.0));
+  REQUIRE(squares.min == Approx(1.0));
+}
+
+TEST_CASE("owned reductions agree across two ranks", "[observable][MPI]") {
+  int size = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  if (size != 2) SKIP("needs 2 ranks");
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  const auto domain = pfc::domain::create({4, 1, 1});
+  const auto local = Box3i::from_bounds({rank * 2, 0, 0}, {rank * 2 + 1, 0, 0});
+  Field<double> u(domain, local, 0);
+  u(0, 0, 0) = static_cast<double>(rank * 2 + 1);
+  u(1, 0, 0) = static_cast<double>(rank * 2 + 2);
+  const auto r = pfc::sim::reduce_owned(u, MPI_COMM_WORLD);
+  REQUIRE(r.count == 4);
+  REQUIRE(r.min == Approx(1.0));
+  REQUIRE(r.max == Approx(4.0));
+  REQUIRE(r.mean == Approx(2.5));
+  REQUIRE(r.sum == Approx(10.0));
+}
