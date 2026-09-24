@@ -10,6 +10,7 @@
 #include <openpfc/kernel/field/face_flux.hpp>
 #include <openpfc/kernel/field/fourier_series.hpp>
 #include <openpfc/kernel/field/indexed_noise.hpp>
+#include <openpfc/kernel/simulation/simulation_driver.hpp>
 #include <openpfc/kernel/simulation/spectral_flux.hpp>
 #include <openpfc/solvers/microelasticity/microelasticity.hpp>
 
@@ -43,6 +44,23 @@ int main() {
   elastic.stiffness_at_zero = elastic.stiffness_at_one;
   elastic.relative_tolerance = 1.0e-6;
   if (elastic.max_iterations < 1) {
+    return 1;
+  }
+  pfc::Time clock({0.0, 0.2, 0.1}, 0.2);
+  int saves = 0;
+  int rejects = 1;
+  pfc::sim::run_attempts(
+      clock,
+      [&](pfc::Time &) {
+        if (rejects > 0) {
+          --rejects;
+          return pfc::sim::StepDecision{false};
+        }
+        return pfc::sim::StepDecision{true};
+      },
+      pfc::sim::NoopHook{}, pfc::sim::NoopHook{},
+      [&](const pfc::Time &) { ++saves; });
+  if (saves != 2 || clock.get_increment() != 2) {
     return 1;
   }
   auto domain = pfc::domain::create({8, 8, 8});

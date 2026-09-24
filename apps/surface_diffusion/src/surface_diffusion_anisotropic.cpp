@@ -63,6 +63,7 @@
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <openpfc/kernel/simulation/observable_reduce.hpp>
+#include <openpfc/kernel/simulation/simulation_driver.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
 #include <surface_diffusion/anisotropic_flux.hpp>
@@ -241,28 +242,30 @@ int main(int argc, char *argv[]) {
                        .overwrite = true});
     }
 
-    auto report = [&](int step, double t) {
-      auto s = sample_surface(h, domain, stack.fft(), MPI_COMM_WORLD);
+    Sample final_sample{};
+    const double cadence = saveat > 0.0 ? saveat : t1;
+    pfc::Time clock({0.0, t1, dt}, cadence);
+    double t_prev = 0.0;
+    auto report = [&](const pfc::Time &now) {
+      const int step = pfc::time::increment(now);
+      const double t = pfc::time::current(now);
+      final_sample = sample_surface(h, domain, stack.fft(), MPI_COMM_WORLD);
       snapshots.write(step, t);
       if (diag) {
         diag->write(step, t,
-                    {s.mean_h, s.rms_roughness, s.max_grad_h, s.dominant_wavelength,
-                     s.domain_length, s.energy_kx_frac, s.energy_ky_frac,
-                     s.energy_diag_frac});
+                    {final_sample.mean_h, final_sample.rms_roughness,
+                     final_sample.max_grad_h, final_sample.dominant_wavelength,
+                     final_sample.domain_length, final_sample.energy_kx_frac,
+                     final_sample.energy_ky_frac, final_sample.energy_diag_frac});
       }
-      return s;
     };
-
-    const int n_steps = static_cast<int>(std::llround(t1 / dt));
-    const int every =
-        (saveat > 0.0) ? std::max(1, int(std::llround(saveat / dt))) : n_steps;
-
-    Sample final_sample = report(0, 0.0);
-    double t = 0.0;
-    for (int step = 1; step <= n_steps; ++step) {
-      t = stepper.step(t, h);
-      if (step % every == 0 || step == n_steps) final_sample = report(step, t);
-    }
+    pfc::sim::run(
+        clock,
+        [&](double t_now) {
+          stepper.step(t_prev, h);
+          t_prev = t_now;
+        },
+        pfc::sim::NoopHook{}, pfc::sim::NoopHook{}, report);
 
     if (rank == 0) {
       std::printf(
