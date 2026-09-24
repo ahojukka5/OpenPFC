@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-#if !defined(OPENPFC_TEST_OBSERVABLE_HIP) &&                                   \
-    !defined(OPENPFC_TEST_OBSERVABLE_CUDA)
+#if !defined(OPENPFC_TEST_OBSERVABLE_HIP) && !defined(OPENPFC_TEST_OBSERVABLE_CUDA)
 
 #include <catch2/catch_session.hpp>
 
@@ -35,8 +34,7 @@ using Space = pfc::CUDASpace;
 
 using Catch::Approx;
 
-TEST_CASE("device observable Gaussian integral 1 rank",
-          "[gpu][observable]") {
+TEST_CASE("device observable Gaussian integral 1 rank", "[gpu][observable]") {
 #if defined(OPENPFC_TEST_OBSERVABLE_HIP)
   if (!pfc::gpu::test::is_hip_available()) {
     SKIP("HIP not available");
@@ -57,15 +55,13 @@ TEST_CASE("device observable Gaussian integral 1 rank",
   constexpr double L = 6.0;
   const double dx = 2.0 * L / static_cast<double>(N);
   const double origin = -L + 0.5 * dx;
-  auto domain = pfc::domain::create(
-      pfc::GridSize({N, N, N}),
-      pfc::PhysicalOrigin({origin, origin, origin}),
-      pfc::GridSpacing({dx, dx, dx}));
+  auto domain = pfc::domain::create(pfc::GridSize({N, N, N}),
+                                    pfc::PhysicalOrigin({origin, origin, origin}),
+                                    pfc::GridSpacing({dx, dx, dx}));
   const auto box = pfc::Box3i::from_bounds({0, 0, 0}, {N - 1, N - 1, N - 1});
   pfc::data::Field<double, Space> ones(domain, box, 0);
-  ones.with_host_view([&](double *data, std::size_t n) {
-    std::fill(data, data + n, 1.0);
-  });
+  ones.with_host_view(
+      [&](double *data, std::size_t n) { std::fill(data, data + n, 1.0); });
   const double vol = 8.0 * L * L * L;
   REQUIRE(pfc::sim::integrate_owned(ones, MPI_COMM_WORLD) ==
           Approx(vol).margin(1e-12));
@@ -88,6 +84,41 @@ TEST_CASE("device observable Gaussian integral 1 rank",
   const double got = pfc::sim::integrate_owned(psi, MPI_COMM_WORLD);
   const double expect = pfc::pi * std::sqrt(pfc::pi);
   REQUIRE(got == Approx(expect).margin(1e-4));
+}
+
+TEST_CASE("device reduce_owned matches a host-known field", "[gpu][observable]") {
+#if defined(OPENPFC_TEST_OBSERVABLE_HIP)
+  if (!pfc::gpu::test::is_hip_available()) {
+    SKIP("HIP not available");
+  }
+#else
+  if (!pfc::gpu::test::is_cuda_available()) {
+    SKIP("CUDA not available");
+  }
+#endif
+  int mpi_initialized = 0;
+  MPI_Initialized(&mpi_initialized);
+  if (mpi_initialized == 0) {
+    MPI_Init(nullptr, nullptr);
+  }
+
+  constexpr double base = 1.0e12;
+  const double devs[4] = {-2.0, -1.0, 1.0, 2.0};
+  auto domain = pfc::domain::create(pfc::GridSize({4, 1, 1}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({1.0, 1.0, 1.0}));
+  const auto box = pfc::Box3i::from_bounds({0, 0, 0}, {3, 0, 0});
+  pfc::data::Field<double, Space> u(domain, box, 0);
+  u.with_host_view([&](double *data, std::size_t) {
+    for (int i = 0; i < 4; ++i) data[u.idx(i, 0, 0)] = base + devs[i];
+  });
+  const auto r = pfc::sim::reduce_owned(u, MPI_COMM_WORLD);
+  REQUIRE(r.count == 4);
+  REQUIRE(r.min == Approx(base - 2.0));
+  REQUIRE(r.max == Approx(base + 2.0));
+  REQUIRE(r.mean == Approx(base).margin(1e-3));
+  REQUIRE(r.variance == Approx(2.5).margin(1e-6));
+  REQUIRE(r.l1 == Approx(4.0 * base).epsilon(1e-12));
 }
 
 int main(int argc, char *argv[]) {

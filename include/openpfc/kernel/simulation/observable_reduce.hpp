@@ -13,8 +13,21 @@
  * `MPI_Allreduce`s with `MPI_SUM`.
  *
  * Device fields (`CUDASpace` / `HIPSpace`) pull a current host mirror via
- * `with_host_view` and sum the owned interior of that mirror. Kernel-safe:
- * no runtime GPU headers.
+ * `with_host_view` and sum the owned interior of that mirror. There is no
+ * separate device reduction. Kernel-safe: no runtime GPU headers.
+ *
+ * `reduce_owned(field, comm, map)` maps one owned cell to one scalar
+ * (`|u|`, `u*u`, a pointwise transform). It does not see neighbors or
+ * other fields, so a gradient, a tensor invariant, or a multi-field
+ * quantity stays in the caller. Materialize that scalar, then reduce it.
+ *
+ * Variance is the population second moment about the mean. Each rank
+ * runs Welford's method on `x - x0`, where `x0` is that rank's first
+ * owned sample, then adds `x0` back. A running mean of the raw values
+ * cannot keep a small offset on top of a large baseline. Ranks combine
+ * `(count, mean, M2)` with Chan's formula. A negative merged second
+ * moment is rounding error and is replaced by zero, because that
+ * moment is a sum of squares.
  */
 
 #include <algorithm>
@@ -23,7 +36,9 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <mpi.h>
 
@@ -93,7 +108,7 @@ struct FieldReduction {
   double l1{0.0};
   double l2{0.0};
   double rms{0.0};
-  /// Second moment about the mean. Equal weight per owned cell.
+  /// Population second moment about the mean, `M2 / count`.
   double variance{0.0};
   /// `sum * Δx Δy Δz`.
   double integral{0.0};
@@ -102,24 +117,73 @@ struct FieldReduction {
 
 namespace detail {
 
+/// One rank's Welford state plus the plain sum and L1. `m2` is the sum of
+/// squared deviations from `mean`.
+struct PartialMoments {
+  unsigned long long count{0};
+  double mean{0.0};
+  double m2{0.0};
+  double sum{0.0};
+  double l1{0.0};
+  double minv{std::numeric_limits<double>::infinity()};
+  double maxv{-std::numeric_limits<double>::infinity()};
+};
+
+static_assert(std::is_trivially_copyable_v<PartialMoments>);
+
+/// `m.mean` is the mean of `x - origin` until the caller adds `origin`
+/// back. `sum`, `l1`, and the bounds stay in the original units.
+inline void consume(PartialMoments &m, double x, double origin) {
+  const double y = x - origin;
+  ++m.count;
+  const double delta = y - m.mean;
+  m.mean += delta / static_cast<double>(m.count);
+  const double delta2 = y - m.mean;
+  m.m2 += delta * delta2;
+  m.sum += x;
+  m.l1 += std::fabs(x);
+  m.minv = std::min(m.minv, x);
+  m.maxv = std::max(m.maxv, x);
+}
+
+/// Chan's pairwise merge. A negative `m2` is rounding error in a sum of
+/// squares, so it is replaced by zero.
+[[nodiscard]] inline PartialMoments merge_moments(PartialMoments a,
+                                                  PartialMoments b) {
+  if (a.count == 0) return b;
+  if (b.count == 0) return a;
+  PartialMoments c;
+  c.count = a.count + b.count;
+  const double nb = static_cast<double>(b.count);
+  const double n = static_cast<double>(c.count);
+  const double delta = b.mean - a.mean;
+  c.mean = a.mean + delta * (nb / n);
+  c.m2 = a.m2 + b.m2 + delta * delta * static_cast<double>(a.count) * nb / n;
+  if (c.m2 < 0.0) c.m2 = 0.0;
+  c.sum = a.sum + b.sum;
+  c.l1 = a.l1 + b.l1;
+  c.minv = std::min(a.minv, b.minv);
+  c.maxv = std::max(a.maxv, b.maxv);
+  return c;
+}
+
 template <class T, class MemorySpace, class Map>
-[[nodiscard]] FieldReduction local_moments(pfc::data::Field<T, MemorySpace> &field,
+[[nodiscard]] PartialMoments local_moments(pfc::data::Field<T, MemorySpace> &field,
                                            Map &&map) {
-  FieldReduction m;
-  m.min = std::numeric_limits<double>::infinity();
-  m.max = -m.min;
-  auto consume = [&](double raw) {
-    const double v = static_cast<double>(map(raw));
-    m.sum += v;
-    m.l1 += std::fabs(v);
-    m.variance += v * v;
-    m.min = std::min(m.min, v);
-    m.max = std::max(m.max, v);
-    ++m.count;
+  PartialMoments m;
+  double origin = 0.0;
+  bool started = false;
+  auto take = [&](double raw) {
+    const double x = static_cast<double>(map(raw));
+    if (!started) {
+      origin = x;
+      started = true;
+    }
+    consume(m, x, origin);
   };
   if constexpr (pfc::data::Field<T, MemorySpace>::is_host_space) {
     field.for_each_owned(
-        [&](int i, int j, int k) { consume(static_cast<double>(field(i, j, k))); });
+        [&](int i, int j, int k) { take(static_cast<double>(field(i, j, k))); });
   } else {
     field.with_host_view([&](T *data, std::size_t) {
       const int nx = field.box().size[0];
@@ -128,12 +192,13 @@ template <class T, class MemorySpace, class Map>
       for (int k = 0; k < nz; ++k) {
         for (int j = 0; j < ny; ++j) {
           for (int i = 0; i < nx; ++i) {
-            consume(static_cast<double>(data[field.idx(i, j, k)]));
+            take(static_cast<double>(data[field.idx(i, j, k)]));
           }
         }
       }
     });
   }
+  if (m.count > 0) m.mean += origin;
   return m;
 }
 
@@ -142,9 +207,10 @@ template <class T, class MemorySpace, class Map>
 /**
  * @brief Global owned-cell reductions of `map(value)`.
  *
- * `map` is a local per-cell function. It does not see other cells, so a
- * quantity such as a gradient stays in the caller. Empty fields reduce to
- * a zero count and a NaN min/max.
+ * `map` receives one cell and returns one scalar. It does not receive
+ * neighbors or another field. Empty fields reduce to a zero count and a
+ * NaN min/max. Variance is `M2 / count` after a rank-order Chan merge, so
+ * a large baseline does not cancel the fluctuation.
  */
 template <class T, class MemorySpace, class Map>
 [[nodiscard]] FieldReduction reduce_owned(pfc::data::Field<T, MemorySpace> &field,
@@ -152,42 +218,38 @@ template <class T, class MemorySpace, class Map>
   if (comm == MPI_COMM_NULL) {
     throw std::invalid_argument("reduce_owned: pass an explicit communicator");
   }
-  const FieldReduction local = detail::local_moments(field, std::forward<Map>(map));
-  double sums[3] = {local.sum, local.l1, local.variance};
-  double gsums[3] = {};
+  const detail::PartialMoments local =
+      detail::local_moments(field, std::forward<Map>(map));
+  int nproc = 1;
+  pfc::mpi::throw_on_mpi_error(MPI_Comm_size(comm, &nproc),
+                               "reduce_owned: MPI_Comm_size");
+  std::vector<detail::PartialMoments> parts(static_cast<std::size_t>(nproc));
   pfc::mpi::throw_on_mpi_error(
-      MPI_Allreduce(sums, gsums, 3, MPI_DOUBLE, MPI_SUM, comm),
-      "reduce_owned: MPI_Allreduce SUM");
-  double gmin = 0.0;
-  double gmax = 0.0;
-  pfc::mpi::throw_on_mpi_error(
-      MPI_Allreduce(&local.min, &gmin, 1, MPI_DOUBLE, MPI_MIN, comm),
-      "reduce_owned: MPI_Allreduce MIN");
-  pfc::mpi::throw_on_mpi_error(
-      MPI_Allreduce(&local.max, &gmax, 1, MPI_DOUBLE, MPI_MAX, comm),
-      "reduce_owned: MPI_Allreduce MAX");
-  unsigned long long lcount = local.count;
-  unsigned long long gcount = 0;
-  pfc::mpi::throw_on_mpi_error(
-      MPI_Allreduce(&lcount, &gcount, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, comm),
-      "reduce_owned: MPI_Allreduce count");
+      MPI_Allgather(&local, static_cast<int>(sizeof(local)), MPI_BYTE, parts.data(),
+                    static_cast<int>(sizeof(local)), MPI_BYTE, comm),
+      "reduce_owned: MPI_Allgather");
+  detail::PartialMoments merged;
+  for (const detail::PartialMoments &part : parts) {
+    merged = detail::merge_moments(merged, part);
+  }
 
   FieldReduction out;
-  out.sum = gsums[0];
-  out.l1 = gsums[1];
-  out.count = static_cast<std::uint64_t>(gcount);
-  const double sum_sq = gsums[2];
+  out.sum = merged.sum;
+  out.l1 = merged.l1;
+  out.count = static_cast<std::uint64_t>(merged.count);
   if (out.count == 0) {
     out.min = std::numeric_limits<double>::quiet_NaN();
     out.max = out.min;
     return out;
   }
-  out.min = gmin;
-  out.max = gmax;
-  out.mean = out.sum / static_cast<double>(out.count);
+  const double n = static_cast<double>(out.count);
+  out.min = merged.minv;
+  out.max = merged.maxv;
+  out.mean = merged.mean;
+  out.variance = merged.m2 / n;
+  const double sum_sq = merged.m2 + n * merged.mean * merged.mean;
   out.l2 = std::sqrt(sum_sq);
-  out.rms = std::sqrt(sum_sq / static_cast<double>(out.count));
-  out.variance = sum_sq / static_cast<double>(out.count) - out.mean * out.mean;
+  out.rms = std::sqrt(sum_sq / n);
   out.integral = out.sum * cell_volume(field.domain());
   return out;
 }
