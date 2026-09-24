@@ -22,6 +22,7 @@
  * @see halo_face_layout.hpp
  */
 
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -60,7 +61,11 @@ template <typename MemorySpace, typename T = double> class SparseExchange {
 };
 
 /**
- * @brief Host index-set halo exchange over a Field or a raw buffer.
+ * @brief Host index-set halo exchange over a Field or a contiguous span.
+ *
+ * A span is pointer + extent. `start()` does not keep that buffer alive
+ * until `finish()`; the caller does. Device specializations stay on raw
+ * device pointers.
  */
 template <typename T> class SparseExchange<HostSpace, T> {
 public:
@@ -75,64 +80,59 @@ public:
    */
   SparseExchange(FieldT &field, const decomposition::Decomposition &decomp, int rank,
                  MPI_Comm comm, SparseExchangeOptions opt = {})
-      : SparseExchange(field.data(), field.size(), decomp, rank, comm,
+      : SparseExchange(std::span<T>(field.data(), field.size()), decomp, rank, comm,
                        resolve_hw_(field.halo_width(), opt), opt) {}
 
   /**
-   * @brief Structured exchange over a raw buffer (unpadded `nx*ny*nz`).
+   * @brief Structured exchange over a contiguous buffer (unpadded `nx*ny*nz`).
+   *
+   * An empty span is a bound view of length zero. A null pointer with a
+   * positive extent is not a span.
    */
-  SparseExchange(T *field, std::size_t field_size,
-                 const decomposition::Decomposition &decomp, int rank, MPI_Comm comm,
-                 int halo_width, SparseExchangeOptions opt = {})
-      : m_field(field), m_field_size(field_size),
+  SparseExchange(std::span<T> field, const decomposition::Decomposition &decomp,
+                 int rank, MPI_Comm comm, int halo_width,
+                 SparseExchangeOptions opt = {})
+      : m_field(field), m_bound(true),
         m_impl(comm, rank,
                apply_scatter_flag_(halo::make_structured_halos<T>(
                                        decomp, rank, require_hw_(halo_width),
                                        opt.dirs, opt.exchange_base),
-                                   opt.scatter_after_recv)) {
-    if (field == nullptr) {
-      throw std::invalid_argument(
-          "pfc::comm::SparseExchange: field pointer must not be null");
-    }
-  }
+                                   opt.scatter_after_recv)) {}
 
   /**
    * @brief Custom `RemoteHalo` list (unstructured / FEM).
    *
-   * The field pointer is bound later via `exchange(T*, size)` or
-   * `bind()`.
+   * The field is bound later via `exchange(span)` or `bind()`.
    */
   SparseExchange(std::vector<halo_type> halos, int rank, MPI_Comm comm)
       : m_impl(comm, rank, std::move(halos)) {}
 
   SparseExchange(FieldT &field, std::vector<halo_type> halos, int rank,
                  MPI_Comm comm)
-      : m_field(field.data()), m_field_size(field.size()),
+      : m_field(field.data(), field.size()), m_bound(true),
         m_impl(comm, rank, std::move(halos)) {}
 
-  void bind(T *field, std::size_t field_size) {
-    if (field == nullptr) {
-      throw std::invalid_argument(
-          "pfc::comm::SparseExchange::bind: field pointer must not be null");
-    }
+  /// Bind a contiguous field. An empty span is bound and has length zero.
+  void bind(std::span<T> field) {
     m_field = field;
-    m_field_size = field_size;
+    m_bound = true;
   }
 
   /// Blocking gather → MPI → optional scatter of the bound field.
   void exchange() {
     require_bound_("exchange");
-    m_impl.exchange_halos(m_field, m_field_size);
+    m_impl.exchange_halos(m_field);
   }
 
-  void exchange(T *field, std::size_t field_size) {
-    bind(field, field_size);
+  void exchange(std::span<T> field) {
+    bind(field);
     exchange();
   }
 
+  /// Posts the exchange. The bound buffer must outlive `finish()`.
   void start() {
     require_bound_("start");
-    m_impl.start_halo_exchange(m_field, m_field_size);
+    m_impl.start_halo_exchange(m_field);
   }
 
   void finish() { m_impl.finish_halo_exchange(); }
@@ -171,14 +171,14 @@ private:
   }
 
   void require_bound_(const char *op) const {
-    if (m_field == nullptr) {
+    if (!m_bound) {
       throw std::logic_error(std::string("pfc::comm::SparseExchange::") + op +
-                             ": no field bound; call bind() or exchange(ptr, n)");
+                             ": no field bound; call bind() or exchange(span)");
     }
   }
 
-  T *m_field = nullptr;
-  std::size_t m_field_size = 0;
+  std::span<T> m_field{};
+  bool m_bound = false;
   detail::HostSparseHalo<T> m_impl;
 };
 

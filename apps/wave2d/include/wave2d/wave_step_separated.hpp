@@ -102,7 +102,7 @@ inline void step_wave_separated_order2_cpu(
     int nz,
     const pfc::decomposition::Decomposition &decomp, int rank, double dt,
     YBoundaryKind y_bc, int Ny_global, double u_wall) {
-  exchanger.exchange(u.data(), u.size());
+  exchanger.exchange(u);
   pfc::halo::copy_to_face_layout(exchanger.halos(), face_halos);
 
   const auto local = pfc::decomposition::local_box(decomp, rank);

@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
         constexpr int halo_width = allen_cahn::RunConfig::kHaloWidth;
         auto face_halos = pfc::halo::allocate_face_halos<double>(decomp, rank, halo_width);
         pfc::comm::SparseExchange<pfc::HostSpace, double> exchanger(
-            u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+            u, decomp, rank, MPI_COMM_WORLD, halo_width);
 
         // Sample the seed area part-way through as well as at the end: the
         // interface velocity is only meaningful once the Gaussian IC has

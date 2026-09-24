@@ -86,7 +86,7 @@ TEST_CASE("SparseExchange: single-peer custom RemoteHalo round-trip",
   std::vector<halo::RemoteHalo<double>> halos;
   halos.push_back(std::move(h));
   comm::SparseExchange<HostSpace, double> ex(std::move(halos), rank, MPI_COMM_WORLD);
-  ex.exchange(field.data(), field.size());
+  ex.exchange(field);
 
   // After the exchange, indices 6 and 7 of `field` should now hold the
   // values originally at indices 2 and 5 (sorted ascending — SparseVector
@@ -131,7 +131,7 @@ TEST_CASE("SparseExchange: Axes3D self-wrap on a single rank",
   }
 
   auto face_halos = halo::allocate_face_halos<double>(decomp, rank, hw);
-  comm::SparseExchange<HostSpace, double> ex(u.data(), u.size(), decomp, rank,
+  comm::SparseExchange<HostSpace, double> ex(u, decomp, rank,
                                              MPI_COMM_WORLD, hw);
   ex.exchange();
   halo::copy_to_face_layout(ex.halos(), face_halos);
@@ -201,7 +201,7 @@ TEST_CASE("SparseExchange: Full3D self-wrap delivers edge data",
 
   comm::SparseExchangeOptions opt;
   opt.dirs = halo::presets::Full3D();
-  comm::SparseExchange<HostSpace, double> ex(u.data(), u.size(), decomp, rank,
+  comm::SparseExchange<HostSpace, double> ex(u, decomp, rank,
                                              MPI_COMM_WORLD, hw, opt);
   ex.exchange();
 
@@ -272,7 +272,7 @@ TEST_CASE("SparseExchange: Axes3D X-split on np=2 delivers neighbour data",
   }
 
   auto face_halos = halo::allocate_face_halos<double>(decomp, rank, hw);
-  comm::SparseExchange<HostSpace, double> ex(u.data(), u.size(), decomp, rank,
+  comm::SparseExchange<HostSpace, double> ex(u, decomp, rank,
                                              MPI_COMM_WORLD, hw);
   ex.exchange();
   halo::copy_to_face_layout(ex.halos(), face_halos);

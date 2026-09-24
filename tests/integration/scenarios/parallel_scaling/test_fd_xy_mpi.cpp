@@ -130,7 +130,7 @@ TEST_CASE("laplacian2d_xy_periodic_separated<2> matches analytic 2D Laplacian on
   constexpr int halo_width = 1;
   auto face_halos = halo::allocate_face_halos<double>(decomp, rank, halo_width);
   comm::SparseExchange<HostSpace, double> sex(
-      u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u, decomp, rank, MPI_COMM_WORLD, halo_width);
   sex.exchange();
   halo::copy_to_face_layout(sex.halos(), face_halos);
 
@@ -196,7 +196,7 @@ TEST_CASE("Separated face halos contain opposite periodic neighbor faces (XY)",
   constexpr int halo_width = 1;
   auto face_halos = halo::allocate_face_halos<double>(decomp, rank, halo_width);
   comm::SparseExchange<HostSpace, double> exchanger(
-      u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u, decomp, rank, MPI_COMM_WORLD, halo_width);
   exchanger.exchange();
   halo::copy_to_face_layout(exchanger.halos(), face_halos);
 
@@ -258,7 +258,7 @@ TEST_CASE("5-point XY separated periodic Laplacian matches serial global formula
   constexpr int halo_width = 1;
   auto face_halos = halo::allocate_face_halos<double>(decomp, rank, halo_width);
   comm::SparseExchange<HostSpace, double> exchanger(
-      u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u, decomp, rank, MPI_COMM_WORLD, halo_width);
   exchanger.exchange();
   halo::copy_to_face_layout(exchanger.halos(), face_halos);
 

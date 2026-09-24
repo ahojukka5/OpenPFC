@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Changed
 
+- `divergence_separated` and host `SparseExchange` take `std::span` for
+  contiguous non-owning fields. A span is pointer plus extent; it does not
+  keep an asynchronous halo buffer alive until the exchange finishes.
 - Directional-solidification `FixedBC` and `MovingBC` live in `tungsten::`
   and `aluminum::`. JSON `from_json` and catalog registration stay with
   those types.

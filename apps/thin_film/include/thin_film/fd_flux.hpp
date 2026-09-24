@@ -198,9 +198,9 @@ public:
             pfc::halo::face_halo_counts_analytic(nx_, ny_, 1, 1))),
         coeff_halos_(pfc::halo::allocate_face_halos<double>(
             pfc::halo::face_halo_counts_analytic(nx_, ny_, 1, 1))),
-        exch_h_(h.data(), h.size(), decomp_, rank_, comm, hw_,
+        exch_h_(h, decomp_, rank_, comm, hw_,
                 {.dirs = pfc::halo::presets::Axes2D()}),
-        exch_p_(p_.data(), p_.size(), decomp_, rank_, comm, 1,
+        exch_p_(p_, decomp_, rank_, comm, 1,
                 {.dirs = pfc::halo::presets::Axes2D()}) {
     if (order_ != 2 && order_ != 4) {
       throw std::invalid_argument("FDFluxSolver: order must be 2 or 4");
@@ -296,8 +296,8 @@ public:
         p_halos_[3].data(), p_halos_[4].data(), p_halos_[5].data()};
     const auto global = pfc::domain::get_size(domain_);
     const std::array<bool, 3> active{global[0] > 1, global[1] > 1, global[2] > 1};
-    pfc::field::fd::divergence_separated(coeff_.data(), p_.data(), coeff_faces,
-                                         potential_faces, dhdt_out.data(), nx_, ny_,
+    pfc::field::fd::divergence_separated(coeff_, p_, coeff_faces, potential_faces,
+                                         dhdt_out, nx_, ny_,
                                          1, active, dx_, dy_, 1.0, kind);
   }
 

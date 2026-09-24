@@ -241,7 +241,7 @@ TEST_CASE("step_wave_separated_order2_cpu short vs padded manual single rank",
     }
   }
   auto face_halos = pfc::halo::allocate_face_halos<double>(decomp, rank, 1);
-  comm::SparseExchange<HostSpace, double> exch(u_sep.data(), u_sep.size(), decomp,
+  comm::SparseExchange<HostSpace, double> exch(u_sep, decomp,
                                                rank, MPI_COMM_WORLD, 1);
   for (int s = 0; s < n_steps; ++s) {
     wave2d::step_wave_separated_order2_cpu(u_sep, v_sep, lap_sep, face_halos, exch,
@@ -440,7 +440,7 @@ TEST_CASE("wave2d CPU golden matches CPU-vs-CUDA config",
   constexpr int halo_width = 1;
   auto face = pfc::halo::allocate_face_halos<double>(decomp, rank, halo_width);
   pfc::comm::SparseExchange<pfc::HostSpace, double> exch(
-      u.data(), u.size(), decomp, rank, MPI_COMM_WORLD, halo_width);
+      u, decomp, rank, MPI_COMM_WORLD, halo_width);
   for (int s = 0; s < n_steps; ++s) {
     (void)s;
     wave2d::step_wave_separated_order2_cpu(u, v, lap, face, exch, nx, ny, nz, decomp,

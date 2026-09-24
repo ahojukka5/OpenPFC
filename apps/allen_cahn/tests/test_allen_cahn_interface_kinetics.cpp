@@ -77,7 +77,7 @@ allen_cahn::AreaSamples run_and_sample(const allen_cahn::RunConfig &cfg) {
   constexpr int halo_width = allen_cahn::RunConfig::kHaloWidth;
   auto face = pfc::halo::allocate_face_halos<double>(decomp, 0, halo_width);
   pfc::comm::SparseExchange<pfc::HostSpace, double> exch(
-      u.data(), u.size(), decomp, 0, MPI_COMM_WORLD, halo_width);
+      u, decomp, 0, MPI_COMM_WORLD, halo_width);
 
   allen_cahn::AreaSamples areas;
   areas.initial = allen_cahn::count_cells_above(
