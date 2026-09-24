@@ -17,6 +17,10 @@
 
 #include <mpi.h>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
+#include <vector>
+
+#include <openpfc/frontend/io/diagnostics_series.hpp>
 
 #include <cahn_hilliard/cahn_hilliard_physics.hpp>
 #include <cahn_hilliard/concentration_seed.hpp>
@@ -74,16 +78,30 @@ public:
         this->settings().at("diagnostics").at("csv").template get<std::string>();
     if (path.empty())
       throw std::invalid_argument("diagnostics.csv must not be empty");
-    DiagnosticCSV csv(path, m_comm);
+    pfc::io::DiagnosticsSeries csv(
+        {"mean", "mass", "min", "max", "bulk_energy", "gradient_energy",
+         "total_energy", "invalid_cells", "k1", "domain_length", "k_peak",
+         "dominant_wavelength"},
+        pfc::io::DiagnosticsSeriesOptions{.path = path, .comm = m_comm});
     Diagnostics<Space> diagnostics(this->domain(), this->fft(), m_comm);
     auto save = [&] {
+      const auto s =
+          diagnostics.sample(this->psi(), this->system().physics().params);
       csv.write(pfc::time::increment(this->time()), pfc::time::current(this->time()),
-                diagnostics.sample(this->psi(), this->system().physics().params));
+                {s.mean, s.mass, s.minimum, s.maximum, s.bulk_energy,
+                 s.gradient_energy, s.total_energy(), s.invalid_cells, s.k1,
+                 s.domain_length, s.k_peak, s.dominant_wavelength});
+      if (s.invalid_cells != 0.0) {
+        throw std::runtime_error(
+            "Cahn-Hilliard diagnostics: nonfinite or out-of-range composition; "
+            "require 0<c<1 (reduce dt/check input)");
+      }
     };
     // Restarts do not invoke the driver's initial-state callback.
     if (pfc::time::increment(this->time()) != 0 || pfc::time::done(this->time()))
       save();
     Base::run(save);
+    csv.close();
   }
 
 private:

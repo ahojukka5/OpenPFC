@@ -26,6 +26,9 @@
 
 #include <mpi.h>
 #include <nlohmann/json.hpp>
+#include <vector>
+
+#include <openpfc/frontend/io/diagnostics_series.hpp>
 
 #include <higher_order_pfc/diagnostics.hpp>
 #include <higher_order_pfc/higher_order_pfc_physics.hpp>
@@ -80,16 +83,25 @@ public:
     const int sf_bins = settings()["diagnostics"].value("sf_bins", 64);
     const double cutoff =
         settings()["diagnostics"].value("neighbour_cutoff_factor", 1.3);
-    DiagnosticCSV csv(path, m_comm);
+    pfc::io::DiagnosticsSeries csv(
+        {"mean_psi", "free_energy_density", "k1", "domain_length", "k_peak",
+         "dominant_wavelength", "S_at_1", "S_at_q1", "psi4_global", "psi4_local",
+         "psi6_global", "psi6_local", "n_peaks", "mean_neighbours"},
+        pfc::io::DiagnosticsSeriesOptions{.path = path, .comm = m_comm});
     Diagnostics<pfc::HostSpace> diagnostics(domain(), fft(), m_comm);
     auto save = [&] {
-      csv.write(
-          pfc::time::increment(time()), pfc::time::current(time()),
-          diagnostics.sample(psi(), system().physics().params, sf_bins, cutoff));
+      const auto s =
+          diagnostics.sample(psi(), system().physics().params, sf_bins, cutoff);
+      csv.write(pfc::time::increment(time()), pfc::time::current(time()),
+                {s.mean_psi, s.free_energy_density, s.k1, s.domain_length, s.k_peak,
+                 s.dominant_wavelength, s.S_at_1, s.S_at_q1, s.psi4_global,
+                 s.psi4_local, s.psi6_global, s.psi6_local, s.n_peaks,
+                 s.mean_neighbours});
     };
     // Restarts do not invoke the driver's initial-state callback.
     if (pfc::time::increment(time()) != 0 || pfc::time::done(time())) save();
     Base::run(save);
+    csv.close();
   }
 
 private:

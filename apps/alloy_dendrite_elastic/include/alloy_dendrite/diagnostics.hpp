@@ -49,8 +49,9 @@
  * (`alloy_dendrite_hip_growth`). \(F=\int f_{\mathrm{el}}\,\mathrm{d}V\)
  * and \(W_{*}=-\tfrac12\int\sigma:\varepsilon^{*}\,\mathrm{d}V\). Relative
  * residual \(|F-W_{*}|/\max(|F|,|W_{*}|,10^{-30})\). Same identity as
- * `openpfc/solvers/microelasticity/microelasticity.hpp` (eq. (6) plus periodic equilibrium);
- * not a fitted score. Zero-energy arms (`off`, modulus-only) report 0. |
+ * `openpfc/solvers/microelasticity/microelasticity.hpp` (eq. (6) plus periodic
+ * equilibrium); not a fitted score. Zero-energy arms (`off`, modulus-only) report 0.
+ * |
  *
  * ## Why `k_eff` is defined through `U_i` and not through a nearby cell
  *
@@ -79,6 +80,7 @@
 #include <mpi.h>
 
 #include <openpfc/kernel/data/grid_field.hpp>
+#include <openpfc/kernel/simulation/observable_reduce.hpp>
 
 #include <alloy_dendrite/parameters.hpp>
 
@@ -107,43 +109,32 @@ measure_conservation(const HostField &phi, const HostField &U,
   const double k = p.k;
   const double inv_1mk = 1.0 / (1.0 - k);
   double s_sol = 0.0;
-  double s_phi = 0.0;
-  double s_th = 0.0;
-  double umin = std::numeric_limits<double>::infinity();
-  double umax = -std::numeric_limits<double>::infinity();
-  double pmin = std::numeric_limits<double>::infinity();
-  double pmax = -std::numeric_limits<double>::infinity();
   phi.for_each_owned([&](int i, int j, int kk) {
     const double ph = phi(i, j, kk);
     const double uu = U(i, j, kk);
     const double pp = solute_prefactor(k, ph);
     s_sol += pp * inv_1mk + pp * uu;
-    s_phi += ph;
-    s_th += theta(i, j, kk);
-    umin = std::fmin(umin, uu);
-    umax = std::fmax(umax, uu);
-    pmin = std::fmin(pmin, ph);
-    pmax = std::fmax(pmax, ph);
   });
-  double loc_sum[3] = {s_sol, s_phi, s_th};
-  double glob_sum[3] = {0.0, 0.0, 0.0};
-  MPI_Allreduce(loc_sum, glob_sum, 3, MPI_DOUBLE, MPI_SUM, comm);
-  double loc_min[2] = {umin, pmin};
-  double glob_min[2] = {0.0, 0.0};
-  MPI_Allreduce(loc_min, glob_min, 2, MPI_DOUBLE, MPI_MIN, comm);
-  double loc_max[2] = {umax, pmax};
-  double glob_max[2] = {0.0, 0.0};
-  MPI_Allreduce(loc_max, glob_max, 2, MPI_DOUBLE, MPI_MAX, comm);
+  double solute_total = 0.0;
+  MPI_Allreduce(&s_sol, &solute_total, 1, MPI_DOUBLE, MPI_SUM, comm);
+  // The reducer takes a mutable field because a device mirror updates
+  // residency. These host fields are only read.
+  auto &phi_m = const_cast<HostField &>(phi);
+  auto &u_m = const_cast<HostField &>(U);
+  auto &theta_m = const_cast<HostField &>(theta);
+  const auto phi_r = pfc::sim::reduce_owned(phi_m, comm);
+  const auto u_r = pfc::sim::reduce_owned(u_m, comm);
+  const auto theta_r = pfc::sim::reduce_owned(theta_m, comm);
 
   Conservation c;
-  c.solute_total = glob_sum[0];
-  c.phi_total = glob_sum[1];
-  c.theta_total = glob_sum[2];
+  c.solute_total = solute_total;
+  c.phi_total = phi_r.sum;
+  c.theta_total = theta_r.sum;
   c.heat_balance = c.theta_total - 0.5 * c.phi_total;
-  c.u_min = glob_min[0];
-  c.phi_min = glob_min[1];
-  c.u_max = glob_max[0];
-  c.phi_max = glob_max[1];
+  c.u_min = u_r.min;
+  c.phi_min = phi_r.min;
+  c.u_max = u_r.max;
+  c.phi_max = phi_r.max;
   return c;
 }
 
@@ -573,8 +564,8 @@ struct DendriteTip {
  * same as @ref measure_tip once the tip row is known.
  */
 [[nodiscard]] inline DendriteTip
-measure_downstream_tip(const std::vector<double> &phi_xy, int nx, int ny,
-                       double dx, double dy, int i_start, int j_lo, int j_hi,
+measure_downstream_tip(const std::vector<double> &phi_xy, int nx, int ny, double dx,
+                       double dy, int i_start, int j_lo, int j_hi,
                        int half_width_cells) {
   DendriteTip out;
   if (static_cast<int>(phi_xy.size()) != nx * ny || nx < 8 || ny < 2) {
@@ -683,9 +674,9 @@ struct BicrystalTips {
  * application has one `phi`, so two solids that meet simply merge.
  */
 [[nodiscard]] inline BicrystalTips
-measure_bicrystal_tips(const std::vector<double> &phi_xy, int nx, int ny,
-                       double dx, double dy, int i_start, int j_seed1,
-                       int j_seed2, int half_width_cells) {
+measure_bicrystal_tips(const std::vector<double> &phi_xy, int nx, int ny, double dx,
+                       double dy, int i_start, int j_seed1, int j_seed2,
+                       int half_width_cells) {
   BicrystalTips out;
   if (ny < 4) {
     return out;
@@ -697,10 +688,10 @@ measure_bicrystal_tips(const std::vector<double> &phi_xy, int nx, int ny,
   const int j1_hi = (j_seed1 <= j_seed2) ? j_mid : ny - 1;
   const int j2_lo = (j_seed2 < j_seed1) ? 0 : j_mid + 1;
   const int j2_hi = (j_seed2 < j_seed1) ? j_mid : ny - 1;
-  out.tip1 = measure_downstream_tip(phi_xy, nx, ny, dx, dy, i_start, j1_lo,
-                                    j1_hi, half_width_cells);
-  out.tip2 = measure_downstream_tip(phi_xy, nx, ny, dx, dy, i_start, j2_lo,
-                                    j2_hi, half_width_cells);
+  out.tip1 = measure_downstream_tip(phi_xy, nx, ny, dx, dy, i_start, j1_lo, j1_hi,
+                                    half_width_cells);
+  out.tip2 = measure_downstream_tip(phi_xy, nx, ny, dx, dy, i_start, j2_lo, j2_hi,
+                                    half_width_cells);
 
   auto at = [&](int i, int j) {
     return phi_xy[static_cast<std::size_t>(i) +
@@ -906,7 +897,8 @@ inline constexpr double kTipWindowRelDefaults[kTipWindowCount] = {0.5, 1.0, 1.5,
   a /= na;
   b /= nb;
   const double m = 0.5 * (a + b);
-  return (m != 0.0) ? (b - a) / std::fabs(m) : std::numeric_limits<double>::quiet_NaN();
+  return (m != 0.0) ? (b - a) / std::fabs(m)
+                    : std::numeric_limits<double>::quiet_NaN();
 }
 
 /**

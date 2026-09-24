@@ -62,6 +62,7 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
+#include <openpfc/kernel/simulation/observable_reduce.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
 #include <surface_diffusion/anisotropic_flux.hpp>
@@ -91,22 +92,12 @@ struct Sample {
 
 Sample sample_surface(pfc::data::Field<double> &h, const pfc::Domain &domain,
                       pfc::fft::CPUFFT &fft, MPI_Comm comm) {
-  double local_sum = 0.0, local_sumsq = 0.0, local_count = 0.0;
-  h.with_host_view([&](const double *d, std::size_t n) {
-    for (std::size_t i = 0; i < n; ++i) {
-      local_sum += d[i];
-      local_sumsq += d[i] * d[i];
-      local_count += 1.0;
-    }
-  });
-  double g[3]{}, l[3]{local_sum, local_sumsq, local_count};
-  MPI_Allreduce(l, g, 3, MPI_DOUBLE, MPI_SUM, comm);
-
+  const auto height = pfc::sim::reduce_owned(h, comm);
   Sample s;
-  s.mean_h = (g[2] > 0.0) ? g[0] / g[2] : 0.0;
-  const double mean_sq = (g[2] > 0.0) ? g[1] / g[2] : 0.0;
-  const double var = mean_sq - s.mean_h * s.mean_h;
-  s.rms_roughness = std::sqrt(std::max(var, 0.0));
+  s.mean_h =
+      height.count == 0 ? 0.0 : height.sum / static_cast<double>(height.count);
+  // RMS roughness is the population standard deviation, not the raw RMS.
+  s.rms_roughness = std::sqrt(height.variance);
 
   pfc::data::Field<std::complex<double>> h_hat(domain, fft.get_outbox_bounds(), 0);
   pfc::sim::SpectralETDOps<pfc::HostSpace>::forward(fft, h, h_hat);

@@ -13,9 +13,14 @@
  * edge/no-wrap sentinel at every `saveat`; see `wave_packet_diagnostics.hpp`.
  */
 
+#include <algorithm>
+#include <cmath>
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <vector>
+
+#include <openpfc/frontend/io/diagnostics_series.hpp>
 
 #include <kawahara/gaussian_pulse.hpp>
 #include <kawahara/kawahara_physics.hpp>
@@ -85,30 +90,41 @@ private:
                                         const std::string &path) {
     const double k0 = cfg.at("k0").template get<double>();
     const double cutoff = cfg.value("cutoff_factor", 0.5);
-    WavePacketCSV csv(path, m_comm);
+    pfc::io::DiagnosticsSeries csv(
+        {"mean", "mode_amplitude", "mode_phase", "centroid", "width",
+         "peak_envelope", "edge_fraction"},
+        pfc::io::DiagnosticsSeriesOptions{.path = path, .comm = m_comm});
     WavePacketDiagnostics diagnostics(this->domain(), this->fft(), m_comm, k0,
                                       cutoff);
     auto save = [&] {
+      const auto s = diagnostics.sample(this->psi());
       csv.write(pfc::time::increment(this->time()), pfc::time::current(this->time()),
-                diagnostics.sample(this->psi()));
+                {s.mean, s.mode_amplitude, s.mode_phase, s.centroid,
+                 std::sqrt(std::max(0.0, s.width2)), s.peak_envelope,
+                 s.edge_fraction});
     };
     if (pfc::time::increment(this->time()) != 0 || pfc::time::done(this->time()))
       save();
     Base::run(save);
+    csv.close();
   }
 
   void run_with_pulse_diagnostics(const nlohmann::json &cfg,
                                   const std::string &path) {
     const double window = cfg.at("window").template get<double>();
-    PulseCSV csv(path, m_comm);
+    pfc::io::DiagnosticsSeries csv(
+        {"mean", "peak_amplitude", "peak_x", "tail_rms"},
+        pfc::io::DiagnosticsSeriesOptions{.path = path, .comm = m_comm});
     PulseDiagnostics diagnostics(m_comm, window);
     auto save = [&] {
+      const auto s = diagnostics.sample(this->psi());
       csv.write(pfc::time::increment(this->time()), pfc::time::current(this->time()),
-                diagnostics.sample(this->psi()));
+                {s.mean, s.peak_amplitude, s.peak_x, s.tail_rms});
     };
     if (pfc::time::increment(this->time()) != 0 || pfc::time::done(this->time()))
       save();
     Base::run(save);
+    csv.close();
   }
 
 private:

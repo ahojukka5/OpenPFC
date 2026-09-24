@@ -43,7 +43,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   configuration before opening the file.
   The reduction is over owned cells and takes an explicit communicator.
   A per-cell map can feed it. The CSV records step, time, and named
-  columns the caller already computed. It refuses an existing file
+  columns the caller already computed. Cahn–Hilliard, higher-order PFC,
+  and Kawahara record those columns through it; their
+  `DiagnosticCSV` writers are gone. Alloy conservation, gradient-elasticity
+  stress peaks, surface roughness, and the Kawahara pulse mean use
+  `reduce_owned`. It refuses an existing file
   unless overwrite is requested, and an open or write failure is
   reported on every rank. Thin film, EHD film, and anisotropic surface
   diffusion write their scalar rows through it. Hole fraction, rupture,
