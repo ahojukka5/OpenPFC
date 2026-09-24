@@ -37,6 +37,7 @@
 #include <limits>
 #include <locale>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -44,6 +45,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
+#include <openpfc/frontend/io/diagnostics_series.hpp>
 #include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
@@ -195,18 +197,16 @@ int main(int argc, char *argv[]) {
     pfc::ui::bind_snapshot_field(snapshots, cfg, "h", h);
     pfc::ui::finish_snapshot_fields(snapshots, cfg);
 
-    // Diagnostics CSV, rank 0, never overwriting.
-    std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
-    if (rank == 0 && cfg.contains("diagnostics")) {
-      const std::filesystem::path path =
-          cfg.at("diagnostics").at("csv").get<std::string>();
-      if (path.has_parent_path())
-        std::filesystem::create_directories(path.parent_path());
-      out.reset(std::fopen(path.string().c_str(), "w"));
-      if (!out) throw std::runtime_error("cannot open diagnostics csv");
-      std::fprintf(out.get(), "step,time,h_center,deflection_center,p_max,p_min,"
-                              "spreading_radius,displaced_volume,volume,"
-                              "volume_rel_drift\n");
+    std::optional<pfc::io::DiagnosticsSeries> diag;
+    if (cfg.contains("diagnostics")) {
+      diag.emplace(std::vector<std::string>{"h_center", "deflection_center", "p_max",
+                                            "p_min", "spreading_radius",
+                                            "displaced_volume", "volume",
+                                            "volume_rel_drift"},
+                   pfc::io::DiagnosticsSeriesOptions{
+                       .path = cfg.at("diagnostics").at("csv").get<std::string>(),
+                       .comm = MPI_COMM_WORLD,
+                       .overwrite = true});
     }
 
     double volume0 = -1.0;
@@ -236,15 +236,10 @@ int main(int argc, char *argv[]) {
       p_max_max = std::max(p_max_max, s.p_max);
       spreading_radius_max = std::max(spreading_radius_max, s.spreading_radius);
       volume_rel_drift_max = std::max(volume_rel_drift_max, std::abs(drift));
-      if (out) {
-        std::ostringstream line;
-        line.imbue(std::locale::classic());
-        line << std::setprecision(17) << step << ',' << t << ',' << s.h_center << ','
-             << (p.h0 - s.h_center) << ',' << s.p_max << ',' << s.p_min << ','
-             << s.spreading_radius << ',' << s.displaced_volume << ',' << s.volume
-             << ',' << drift << '\n';
-        std::fputs(line.str().c_str(), out.get());
-        std::fflush(out.get());
+      if (diag) {
+        diag->write(step, t,
+                    {s.h_center, p.h0 - s.h_center, s.p_max, s.p_min,
+                     s.spreading_radius, s.displaced_volume, s.volume, drift});
       }
     };
 
@@ -265,6 +260,7 @@ int main(int argc, char *argv[]) {
                   h_center_min, p_max_max, spreading_radius_max,
                   volume_rel_drift_max);
     }
+    if (diag) diag->close();
     snapshots.close();
   } catch (const std::exception &e) {
     if (rank == 0) std::cerr << "ehd_film_nonlinear: " << e.what() << "\n";

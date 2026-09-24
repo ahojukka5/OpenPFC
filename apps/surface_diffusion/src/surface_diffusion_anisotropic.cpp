@@ -48,6 +48,7 @@
 #include <locale>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -55,6 +56,7 @@
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 
+#include <openpfc/frontend/io/diagnostics_series.hpp>
 #include <openpfc/frontend/ui/json_snapshot_fields.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
@@ -236,32 +238,26 @@ int main(int argc, char *argv[]) {
     pfc::ui::bind_snapshot_field(snapshots, cfg, "h", h);
     pfc::ui::finish_snapshot_fields(snapshots, cfg);
 
-    std::unique_ptr<std::FILE, int (*)(std::FILE *)> out(nullptr, std::fclose);
-    if (rank == 0 && cfg.contains("diagnostics")) {
-      const std::filesystem::path path =
-          cfg.at("diagnostics").at("csv").get<std::string>();
-      if (path.has_parent_path())
-        std::filesystem::create_directories(path.parent_path());
-      out.reset(std::fopen(path.string().c_str(), "w"));
-      if (!out) throw std::runtime_error("cannot open diagnostics csv");
-      std::fprintf(out.get(), "step,time,mean_h,rms_roughness,max_grad_h,"
-                              "dominant_wavelength,domain_length,energy_kx_frac,"
-                              "energy_ky_frac,energy_diag_frac\n");
+    std::optional<pfc::io::DiagnosticsSeries> diag;
+    if (cfg.contains("diagnostics")) {
+      diag.emplace(std::vector<std::string>{"mean_h", "rms_roughness", "max_grad_h",
+                                            "dominant_wavelength", "domain_length",
+                                            "energy_kx_frac", "energy_ky_frac",
+                                            "energy_diag_frac"},
+                   pfc::io::DiagnosticsSeriesOptions{
+                       .path = cfg.at("diagnostics").at("csv").get<std::string>(),
+                       .comm = MPI_COMM_WORLD,
+                       .overwrite = true});
     }
 
     auto report = [&](int step, double t) {
       auto s = sample_surface(h, domain, stack.fft(), MPI_COMM_WORLD);
       snapshots.write(step, t);
-      if (out) {
-        std::ostringstream line;
-        line.imbue(std::locale::classic());
-        line << std::setprecision(17) << step << ',' << t << ',' << s.mean_h << ','
-             << s.rms_roughness << ',' << s.max_grad_h << ','
-             << s.dominant_wavelength << ',' << s.domain_length << ','
-             << s.energy_kx_frac << ',' << s.energy_ky_frac << ','
-             << s.energy_diag_frac << '\n';
-        std::fputs(line.str().c_str(), out.get());
-        std::fflush(out.get());
+      if (diag) {
+        diag->write(step, t,
+                    {s.mean_h, s.rms_roughness, s.max_grad_h, s.dominant_wavelength,
+                     s.domain_length, s.energy_kx_frac, s.energy_ky_frac,
+                     s.energy_diag_frac});
       }
       return s;
     };
@@ -287,6 +283,7 @@ int main(int argc, char *argv[]) {
           final_sample.energy_kx_frac, final_sample.energy_ky_frac,
           final_sample.energy_diag_frac);
     }
+    if (diag) diag->close();
     snapshots.close();
   } catch (const std::exception &e) {
     if (rank == 0)
