@@ -31,6 +31,7 @@
  * stack and therefore the includes.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -44,6 +45,7 @@
 #include <optional>
 #include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -249,9 +251,20 @@ int run_thin_film_nonlinear(int rank, int nproc, MPI_Comm comm,
                      s.dominant_spacing, s.ruptured ? 1.0 : 0.0});
       }
     };
+    const double span = t1;
+    const double n_fixed = std::round(span / dt);
+    if (!(dt > 0.0) || std::abs(span - n_fixed * dt) > 1e-8 * std::max(1.0, span)) {
+      throw std::invalid_argument(
+          "thin_film_nonlinear: t1 must be an integer multiple of dt");
+    }
     pfc::sim::run(
         clock,
-        [&](double t_now) {
+        [&](double t_now, double interval) {
+          if (std::abs(interval - dt) > 1e-8 * std::max(1.0, dt)) {
+            throw std::invalid_argument(
+                "thin_film_nonlinear: refusing a clipped step; the ETD "
+                "coefficients use the full dt");
+          }
           stepper.step(t_prev, h, potential, mobility);
           t_prev = t_now;
         },

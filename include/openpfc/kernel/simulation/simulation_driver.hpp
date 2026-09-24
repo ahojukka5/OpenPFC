@@ -21,14 +21,27 @@
  * pass those as hooks. `SnapshotSeries` and `DiagnosticsSeries` stay
  * usable without this driver.
  *
- * `run` always accepts the fixed `dt`. `run_attempts` is the adaptive
- * contract: a rejected attempt does not commit `Time`, so a save or
- * checkpoint hooked to `on_save` does not run for it. `apply` may stage
+ * `run` always accepts the fixed `dt` through `Time::next()`. `next()`
+ * clamps accepted time to `t1`, so the last clock interval is
+ * `min(dt, t1 - t_before)` when `t1 - t0` is not an integer multiple of
+ * `dt`. A callback `step(double t, double interval)` receives that
+ * interval. A one-argument `step(double t)` is the historical contract
+ * and does not see it: `t` is the accepted time after `next()`. A
+ * stepper that always integrates a private `dt` must only be used when
+ * every clock interval equals that `dt`.
+ *
+ * `run_attempts` is the adaptive contract. It owns the accept/reject
+ * counters: `commit_attempt` plus `increment_step_success`, or
+ * `reject_attempt` plus `increment_step_rejection`. A rejected attempt
+ * does not save. If `apply` or `step` throws, the open attempt is
+ * closed first. That path does not count a success or a rejection, does
+ * not save, and rethrows the original exception. `apply` may stage
  * boundary data for the attempt; rolling the field back is the stepper's
  * job.
  */
 
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 #include <openpfc/kernel/simulation/time.hpp>
@@ -48,9 +61,46 @@ struct StepDecision {
   bool accepted{true};
 };
 
+namespace detail {
+
+/// `step(t, interval)` when the callable accepts the clock interval.
+/// Otherwise `step(t)`, the historical one-argument contract.
+template <class Step>
+void call_fixed_step(Step &step, double t_now, double interval) {
+  if constexpr (std::is_invocable_v<Step &, double, double>) {
+    step(t_now, interval);
+  } else {
+    step(t_now);
+  }
+}
+
+/// Closes an open attempt on every exit except an explicit dismiss.
+struct AttemptGuard {
+  Time &time;
+  bool armed{true};
+
+  explicit AttemptGuard(Time &time_in) : time(time_in) {}
+
+  AttemptGuard(const AttemptGuard &) = delete;
+  AttemptGuard &operator=(const AttemptGuard &) = delete;
+
+  ~AttemptGuard() {
+    if (armed && time.attempt_active()) {
+      time.reject_attempt();
+    }
+  }
+
+  void dismiss() noexcept { armed = false; }
+};
+
+} // namespace detail
+
 /**
- * Drive @p time to completion. @p step is `void(double t)` (accepted time
- * after `next()`). Optional hooks take `Time &` / `const Time &`.
+ * Drive @p time to completion. @p step is `void(double t)` or
+ * `void(double t, double interval)`. `t` is the accepted time after
+ * `next()`. `interval` is the clock advance just committed, which is
+ * shorter than `dt` on a final partial step. Optional hooks take
+ * `Time &` / `const Time &`.
  */
 template <class Step, class OnStart = NoopHook, class Apply = NoopHook,
           class OnSave = NoopHook>
@@ -63,9 +113,11 @@ void run(Time &time, Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
         on_save(time);
       }
     }
+    const double t_before = pfc::time::current(time);
     pfc::time::next(time);
     apply(time);
-    step(pfc::time::current(time));
+    detail::call_fixed_step(step, pfc::time::current(time),
+                            pfc::time::current(time) - t_before);
     if (pfc::time::do_save(time)) {
       on_save(time);
     }
@@ -78,7 +130,9 @@ void run(Time &time, Step &&step, OnStart &&on_start = {}, Apply &&apply = {},
  *        so a stepper that never accepts cannot spin.
  *
  * @p step is invoked with an active attempt. It returns whether that
- * attempt becomes the next accepted state.
+ * attempt becomes the next accepted state. This function, not the
+ * stepper, updates `increment_step_success` and
+ * `increment_step_rejection`.
  */
 template <class Step, class OnStart = NoopHook, class Apply = NoopHook,
           class OnSave = NoopHook>
@@ -97,10 +151,13 @@ void run_attempts(Time &time, Step &&step, OnStart &&on_start = {},
   int streak = 0;
   while (!pfc::time::done(time)) {
     time.begin_attempt(time.get_dt());
+    detail::AttemptGuard guard{time};
     apply(time);
     const StepDecision decision = step(time);
     if (!decision.accepted) {
       time.reject_attempt();
+      time.increment_step_rejection();
+      guard.dismiss();
       if (++streak >= max_consecutive_rejections) {
         throw std::runtime_error("run_attempts: the stepper rejected every attempt");
       }
@@ -108,6 +165,8 @@ void run_attempts(Time &time, Step &&step, OnStart &&on_start = {},
     }
     streak = 0;
     time.commit_attempt();
+    time.increment_step_success();
+    guard.dismiss();
     if (pfc::time::do_save(time)) on_save(time);
   }
 }

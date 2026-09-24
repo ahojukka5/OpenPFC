@@ -84,7 +84,9 @@ namespace pfc {
  * - Track accepted/rejected adaptive step attempts via
  *   `increment_step_success()` / `increment_step_rejection()` (separate from
  *   `get_step_count()`, which only counts committed advances via `next()` /
- *   `commit_attempt`)
+ *   `commit_attempt`). `pfc::sim::run_attempts` owns those two calls.
+ *   A direct `begin_attempt` user still makes them. An exception is not
+ *   a counted rejection.
  * - Provide validation: ensure `dt > 0`, `t0 < t1`, and `saveat` is valid
  *
  * ## Design Philosophy

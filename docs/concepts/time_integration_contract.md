@@ -56,10 +56,27 @@ lists, writers, and a `CheckpointService`.
 2. **Every iteration**:
    - `pfc::time::next(time)` — advance increment and current time
    - `apply(time)` — boundary conditions at the new time
-   - `step(pfc::time::current(time))` — physics advance
+   - `step` — physics advance
    - `on_save(time)` if `pfc::time::do_save(time)`
 
 The loop terminates when `pfc::time::done(time)` is true.
+
+`next()` clamps accepted time to `t1`. The clock interval of a step is
+`min(dt, t1 - t_before)`. That interval is shorter than `dt` when
+`t1 - t0` is not an integer multiple of `dt`. A callback
+`step(double t, double interval)` receives it. A one-argument
+`step(double t)` is unchanged: `t` is the accepted time after `next()`,
+and the interval is not passed. A stepper that always integrates a
+private `dt` belongs on this loop only when every clock interval equals
+that `dt`.
+
+`pfc::sim::run_attempts` is the adaptive loop. It opens `begin_attempt`,
+then calls `apply` and `step`. A rejection calls `reject_attempt` and
+`increment_step_rejection` and does not save. An acceptance calls
+`commit_attempt` and `increment_step_success`, then `on_save` when
+`do_save()`. The driver owns those counters. If `apply` or `step`
+throws, the attempt is closed before the exception propagates. That
+path does not count a success or a rejection and does not save.
 
 ### State access patterns
 
