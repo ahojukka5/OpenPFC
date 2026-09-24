@@ -144,11 +144,24 @@ def write_manifest_xdmf(manifest_path, output=None, dx=None, dy=None, dz=None,
         times = [float(s) for s in steps]
 
     def brick(field, index):
-        name = pattern.format(field=field, index=index)
-        path = os.path.join(base, name)
+        patterns = man.get("patterns")
+        if isinstance(patterns, list):
+            try:
+                slot = fields.index(field)
+            except ValueError as exc:
+                raise SystemExit(
+                    "%s: unknown field %s" % (manifest_path, field)
+                ) from exc
+            if slot >= len(patterns):
+                raise SystemExit("%s: patterns shorter than fields" % manifest_path)
+            rendered = str(patterns[slot])
+            rendered = rendered % index if "%" in rendered else rendered
+        else:
+            rendered = pattern.format(field=field, index=index)
+        path = rendered if os.path.isabs(rendered) else os.path.join(base, rendered)
         if not os.path.isfile(path):
             raise SystemExit("missing %s" % path)
-        return name, os.path.getsize(path)
+        return os.path.relpath(path, base), os.path.getsize(path)
 
     # Weibel reduced: different arrays on different meshes.
     if "nvx" in man and "nvy" in man and "nx" in man and "ny" not in man:
@@ -213,8 +226,17 @@ def write_manifest_xdmf(manifest_path, output=None, dx=None, dy=None, dz=None,
     if output is None:
         stem = os.path.splitext(os.path.basename(manifest_path))[0]
         output = os.path.join(base, stem.replace("_manifest", "") + ".xdmf")
+    raw_origin = man.get("origin") or [0.0, 0.0, 0.0]
+    if len(raw_origin) >= 3:
+        origin = (
+            float(raw_origin[0]),
+            float(raw_origin[1]),
+            float(raw_origin[2]),
+        )
+    else:
+        origin = (0.0, 0.0, 0.0)
     _write_xdmf(
-        output, nx, ny, nz, (0.0, 0.0, 0.0), (ddx, ddy, ddz), fields, rels, times
+        output, nx, ny, nz, origin, (ddx, ddy, ddz), fields, rels, times
     )
     return [output]
 

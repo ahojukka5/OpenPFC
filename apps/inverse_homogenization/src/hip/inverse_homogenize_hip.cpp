@@ -30,7 +30,6 @@
 #include <mpi.h>
 
 #include <inverse_homogenization/auxetic_geometry.hpp>
-#include <inverse_homogenization/field_output.hpp>
 #include <inverse_homogenization/inverse_checkpoint.hpp>
 #include <inverse_homogenization/inverse_convergence.hpp>
 #include <inverse_homogenization/manufacturability.hpp>
@@ -40,6 +39,8 @@
 #include <inverse_homogenization/spinodal_generator.hpp>
 #include <inverse_homogenization/target_io.hpp>
 #include <inverse_homogenization/yang_reentrant.hpp>
+#include <openpfc/frontend/io/scalar_field_file.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/data/strong_types.hpp>
@@ -129,7 +130,11 @@ struct Config {
   std::string checkpoint_dir{};
   std::string restart_dir{};
   int stop_after{0};
-  pfc::apps::inverse::FieldOutputConfig fields{};
+  struct FieldDump {
+    std::string dir;
+    int every{1};
+  };
+  FieldDump fields{};
 };
 
 void usage(std::ostream &os, const char *exe) {
@@ -543,11 +548,14 @@ int run(int argc, char **argv, int rank, int nproc) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   const auto box = fft.get_inbox_bounds();
-  pfc::apps::inverse::FieldSnapshotWriter snap(
-      cfg.fields, cfg.run_id, {cfg.nx, cfg.ny, cfg.nz},
-      {box.high[0] - box.low[0] + 1, box.high[1] - box.low[1] + 1,
-       box.high[2] - box.low[2] + 1},
-      {box.low[0], box.low[1], box.low[2]}, cfg.dx, rank, MPI_COMM_WORLD);
+  pfc::io::SnapshotSeries snapshots(
+      h.domain(), h.box(),
+      pfc::io::SnapshotSeriesOptions{.directory = cfg.fields.dir,
+                                     .prefix = cfg.run_id,
+                                     .comm = MPI_COMM_WORLD});
+  snapshots.set_cadence(
+      pfc::io::SnapshotCadence(cfg.fields.every < 1 ? 1 : cfg.fields.every));
+  if (!cfg.fields.dir.empty()) snapshots.add_field("h", h);
 
   {
     const long long n_global = static_cast<long long>(cfg.nx) * cfg.ny * cfg.nz;
@@ -580,15 +588,12 @@ int run(int argc, char **argv, int rank, int nproc) {
     return (std::abs(den) > 1.0e-30) ? c12 / den : 0.0;
   };
 
-  int n_snap = 0;
   int last_dumped = -1;
   auto dump = [&](int step, bool force) {
-    if (!snap.active()) return;
-    if (!force && !snap.due(std::max(0, step))) return;
+    if (snapshots.empty()) return;
     if (force && last_dumped == step) return;
-    snap.note_step(step);
-    snap.write("h", n_snap, h);
-    ++n_snap;
+    if (!force && !snapshots.due(std::max(0, step))) return;
+    snapshots.write(step, static_cast<double>(step));
     last_dumped = step;
   };
 
@@ -614,15 +619,6 @@ int run(int argc, char **argv, int rank, int nproc) {
   bool have_prev = false;
   int start_s = 0;
 
-  pfc::apps::inverse::FieldOutputConfig ckpt_fields;
-  ckpt_fields.dir = cfg.checkpoint_dir;
-  ckpt_fields.every = 1;
-  pfc::apps::inverse::FieldSnapshotWriter ckpt_snap(
-      ckpt_fields, "ckpt", {cfg.nx, cfg.ny, cfg.nz},
-      {box.high[0] - box.low[0] + 1, box.high[1] - box.low[1] + 1,
-       box.high[2] - box.low[2] + 1},
-      {box.low[0], box.low[1], box.low[2]}, cfg.dx, rank, MPI_COMM_WORLD);
-
   auto write_ckpt = [&](int next_step,
                         pfc::apps::inverse::TerminationReason why =
                             pfc::apps::inverse::TerminationReason::Running) {
@@ -634,7 +630,7 @@ int run(int argc, char **argv, int rank, int nproc) {
     ck.nz = cfg.nz;
     pfc::apps::inverse::capture_tracker(ck, tracker, next_step);
     ck.have_prev = have_prev ? 1 : 0;
-    ck.n_snap = n_snap;
+    ck.n_snap = snapshots.frames();
     ck.last_dumped = last_dumped;
     ck.termination = static_cast<int>(why);
     ck.J_prev = J_prev;
@@ -649,17 +645,17 @@ int run(int argc, char **argv, int rank, int nproc) {
       if (rank == 0) std::cerr << "checkpoint: failed to prepare staging\n";
       return false;
     }
-    const auto staging =
-        pfc::apps::inverse::checkpoint_staging_dir(root).string();
-    ckpt_snap.set_directory(staging);
-    ckpt_snap.write_named("h.bin", h);
-    ckpt_snap.write_named("h_prev.bin", h_prev);
+    const auto staging = pfc::apps::inverse::checkpoint_staging_dir(root).string();
+    pfc::io::write_scalar_brick(h, MPI_COMM_WORLD,
+                                std::filesystem::path(staging) / "h.bin");
+    pfc::io::write_scalar_brick(h_prev, MPI_COMM_WORLD,
+                                std::filesystem::path(staging) / "h_prev.bin");
     if (rank == 0) {
       ready = pfc::apps::inverse::checkpoint_field_sizes_match(staging, ck);
       ready = ready &&
               pfc::apps::inverse::write_checkpoint_file(staging + "/state.txt", ck);
       ready = ready && pfc::apps::inverse::write_dump_steps(
-                           staging + "/dump_steps.txt", snap.steps());
+                           staging + "/dump_steps.txt", snapshots.progress().steps);
       ready = ready && pfc::apps::inverse::publish_checkpoint_generation(root, gen);
       if (!ready) std::cerr << "checkpoint: failed to publish " << gen << '\n';
     }
@@ -680,8 +676,8 @@ int run(int argc, char **argv, int rank, int nproc) {
       } else {
         std::ifstream in(bundle + "/state.txt");
         if (!in || !pfc::apps::inverse::read_checkpoint_text(in, ck) ||
-            !pfc::apps::inverse::checkpoint_matches_problem(
-                ck, cfg, spec.C_target, spec.W) ||
+            !pfc::apps::inverse::checkpoint_matches_problem(ck, cfg, spec.C_target,
+                                                            spec.W) ||
             !pfc::apps::inverse::checkpoint_is_restartable(ck, cfg.steps))
           ok = 0;
         else if (ck.last_dumped > ck.next_step ||
@@ -701,18 +697,22 @@ int run(int argc, char **argv, int rank, int nproc) {
     int n_dump = static_cast<int>(dump_steps.size());
     MPI_Bcast(&n_dump, 1, MPI_INT, 0, MPI_COMM_WORLD);
     dump_steps.resize(static_cast<std::size_t>(std::max(0, n_dump)));
-    if (n_dump > 0)
-      MPI_Bcast(dump_steps.data(), n_dump, MPI_INT, 0, MPI_COMM_WORLD);
+    if (n_dump > 0) MPI_Bcast(dump_steps.data(), n_dump, MPI_INT, 0, MPI_COMM_WORLD);
     if (!ok) {
       if (rank == 0)
         std::cerr << "restart: unreadable or mismatched " << cfg.restart_dir << '\n';
       return 2;
     }
-    snap.restore_steps(std::move(dump_steps));
+    std::vector<double> dump_times;
+    dump_times.reserve(dump_steps.size());
+    for (int saved_step : dump_steps)
+      dump_times.push_back(static_cast<double>(saved_step));
+    snapshots.restore(pfc::io::SnapshotProgress{ck.n_snap, std::move(dump_steps),
+                                                std::move(dump_times)});
     if (!pfc::apps::inverse::load_fortran_bin(bundle + "/h.bin", cfg.nx, cfg.ny,
                                               cfg.nz, h) ||
-        !pfc::apps::inverse::load_fortran_bin(bundle + "/h_prev.bin", cfg.nx,
-                                              cfg.ny, cfg.nz, h_prev)) {
+        !pfc::apps::inverse::load_fortran_bin(bundle + "/h_prev.bin", cfg.nx, cfg.ny,
+                                              cfg.nz, h_prev)) {
       if (rank == 0) std::cerr << "restart: missing h.bin / h_prev.bin\n";
       return 2;
     }
@@ -722,7 +722,6 @@ int run(int argc, char **argv, int rank, int nproc) {
     tracker.cfg.max_steps = cfg.steps;
     start_s = ck.next_step;
     have_prev = ck.have_prev != 0;
-    n_snap = ck.n_snap;
     last_dumped = ck.last_dumped;
     J_prev = ck.J_prev;
     pfc::apps::inverse::fill_voigt6(C_prev, ck.C_prev);
@@ -877,11 +876,28 @@ int run(int argc, char **argv, int rank, int nproc) {
     hbin.data()[i] = (h.data()[i] > 0.5) ? 1.0 : 0.0;
   hbin.note_host_write();
   const auto bin = hom.compute(hbin);
-  snap.write_named("h_final.bin", h);
-  snap.write_named("h_thresh.bin", hbin);
-  snap.write_xdmf_brick("h_final.xdmf", "h_final.bin", "h");
-  snap.write_xdmf_brick("h_thresh.xdmf", "h_thresh.bin", "h");
-  snap.write_manifest({"h"});
+  if (!cfg.fields.dir.empty()) {
+    const auto out = std::filesystem::path(cfg.fields.dir);
+    pfc::io::write_scalar_brick(h, MPI_COMM_WORLD, out / "h_final.bin");
+    pfc::io::write_scalar_brick(hbin, MPI_COMM_WORLD, out / "h_thresh.bin");
+    const auto n = pfc::domain::get_size(h.domain());
+    const auto spacing = pfc::domain::get_spacing(h.domain());
+    const auto origin = pfc::domain::get_origin(h.domain());
+    const pfc::io::BinarySeriesGeometry geometry{.nx = n[0],
+                                                 .ny = n[1],
+                                                 .nz = n[2],
+                                                 .x0 = origin[0],
+                                                 .y0 = origin[1],
+                                                 .z0 = origin[2],
+                                                 .dx = spacing[0],
+                                                 .dy = spacing[1],
+                                                 .dz = n[2] > 1 ? spacing[2] : 1.0};
+    pfc::io::write_scalar_xdmf(MPI_COMM_WORLD, out / "h_final.xdmf", geometry, "h",
+                               "h_final.bin");
+    pfc::io::write_scalar_xdmf(MPI_COMM_WORLD, out / "h_thresh.xdmf", geometry, "h",
+                               "h_thresh.bin");
+  }
+  snapshots.close();
   if (rank == 0) {
     if (!cfg.fields.dir.empty()) {
       const auto write_report = [&](const char *name, const char *field,

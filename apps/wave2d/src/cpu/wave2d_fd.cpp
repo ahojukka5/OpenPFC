@@ -13,23 +13,22 @@
 #include <memory>
 #include <mpi.h>
 
-#include <openpfc/frontend/io/vtk_writer.hpp>
+#include <openpfc/domain/create.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
-#include <vector>
 #include <openpfc/kernel/data/types.hpp>
-#include <openpfc/domain/create.hpp>
-#include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
+#include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/kernel/field/fd_apply.hpp>
 #include <openpfc/kernel/field/fd_stencils.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/common/mpi_timer.hpp>
+#include <vector>
 
 #include <wave2d/cli.hpp>
 #include <wave2d/reporting.hpp>
-#include <wave2d/vtk_snapshot.hpp>
 #include <wave2d/wave_boundary.hpp>
 #include <wave2d/wave_model.hpp>
 
@@ -54,9 +53,9 @@ int run_fd(const RunConfig &cfg, int rank, int nproc) {
   }
 
   const int hw = stencil.half_width;
-  const auto domain =
-      pfc::domain::create(pfc::GridSize({cfg.Nx, cfg.Ny, 1}), pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
-                          pfc::GridSpacing({1.0, 1.0, 1.0}));
+  const auto domain = pfc::domain::create(pfc::GridSize({cfg.Nx, cfg.Ny, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({1.0, 1.0, 1.0}));
   const auto decomp = decomposition::create(domain, nproc);
 
   pfc::data::Field<double, pfc::HostSpace> u =
@@ -93,7 +92,12 @@ int run_fd(const RunConfig &cfg, int rank, int nproc) {
     (void)z;
     return std::exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma));
   });
-  v.apply([](double x, double y, double z) { (void)x; (void)y; (void)z; return 0.0; });
+  v.apply([](double x, double y, double z) {
+    (void)x;
+    (void)y;
+    (void)z;
+    return 0.0;
+  });
 
   halo_u.exchange();
   wave2d::fill_y_physical_ghosts_padded(u, cfg.y_bc, cfg.Ny,
@@ -103,13 +107,12 @@ int run_fd(const RunConfig &cfg, int rank, int nproc) {
                                             static_cast<double>(cfg.u_wall));
   }
 
-  std::vector<double> vtk_buf;
-  std::unique_ptr<pfc::VTKWriter> vtk_writer;
+  pfc::io::SnapshotSeries snapshots(
+      u.domain(), u.box(), pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_WORLD});
   if (!cfg.vtk_pattern.empty()) {
-    vtk_writer = std::make_unique<pfc::VTKWriter>(cfg.vtk_pattern);
-    wave2d::vtk_configure_writer(*vtk_writer, u);
-    wave2d::mkdir_vtk_parent_rank0(cfg.vtk_pattern, rank);
-    wave2d::vtk_write_increment(*vtk_writer, 0, u, vtk_buf);
+    snapshots.add_field("u", u, cfg.vtk_pattern, pfc::io::SnapshotFormat::Vtk);
+    snapshots.set_cadence(pfc::io::SnapshotCadence(cfg.vtk_every));
+    snapshots.write(0, 0.0);
   }
 
   auto stencil_lap = [&](int i, int j, int k) {
@@ -144,16 +147,18 @@ int run_fd(const RunConfig &cfg, int rank, int nproc) {
                                               static_cast<double>(cfg.u_wall));
     }
 
-    if (vtk_writer && (step + 1) % cfg.vtk_every == 0) {
-      wave2d::vtk_write_increment(*vtk_writer, step + 1, u, vtk_buf);
+    if (!snapshots.empty()) {
+      snapshots.write_if_due(step + 1, step + 1,
+                             cfg.dt * static_cast<double>(step + 1));
     }
   }
+  snapshots.close();
   const double max_elapsed = runtime::toc(timer);
 
-  const bool observable_ok =
-      wave2d::report(rank, nproc, cfg, "fd", wave2d::fd_extra_metadata(cfg),
-                     max_elapsed, "(runtime FD order; y physical BC; interior RMS u)",
-                     wave2d::interior_stats(u, hw));
+  const bool observable_ok = wave2d::report(
+      rank, nproc, cfg, "fd", wave2d::fd_extra_metadata(cfg), max_elapsed,
+      "(runtime FD order; y physical BC; interior RMS u)",
+      wave2d::interior_stats(u, hw));
   return observable_ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

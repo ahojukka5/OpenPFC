@@ -18,19 +18,18 @@
 #include <string>
 #include <vector>
 
-#include <openpfc/frontend/io/vtk_writer.hpp>
-#include <vector>
+#include <openpfc/domain/create.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/data/grid_field.hpp>
-#include <openpfc/domain/create.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/decomposition/decomposition_factory.hpp>
 #include <openpfc/runtime/common/mpi_main.hpp>
 #include <openpfc/runtime/gpu/comm_sparse_exchange_gpu.hpp>
+#include <vector>
 
 #include <wave2d/cli.hpp>
 #include <wave2d/device_step.hpp>
-#include <wave2d/vtk_snapshot.hpp>
 #include <wave2d/wave_model.hpp>
 
 namespace {
@@ -71,9 +70,8 @@ void copy_host_to_device(const std::vector<double> &host, DevField &dev) {
 }
 
 void copy_device_to_host(DevField &dev, std::vector<double> &host) {
-  dev.with_host_view([&](double *data, std::size_t n) {
-    host.assign(data, data + n);
-  });
+  dev.with_host_view(
+      [&](double *data, std::size_t n) { host.assign(data, data + n); });
   dev.note_device_write();
 }
 
@@ -101,18 +99,6 @@ int run_wave2d_cuda(const wave2d::RunConfig &cfg, int rank, int nproc) {
   const std::size_t nlocal = static_cast<std::size_t>(nx) *
                              static_cast<std::size_t>(ny) *
                              static_cast<std::size_t>(nz);
-
-  const auto global_domain = pfc::decomposition::domain(decomp);
-  const std::array<int, 3> global_vtk{global_domain.size[0], global_domain.size[1],
-                                      global_domain.size[2]};
-  const std::array<int, 3> local_vtk{nx, ny, nz};
-  const std::array<int, 3> off_vtk{lower[0], lower[1], lower[2]};
-  const std::array<double, 3> origin_vtk{global_domain.origin[0],
-                                         global_domain.origin[1],
-                                         global_domain.origin[2]};
-  const std::array<double, 3> spacing_vtk{global_domain.spacing[0],
-                                          global_domain.spacing[1],
-                                          global_domain.spacing[2]};
 
   const double inv_dx2 = 1.0;
   const double inv_dy2 = 1.0;
@@ -147,22 +133,21 @@ int run_wave2d_cuda(const wave2d::RunConfig &cfg, int rank, int nproc) {
   copy_host_to_device(u_host, u);
   copy_host_to_device(v_host, v);
 
-  pfc::comm::SparseExchange<pfc::CUDASpace, double> exchanger(
-      u, decomp, rank, MPI_COMM_WORLD);
+  pfc::comm::SparseExchange<pfc::CUDASpace, double> exchanger(u, decomp, rank,
+                                                              MPI_COMM_WORLD);
   if (rank == 0) {
     std::cout << "WAVE2D_CUDA_HALO_MODE=device"
               << " gpu_aware=" << (exchanger.uses_gpu_aware_mpi() ? 1 : 0) << "\n";
   }
 
-  std::vector<double> vtk_buf;
-  std::unique_ptr<pfc::VTKWriter> vtk_writer;
+  pfc::io::SnapshotSeries snapshots(
+      u.domain(), u.box(), pfc::io::SnapshotSeriesOptions{.comm = MPI_COMM_WORLD});
   if (!cfg.vtk_pattern.empty()) {
-    vtk_writer = std::make_unique<pfc::VTKWriter>(cfg.vtk_pattern);
-    wave2d::vtk_configure_writer_owned_slab(*vtk_writer, global_vtk, local_vtk,
-                                            off_vtk, origin_vtk, spacing_vtk);
-    wave2d::mkdir_vtk_parent_rank0(cfg.vtk_pattern, rank);
-    wave2d::vtk_write_u_owned_buffer(*vtk_writer, 0, u_host.data(), nx, ny, nz,
-                                     vtk_buf);
+    snapshots.add_field(
+        "u", cfg.vtk_pattern, pfc::io::SnapshotFormat::Vtk,
+        [&](std::vector<double> &out) { out.assign(u_host.begin(), u_host.end()); });
+    snapshots.set_cadence(pfc::io::SnapshotCadence(cfg.vtk_every));
+    snapshots.write(0, 0.0);
   }
 
   for (int step = 0; step < n_steps; ++step) {
@@ -180,13 +165,13 @@ int run_wave2d_cuda(const wave2d::RunConfig &cfg, int rank, int nproc) {
     u.note_device_write();
     v.note_device_write();
 
-    if (vtk_writer && (step + 1) % cfg.vtk_every == 0) {
+    if (!snapshots.empty() && snapshots.due(step + 1)) {
       copy_device_to_host(u, u_host);
-      wave2d::vtk_write_u_owned_buffer(*vtk_writer, step + 1, u_host.data(), nx, ny,
-                                       nz, vtk_buf);
+      snapshots.write(step + 1, cfg.dt * static_cast<double>(step + 1));
     }
   }
 
+  snapshots.close();
   if (rank == 0) {
     std::cout << "wave2d_cuda: finished " << n_steps << " steps on " << Nx << "x"
               << Ny << " (ranks=" << nproc << ")\n";
@@ -199,7 +184,8 @@ int run_wave2d_cuda(const wave2d::RunConfig &cfg, int rank, int nproc) {
 int main(int argc, char *argv[]) {
   return pfc::runtime::mpi_main(
       argc, argv, [](int app_argc, char **app_argv, int rank, int nproc) {
-        const auto cfg = wave2d::parse_manual_or_print_usage(app_argc, app_argv, rank);
+        const auto cfg =
+            wave2d::parse_manual_or_print_usage(app_argc, app_argv, rank);
         if (!cfg) return EXIT_FAILURE;
         return run_wave2d_cuda(*cfg, rank, nproc);
       });

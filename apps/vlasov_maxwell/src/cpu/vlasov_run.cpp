@@ -408,7 +408,10 @@ int run(int argc, char **argv, int rank, int nproc) {
                                pfc::io::SnapshotSeriesOptions{.directory = fo.dir,
                                                               .prefix = run_id,
                                                               .comm = ps.comm()});
-  if (!fo.dir.empty()) snap.add_field("f", ps.f(0));
+  if (!fo.dir.empty()) {
+    snap.add_field("f", ps.f(0));
+    snap.set_cadence(pfc::io::SnapshotCadence(fo.every < 1 ? 1 : fo.every));
+  }
   vlasov::ReducedSnapshotWriter reduced(ro, run_id, ps, rank);
   int n_reduced = 0;
 
@@ -431,10 +434,7 @@ int run(int argc, char **argv, int rank, int nproc) {
     m_bz.push_back(now.mode_bz);
     p_x.push_back(now.momentum_x);
     p_y.push_back(now.momentum_y);
-    const int stride = fo.every < 1 ? 1 : fo.every;
-    if (!fo.dir.empty() && (n_seen % stride) == 0) {
-      snap.write(step, t);
-    }
+    if (!fo.dir.empty()) snap.write_if_due(n_seen, step, t);
     if (reduced.due(n_seen)) {
       reduced.write(n_reduced, t, ps, st);
       ++n_reduced;

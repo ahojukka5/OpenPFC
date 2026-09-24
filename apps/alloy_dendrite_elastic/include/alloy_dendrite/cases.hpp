@@ -73,9 +73,9 @@
 #include <openpfc/kernel/simulation/stacks/fd_padded_cpu_stack.hpp>
 
 #include <alloy_dendrite/diagnostics.hpp>
-#include <alloy_dendrite/field_output.hpp>
 #include <alloy_dendrite/parameters.hpp>
 #include <alloy_dendrite/step.hpp>
+#include <openpfc/frontend/io/snapshot_series.hpp>
 
 // Equations (5)-(7) need an FFT, so they exist only in a HeFFTe-enabled
 // build. The Stage-1 planar verification and the uncoupled dendrite are pure
@@ -437,7 +437,6 @@ struct PlanarResult {
   return res;
 }
 
-
 // ===========================================================================
 // Stage 2 -- deterministic 2-D dendrite, optionally elastically coupled
 // ===========================================================================
@@ -503,8 +502,8 @@ struct DendriteConfig {
   /// scan whose spread is a statement about the *shape*, and it is the one
   /// the quoted `sigma*` is built from.
   double tip_windows_rel[kTipWindowCount] = {
-      kTipWindowRelDefaults[0], kTipWindowRelDefaults[1],
-      kTipWindowRelDefaults[2], kTipWindowRelDefaults[3]};
+      kTipWindowRelDefaults[0], kTipWindowRelDefaults[1], kTipWindowRelDefaults[2],
+      kTipWindowRelDefaults[3]};
   /// Trailing fraction of samples used for the tip-velocity fit.
   double fit_fraction = 0.3;
 #if ALLOY_DENDRITE_HAVE_ELASTICITY
@@ -516,8 +515,12 @@ struct DendriteConfig {
 #endif
   std::string csv_timeseries;
   std::string csv_summary;
-  /// Raw-brick field snapshots; empty disables them. See `field_output.hpp`.
-  FieldOutputConfig fields{};
+  /// Raw-brick field snapshots; empty `dir` disables them.
+  struct FieldDump {
+    std::string dir;
+    int every{1};
+  };
+  FieldDump fields{};
   std::string run_id = "dendrite";
   bool quiet = false;
 };
@@ -679,23 +682,19 @@ template <int Dim>
   const double Lx = static_cast<double>(cfg.nx) * cfg.dx;
   const double Ly = static_cast<double>(cfg.ny) * cfg.dx;
   const double Lz = static_cast<double>(cfg.nz) * cfg.dx;
-  const double xc =
-      std::isfinite(cfg.seed_x) ? cfg.seed_x : 0.5 * Lx;
-  const double yc =
-      std::isfinite(cfg.seed_y) ? cfg.seed_y : 0.5 * Ly;
+  const double xc = std::isfinite(cfg.seed_x) ? cfg.seed_x : 0.5 * Lx;
+  const double yc = std::isfinite(cfg.seed_y) ? cfg.seed_y : 0.5 * Ly;
   const double zc = 0.5 * Lz;
-  const int i_seed = std::max(
-      0, std::min(cfg.nx - 1, static_cast<int>(std::llround(xc / cfg.dx))));
-  const int j_seed = std::max(
-      0, std::min(cfg.ny - 1, static_cast<int>(std::llround(yc / cfg.dx))));
+  const int i_seed =
+      std::max(0, std::min(cfg.nx - 1, static_cast<int>(std::llround(xc / cfg.dx))));
+  const int j_seed =
+      std::max(0, std::min(cfg.ny - 1, static_cast<int>(std::llround(yc / cfg.dx))));
   const int k_seed = cfg.nz / 2;
   const bool bicrystal = cfg.seed2_radius > 0.0;
-  const double xc2 = bicrystal
-                         ? (std::isfinite(cfg.seed2_x) ? cfg.seed2_x : xc)
-                         : xc;
-  const double yc2 = bicrystal ? (std::isfinite(cfg.seed2_y) ? cfg.seed2_y
-                                                             : yc + 0.25 * Ly)
-                               : yc;
+  const double xc2 =
+      bicrystal ? (std::isfinite(cfg.seed2_x) ? cfg.seed2_x : xc) : xc;
+  const double yc2 =
+      bicrystal ? (std::isfinite(cfg.seed2_y) ? cfg.seed2_y : yc + 0.25 * Ly) : yc;
   const int j_seed2 = std::max(
       0, std::min(cfg.ny - 1, static_cast<int>(std::llround(yc2 / cfg.dx))));
   const double fta_x0 = std::isfinite(cfg.fta_x0) ? cfg.fta_x0 : xc;
@@ -741,8 +740,8 @@ template <int Dim>
   std::unique_ptr<ElasticCoupling> elastic;
   ElasticReport el_now{};
   if (cfg.elastic) {
-    elastic = std::make_unique<ElasticCoupling>(stack, cfg.elastic_params, rank,
-                                                comm);
+    elastic =
+        std::make_unique<ElasticCoupling>(stack, cfg.elastic_params, rank, comm);
     // Solve before the first step; see the schedule note above.
     el_now = elastic->solve(st.phi(), st.solute(), st.temperature());
     st.set_elastic_driving_force(&elastic->driving_force());
@@ -759,35 +758,79 @@ template <int Dim>
 
   CsvAppender ts_csv;
   if (!cfg.csv_timeseries.empty()) {
-    ts_csv = CsvAppender(
-        cfg.csv_timeseries,
-        "run_id,step,t,x_tip,y_tip,v_tip,rho_tip,fit_rms,fit_rows,"
-        "rho_w0,rho_w1,rho_w2,rho_w3,rho_spread,"
-        "solute_total,solute_drift_rel,heat_balance,heat_drift_abs,"
-        "theta_total,phi_total,phi_min,phi_max,u_min,u_max,"
-        "el_iterations,el_energy,el_max_dfel,el_mean_stress,"
-        "x_tip2,y_tip2,v_tip2,rho_tip2,x_groove,y_groove,v_rel,x_iso",
-        rank);
+    ts_csv =
+        CsvAppender(cfg.csv_timeseries,
+                    "run_id,step,t,x_tip,y_tip,v_tip,rho_tip,fit_rms,fit_rows,"
+                    "rho_w0,rho_w1,rho_w2,rho_w3,rho_spread,"
+                    "solute_total,solute_drift_rel,heat_balance,heat_drift_abs,"
+                    "theta_total,phi_total,phi_min,phi_max,u_min,u_max,"
+                    "el_iterations,el_energy,el_max_dfel,el_mean_stress,"
+                    "x_tip2,y_tip2,v_tip2,rho_tip2,x_groove,y_groove,v_rel,x_iso",
+                    rank);
   }
 
   // Snapshots share the diagnostic sample grid: a figure at a time no CSV row
   // records cannot be read against the time series, and the point of writing
   // both is that they are the same run seen two ways.
-  const auto &ob = stack.u().box();
-  FieldSnapshotWriter snap(
-      cfg.fields, cfg.run_id, {cfg.nx, cfg.ny, cfg.nz},
-      {ob.high[0] - ob.low[0] + 1, ob.high[1] - ob.low[1] + 1,
-       ob.high[2] - ob.low[2] + 1},
-      {ob.low[0], ob.low[1], ob.low[2]}, cfg.dx, rank, comm);
-  std::vector<std::string> snap_fields{"phi", "U", "theta"};
+  pfc::io::SnapshotSeries snapshots(
+      st.phi().domain(), st.phi().box(),
+      pfc::io::SnapshotSeriesOptions{
+          .directory = cfg.fields.dir, .prefix = cfg.run_id, .comm = comm});
+  snapshots.set_cadence(
+      pfc::io::SnapshotCadence(cfg.fields.every < 1 ? 1 : cfg.fields.every));
+  if (!cfg.fields.dir.empty()) {
+    snapshots.add_field("phi", st.phi());
+    snapshots.add_field("U", st.solute());
+    snapshots.add_field("theta", st.temperature());
 #if ALLOY_DENDRITE_HAVE_ELASTICITY
-  if (elastic) {
-    snap_fields.insert(snap_fields.end(),
-                       {"f_el", "dfel_dphi", "p_hydro", "sig_vm"});
-  }
+    if (elastic) {
+      auto &solver = elastic->solver();
+      snapshots.add_field("f_el", const_cast<pfc::data::Field<double> &>(
+                                      solver.elastic_energy_density()));
+      snapshots.add_field("dfel_dphi", const_cast<pfc::data::Field<double> &>(
+                                           solver.elastic_energy_derivative()));
+      const auto brick = [&](const char *name) {
+        return (std::filesystem::path(cfg.fields.dir) /
+                (cfg.run_id + "_" + name + "_%04d.bin"))
+            .string();
+      };
+      const auto owned = static_cast<std::size_t>(st.phi().box().size[0]) *
+                         static_cast<std::size_t>(st.phi().box().size[1]) *
+                         static_cast<std::size_t>(st.phi().box().size[2]);
+      snapshots.add_field(
+          "p_hydro", brick("p_hydro"), pfc::io::SnapshotFormat::Binary,
+          [&, owned](std::vector<double> &out) {
+            const auto &s = elastic->solver().stress();
+            out.resize(owned);
+            for (std::size_t q = 0; q < owned; ++q) {
+              out[q] = (s[std::size_t{0}].data()[q] + s[std::size_t{1}].data()[q] +
+                        s[std::size_t{2}].data()[q]) /
+                       3.0;
+            }
+          });
+      snapshots.add_field("sig_vm", brick("sig_vm"), pfc::io::SnapshotFormat::Binary,
+                          [&, owned](std::vector<double> &out) {
+                            const auto &s = elastic->solver().stress();
+                            out.resize(owned);
+                            for (std::size_t q = 0; q < owned; ++q) {
+                              const double c0 = s[std::size_t{0}].data()[q];
+                              const double c1 = s[std::size_t{1}].data()[q];
+                              const double c2 = s[std::size_t{2}].data()[q];
+                              const double c3 = s[std::size_t{3}].data()[q];
+                              const double c4 = s[std::size_t{4}].data()[q];
+                              const double c5 = s[std::size_t{5}].data()[q];
+                              const double a = c0 - c1;
+                              const double b = c1 - c2;
+                              const double d = c2 - c0;
+                              out[q] =
+                                  std::sqrt(0.5 * (a * a + b * b + d * d) +
+                                            3.0 * (c3 * c3 + c4 * c4 + c5 * c5));
+                            }
+                          });
+    }
 #endif
+  }
   int n_sample_seen = 0;
-  int n_snap = 0;
   bool last_sample_valid = false;
 
   std::vector<double> t_s, x_s, rho_s;
@@ -828,9 +871,9 @@ template <int Dim>
     TipWindowScan scan{};
     TipWindowScan rscan{};
     if (bicrystal) {
-      const auto bi = measure_bicrystal_tips(plane, cfg.nx, cfg.ny, cfg.dx,
-                                             cfg.dx, /*i_start=*/0, j_seed,
-                                             j_seed2, cfg.tip_fit_halfwidth);
+      const auto bi = measure_bicrystal_tips(plane, cfg.nx, cfg.ny, cfg.dx, cfg.dx,
+                                             /*i_start=*/0, j_seed, j_seed2,
+                                             cfg.tip_fit_halfwidth);
       tip = bi.tip1;
       tip2 = bi.tip2;
       x_groove = bi.x_groove;
@@ -844,8 +887,8 @@ template <int Dim>
     } else {
       tip = measure_tip(plane, cfg.nx, cfg.ny, cfg.dx, cfg.dx, i_seed, j_seed,
                         cfg.tip_fit_halfwidth);
-      scan = measure_tip_scan(plane, cfg.nx, cfg.ny, cfg.dx, cfg.dx, i_seed,
-                              j_seed, cfg.tip_windows);
+      scan = measure_tip_scan(plane, cfg.nx, cfg.ny, cfg.dx, cfg.dx, i_seed, j_seed,
+                              cfg.tip_windows);
       rscan = measure_tip_scan_relative(plane, cfg.nx, cfg.ny, cfg.dx, cfg.dx,
                                         i_seed, j_seed, cfg.tip_windows_rel,
                                         cfg.tip_fit_halfwidth);
@@ -874,64 +917,36 @@ template <int Dim>
     const double heat_drift = std::fabs(cons.heat_balance - cons0.heat_balance);
     const double v_now = trailing_slope(t_s, x_s, 0.25);
     const double v2_now = trailing_slope(t2_s, x2_s, 0.25);
-    const double v_rel_now =
-        std::isfinite(v_now) ? v_now - cfg.fta_pulling
+    const double v_rel_now = std::isfinite(v_now)
+                                 ? v_now - cfg.fta_pulling
+                                 : std::numeric_limits<double>::quiet_NaN();
+    const double x_iso = fta ? fta_x0 + cfg.fta_pulling * t
                              : std::numeric_limits<double>::quiet_NaN();
-    const double x_iso =
-        fta ? fta_x0 + cfg.fta_pulling * t
-            : std::numeric_limits<double>::quiet_NaN();
     if (ts_csv.active()) {
-      ts_csv.row(format(
-          "%s,%d,%.10g,%.10g,%.10g,%.10g,%.10g,%.6g,%d,"
-          "%.10g,%.10g,%.10g,%.10g,%.6g,"
-          "%.17g,%.6g,%.17g,%.6g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,"
-          "%d,%.10g,%.10g,%.6g,"
-          "%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g",
-          cfg.run_id.c_str(), step, t, tip.x_tip, tip.y_tip, v_now, tip.rho,
-          tip.fit_rms, tip.fit_rows, scan.rho[0], scan.rho[1], scan.rho[2],
-          scan.rho[3], scan.spread, cons.solute_total, sol_drift,
-          cons.heat_balance, heat_drift, cons.theta_total, cons.phi_total,
-          cons.phi_min, cons.phi_max, cons.u_min, cons.u_max,
+      ts_csv.row(format("%s,%d,%.10g,%.10g,%.10g,%.10g,%.10g,%.6g,%d,"
+                        "%.10g,%.10g,%.10g,%.10g,%.6g,"
+                        "%.17g,%.6g,%.17g,%.6g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,"
+                        "%d,%.10g,%.10g,%.6g,"
+                        "%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g",
+                        cfg.run_id.c_str(), step, t, tip.x_tip, tip.y_tip, v_now,
+                        tip.rho, tip.fit_rms, tip.fit_rows, scan.rho[0], scan.rho[1],
+                        scan.rho[2], scan.rho[3], scan.spread, cons.solute_total,
+                        sol_drift, cons.heat_balance, heat_drift, cons.theta_total,
+                        cons.phi_total, cons.phi_min, cons.phi_max, cons.u_min,
+                        cons.u_max,
 #if ALLOY_DENDRITE_HAVE_ELASTICITY
-          el_now.iterations, el_now.total_energy, el_now.max_dfel_dphi,
-          el_now.mean_stress_trace,
+                        el_now.iterations, el_now.total_energy, el_now.max_dfel_dphi,
+                        el_now.mean_stress_trace,
 #else
-          0, 0.0, 0.0, 0.0,
+                        0, 0.0, 0.0, 0.0,
 #endif
-          tip2.x_tip, tip2.y_tip, v2_now, tip2.rho, x_groove, y_groove,
-          v_rel_now, x_iso));
+                        tip2.x_tip, tip2.y_tip, v2_now, tip2.rho, x_groove, y_groove,
+                        v_rel_now, x_iso));
     }
-    if (snap.due(n_sample_seen)) {
-      snap.note_time(t);
-      snap.write("phi", n_snap, st.phi());
-      snap.write("U", n_snap, st.solute());
-      snap.write("theta", n_snap, st.temperature());
-#if ALLOY_DENDRITE_HAVE_ELASTICITY
-      if (elastic) {
-        const auto &sol = elastic->solver();
-        snap.write("f_el", n_snap, sol.elastic_energy_density());
-        snap.write("dfel_dphi", n_snap, sol.elastic_energy_derivative());
-        // Voigt order is (xx, yy, zz, yz, xz, xy); see `Sym3`. The
-        // hydrostatic part is what couples to composition, and the von Mises
-        // equivalent is what a deviatoric response would show -- a
-        // dilatational eigenstrain in a *homogeneous* medium produces no
-        // deviatoric stress at all inside the inclusion, so a nonzero
-        // `sig_vm` figure is a picture of the modulus contrast and of the
-        // shape, which is precisely what is interesting here.
-        snap.write_from_sym("p_hydro", n_snap, sol.stress(), [](const double *c) {
-          return (c[0] + c[1] + c[2]) / 3.0;
-        });
-        snap.write_from_sym("sig_vm", n_snap, sol.stress(), [](const double *c) {
-          const double a = c[0] - c[1];
-          const double b = c[1] - c[2];
-          const double d = c[2] - c[0];
-          return std::sqrt(0.5 * (a * a + b * b + d * d) +
-                           3.0 * (c[3] * c[3] + c[4] * c[4] + c[5] * c[5]));
-        });
-      }
-#endif
-      ++n_snap;
-    }
+    // Voigt order is (xx, yy, zz, yz, xz, xy). Hydrostatic stress and the
+    // von Mises equivalent are computed here; the series only stores the
+    // resulting scalars.
+    snapshots.write_if_due(n_sample_seen, step, t);
     ++n_sample_seen;
 
     // The dendrite must not touch its periodic image: past that point the
@@ -946,7 +961,7 @@ template <int Dim>
     }
   }
 
-  snap.write_manifest(snap_fields);
+  snapshots.close();
 
   res.v_tip = trailing_slope(t_s, x_s, cfg.fit_fraction);
   res.rho_tip = trailing_mean(rho_s, cfg.fit_fraction);
@@ -1076,17 +1091,16 @@ template <int Dim>
         cfg.t_end, p.lambda, p.k, p.D_l, p.D_th, p.M_c, p.eps4, cfg.omega,
         cfg.seed_radius, capillary_length(p), res.v_tip, res.rho_tip, res.x_tip,
         res.selection, res.sigma_star, res.rho_window[0], res.rho_window[1],
-        res.rho_window[2], res.rho_window[3], res.rho_window_spread,
-        res.rho_rel[0], res.rho_rel[1], res.rho_rel[2], res.rho_rel[3],
-        res.rho_rel_spread, res.rho_1, res.sigma_star_rel, res.v_drift,
-        res.rho_drift, res.omega_eff, res.v_rho, res.v_rho_ivantsov, p.lambda_el,
-        eps_c, eps_T, mu_l, nsub, res.el_solves, res.el_iter_mean, res.el_iter_max,
-        res.el_nonconverged, res.el_energy, res.el_max_dfel, res.el_mean_stress,
-        res.solute_drift_rel, res.heat_drift_rel, res.phi_min, res.phi_max,
-        res.n_samples, res.n_samples_failed, res.state_finite ? 1 : 0,
-        res.valid ? 1 : 0, p.crystal_angle, cfg.crystal_angle2, cfg.fta_gradient,
-        cfg.fta_pulling, fta_x0, xc, yc, bicrystal ? xc2
-                                                   : std::numeric_limits<double>::quiet_NaN(),
+        res.rho_window[2], res.rho_window[3], res.rho_window_spread, res.rho_rel[0],
+        res.rho_rel[1], res.rho_rel[2], res.rho_rel[3], res.rho_rel_spread,
+        res.rho_1, res.sigma_star_rel, res.v_drift, res.rho_drift, res.omega_eff,
+        res.v_rho, res.v_rho_ivantsov, p.lambda_el, eps_c, eps_T, mu_l, nsub,
+        res.el_solves, res.el_iter_mean, res.el_iter_max, res.el_nonconverged,
+        res.el_energy, res.el_max_dfel, res.el_mean_stress, res.solute_drift_rel,
+        res.heat_drift_rel, res.phi_min, res.phi_max, res.n_samples,
+        res.n_samples_failed, res.state_finite ? 1 : 0, res.valid ? 1 : 0,
+        p.crystal_angle, cfg.crystal_angle2, cfg.fta_gradient, cfg.fta_pulling,
+        fta_x0, xc, yc, bicrystal ? xc2 : std::numeric_limits<double>::quiet_NaN(),
         bicrystal ? yc2 : std::numeric_limits<double>::quiet_NaN(), res.x_tip2,
         res.y_tip2, res.v_tip2, res.rho_tip2, res.x_groove, res.y_groove,
         res.v_rel));

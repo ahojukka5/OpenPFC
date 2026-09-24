@@ -49,7 +49,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `ResultsWriter` reports `writes_real()` / `writes_complex()` so a
   format does not have to implement a value type it cannot store.
   HDF5 stays real-only. The standalone `fields[]` VTK helper and the
-  Vlasov brick writer now use this series.
+  Vlasov brick writer now use this series. `SnapshotCadence` counts
+  output samples the caller chooses, and `SnapshotProgress` restores
+  the next frame plus the earlier step and time rows.
+  `write_scalar_brick` writes one named scalar file.
+  Alloy dendrite, inverse homogenization, and Wave2D register fields
+  on this service. Stress invariants stay in the alloy driver. Wave2D
+  can pack an already-owned host buffer.
 
 - Public Fourier-series and indexed-noise field operations
   (`include/openpfc/kernel/field/fourier_series.hpp`,
