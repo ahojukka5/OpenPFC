@@ -75,7 +75,7 @@ def main():
 
         previous = (split / "results/diagnostics.csv").read_bytes()
         _, failed = run("split", split_settings, success=False)
-        assert "cannot create fresh CSV" in failed.stderr + failed.stdout
+        assert "already exists" in failed.stderr + failed.stdout
         assert (split / "results/diagnostics.csv").read_bytes() == previous
 
         bad = copy.deepcopy(settings)
