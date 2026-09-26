@@ -86,6 +86,11 @@ struct RunConfig {
   std::string png_output_initial;
   /** Opt in to letting a failed physics check set the process exit status. */
   bool strict = false;
+  /**
+   * Periodic two-front initial condition instead of the Gaussian seed.
+   * The cell-count report is unchanged; front positions are printed beside it.
+   */
+  bool two_fronts = false;
   static constexpr int kHaloWidth = 1;
   /** Superlevel for the seed-area metric: φ > 0 matches the visible seed in PNGs. */
   static constexpr double kLevelSetThreshold = 0.0;
@@ -151,6 +156,10 @@ inline int extract_flags(int argc, char **argv, RunConfig *c) {
   for (int i = 0; i < argc; ++i) {
     if (std::string(argv[i]) == "--strict") {
       c->strict = true;
+      continue;
+    }
+    if (std::string(argv[i]) == "--fronts") {
+      c->two_fronts = true;
       continue;
     }
     argv[out++] = argv[i];
@@ -256,6 +265,45 @@ inline void fill_initial_condition(std::vector<double> *u,
   }
 }
 
+/**
+ * @brief Two planar fronts from the cubic heteroclinic, periodic in x.
+ *
+ * `phi = tanh((x-x1)/w) - tanh((x-x2)/w) - 1` with `w = eps*sqrt(2M)`,
+ * `x1 = L/4` and `x2 = 3L/4`. The slab between the fronts is near `+1`
+ * and the rest of the period is near `-1`. The fronts are a quarter of
+ * the box apart from their periodic images, so a short run measures one
+ * front before the pair meets.
+ */
+inline void fill_two_front_initial_condition(
+    std::vector<double> *u, const pfc::decomposition::Decomposition &decomp,
+    int rank, double epsilon, double M) {
+  const auto &gw = pfc::decomposition::domain(decomp);
+  auto gsz = pfc::domain::get_size(gw);
+  const auto &local = pfc::decomposition::local_box(decomp, rank);
+  auto lo = local.low;
+  auto sz = local.size;
+  const int nx = sz[0];
+  const int ny = sz[1];
+  const int nz = sz[2];
+  const int sxy = nx * ny;
+  const double width = epsilon * std::sqrt(2.0 * M);
+  const double x1 = 0.25 * static_cast<double>(gsz[0]);
+  const double x2 = 0.75 * static_cast<double>(gsz[0]);
+  const double inv_w = (width > 0.0) ? 1.0 / width : 0.0;
+  for (int iz = 0; iz < nz; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        const double x = static_cast<double>(lo[0] + ix);
+        const std::size_t idx =
+            static_cast<std::size_t>(ix) +
+            static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(iz) * static_cast<std::size_t>(sxy);
+        (*u)[idx] = std::tanh((x - x1) * inv_w) - std::tanh((x - x2) * inv_w) - 1.0;
+      }
+    }
+  }
+}
+
 /** Local count of cells with φ strictly above @p threshold. */
 inline std::int64_t count_cells_above(const double *u, std::size_t n_cells,
                                       double threshold) {
@@ -289,6 +337,212 @@ inline std::int64_t global_area_cells(MPI_Comm comm, std::int64_t n_local) {
   }
   const double area = static_cast<double>(area_cells) * dx * dx;
   return std::sqrt(area / 3.14159265358979323846);
+}
+
+/** Disc radius for a sub-cell area that is not an integer cell count. */
+[[nodiscard]] inline double equivalent_radius_from_area(double area_cells,
+                                                       double dx) noexcept {
+  if (!(area_cells > 0.0)) {
+    return 0.0;
+  }
+  const double area = area_cells * dx * dx;
+  return std::sqrt(area / 3.14159265358979323846);
+}
+
+/**
+ * @brief Fraction of the unit segment from @p a to @p b on which the linear
+ * interpolant is strictly positive.
+ */
+[[nodiscard]] inline double positive_fraction(double a, double b) noexcept {
+  const bool pa = a > 0.0;
+  const bool pb = b > 0.0;
+  if (pa && pb) {
+    return 1.0;
+  }
+  if (!pa && !pb) {
+    return 0.0;
+  }
+  if (a == b) {
+    return pa ? 1.0 : 0.0;
+  }
+  const double t = a / (a - b);
+  if (pa) {
+    return std::clamp(t, 0.0, 1.0);
+  }
+  return std::clamp(1.0 - t, 0.0, 1.0);
+}
+
+/**
+ * @brief Area, in cells, on which a row-wise linear interpolant of `phi` is
+ * positive. @p nx is the local row length. The last interval wraps only when
+ * @p periodic_x is set, which is correct when the buffer holds a full period.
+ */
+[[nodiscard]] inline double subcell_positive_area(const double *u, int nx, int ny,
+                                                  bool periodic_x) noexcept {
+  if (u == nullptr || nx < 2 || ny < 1) {
+    return 0.0;
+  }
+  double area = 0.0;
+  const int x_intervals = periodic_x ? nx : nx - 1;
+  for (int iy = 0; iy < ny; ++iy) {
+    const double *row = u + static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx);
+    for (int ix = 0; ix < x_intervals; ++ix) {
+      const int j = (ix + 1 == nx) ? 0 : ix + 1;
+      area += positive_fraction(row[ix], row[j]);
+    }
+  }
+  return area;
+}
+
+/** Mean x of rising (`phi` crosses from <=0 to >0) and falling crossings. */
+struct FrontPositions {
+  double rise = 0.0;
+  double fall = 0.0;
+  int n_rise = 0;
+  int n_fall = 0;
+};
+
+[[nodiscard]] inline FrontPositions
+front_positions(const double *u, int nx, int ny, bool periodic_x) noexcept {
+  FrontPositions out;
+  if (u == nullptr || nx < 2 || ny < 1) {
+    return out;
+  }
+  const int x_intervals = periodic_x ? nx : nx - 1;
+  for (int iy = 0; iy < ny; ++iy) {
+    const double *row = u + static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx);
+    for (int ix = 0; ix < x_intervals; ++ix) {
+      const int j = (ix + 1 == nx) ? 0 : ix + 1;
+      const double a = row[ix];
+      const double b = row[j];
+      if ((a > 0.0) == (b > 0.0) || a == b) {
+        continue;
+      }
+      const double t = a / (a - b);
+      const double x = static_cast<double>(ix) + t;
+      if (a <= 0.0 && b > 0.0) {
+        out.rise += x;
+        ++out.n_rise;
+      } else if (a > 0.0 && b <= 0.0) {
+        out.fall += x;
+        ++out.n_fall;
+      }
+    }
+  }
+  return out;
+}
+
+struct SubcellSamples {
+  double initial = 0.0;
+  double half = 0.0;
+  double three_quarter = 0.0;
+  double final_ = 0.0;
+};
+
+struct FrontSamples {
+  double rise_initial = 0.0;
+  double rise_half = 0.0;
+  double rise_three_quarter = 0.0;
+  double rise_final = 0.0;
+  double fall_initial = 0.0;
+  double fall_half = 0.0;
+  double fall_three_quarter = 0.0;
+  double fall_final = 0.0;
+  bool have_rise = false;
+  bool have_fall = false;
+};
+
+inline void reduce_subcell_sample(MPI_Comm comm, const double *u, int nx, int ny,
+                                 bool periodic_x, double *area_out,
+                                 FrontPositions *fronts_out) {
+  const double local_area = subcell_positive_area(u, nx, ny, periodic_x);
+  double area = 0.0;
+  MPI_Allreduce(&local_area, &area, 1, MPI_DOUBLE, MPI_SUM, comm);
+  *area_out = area;
+  const FrontPositions local = front_positions(u, nx, ny, periodic_x);
+  double sums[2] = {local.rise, local.fall};
+  double gsums[2] = {0.0, 0.0};
+  int counts[2] = {local.n_rise, local.n_fall};
+  int gcounts[2] = {0, 0};
+  MPI_Allreduce(sums, gsums, 2, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(counts, gcounts, 2, MPI_INT, MPI_SUM, comm);
+  fronts_out->n_rise = gcounts[0];
+  fronts_out->n_fall = gcounts[1];
+  fronts_out->rise = gcounts[0] > 0 ? gsums[0] / gcounts[0] : 0.0;
+  fronts_out->fall = gcounts[1] > 0 ? gsums[1] / gcounts[1] : 0.0;
+}
+
+inline void store_subcell(SubcellSamples *areas, FrontSamples *fronts, int mark,
+                          double area, const FrontPositions &pos) {
+  double *slot = &areas->initial;
+  double *rise = &fronts->rise_initial;
+  double *fall = &fronts->fall_initial;
+  if (mark == 1) {
+    slot = &areas->half;
+    rise = &fronts->rise_half;
+    fall = &fronts->fall_half;
+  } else if (mark == 2) {
+    slot = &areas->three_quarter;
+    rise = &fronts->rise_three_quarter;
+    fall = &fronts->fall_three_quarter;
+  } else if (mark == 3) {
+    slot = &areas->final_;
+    rise = &fronts->rise_final;
+    fall = &fronts->fall_final;
+  }
+  *slot = area;
+  *rise = pos.rise;
+  *fall = pos.fall;
+  if (pos.n_rise > 0) {
+    fronts->have_rise = true;
+  }
+  if (pos.n_fall > 0) {
+    fronts->have_fall = true;
+  }
+}
+
+inline void sample_subcell(MPI_Comm comm, const double *u, int nx, int ny,
+                           bool periodic_x, SubcellSamples *areas,
+                           FrontSamples *fronts, int mark) {
+  double area = 0.0;
+  FrontPositions pos;
+  reduce_subcell_sample(comm, u, nx, ny, periodic_x, &area, &pos);
+  store_subcell(areas, fronts, mark, area, pos);
+}
+
+/** Printed beside the cell-count report. Does not affect `physics_check`. */
+inline void report_subcell(int rank, const RunConfig &cfg, const SubcellSamples &areas,
+                           const FrontSamples &fronts, double dx) {
+  if (rank != 0) {
+    return;
+  }
+  const double r0 = equivalent_radius_from_area(areas.initial, dx);
+  const double r_half = equivalent_radius_from_area(areas.half, dx);
+  const double r_3q = equivalent_radius_from_area(areas.three_quarter, dx);
+  const double r1 = equivalent_radius_from_area(areas.final_, dx);
+  std::cout << "Sub-cell area (linear phi=0 crossings): A0=" << areas.initial
+            << ", A_half=" << areas.half << ", A_3q=" << areas.three_quarter
+            << ", A1=" << areas.final_ << "\n";
+  std::cout << "Sub-cell equivalent radius: Rs0=" << r0 << ", Rs_half=" << r_half
+            << ", Rs_3q=" << r_3q << ", Rs1=" << r1 << "\n";
+  if (!cfg.two_fronts) {
+    return;
+  }
+  std::cout << "Two-front sub-cell position, rising: x0=" << fronts.rise_initial
+            << ", x_half=" << fronts.rise_half
+            << ", x_3q=" << fronts.rise_three_quarter
+            << ", x1=" << fronts.rise_final << "\n";
+  std::cout << "Two-front sub-cell position, falling: x0=" << fronts.fall_initial
+            << ", x_half=" << fronts.fall_half
+            << ", x_3q=" << fronts.fall_three_quarter
+            << ", x1=" << fronts.fall_final << "\n";
+  const double dt_half = 0.5 * static_cast<double>(cfg.n_steps) * cfg.dt;
+  const double v_rise =
+      (dt_half > 0.0) ? (fronts.rise_final - fronts.rise_half) / dt_half : 0.0;
+  const double v_fall =
+      (dt_half > 0.0) ? (fronts.fall_final - fronts.fall_half) / dt_half : 0.0;
+  std::cout << "Two-front speed (last half): v_rise=" << v_rise
+            << ", v_fall=" << v_fall << "\n";
 }
 
 /**
