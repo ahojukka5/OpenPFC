@@ -11,6 +11,7 @@
 #include <limits>
 #include <iostream>
 #include <mpi.h>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -610,11 +611,6 @@ inline void report_interface_kinetics(int rank, const AreaSamples &a,
             << ")\n";
 }
 
-inline void report_step_timing(MPI_Comm comm, int rank, int n_steps,
-                               double elapsed_local_s) {
-  allen_cahn::report_step_timing(comm, rank, n_steps, elapsed_local_s);
-}
-
 inline void
 step_explicit_euler_cpu(std::vector<double> *u, std::vector<double> *lap,
                         std::array<std::vector<double>, 6> *face_halos,
@@ -622,7 +618,7 @@ step_explicit_euler_cpu(std::vector<double> *u, std::vector<double> *lap,
                         int nx, int ny, int nz, double inv_dx2, double inv_dy2,
                         double dt, double M, double inv_eps2, double driving_force) {
   constexpr int hw = RunConfig::kHaloWidth;
-  exchanger->exchange(u->data(), u->size());
+  exchanger->exchange(std::span<double>(*u));
   pfc::halo::copy_to_face_layout(exchanger->halos(), *face_halos);
   std::fill(lap->begin(), lap->end(), 0.0);
   std::array<const double *, 6> face_ptrs{};
