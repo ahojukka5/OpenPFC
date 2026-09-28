@@ -1,0 +1,93 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#include <catch2/catch_test_macros.hpp>
+#include <limits>
+#include <mpi.h>
+#include <openpfc/kernel/decomposition/comm_sparse_exchange.hpp>
+#include <openpfc/kernel/field/sbp_diffusion.hpp>
+#include <openpfc/kernel/integrator/stage_context.hpp>
+#include <set>
+using pfc::field::fd::DiffusionAxis;
+TEST_CASE("Physical SBP faces survive thin distributed partitions", "[mpi][sbp]") {
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  constexpr int n = 33;
+  DiffusionAxis axis(n, 1. / 32);
+  std::vector<int> offsets(size + 1);
+  offsets[0] = 0;
+  offsets[size] = n;
+  // Last rank owns one node, so it must obtain a full physical closure remotely.
+  for (int p = 1; p < size; ++p) offsets[p] = (n - 1) * p / (size - 1);
+  auto needs = [&](int p) {
+    std::set<int> result;
+    for (int i = offsets[p]; i < offsets[p + 1]; ++i)
+      axis.coefficients(i, [&](int j, int k, double) {
+        result.insert(j);
+        result.insert(k);
+      });
+    return result;
+  };
+  std::vector<pfc::halo::RemoteHalo<double>> halos;
+  auto local = needs(rank);
+  for (int peer = 0; peer < size; ++peer)
+    if (peer != rank) {
+      std::vector<std::size_t> send, recv;
+      for (int i : needs(peer))
+        if (i >= offsets[rank] && i < offsets[rank + 1]) send.push_back(i);
+      for (int i : local)
+        if (i >= offsets[peer] && i < offsets[peer + 1]) recv.push_back(i);
+      pfc::halo::RemoteHalo<double> h;
+      h.peer_rank = peer;
+      h.send_tag = 173;
+      h.recv_tag = 173;
+      h.send_values = pfc::core::SparseVector<pfc::backend::CPUTag, double>(send);
+      h.recv_values = pfc::core::SparseVector<pfc::backend::CPUTag, double>(recv);
+      h.scatter_after_recv = true;
+      halos.push_back(std::move(h));
+    }
+  pfc::comm::SparseExchange<pfc::HostSpace, double> exchange(std::move(halos), rank,
+                                                             MPI_COMM_WORLD);
+  std::vector<double> u(n, std::numeric_limits<double>::quiet_NaN()), d = u;
+  auto exact_u = [](int i) { return std::sin(i * .17) + i * .02; };
+  auto exact_d = [](int i) { return 1. + i * .01; };
+  for (int i = offsets[rank]; i < offsets[rank + 1]; ++i) {
+    u[i] = exact_u(i);
+    d[i] = exact_d(i);
+  }
+  pfc::communication::StagePreparationService<double> prepare;
+  prepare.bind("u", [&] { exchange.exchange(std::span<double>(u)); });
+  prepare.bind("D", [&] { exchange.exchange(std::span<double>(d)); });
+  pfc::integrator::StageContext stage;
+  stage.time = .3;
+  stage.needs_halo_exchange = true;
+  double prepared_time = -1;
+  prepare.set_boundary_hook([&](std::string_view) { prepared_time = stage.time; });
+  auto req = pfc::integrator::requirements_from(stage, true);
+  req.ordering = pfc::communication::BoundaryHaloOrder::HaloThenBoundary;
+  const std::array<std::string_view, 2> names{"u", "D"};
+  prepare.prepare(req, names);
+  REQUIRE(prepared_time == stage.time);
+  pfc::field::fd::FaceCondition left{
+      pfc::field::fd::BoundaryQuantity::ConstitutiveFlux,
+      [](double t) { return t; }};
+  pfc::field::fd::FaceCondition right{
+      pfc::field::fd::BoundaryQuantity::ConstitutiveFlux,
+      [](double t) { return -2 * t; }};
+  double error = 0, mass = 0, scale = 1;
+  for (int i = offsets[rank]; i < offsets[rank + 1]; ++i) {
+    double value = axis.apply(
+        i, [&](int j) { return u[j]; }, [&](int j) { return d[j]; }, .3, &left,
+        &right);
+    error = std::max(
+        error, std::abs(value - axis.apply(i, exact_u, exact_d, .3, &left, &right)));
+    mass += axis.weight(i) * value;
+    scale += std::abs(axis.weight(i) * value);
+  }
+  double total, largest, total_scale;
+  MPI_Allreduce(&mass, &total, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&error, &largest, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(&scale, &total_scale, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  REQUIRE(largest <= 1e-11 * total_scale);
+  REQUIRE(std::abs(total - .3) <= 1e-11 * total_scale);
+}
