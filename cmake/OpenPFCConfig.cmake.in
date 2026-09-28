@@ -42,4 +42,9 @@ endif()
 
 include ( "${CMAKE_CURRENT_LIST_DIR}/OpenPFCTargets.cmake" )
 
+# Attach the public dependency after importing targets. Referring to the
+# FetchContent target in install(EXPORT) would require exporting that target.
+set_property(TARGET OpenPFC::openpfc APPEND PROPERTY
+    INTERFACE_LINK_LIBRARIES nlohmann_json::nlohmann_json)
+
 message(STATUS "Found OpenPFC: @CMAKE_INSTALL_PREFIX@ (found version @PROJECT_VERSION@)")
