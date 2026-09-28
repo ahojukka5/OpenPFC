@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <openpfc/kernel/field/sbp_diffusion.hpp>
+#include <openpfc/kernel/field/reaction_flux.hpp>
 
 #include <mpi.h>
 
@@ -38,7 +39,14 @@ int main() {
   ledger.begin();
   ledger.stage(.3, 1., .1);
   ledger.reject();
-  const bool ok = arithmetic == 1.5 && harmonic == 1.0 && accepted == 2 &&
+  ledger.begin();
+  auto reaction = pfc::field::fd::reaction_face(
+      {1., {}, {0.,0.,0.}, {-1.,0.,0.}, .3}, 2.,
+      [](const auto& p, double k) { return pfc::field::fd::ReactionRate{k*p.state}; },
+      [](const auto& p, double) { return p.state >= 0; }, ledger);
+  ledger.stage(reaction.flux(.3,1),1,.1);
+  ledger.reject();
+  const bool ok = reaction.flux(.3,1) == 2. && arithmetic == 1.5 && harmonic == 1.0 && accepted == 2 &&
                   std::abs(inventory_rate + .3) < 1e-11 && ledger.accepted() == 0;
   if (ok) {
     std::printf("OpenPFC FD consumer OK: accepted %d\n", accepted);
