@@ -128,3 +128,36 @@ TEST_CASE("Physical SBP faces survive thin distributed partitions", "[mpi][sbp]"
   REQUIRE(ledger.accepted()==accepted);
 
 }
+
+TEST_CASE("Supplied circular surface source has unique distributed owners",
+          "[mpi][sbp][reaction]") {
+  using namespace pfc::field::fd;
+  int rank,size;
+  MPI_Comm_rank(MPI_COMM_WORLD,&rank); MPI_Comm_size(MPI_COMM_WORLD,&size);
+  const int n=128; const double h=2./n,R=.3,eps=std::sqrt(R*h),dt=.01;
+  FluxLedger ledger; ledger.begin();
+  double change=0,area=0,serial=0;
+  auto law=[](const ReactionPoint& p,double){return ReactionRate{p.state*p.state-1+p.stage_time};};
+  auto valid=[](const ReactionPoint& p,double){return p.state>=0;};
+  for(int j=0;j<n;++j) for(int i=0;i<n;++i){
+    double x=-1+(i+.25)*h,y=-1+(j+.25)*h,r=std::hypot(x,y),d=r-R;
+    if(std::abs(d)>=eps)continue;
+    double rho=(1+std::cos(std::acos(-1.)*d/eps))/(2*eps);
+    double u=2+.2*x/r;
+    serial+=(u*u-1+.3)*rho*h*h*dt;
+    if(i*size/n!=rank)continue;
+    ReactionPoint p{u,{}, {x,y,0},{x/r,y/r,0},.3};
+    double rhs=reaction_source(p,rho,h*h,dt,0.,law,valid,ledger);
+    change+=rhs*h*h*dt;area+=rho*h*h;
+  }
+  ledger.accept();
+  double local[3]={change,ledger.accepted(),area},global[3];
+  MPI_Allreduce(local,global,3,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+  REQUIRE(std::abs(global[0]+global[1])<1e-12);
+  REQUIRE(std::abs(global[1]-serial)<1e-12);
+  REQUIRE(std::abs(global[2]/(2*std::acos(-1.)*R)-1)<1e-3);
+  ledger.begin();
+  reaction_source({2,{}, {0,0,0},{.6,.8,0},0},1,1,.1,0.,law,valid,ledger);
+  ledger.reject();
+  REQUIRE(ledger.accepted()==local[1]);
+}

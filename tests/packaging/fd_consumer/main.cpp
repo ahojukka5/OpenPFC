@@ -46,8 +46,15 @@ int main() {
       [](const auto& p, double) { return p.state >= 0; }, ledger);
   ledger.stage(reaction.flux(.3,1),1,.1);
   ledger.reject();
-  const bool ok = reaction.flux(.3,1) == 2. && arithmetic == 1.5 && harmonic == 1.0 && accepted == 2 &&
-                  std::abs(inventory_rate + .3) < 1e-11 && ledger.accepted() == 0;
+  ledger.begin();
+  double source = pfc::field::fd::reaction_source(
+      {2., {}, {0.,0.,0.}, {.6,.8,0.}, .3}, 3., .125, .02, 2.,
+      [](const auto& p, double k) { return pfc::field::fd::ReactionRate{k*p.state}; },
+      [](const auto& p, double) { return p.state >= 0; }, ledger);
+  ledger.accept();
+  const bool source_ok = std::abs(source*.125*.02+ledger.accepted())<1e-14;
+  const bool ok = source_ok && reaction.flux(.3,1) == 2. && arithmetic == 1.5 && harmonic == 1.0 && accepted == 2 &&
+                  std::abs(inventory_rate + .3) < 1e-11 && std::abs(ledger.accepted()-.03)<1e-14;
   if (ok) {
     std::printf("OpenPFC FD consumer OK: accepted %d\n", accepted);
   }

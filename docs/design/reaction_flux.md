@@ -34,3 +34,20 @@ existing field/halo preparation. No implicit global integrator is introduced.
 
 This qualifies a neutral callback, not any material reaction or validation.
 Embedded interfaces, chemistry, GPU callbacks and mechanics remain separate.
+
+## Application-supplied surface weights
+
+`reaction_source` accepts the same local callback with an arbitrary unit
+normal (squared norm within 1e-12), nonnegative surface density, positive
+volume quadrature and stage time weight. It returns `-density * outward_flux`
+and records `outward_flux * density * volume_weight * time_weight` in the
+existing trial ledger. Call once per owned node/stage and do not record the
+same source again. Ghost nodes contribute nothing. Reductions remain explicit.
+
+The caller owns interface geometry, density consistency, state extension and
+accepted-state transaction. A failed callback or invalid weight poisons the
+trial; reject it and discard trial state. Zero density still validates the
+point and callback. Cartesian `reaction_face` retains its stricter normal
+contract. This source does not impose an impermeable internal diffusion
+boundary or evolve a level set. No chemistry or geometric reconstruction is
+provided.

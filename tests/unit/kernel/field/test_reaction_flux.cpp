@@ -119,3 +119,40 @@ TEST_CASE("Reversible face exchange relaxes to analytic equilibrium",
   REQUIRE(std::sqrt(dist)<=1e-4);
   REQUIRE(std::abs(mass-initial+ledger.accepted())<1e-11);
 }
+
+TEST_CASE("Weighted reaction sources share the inventory ledger",
+          "[unit][field][reaction]") {
+  FluxLedger ledger;
+  auto p=point(2,.3); p.outward_normal={.6,.8,0};
+  auto law=[](const ReactionPoint& v,double k){
+    return ReactionRate{k*(v.state*v.state-1)+v.stage_time+v.outward_normal[0]};
+  };
+  ledger.begin();
+  double source=reaction_source(p,3.,.125,.02,2.,law,valid,ledger);
+  REQUIRE(source == Approx(-3*(6+.3+.6)));
+  ledger.reject();
+  REQUIRE(ledger.accepted()==0);
+  ledger.begin();
+  source=reaction_source(p,3.,.125,.02,2.,law,valid,ledger);
+  ledger.accept();
+  REQUIRE(source*.125*.02+ledger.accepted()==Approx(0).margin(1e-15));
+  ledger.begin();
+  REQUIRE(reaction_source(p,0.,.125,.02,2.,law,valid,ledger)==0);
+  ledger.reject();
+  for(int failure=0;failure<6;++failure){
+    ledger.begin();
+    auto q=p; double rho=3,vol=.125,dt=.02;
+    if(failure==0)rho=-1;
+    if(failure==1)vol=0;
+    if(failure==2)dt=std::numeric_limits<double>::infinity();
+    if(failure==3)q.outward_normal={.6,.7,0};
+    if(failure==4)q.state=-1;
+    if(failure==5)rho=std::numeric_limits<double>::max();
+    REQUIRE_THROWS(reaction_source(q,rho,vol,dt,2.,law,valid,ledger));
+    REQUIRE_THROWS(ledger.accept());
+    ledger.reject();
+  }
+  ledger.begin();
+  REQUIRE_THROWS(reaction_face(p,2.,law,valid,ledger));
+  ledger.reject();
+}
