@@ -16,6 +16,7 @@ target_sources(openpfc-tests PRIVATE
   scenarios/parallel_scaling/test_comm_sparse_exchange.cpp
   scenarios/parallel_scaling/test_comm_sparse_exchange_gpu.cpp
   scenarios/parallel_scaling/test_stage_preparation.cpp
+  scenarios/parallel_scaling/test_sbp_diffusion.cpp
   scenarios/parallel_scaling/test_halo_direction_set.cpp
   scenarios/parallel_scaling/test_sparse_halo_exchange.cpp
   scenarios/parallel_scaling/test_fd_heat_mpi.cpp

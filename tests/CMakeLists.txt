@@ -175,6 +175,18 @@ if(OpenPFC_RUN_MPI_SUITES AND MPI_CXX_FOUND)
     endif()
   endif()
 
+  foreach(_ranks 1 2 4)
+    if(OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER 0 AND
+       _ranks GREATER OpenPFC_MPI_TEST_MAX_WORLD_SIZE)
+      continue()
+    endif()
+    add_test(NAME sbp_flux_${_ranks}ranks
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${_ranks}
+        $<TARGET_FILE:openpfc-tests> "[sbp][mpi]")
+    set_tests_properties(sbp_flux_${_ranks}ranks PROPERTIES
+      TIMEOUT 120 RUN_SERIAL TRUE)
+  endforeach()
+
   # 2-process MPI suite: runs MPI tests suitable for 2 ranks
   add_test(NAME mpi_2procs_all
        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
