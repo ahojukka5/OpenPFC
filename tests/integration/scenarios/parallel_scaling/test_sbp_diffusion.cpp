@@ -5,6 +5,7 @@
 #include <mpi.h>
 #include <openpfc/kernel/decomposition/comm_sparse_exchange.hpp>
 #include <openpfc/kernel/field/sbp_diffusion.hpp>
+#include <openpfc/kernel/field/reaction_flux.hpp>
 #include <openpfc/kernel/integrator/stage_context.hpp>
 #include <set>
 using pfc::field::fd::DiffusionAxis;
@@ -90,4 +91,40 @@ TEST_CASE("Physical SBP faces survive thin distributed partitions", "[mpi][sbp]"
   MPI_Allreduce(&scale, &total_scale, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   REQUIRE(largest <= 1e-11 * total_scale);
   REQUIRE(std::abs(total - .3) <= 1e-11 * total_scale);
+  // State-dependent reactions are evaluated only by physical endpoint owners.
+  using namespace pfc::field::fd;
+  FluxLedger ledger;
+  ledger.begin();
+  auto law = [](const ReactionPoint &p, double k) {
+    return ReactionRate{k*p.state*p.state + p.stage_time*p.outward_normal[0]};
+  };
+  auto valid = [](const ReactionPoint &, double) { return true; };
+  FaceCondition reaction_left, reaction_right;
+  if (rank == 0) {
+    reaction_left = reaction_face({u[0], {}, {0,0,0}, {-1,0,0}, stage.time},
+                                  .2, law, valid, ledger);
+    ledger.stage(reaction_left.flux(stage.time,d[0]),1,.1);
+  }
+  if (rank == size-1) {
+    reaction_right = reaction_face({u[n-1], {}, {1,0,0}, {1,0,0}, stage.time},
+                                   .2, law, valid, ledger);
+    ledger.stage(reaction_right.flux(stage.time,d[n-1]),1,.1);
+  }
+  mass=0;
+  for(int i=offsets[rank];i<offsets[rank+1];++i)
+    mass+=axis.weight(i)*axis.apply(i,[&](int j){return u[j];},
+      [&](int j){return d[j];},stage.time,&reaction_left,&reaction_right);
+  ledger.accept();
+  double accepted=ledger.accepted(), integrated=0;
+  MPI_Allreduce(&mass,&total,1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+  MPI_Allreduce(&accepted,&integrated,1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+  const double exact_flux=.2*(exact_u(0)*exact_u(0)+exact_u(n-1)*exact_u(n-1));
+  REQUIRE(std::abs(total+exact_flux)<=1e-11*total_scale);
+  REQUIRE(std::abs(integrated-.1*exact_flux)<=1e-11*total_scale);
+  REQUIRE(std::abs(.1*total+integrated)<=1e-11*total_scale);
+  ledger.begin();
+  ledger.stage(1000,1,1);
+  ledger.reject();
+  REQUIRE(ledger.accepted()==accepted);
+
 }

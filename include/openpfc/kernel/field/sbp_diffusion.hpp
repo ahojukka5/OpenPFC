@@ -271,6 +271,11 @@ public:
     failed_ = false;
     trial_ = 0;
   }
+  bool active() const { return active_; }
+  void invalidate() {
+    if (!active_) throw std::logic_error("no flux trial");
+    failed_ = true;
+  }
   void stage(double flux, double area, double time_weight) {
     if (!active_) throw std::logic_error("no flux trial");
     const double next = trial_ + flux * area * time_weight;

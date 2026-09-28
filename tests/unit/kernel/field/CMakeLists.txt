@@ -6,6 +6,7 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_composite_gradient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fd_apply.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_sbp_diffusion.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_reaction_flux.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fd_brick_laplacian.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fd_gradient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fd_symbols.cpp
