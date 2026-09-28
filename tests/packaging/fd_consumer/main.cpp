@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <cmath>
 #include <cstdio>
+#include <openpfc/kernel/field/sbp_diffusion.hpp>
 
 #include <mpi.h>
 
@@ -23,7 +25,21 @@ int main() {
   int accepted = 0;
   life.set_accepted_step_hook([&](const pfc::Time &) { ++accepted; });
   life.run([](double, double) {});
-  const bool ok = arithmetic == 1.5 && harmonic == 1.0 && accepted == 2;
+  pfc::field::fd::DiffusionAxis axis(17, 1.0 / 16);
+  pfc::field::fd::FaceCondition flux{
+      pfc::field::fd::BoundaryQuantity::ConstitutiveFlux,
+      [](double time) { return time; }};
+  double inventory_rate = 0;
+  for (int i = 0; i < 17; ++i)
+    inventory_rate +=
+        axis.weight(i) *
+        axis.apply(i, [](int) { return 1.; }, [](int) { return 2.; }, .3, &flux);
+  pfc::field::fd::FluxLedger ledger;
+  ledger.begin();
+  ledger.stage(.3, 1., .1);
+  ledger.reject();
+  const bool ok = arithmetic == 1.5 && harmonic == 1.0 && accepted == 2 &&
+                  std::abs(inventory_rate + .3) < 1e-11 && ledger.accepted() == 0;
   if (ok) {
     std::printf("OpenPFC FD consumer OK: accepted %d\n", accepted);
   }
