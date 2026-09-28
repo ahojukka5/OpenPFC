@@ -185,7 +185,8 @@ endif()
 
 # Header-only FetchContent json must not appear in OpenPFCTargets (CMake 3.28
 # export then requires a nlohmann_json target that is not in the export set).
-# Installed consumers get nlohmann_json via find_dependency in OpenPFCConfig.
+# Installed consumers resolve the target via OpenPFCConfig, then inherit its
+# include directories through the public installed interface.
 # In-tree: PUBLIC BUILD_INTERFACE so targets that include public headers
 # (checkpoint_service.hpp, frontend JSON) get the FetchContent include path.
 if(DEFINED nlohmann_json_SOURCE_DIR)
@@ -203,6 +204,9 @@ else()
   target_link_libraries(openpfc_kernel_obj PRIVATE nlohmann_json::nlohmann_json)
   target_link_libraries(openpfc_frontend_obj PRIVATE nlohmann_json::nlohmann_json)
 endif()
+
+target_link_libraries(openpfc INTERFACE
+    $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>)
 
 if(OpenPFC_ENABLE_HDF5)
   if(TARGET HDF5::HDF5)
