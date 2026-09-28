@@ -112,7 +112,14 @@ public:
    * @param exchanger Exchanger to drive when this name is prepared.
    */
   void bind(std::string_view name, comm::HaloExchange<HostSpace, T> &exchanger) {
-    m_exchangers.insert_or_assign(std::string(name), &exchanger);
+    bind(name, [&exchanger] { exchanger.exchange(); });
+  }
+
+  /// Bind an explicit exchange operation, e.g. SparseExchange on a thin
+  /// partition. The callable owns no field lifetime; captures must outlive use.
+  void bind(std::string_view name, std::function<void()> exchange) {
+    if (!exchange) throw std::invalid_argument("empty stage exchange");
+    m_exchangers.insert_or_assign(std::string(name), std::move(exchange));
   }
 
   /**
@@ -189,12 +196,11 @@ private:
 
   void run_exchanges_(std::span<const std::string_view> fields) {
     for (const std::string_view name : fields) {
-      comm::HaloExchange<HostSpace, T> *ex = m_exchangers.at(std::string(name));
-      ex->exchange();
+      m_exchangers.at(std::string(name))();
     }
   }
 
-  std::unordered_map<std::string, comm::HaloExchange<HostSpace, T> *> m_exchangers;
+  std::unordered_map<std::string, std::function<void()>> m_exchangers;
   std::function<void(std::string_view)> m_boundary_hook;
 };
 
