@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -33,7 +34,10 @@ def case(tmp_path):
 
 
 def test_version_source_and_relocated_install(tmp_path):
-    assert call("--version").stdout.startswith("OpenPFC 0.2.")
+    source = (CLI.parent.parent / "CMakeLists.txt").read_text()
+    declared = re.search(r"project\(OpenPFC\s+VERSION\s+([0-9.]+)", source)
+    assert declared is not None
+    assert call("--version").stdout == f"OpenPFC {declared.group(1)}\n"
     binary = tmp_path / "prefix/bin/openpfc"
     binary.parent.mkdir(parents=True)
     shutil.copyfile(CLI, binary)
