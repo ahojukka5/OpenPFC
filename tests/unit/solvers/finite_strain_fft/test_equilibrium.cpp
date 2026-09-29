@@ -17,6 +17,7 @@
 #include <openpfc/kernel/mpi/mpi.hpp>
 #include <openpfc/solvers/finite_strain_fft/field_stats.hpp>
 #include <openpfc/solvers/finite_strain_fft/newton.hpp>
+#include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
 
 #include <cmath>
 #include <complex>
@@ -56,6 +57,23 @@ std::vector<Tensor2> random_field(std::size_t n, std::uint32_t seed) {
   }
   return field;
 }
+
+Tensor2 simple_shear(double gamma) {
+  Tensor2 value = identity2();
+  value(0, 1) = gamma;
+  return value;
+}
+
+/// Stress `P = 2 F` and tangent `dP = 2 dF`. Not Saint-Venant-Kirchhoff.
+struct ScaledDeformationLaw {
+  [[nodiscard]] Tensor2 stress(std::size_t, const Tensor2 &deformation) const {
+    return scaled(deformation, 2.0);
+  }
+  [[nodiscard]] Tensor2 tangent_action(std::size_t, const Tensor2 &,
+                                       const Tensor2 &increment) const {
+    return scaled(increment, 2.0);
+  }
+};
 
 double max_abs_diff(const std::vector<Tensor2> &a, const std::vector<Tensor2> &b) {
   double diff = 0.0;
@@ -199,9 +217,12 @@ TEST_CASE("homogeneous simple shear stays affine and equilibrated",
   auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
   CompatibleProjector projector(tools.fft, tools.domain);
   const IsotropicModuli soft{0.833, 0.386};
+  const std::vector<std::uint8_t> uniform;
+  const SaintVenantKirchhoffMaterial material(uniform, projector.local_size(), soft,
+                                              soft);
   NewtonControls controls;
-  const auto solved =
-      solve_simple_shear(projector, {}, 0.5, soft, soft, controls, MPI_COMM_WORLD);
+  const auto solved = solve_equilibrium(projector, material, simple_shear(0.5),
+                                        controls, MPI_COMM_WORLD);
   REQUIRE(solved.converged);
   REQUIRE(solved.history.size() == 2);
   Tensor2 expected = identity2();
@@ -239,8 +260,10 @@ TEST_CASE("a two-phase shear reaches the projected equilibrium tolerance",
 
   const IsotropicModuli soft{0.833, 0.386};
   const IsotropicModuli stiff{8.33, 3.86};
+  const SaintVenantKirchhoffMaterial material(phase, projector.local_size(), soft,
+                                              stiff);
   const auto solved =
-      solve_simple_shear(projector, phase, 0.5, soft, stiff, {}, MPI_COMM_WORLD);
+      solve_equilibrium(projector, material, simple_shear(0.5), {}, MPI_COMM_WORLD);
   REQUIRE(solved.converged);
   REQUIRE(solved.history.size() >= 2);
   const double stress_norm =
@@ -283,8 +306,10 @@ TEST_CASE("two ranks reproduce the single-rank finite-strain solution",
       }
     }
   }
-  const auto serial = solve_simple_shear(serial_projector, serial_phase, 0.35, soft,
-                                         stiff, {}, MPI_COMM_SELF);
+  const SaintVenantKirchhoffMaterial serial_material(
+      serial_phase, serial_projector.local_size(), soft, stiff);
+  const auto serial = solve_equilibrium(serial_projector, serial_material,
+                                        simple_shear(0.35), {}, MPI_COMM_SELF);
 
   auto parallel_tools = make_grid(size, MPI_COMM_WORLD);
   CompatibleProjector parallel_projector(parallel_tools.fft, parallel_tools.domain);
@@ -301,8 +326,10 @@ TEST_CASE("two ranks reproduce the single-rank finite-strain solution",
       }
     }
   }
-  const auto parallel = solve_simple_shear(parallel_projector, parallel_phase, 0.35,
-                                           soft, stiff, {}, MPI_COMM_WORLD);
+  const SaintVenantKirchhoffMaterial parallel_material(
+      parallel_phase, parallel_projector.local_size(), soft, stiff);
+  const auto parallel = solve_equilibrium(parallel_projector, parallel_material,
+                                          simple_shear(0.35), {}, MPI_COMM_WORLD);
   REQUIRE(parallel.converged);
   REQUIRE(serial.converged);
 
@@ -332,4 +359,43 @@ TEST_CASE("two ranks reproduce the single-rank finite-strain solution",
   double diff = 0.0;
   MPI_Allreduce(&local_diff, &diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
   REQUIRE(diff < 1e-8);
+}
+
+TEST_CASE("a homogeneous prescribed deformation stays affine",
+          "[finite_strain][newton]") {
+  auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  Tensor2 macroscopic = identity2();
+  macroscopic(0, 0) = 1.2;
+  macroscopic(1, 2) = -0.3;
+  macroscopic(2, 0) = 0.15;
+  const IsotropicModuli soft{0.833, 0.386};
+  const std::vector<std::uint8_t> uniform;
+  const SaintVenantKirchhoffMaterial material(uniform, projector.local_size(), soft,
+                                              soft);
+  const auto solved =
+      solve_equilibrium(projector, material, macroscopic, {}, MPI_COMM_WORLD);
+  REQUIRE(solved.converged);
+  REQUIRE(max_abs_diff(
+              solved.deformation,
+              std::vector<Tensor2>(solved.deformation.size(), macroscopic)) < 1e-8);
+  REQUIRE_THAT(solved.projected_residual, WithinAbs(0.0, 1e-8));
+}
+
+TEST_CASE("equilibrium uses the supplied constitutive law",
+          "[finite_strain][newton]") {
+  auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const Tensor2 macroscopic = simple_shear(0.4);
+  const auto solved = solve_equilibrium(projector, ScaledDeformationLaw{},
+                                        macroscopic, {}, MPI_COMM_WORLD);
+  REQUIRE(solved.converged);
+  std::vector<Tensor2> expected_stress(solved.piola.size(),
+                                       scaled(macroscopic, 2.0));
+  REQUIRE(max_abs_diff(solved.piola, expected_stress) < 1e-8);
+
+  const IsotropicModuli soft{0.833, 0.386};
+  const Tensor2 saint_venant = constitutive_response(macroscopic, soft).piola;
+  REQUIRE(frobenius_norm(add(saint_venant, scaled(expected_stress.front(), -1.0))) >
+          1e-3);
 }

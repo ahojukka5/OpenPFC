@@ -18,6 +18,11 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <stdexcept>
+#include <vector>
+
 #include <openpfc/solvers/finite_strain_fft/tensor.hpp>
 
 namespace pfc::finite_strain {
@@ -76,6 +81,52 @@ constitutive_response(const Tensor2 &deformation, IsotropicModuli moduli) noexce
   const Tensor2 stress_inc = second_piola(strain_inc, moduli);
   return add(matmul(increment, second_pk), matmul(deformation, stress_inc));
 }
+
+/**
+ * Saint-Venant-Kirchhoff response on an FFT inbox.
+ *
+ * An empty phase marks every point soft. Otherwise the phase has one byte
+ * per inbox point, with `1` selecting the hard moduli.
+ */
+class SaintVenantKirchhoffMaterial {
+public:
+  SaintVenantKirchhoffMaterial(const std::vector<std::uint8_t> &phase,
+                               std::size_t local_count, IsotropicModuli soft,
+                               IsotropicModuli hard)
+      : phase_(phase), soft_(soft), hard_(hard) {
+    if (!phase_.empty() && phase_.size() != local_count) {
+      throw std::invalid_argument(
+          "Saint-Venant-Kirchhoff phase size does not match the FFT inbox");
+    }
+    for (const std::uint8_t mark : phase_) {
+      if (mark > 1) {
+        throw std::invalid_argument("phase indicator must be 0 (soft) or 1 (hard)");
+      }
+    }
+  }
+
+  [[nodiscard]] Tensor2 stress(std::size_t index, const Tensor2 &deformation) const {
+    return constitutive_response(deformation, moduli_at(index)).piola;
+  }
+
+  [[nodiscard]] Tensor2 tangent_action(std::size_t index, const Tensor2 &deformation,
+                                       const Tensor2 &increment) const {
+    return pfc::finite_strain::tangent_action(deformation, increment,
+                                              moduli_at(index));
+  }
+
+private:
+  [[nodiscard]] IsotropicModuli moduli_at(std::size_t index) const {
+    if (phase_.empty() || phase_[index] == 0) {
+      return soft_;
+    }
+    return hard_;
+  }
+
+  const std::vector<std::uint8_t> &phase_;
+  IsotropicModuli soft_;
+  IsotropicModuli hard_;
+};
 
 /// Von Mises equivalent of a symmetric stress, `sqrt(3/2) ||dev σ||_F`.
 [[nodiscard]] inline double von_mises(const Tensor2 &stress) noexcept {

@@ -6,9 +6,10 @@
  * @brief Matrix-free Newton–CG solve of `G : P(F) = 0`.
  *
  * The loop follows Algorithm 1 of de Geus et al. for one prescribed
- * macroscopic deformation gradient. The first linear solve distributes
- * `F_bar - I` with the tangent at `F = I`. Later solves drive the
- * projected stress to zero. No global matrix is assembled.
+ * macroscopic deformation gradient. The material enters only through
+ * `LocalConstitutiveLaw`: stress `P(F)` and the tangent action. The first
+ * linear solve distributes `F_bar - I` with the tangent at `F = I`. Later
+ * solves drive the projected stress to zero. No global matrix is assembled.
  *
  * Krylov stopping matches the published program's relative residual test:
  * `||r|| < rtol ||b||`, with a zero right-hand side returning immediately.
@@ -29,8 +30,8 @@
 #include <mpi.h>
 
 #include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/solvers/finite_strain_fft/constitutive.hpp>
 #include <openpfc/solvers/finite_strain_fft/projector.hpp>
-#include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
 
 namespace pfc::finite_strain {
 
@@ -145,42 +146,28 @@ template <typename Matvec>
   throw std::runtime_error("finite-strain CG reached the iteration cap");
 }
 
-[[nodiscard]] inline IsotropicModuli
-moduli_at(const std::vector<std::uint8_t> &phase_hard, std::size_t index,
-          IsotropicModuli soft, IsotropicModuli hard) {
-  if (phase_hard.empty()) {
-    return soft;
-  }
-  if (phase_hard[index] > 1) {
-    throw std::invalid_argument("phase indicator must be 0 (soft) or 1 (hard)");
-  }
-  return phase_hard[index] == 1 ? hard : soft;
-}
-
 } // namespace detail
 
 /**
- * Solve one macroscopic simple shear on a periodic odd grid.
+ * Solve `G : P(F) = 0` for one prescribed macroscopic deformation gradient.
  *
- * `phase_hard` is empty for a uniform soft solid, or one byte per local
- * inbox point with `1` marking the hard phase. `gamma` sets
- * `F_bar = I + gamma e_x ⊗ e_y`.
+ * `law` supplies `P` and the tangent action at each inbox point. `F_bar`
+ * is an arbitrary 3x3 tensor. Its mean is imposed through the zero mode.
+ * The first Krylov solve still sees `F = I`, and its right-hand side is
+ * the projection of the tangent acting on `F_bar - I` only.
  */
+template <LocalConstitutiveLaw Law>
 [[nodiscard]] inline NewtonResult
-solve_simple_shear(CompatibleProjector &projector,
-                   const std::vector<std::uint8_t> &phase_hard, double gamma,
-                   IsotropicModuli soft, IsotropicModuli hard,
-                   NewtonControls controls = {}, MPI_Comm comm = MPI_COMM_WORLD) {
+solve_equilibrium(CompatibleProjector &projector, const Law &law,
+                  const Tensor2 &macroscopic, NewtonControls controls = {},
+                  MPI_Comm comm = MPI_COMM_WORLD) {
   require_odd_grid(projector.domain());
-  const std::size_t n = projector.local_size();
-  if (!phase_hard.empty() && phase_hard.size() != n) {
-    throw std::invalid_argument("phase field size does not match the FFT inbox");
-  }
   if (!(controls.krylov_relative_tolerance > 0.0) ||
       !(controls.newton_relative_tolerance > 0.0)) {
     throw std::invalid_argument("solver tolerances must be positive");
   }
 
+  const std::size_t n = projector.local_size();
   const auto grid = domain::get_size(projector.domain());
   const long long degrees =
       9LL * static_cast<long long>(grid[0]) * grid[1] * grid[2];
@@ -193,28 +180,16 @@ solve_simple_shear(CompatibleProjector &projector,
   }
 
   NewtonResult result;
-  // The first Krylov solve sees `F = I`. Its right-hand side is the
-  // projection of the tangent acting on `F_bar - I` only. The reference
-  // norm is `||F_bar||`, frozen before the fluctuation is added. That is
-  // the published program's order: the identity part of `F_bar` is not
-  // fed to the tangent, and a heterogeneous `K : I` is not a gradient.
   result.deformation.assign(n, identity2());
-  Tensor2 shear = identity2();
-  shear(0, 1) = gamma;
-  Tensor2 shear_increment{};
-  shear_increment(0, 1) = gamma;
+  const Tensor2 increment = add(macroscopic, scaled(identity2(), -1.0));
 
-  auto moduli_of = [&](std::size_t index) {
-    return detail::moduli_at(phase_hard, index, soft, hard);
-  };
-
-  auto apply_tangent = [&](const std::vector<Tensor2> &increment,
+  auto apply_tangent = [&](const std::vector<Tensor2> &direction,
                            std::vector<Tensor2> &product) {
     if (product.size() != n) {
       product.assign(n, Tensor2{});
     }
     for (std::size_t i = 0; i < n; ++i) {
-      product[i] = tangent_action(result.deformation[i], increment[i], moduli_of(i));
+      product[i] = law.tangent_action(i, result.deformation[i], direction[i]);
     }
     projector.apply(product, product);
   };
@@ -222,8 +197,7 @@ solve_simple_shear(CompatibleProjector &projector,
   auto refresh_residual = [&](std::vector<Tensor2> &rhs) {
     result.piola.assign(n, Tensor2{});
     for (std::size_t i = 0; i < n; ++i) {
-      result.piola[i] =
-          constitutive_response(result.deformation[i], moduli_of(i)).piola;
+      result.piola[i] = law.stress(i, result.deformation[i]);
     }
     projector.apply(result.piola, rhs);
     for (Tensor2 &value : rhs) {
@@ -231,8 +205,8 @@ solve_simple_shear(CompatibleProjector &projector,
     }
   };
 
-  std::vector<Tensor2> macro(n, shear);
-  std::vector<Tensor2> load(n, shear_increment);
+  std::vector<Tensor2> macro(n, macroscopic);
+  std::vector<Tensor2> load(n, increment);
   std::vector<Tensor2> rhs;
   apply_tangent(load, rhs);
   for (Tensor2 &value : rhs) {
@@ -245,7 +219,7 @@ solve_simple_shear(CompatibleProjector &projector,
         rhs, apply_tangent, controls.krylov_relative_tolerance, krylov_cap, comm);
     if (newton == 0) {
       for (std::size_t i = 0; i < n; ++i) {
-        result.deformation[i] = add(shear, linear.correction[i]);
+        result.deformation[i] = add(macroscopic, linear.correction[i]);
       }
     } else {
       detail::scale_add(result.deformation, 1.0, linear.correction);
