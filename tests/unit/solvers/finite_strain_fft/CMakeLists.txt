@@ -5,11 +5,13 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_history.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_saint_venant_kirchhoff.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_simo_j2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_crystal_plasticity.cpp
 )
 
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/test_equilibrium.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test_crystal_cell.cpp
   )
 endif()
 
