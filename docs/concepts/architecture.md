@@ -124,9 +124,11 @@ selection are documented in [`io_results.md`](../user_guide/io_results.md).
 `solvers/` is a public family of reusable numerical modules. A module here
 implements a method another application can call without taking on the donor
 application's physics, materials, or case files. Periodic microelasticity
-and an odd-grid finite-strain FFT Newton solver are the current members. A
-solver may use kernel and runtime facilities. It is not
-a place for one application's calibration or acceptance thresholds.
+and an odd-grid finite-strain FFT Newton solver are the current members.
+The finite-strain solver takes a local `F -> P` law and a prescribed
+macroscopic deformation gradient. A solver may use kernel and runtime
+facilities. It is not a place for one application's calibration or
+acceptance thresholds.
 
 ### Applications
 

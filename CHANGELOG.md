@@ -87,12 +87,13 @@ The entries below are the development record since 0.2.0.
 
 ### Added
 
-- **Odd-grid finite-strain FFT Newton solver** (`#204`). A
-  Saint-Venant–Kirchhoff map `F -> (P, dP)`, the compatible projection
-  of de Geus et al. Eq. (19), and a matrix-free Newton–CG solve of
-  `G : P = 0` with the macroscopic deformation carried by the zero
-  mode. The small-strain microelasticity solver is unchanged. Headers
-  live in `include/openpfc/solvers/finite_strain_fft/`.
+- **Odd-grid finite-strain FFT Newton solver** (`#204`). The global
+  solve consumes a local law `F -> P` plus a tangent action, projects
+  with de Geus et al. Eq. (19), and drives `G : P = 0` by matrix-free
+  Newton–CG. The macroscopic deformation gradient is an arbitrary `Fbar`
+  carried by the zero mode. Saint-Venant–Kirchhoff is one such law. The
+  small-strain microelasticity solver is unchanged. Headers live in
+  `include/openpfc/solvers/finite_strain_fft/`.
 
 - `pfc::sim::SimulationLifecycle` composes the fixed and adaptive runners
   with named fields, `FieldModifier` initial and boundary conditions, a
