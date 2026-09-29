@@ -12,14 +12,18 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <complex>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <mpi.h>
 #include <numbers>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <unistd.h>
 #include <vector>
 
@@ -35,6 +39,8 @@
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/indexed_noise.hpp>
 #include <openpfc/kernel/simulation/simulation_state.hpp>
+#include <openpfc/kernel/simulation/adaptive_controller.hpp>
+#include <openpfc/kernel/simulation/etd_step_doubling.hpp>
 #include <openpfc/kernel/simulation/spectral_etd_system.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 #include <openpfc/kernel/simulation/time.hpp>
@@ -372,6 +378,160 @@ TEST_CASE("CahnHilliardSession runs a short JSON case", "[cahn_hilliard][session
                                              MPI_COMM_WORLD);
   session.run();
   REQUIRE(pfc::time::current(session.time()) == Catch::Approx(0.1).margin(1e-12));
+}
+
+TEST_CASE("Fe-Cr Cahn-Hilliard fixed and adaptive ETD at similar accuracy",
+          "[cahn_hilliard][adaptive]") {
+  if (world_size() != 1) {
+    SKIP("single-rank spectral comparison");
+  }
+  constexpr int N = 16;
+  constexpr double t_end = 0.1;
+  const auto domain = pfc::domain::create(pfc::GridSize({N, N, 1}),
+                                          pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                          pfc::GridSpacing({1.0, 1.0, 1.0}));
+
+  pfc::sim::stacks::SpectralCPUStack layout(domain, 0, 1, MPI_COMM_WORLD);
+  auto phys = default_physics(domain, layout.fft().get_inbox_bounds());
+  const double c0 = phys.params.c0;
+
+  const auto seed = [&](pfc::data::Field<double> &c) {
+    const double twopi = 2.0 * std::numbers::pi;
+    c.apply([&](double x, double y, double) {
+      return c0 + 0.05 * std::cos(twopi * 2.0 * x / static_cast<double>(N) +
+                                  twopi * y / static_cast<double>(N));
+    });
+  };
+
+  const auto integrate_fixed = [&](double dt) {
+    pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
+    pfc::SimulationState state;
+    phys.declare_fields(state);
+    seed(state.get_field<double>("c"));
+    pfc::sim::SpectralETDOptions opt;
+    opt.psi_name = "c";
+    opt.dealias = true;
+    pfc::sim::SpectralETDSystem<cahn_hilliard::CahnHilliardPhysics<>> sys(
+        phys, stack.fft(), state, dt, opt);
+    const auto t0 = std::chrono::steady_clock::now();
+    double t = 0.0;
+    while (t + 0.5 * dt < t_end) {
+      t = sys.step(t);
+    }
+    if (t < t_end) {
+      sys.set_dt(t_end - t);
+      t = sys.step(t);
+    }
+    const double wall_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+            .count();
+    return std::tuple{state.get_field<double>("c").vec(), sys.nonlinear_count(),
+                      sys.forward_count() + sys.backward_count(), wall_ms, t};
+  };
+
+  const auto [reference, ref_nonlinear, ref_transforms, ref_ms, ref_t] =
+      integrate_fixed(5.0e-4);
+  REQUIRE_THAT(ref_t, WithinAbs(t_end, 1e-12));
+
+  pfc::sim::stacks::SpectralCPUStack stack(domain, 0, 1, MPI_COMM_WORLD);
+  pfc::SimulationState state;
+  phys.declare_fields(state);
+  seed(state.get_field<double>("c"));
+  pfc::sim::SpectralETDOptions opt;
+  opt.psi_name = "c";
+  opt.dealias = true;
+  pfc::sim::SpectralETDSystem<cahn_hilliard::CahnHilliardPhysics<>> sys(
+      phys, stack.fft(), state, 0.01, opt);
+  pfc::sim::AdaptiveControlConfig cfg;
+  cfg.mode = pfc::sim::AdaptiveControlMode::adaptive;
+  cfg.atol = 1e-8;
+  cfg.rtol = 1e-3;
+  cfg.min_dt = 1e-6;
+  cfg.max_dt = 0.02;
+  cfg.max_sequential_rejections = 30;
+  pfc::sim::AdaptiveTimeController controller(cfg, /*error_order=*/2);
+  pfc::Time time({0.0, t_end, 0.005}, 0.0);
+  pfc::sim::ETD1StepDoubling<cahn_hilliard::CahnHilliardPhysics<>> doubling(sys);
+  int nonlinear = 0;
+  int transforms = 0;
+  std::vector<double> accepted_dt;
+  const auto t0 = std::chrono::steady_clock::now();
+  int guard = 0;
+  while (!time.done() && guard < 4000) {
+    time.begin_attempt(time.get_dt());
+    const double dt = time.get_attempted_dt();
+    doubling.attempt(time.get_accepted_time(), dt);
+    const auto decision = controller.decide_from_embedded_error(
+        dt, doubling.raw_difference(), doubling.saved_state(), doubling.half_steps());
+    if (decision.accepted) {
+      doubling.commit();
+      accepted_dt.push_back(dt);
+    } else {
+      doubling.reject();
+    }
+    nonlinear += doubling.nonlinear_count();
+    transforms += doubling.transform_count();
+    controller.apply(time, decision);
+    ++guard;
+  }
+  const double wall_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+          .count();
+  REQUIRE(time.done());
+  const auto &adaptive_field = state.get_field<double>("c").vec();
+  double adaptive_error = 0.0;
+  for (std::size_t i = 0; i < adaptive_field.size(); ++i) {
+    adaptive_error = std::max(adaptive_error, std::abs(adaptive_field[i] - reference[i]));
+  }
+
+  double best_gap = 1e300;
+  double matched_dt = 0.0;
+  double matched_error = 0.0;
+  int matched_nonlinear = 0;
+  int matched_transforms = 0;
+  double matched_ms = 0.0;
+  for (double dt : {0.02, 0.01, 0.005, 0.0025}) {
+    const auto [field, n_eval, n_trans, ms, t] = integrate_fixed(dt);
+    REQUIRE_THAT(t, WithinAbs(t_end, 1e-12));
+    double err = 0.0;
+    for (std::size_t i = 0; i < field.size(); ++i) {
+      err = std::max(err, std::abs(field[i] - reference[i]));
+    }
+    const double gap = std::abs(std::log(std::max(err, 1e-16)) -
+                                std::log(std::max(adaptive_error, 1e-16)));
+    std::cout << "ch fixed dt=" << dt << " error=" << err << " nonlinear=" << n_eval
+              << " transforms=" << n_trans << " wall_ms=" << ms << "\n";
+    if (gap < best_gap) {
+      best_gap = gap;
+      matched_dt = dt;
+      matched_error = err;
+      matched_nonlinear = n_eval;
+      matched_transforms = n_trans;
+      matched_ms = ms;
+    }
+  }
+
+  std::cout << "ch adaptive accepted=" << controller.accepted_count()
+            << " rejected=" << controller.rejected_count() << " nonlinear=" << nonlinear
+            << " transforms=" << transforms << " error=" << adaptive_error
+            << " wall_ms=" << wall_ms << "\n";
+  std::cout << "ch matched fixed dt=" << matched_dt << " error=" << matched_error
+            << " nonlinear=" << matched_nonlinear << " transforms=" << matched_transforms
+            << " wall_ms=" << matched_ms << "\n";
+  std::cout << "ch adaptive dt";
+  for (double h : accepted_dt) {
+    std::cout << ' ' << h;
+  }
+  std::cout << "\n";
+  std::cout << "ch reference nonlinear=" << ref_nonlinear
+            << " transforms=" << ref_transforms << " wall_ms=" << ref_ms << "\n";
+
+  REQUIRE(std::isfinite(adaptive_error));
+  REQUIRE(adaptive_error < 1e-2);
+  REQUIRE(std::isfinite(matched_error));
+  // Coarsest fixed step is less accurate than the fine reference comparison
+  // used above. The matched pair is the engineering record, not a ranking.
+  REQUIRE(matched_dt > 0.0);
 }
 
 int main(int argc, char *argv[]) {

@@ -278,6 +278,7 @@ public:
     auto &n_hat = complex_field(m_opt.n_hat_name);
 
     Ops::forward(m_fft, psi, psi_hat);
+    ++m_forward_count;
 
     RealField *psi_mf = nullptr;
     RealField *p_star = nullptr;
@@ -287,19 +288,23 @@ public:
       auto &psi_mf_hat = complex_field(m_opt.psi_mf_hat_name);
       Ops::multiply(psi_hat, m_filter_dev, psi_mf_hat);
       Ops::backward(m_fft, psi_mf_hat, *psi_mf);
+      ++m_backward_count;
     }
     if constexpr (has_correlation) {
       p_star = &real_field(m_opt.p_star_name);
       auto &p_hat = complex_field(m_opt.p_hat_name);
       Ops::multiply(psi_hat, m_kernel_dev, p_hat);
       Ops::backward(m_fft, p_hat, *p_star);
+      ++m_backward_count;
     }
     if constexpr (has_free_energy) {
       fe = &real_field(m_opt.fe_name);
     }
 
     Ops::pointwise(m_geometry, t, psi, psi_mf, p_star, n_real, fe, m_pointwise);
+    ++m_nonlinear_count;
     Ops::forward(m_fft, n_real, n_hat);
+    ++m_forward_count;
 
     if (m_opt.dealias) {
       Ops::multiply(n_hat, m_mask_dev, m_n_masked);
@@ -326,6 +331,7 @@ public:
     auto &psi_hat = complex_field(m_opt.psi_hat_name);
     Ops::swap(psi_hat, m_candidate);
     Ops::backward(m_fft, psi_hat, psi());
+    ++m_backward_count;
   }
 
   /// Discard the last candidate (no state was modified).
@@ -374,9 +380,51 @@ public:
   /// Communicator-wide integral of the free-energy density.
   [[nodiscard]] double last_free_energy() const noexcept { return m_fe_integral; }
 
+  /// Forward transforms since construction, including those inside `attempt`.
+  [[nodiscard]] int forward_count() const noexcept { return m_forward_count; }
+  /// Backward transforms, including a candidate realization.
+  [[nodiscard]] int backward_count() const noexcept { return m_backward_count; }
+  /// Pointwise nonlinear evaluations since construction.
+  [[nodiscard]] int nonlinear_count() const noexcept { return m_nonlinear_count; }
+
   [[nodiscard]] RealField &psi() { return real_field(m_opt.psi_name); }
   [[nodiscard]] const RealField &psi() const {
     return m_state.template get_field<double, MemorySpace>(m_opt.psi_name);
+  }
+  [[nodiscard]] ComplexField &psi_hat() { return complex_field(m_opt.psi_hat_name); }
+  [[nodiscard]] const ComplexField &psi_hat() const {
+    return m_state.template get_field<Complex, MemorySpace>(m_opt.psi_hat_name);
+  }
+
+  /**
+   * @brief Copy the uncommitted Fourier candidate.
+   *
+   * Host reference path. The copy is independent of a later `set_dt` or
+   * `attempt`, so a full-step candidate cannot be overwritten by half-step
+   * coefficients.
+   */
+  void copy_candidate(std::vector<Complex> &dst) const {
+    if constexpr (!std::is_same_v<MemorySpace, pfc::HostSpace>) {
+      throw std::logic_error("SpectralETDSystem::copy_candidate is CPU-only");
+    } else {
+      dst = m_candidate;
+    }
+  }
+
+  /**
+   * @brief Inverse-transform the uncommitted candidate into a real vector.
+   *
+   * Does not modify `psi` or `psi_hat`. Uses the same backward transform as
+   * `commit`, so the real candidate is in the same normalization as `psi`.
+   */
+  void realize_candidate(std::vector<double> &dst) {
+    if constexpr (!std::is_same_v<MemorySpace, pfc::HostSpace>) {
+      throw std::logic_error("SpectralETDSystem::realize_candidate is CPU-only");
+    } else {
+      dst.resize(psi().size());
+      m_fft.backward(m_candidate, dst);
+      ++m_backward_count;
+    }
   }
 
 private:
@@ -476,6 +524,9 @@ private:
 
   double m_fe_sum{0.0};
   double m_fe_integral{0.0};
+  int m_forward_count{0};
+  int m_backward_count{0};
+  int m_nonlinear_count{0};
 };
 
 } // namespace pfc::sim
