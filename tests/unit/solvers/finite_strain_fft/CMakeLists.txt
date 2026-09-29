@@ -4,3 +4,10 @@
 target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_saint_venant_kirchhoff.cpp
 )
+
+if(OpenPFC_ENABLE_HEFFTE)
+  target_sources(openpfc-tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/test_equilibrium.cpp
+  )
+endif()
+

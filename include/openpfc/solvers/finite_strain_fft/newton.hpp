@@ -1,0 +1,273 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @file newton.hpp
+ * @brief Matrix-free Newton–CG solve of `G : P(F) = 0`.
+ *
+ * The loop follows Algorithm 1 of de Geus et al. for one prescribed
+ * macroscopic deformation gradient. The first linear solve distributes
+ * `F_bar - I` with the tangent at `F = I`. Later solves drive the
+ * projected stress to zero. No global matrix is assembled.
+ *
+ * Krylov stopping matches the published program's relative residual test:
+ * `||r|| < rtol ||b||`, with a zero right-hand side returning immediately.
+ * Newton stopping matches that program as well: the reference norm is
+ * frozen after the macroscopic deformation is added, and the first
+ * correction is not allowed to terminate the iteration.
+ */
+
+#pragma once
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+#include <vector>
+
+#include <mpi.h>
+
+#include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/solvers/finite_strain_fft/projector.hpp>
+#include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
+
+namespace pfc::finite_strain {
+
+struct NewtonControls {
+  /// Relative Krylov tolerance, the published program's `tol=1e-8`.
+  double krylov_relative_tolerance = 1e-8;
+  /// `||δF|| / ||F_ref||` threshold, the published program's `1e-5`.
+  double newton_relative_tolerance = 1e-5;
+  int maximum_newton_iterations = 32;
+  /// `0` selects ten times the global number of tensor degrees of freedom.
+  int maximum_krylov_iterations = 0;
+};
+
+struct NewtonStep {
+  double correction_over_reference = 0.0;
+  int krylov_iterations = 0;
+  /// `||G : P||` after this update. Zero when the right-hand side was zero.
+  double projected_residual = 0.0;
+};
+
+struct NewtonResult {
+  std::vector<Tensor2> deformation;
+  std::vector<Tensor2> piola;
+  std::vector<NewtonStep> history;
+  /// Frozen `||F||` after `F_bar` is added and before the first fluctuation.
+  double reference_norm = 0.0;
+  /// `||G : P||` at the returned field.
+  double projected_residual = 0.0;
+  bool converged = false;
+};
+
+namespace detail {
+
+[[nodiscard]] inline double global_dot(const std::vector<Tensor2> &a,
+                                       const std::vector<Tensor2> &b,
+                                       MPI_Comm comm) {
+  double local = 0.0;
+  const std::size_t n = a.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    local += frobenius_dot(a[i], b[i]);
+  }
+  double reduced = 0.0;
+  MPI_Allreduce(&local, &reduced, 1, MPI_DOUBLE, MPI_SUM, comm);
+  return reduced;
+}
+
+[[nodiscard]] inline double global_norm(const std::vector<Tensor2> &a,
+                                        MPI_Comm comm) {
+  return std::sqrt(global_dot(a, a, comm));
+}
+
+inline void scale_add(std::vector<Tensor2> &y, double alpha,
+                      const std::vector<Tensor2> &x) {
+  for (std::size_t i = 0; i < y.size(); ++i) {
+    y[i] = axpy(alpha, x[i], y[i]);
+  }
+}
+
+struct KrylovOutcome {
+  std::vector<Tensor2> correction;
+  int iterations = 0;
+  double residual = 0.0;
+};
+
+template <typename Matvec>
+[[nodiscard]] KrylovOutcome conjugate_gradient(const std::vector<Tensor2> &rhs,
+                                               Matvec &&matvec, double relative,
+                                               int max_iterations, MPI_Comm comm) {
+  KrylovOutcome out;
+  const std::size_t n = rhs.size();
+  out.correction.assign(n, Tensor2{});
+  const double rhs_norm = global_norm(rhs, comm);
+  if (rhs_norm == 0.0) {
+    return out;
+  }
+  const double absolute = relative * rhs_norm;
+  std::vector<Tensor2> residual = rhs;
+  std::vector<Tensor2> direction;
+  std::vector<Tensor2> product(n);
+  double rho_previous = 0.0;
+
+  for (int iteration = 0; iteration < max_iterations; ++iteration) {
+    const double residual_norm = global_norm(residual, comm);
+    if (residual_norm < absolute) {
+      out.iterations = iteration;
+      out.residual = residual_norm;
+      return out;
+    }
+    const double rho = residual_norm * residual_norm;
+    if (iteration == 0) {
+      direction = residual;
+    } else {
+      const double beta = rho / rho_previous;
+      for (std::size_t i = 0; i < n; ++i) {
+        direction[i] = axpy(beta, direction[i], residual[i]);
+      }
+    }
+    matvec(direction, product);
+    const double curvature = global_dot(direction, product, comm);
+    if (!(std::abs(curvature) > 0.0)) {
+      throw std::runtime_error(
+          "finite-strain CG stopped on a zero curvature product");
+    }
+    const double alpha = rho / curvature;
+    scale_add(out.correction, alpha, direction);
+    scale_add(residual, -alpha, product);
+    rho_previous = rho;
+  }
+  out.iterations = max_iterations;
+  out.residual = global_norm(residual, comm);
+  out.correction.clear();
+  throw std::runtime_error("finite-strain CG reached the iteration cap");
+}
+
+[[nodiscard]] inline IsotropicModuli
+moduli_at(const std::vector<std::uint8_t> &phase_hard, std::size_t index,
+          IsotropicModuli soft, IsotropicModuli hard) {
+  if (phase_hard.empty()) {
+    return soft;
+  }
+  if (phase_hard[index] > 1) {
+    throw std::invalid_argument("phase indicator must be 0 (soft) or 1 (hard)");
+  }
+  return phase_hard[index] == 1 ? hard : soft;
+}
+
+} // namespace detail
+
+/**
+ * Solve one macroscopic simple shear on a periodic odd grid.
+ *
+ * `phase_hard` is empty for a uniform soft solid, or one byte per local
+ * inbox point with `1` marking the hard phase. `gamma` sets
+ * `F_bar = I + gamma e_x ⊗ e_y`.
+ */
+[[nodiscard]] inline NewtonResult
+solve_simple_shear(CompatibleProjector &projector,
+                   const std::vector<std::uint8_t> &phase_hard, double gamma,
+                   IsotropicModuli soft, IsotropicModuli hard,
+                   NewtonControls controls = {}, MPI_Comm comm = MPI_COMM_WORLD) {
+  require_odd_grid(projector.domain());
+  const std::size_t n = projector.local_size();
+  if (!phase_hard.empty() && phase_hard.size() != n) {
+    throw std::invalid_argument("phase field size does not match the FFT inbox");
+  }
+  if (!(controls.krylov_relative_tolerance > 0.0) ||
+      !(controls.newton_relative_tolerance > 0.0)) {
+    throw std::invalid_argument("solver tolerances must be positive");
+  }
+
+  const auto grid = domain::get_size(projector.domain());
+  const long long degrees =
+      9LL * static_cast<long long>(grid[0]) * grid[1] * grid[2];
+  int krylov_cap = controls.maximum_krylov_iterations;
+  if (krylov_cap <= 0) {
+    const long long capped = degrees * 10LL;
+    krylov_cap = capped > static_cast<long long>(std::numeric_limits<int>::max())
+                     ? std::numeric_limits<int>::max()
+                     : static_cast<int>(capped);
+  }
+
+  NewtonResult result;
+  // The first Krylov solve sees `F = I`. Its right-hand side is the
+  // projection of the tangent acting on `F_bar - I` only. The reference
+  // norm is `||F_bar||`, frozen before the fluctuation is added. That is
+  // the published program's order: the identity part of `F_bar` is not
+  // fed to the tangent, and a heterogeneous `K : I` is not a gradient.
+  result.deformation.assign(n, identity2());
+  Tensor2 shear = identity2();
+  shear(0, 1) = gamma;
+  Tensor2 shear_increment{};
+  shear_increment(0, 1) = gamma;
+
+  auto moduli_of = [&](std::size_t index) {
+    return detail::moduli_at(phase_hard, index, soft, hard);
+  };
+
+  auto apply_tangent = [&](const std::vector<Tensor2> &increment,
+                           std::vector<Tensor2> &product) {
+    if (product.size() != n) {
+      product.assign(n, Tensor2{});
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      product[i] = tangent_action(result.deformation[i], increment[i], moduli_of(i));
+    }
+    projector.apply(product, product);
+  };
+
+  auto refresh_residual = [&](std::vector<Tensor2> &rhs) {
+    result.piola.assign(n, Tensor2{});
+    for (std::size_t i = 0; i < n; ++i) {
+      result.piola[i] =
+          constitutive_response(result.deformation[i], moduli_of(i)).piola;
+    }
+    projector.apply(result.piola, rhs);
+    for (Tensor2 &value : rhs) {
+      value = scaled(value, -1.0);
+    }
+  };
+
+  std::vector<Tensor2> macro(n, shear);
+  std::vector<Tensor2> load(n, shear_increment);
+  std::vector<Tensor2> rhs;
+  apply_tangent(load, rhs);
+  for (Tensor2 &value : rhs) {
+    value = scaled(value, -1.0);
+  }
+  result.reference_norm = detail::global_norm(macro, comm);
+
+  for (int newton = 0; newton < controls.maximum_newton_iterations; ++newton) {
+    auto linear = detail::conjugate_gradient(
+        rhs, apply_tangent, controls.krylov_relative_tolerance, krylov_cap, comm);
+    if (newton == 0) {
+      for (std::size_t i = 0; i < n; ++i) {
+        result.deformation[i] = add(shear, linear.correction[i]);
+      }
+    } else {
+      detail::scale_add(result.deformation, 1.0, linear.correction);
+    }
+    refresh_residual(rhs);
+
+    NewtonStep step;
+    step.krylov_iterations = linear.iterations;
+    step.correction_over_reference =
+        detail::global_norm(linear.correction, comm) / result.reference_norm;
+    step.projected_residual = detail::global_norm(rhs, comm);
+    result.history.push_back(step);
+    result.projected_residual = step.projected_residual;
+
+    if (step.correction_over_reference < controls.newton_relative_tolerance &&
+        newton > 0) {
+      result.converged = true;
+      return result;
+    }
+  }
+  result.converged = false;
+  return result;
+}
+
+} // namespace pfc::finite_strain
