@@ -77,7 +77,7 @@ TEST_CASE("AdaptiveControlConfig adaptive scalar success",
   REQUIRE_NOTHROW(make_adaptive_control_config(cfg));
 
   const AdaptiveConfigIdentity id = make_identity(cfg);
-  REQUIRE(id.semantic_version() == "1.0.0");
+  REQUIRE(id.semantic_version() == "1.1.0");
   REQUIRE(id.version_major == k_adaptive_control_config_version_major);
   REQUIRE_FALSE(id.parameter_signature.empty());
 }
@@ -219,4 +219,26 @@ TEST_CASE("AdaptiveControlConfig identity stable for identical parameters",
 
   b.atol = 2e-6;
   REQUIRE(make_identity(a).parameter_signature != make_identity(b).parameter_signature);
+}
+
+TEST_CASE("AdaptiveControlConfig checks PI gains only in PI mode",
+          "[adaptive_control_config][unit]") {
+  AdaptiveControlConfig cfg = valid_adaptive_scalar();
+  cfg.controller = StepController::memoryless;
+  cfg.pi_k_i = 0.0;
+  REQUIRE(validate(cfg).ok());
+
+  cfg.controller = StepController::pi;
+  const auto bad = validate(cfg);
+  REQUIRE_FALSE(bad.ok());
+  REQUIRE(has_parameter(bad, "pi_k_i"));
+
+  cfg.pi_k_i = 0.3;
+  cfg.pi_k_p = -0.1;
+  REQUIRE(has_parameter(validate(cfg), "pi_k_p"));
+
+  cfg.pi_k_p = 0.4;
+  REQUIRE(validate(cfg).ok());
+  REQUIRE(make_identity(cfg).parameter_signature.find("controller=pi") !=
+          std::string::npos);
 }

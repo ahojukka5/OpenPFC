@@ -41,7 +41,7 @@ namespace sim {
 
 /// Semantic version of the AdaptiveControlConfig parameter contract.
 inline constexpr int k_adaptive_control_config_version_major = 1;
-inline constexpr int k_adaptive_control_config_version_minor = 0;
+inline constexpr int k_adaptive_control_config_version_minor = 1;
 inline constexpr int k_adaptive_control_config_version_patch = 0;
 
 /**
@@ -56,6 +56,14 @@ enum class AdaptiveControlMode : std::uint8_t { fixed, adaptive };
  * @brief Norm used to reduce local error estimates across fields/components
  */
 enum class AdaptiveErrorNorm : std::uint8_t { max_norm, weighted_l2 };
+
+/**
+ * @brief Step-size controller used after a normalized error is known
+ *
+ * `memoryless` is the original gain-1 controller and the default.
+ * `pi` is the PI.3.4 controller. It is never selected implicitly.
+ */
+enum class StepController : std::uint8_t { memoryless, pi };
 
 /**
  * @brief Adaptive-control policy parameters
@@ -79,6 +87,12 @@ struct AdaptiveControlConfig {
   int max_sequential_rejections = 10;
   std::vector<double> error_weights; ///< empty => treated as all-ones when adaptive
   AdaptiveErrorNorm error_norm = AdaptiveErrorNorm::weighted_l2;
+  /// Default is the memoryless controller. `pi` must be selected explicitly.
+  StepController controller = StepController::memoryless;
+  /// PI.3.4 integral gain. The exponent is `pi_k_i / error_order`.
+  double pi_k_i = 0.3;
+  /// PI.3.4 proportional gain. The exponent is `pi_k_p / error_order`.
+  double pi_k_p = 0.4;
 };
 
 /**
@@ -219,6 +233,8 @@ validate(const AdaptiveControlConfig &cfg) {
   detail::require_finite(result, "shrink_max", cfg.shrink_max);
   detail::require_finite(result, "min_dt", cfg.min_dt);
   detail::require_finite(result, "max_dt", cfg.max_dt);
+  detail::require_finite(result, "pi_k_i", cfg.pi_k_i);
+  detail::require_finite(result, "pi_k_p", cfg.pi_k_p);
 
   for (std::size_t i = 0; i < cfg.atol_per_field.size(); ++i) {
     if (!detail::is_finite(cfg.atol_per_field[i])) {
@@ -365,6 +381,17 @@ validate(const AdaptiveControlConfig &cfg) {
                        "safety_factor must lie in (0, 1]", "(0, 1]");
   }
 
+  if (cfg.controller == StepController::pi) {
+    if (!(cfg.pi_k_i > 0.0)) {
+      detail::push_issue(result, "pi_k_i", detail::format_double(cfg.pi_k_i),
+                         "PI integral gain must be strictly positive", "> 0");
+    }
+    if (!(cfg.pi_k_p >= 0.0)) {
+      detail::push_issue(result, "pi_k_p", detail::format_double(cfg.pi_k_p),
+                         "PI proportional gain must be non-negative", ">= 0");
+    }
+  }
+
   if (!cfg.error_weights.empty()) {
     bool any_positive = false;
     for (double w : cfg.error_weights) {
@@ -410,6 +437,10 @@ make_identity(const AdaptiveControlConfig &cfg) {
   detail::append_vector_signature(oss, ";error_weights", cfg.error_weights);
   oss << ";error_norm="
       << (cfg.error_norm == AdaptiveErrorNorm::max_norm ? "max_norm" : "weighted_l2");
+  oss << ";controller="
+      << (cfg.controller == StepController::pi ? "pi" : "memoryless");
+  oss << ";pi_k_i=" << detail::format_double(cfg.pi_k_i);
+  oss << ";pi_k_p=" << detail::format_double(cfg.pi_k_p);
   id.parameter_signature = oss.str();
   return id;
 }
