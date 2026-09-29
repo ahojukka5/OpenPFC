@@ -87,6 +87,13 @@ The entries below are the development record since 0.2.0.
 
 ### Added
 
+- **Finite-strain FCC slip** (`#206`). Twelve `{111}<110>` systems map
+  `F = Fe Fp` to the first Piola–Kirchhoff stress with a rate-dependent
+  power law and one saturated hardening matrix. Crystal orientation and
+  the plastic history stay inside the law. Committed history advances
+  only through an explicit accept, and a rejected trial leaves it
+  unchanged. The Newton–Krylov solver is unchanged.
+
 - **Finite-strain Simo J2 plasticity** (`#205`). The law maps `F` to the
   first Piola–Kirchhoff stress with the logarithmic Finger return map,
   von Mises yield, associative flow, and linear isotropic hardening.
