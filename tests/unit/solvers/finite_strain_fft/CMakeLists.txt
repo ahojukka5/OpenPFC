@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 target_sources(openpfc-tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_history.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_saint_venant_kirchhoff.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_simo_j2.cpp
 )
 
 if(OpenPFC_ENABLE_HEFFTE)

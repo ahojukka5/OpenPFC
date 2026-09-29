@@ -244,4 +244,115 @@ solve_equilibrium(CompatibleProjector &projector, const Law &law,
   return result;
 }
 
+/**
+ * One load increment that continues from an already accepted deformation.
+ *
+ * The unknown starts at `start.deformation`. The macroscopic step
+ * `F_bar - F_bar_previous` is added before the reference norm is frozen,
+ * and the first Krylov solve still uses the tangent at the previous
+ * deformation. Later solves use the tangent at the updated field. The law
+ * is not asked to commit or reject; that decision stays with the caller.
+ */
+struct IncrementStart {
+  std::vector<Tensor2> deformation;
+  /// Macroscopic deformation that produced `deformation`. Defaults to `I`.
+  Tensor2 macroscopic = identity2();
+};
+
+template <LocalConstitutiveLaw Law>
+[[nodiscard]] inline NewtonResult
+solve_increment(CompatibleProjector &projector, const Law &law,
+                const Tensor2 &macroscopic, const IncrementStart &start,
+                NewtonControls controls = {}, MPI_Comm comm = MPI_COMM_WORLD) {
+  require_odd_grid(projector.domain());
+  if (!(controls.krylov_relative_tolerance > 0.0) ||
+      !(controls.newton_relative_tolerance > 0.0)) {
+    throw std::invalid_argument("solver tolerances must be positive");
+  }
+  const std::size_t n = projector.local_size();
+  if (start.deformation.size() != n) {
+    throw std::invalid_argument(
+        "incremental finite-strain solve needs one deformation per inbox point");
+  }
+
+  const auto grid = domain::get_size(projector.domain());
+  const long long degrees =
+      9LL * static_cast<long long>(grid[0]) * grid[1] * grid[2];
+  int krylov_cap = controls.maximum_krylov_iterations;
+  if (krylov_cap <= 0) {
+    const long long capped = degrees * 10LL;
+    krylov_cap = capped > static_cast<long long>(std::numeric_limits<int>::max())
+                     ? std::numeric_limits<int>::max()
+                     : static_cast<int>(capped);
+  }
+
+  const Tensor2 macro_step = add(macroscopic, scaled(start.macroscopic, -1.0));
+  NewtonResult result;
+  result.deformation = start.deformation;
+  for (Tensor2 &value : result.deformation) {
+    value = add(value, macro_step);
+  }
+  const std::vector<Tensor2> tangent_state = start.deformation;
+  bool tangent_from_start = true;
+
+  auto apply_tangent = [&](const std::vector<Tensor2> &direction,
+                           std::vector<Tensor2> &product) {
+    if (product.size() != n) {
+      product.assign(n, Tensor2{});
+    }
+    const std::vector<Tensor2> &state =
+        tangent_from_start ? tangent_state : result.deformation;
+    for (std::size_t i = 0; i < n; ++i) {
+      product[i] = law.tangent_action(i, state[i], direction[i]);
+    }
+    projector.apply(product, product);
+  };
+
+  auto refresh_residual = [&](std::vector<Tensor2> &rhs) {
+    result.piola.assign(n, Tensor2{});
+    for (std::size_t i = 0; i < n; ++i) {
+      result.piola[i] = law.stress(i, result.deformation[i]);
+    }
+    projector.apply(result.piola, rhs);
+    for (Tensor2 &value : rhs) {
+      value = scaled(value, -1.0);
+    }
+  };
+
+  std::vector<Tensor2> load(n, macro_step);
+  std::vector<Tensor2> rhs;
+  apply_tangent(load, rhs);
+  for (Tensor2 &value : rhs) {
+    value = scaled(value, -1.0);
+  }
+  result.reference_norm = detail::global_norm(result.deformation, comm);
+  if (!(result.reference_norm > 0.0)) {
+    throw std::runtime_error("incremental finite-strain reference norm vanished");
+  }
+
+  for (int newton = 0; newton < controls.maximum_newton_iterations; ++newton) {
+    auto linear = detail::conjugate_gradient(
+        rhs, apply_tangent, controls.krylov_relative_tolerance, krylov_cap, comm);
+    detail::scale_add(result.deformation, 1.0, linear.correction);
+    tangent_from_start = false;
+    refresh_residual(rhs);
+
+    NewtonStep step;
+    step.krylov_iterations = linear.iterations;
+    step.correction_over_reference =
+        detail::global_norm(linear.correction, comm) / result.reference_norm;
+    step.projected_residual = detail::global_norm(rhs, comm);
+    result.history.push_back(step);
+    result.projected_residual = step.projected_residual;
+
+    if (step.correction_over_reference < controls.newton_relative_tolerance &&
+        newton > 0) {
+      result.converged = true;
+      return result;
+    }
+  }
+  result.converged = false;
+  return result;
+}
+
 } // namespace pfc::finite_strain

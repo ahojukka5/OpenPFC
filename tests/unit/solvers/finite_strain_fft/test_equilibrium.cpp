@@ -18,6 +18,7 @@
 #include <openpfc/solvers/finite_strain_fft/field_stats.hpp>
 #include <openpfc/solvers/finite_strain_fft/newton.hpp>
 #include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
+#include <openpfc/solvers/finite_strain_fft/simo_j2.hpp>
 
 #include <cmath>
 #include <complex>
@@ -398,4 +399,279 @@ TEST_CASE("equilibrium uses the supplied constitutive law",
   const Tensor2 saint_venant = constitutive_response(macroscopic, soft).piola;
   REQUIRE(frobenius_norm(add(saint_venant, scaled(expected_stress.front(), -1.0))) >
           1e-3);
+}
+
+TEST_CASE("an increment from the identity matches the one-shot equilibrium",
+          "[finite_strain][newton]") {
+  auto tools = make_grid(Int3{7, 7, 7}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const auto inbox = tools.fft.get_inbox_bounds();
+  std::vector<std::uint8_t> phase(projector.local_size(), 0);
+  std::size_t index = 0;
+  for (int z = inbox.low[2]; z <= inbox.high[2]; ++z) {
+    for (int y = inbox.low[1]; y <= inbox.high[1]; ++y) {
+      for (int x = inbox.low[0]; x <= inbox.high[0]; ++x, ++index) {
+        if (x >= 5 && y < 2 && z >= 5) {
+          phase[index] = 1;
+        }
+      }
+    }
+  }
+  const IsotropicModuli soft{0.833, 0.386};
+  const IsotropicModuli stiff{8.33, 3.86};
+  const SaintVenantKirchhoffMaterial material(phase, projector.local_size(), soft,
+                                              stiff);
+  const Tensor2 macroscopic = simple_shear(0.5);
+  const auto direct =
+      solve_equilibrium(projector, material, macroscopic, {}, MPI_COMM_WORLD);
+  IncrementStart start;
+  start.deformation.assign(projector.local_size(), identity2());
+  const auto incremental =
+      solve_increment(projector, material, macroscopic, start, {}, MPI_COMM_WORLD);
+  REQUIRE(direct.converged);
+  REQUIRE(incremental.converged);
+  REQUIRE(direct.history.size() == incremental.history.size());
+  REQUIRE(max_abs_diff(direct.deformation, incremental.deformation) < 1e-12);
+  REQUIRE(max_abs_diff(direct.piola, incremental.piola) < 1e-12);
+  for (std::size_t step = 0; step < direct.history.size(); ++step) {
+    REQUIRE(direct.history[step].krylov_iterations ==
+            incremental.history[step].krylov_iterations);
+    REQUIRE_THAT(
+        direct.history[step].correction_over_reference,
+        WithinAbs(incremental.history[step].correction_over_reference, 1e-12));
+  }
+}
+
+TEST_CASE("a homogeneous J2 increment stays affine until the caller commits",
+          "[finite_strain][newton][j2]") {
+  auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const J2Moduli soft{0.833, 0.386, 0.004, 0.003};
+  const std::vector<std::uint8_t> uniform;
+  SimoJ2Material material(uniform, projector.local_size(), soft, soft);
+  Tensor2 macroscopic = identity2();
+  macroscopic(0, 0) = 1.05;
+  macroscopic(1, 1) = 1.0 / 1.05;
+  IncrementStart start;
+  start.deformation.assign(projector.local_size(), identity2());
+  material.begin_trial();
+  const auto solved =
+      solve_increment(projector, material, macroscopic, start, {}, MPI_COMM_WORLD);
+  REQUIRE(solved.converged);
+  REQUIRE(max_abs_diff(
+              solved.deformation,
+              std::vector<Tensor2>(solved.deformation.size(), macroscopic)) < 1e-8);
+  REQUIRE_THAT(solved.projected_residual, WithinAbs(0.0, 1e-8));
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    REQUIRE(material.accumulated(i) == 0.0);
+  }
+  material.reject();
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    REQUIRE(material.accumulated(i) == 0.0);
+  }
+
+  material.begin_trial();
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    material.stage(i, solved.deformation[i]);
+  }
+  material.accept();
+  REQUIRE(material.accumulated(0) > 0.0);
+  for (std::size_t i = 1; i < material.size(); ++i) {
+    REQUIRE(material.accumulated(i) == material.accumulated(0));
+  }
+}
+
+namespace {
+
+Tensor2 published_pure_shear(double lambda) {
+  Tensor2 macroscopic = identity2();
+  macroscopic(0, 0) = 1.0 + lambda;
+  macroscopic(1, 1) = 1.0 / macroscopic(0, 0);
+  return macroscopic;
+}
+
+Tensor2 published_pure_shear_step() {
+  // First increment of the released program: lam += 0.2/50.
+  return published_pure_shear(0.2 / 50.0);
+}
+
+std::vector<std::uint8_t> inclusion_phase(const fft::CPUFFT &fft,
+                                          std::size_t count) {
+  const auto box = fft.get_inbox_bounds();
+  std::vector<std::uint8_t> phase(count, 0);
+  std::size_t index = 0;
+  for (int z = box.low[2]; z <= box.high[2]; ++z) {
+    for (int y = box.low[1]; y <= box.high[1]; ++y) {
+      for (int x = box.low[0]; x <= box.high[0]; ++x, ++index) {
+        if (x < 3 && y < 3) {
+          phase[index] = 1;
+        }
+      }
+    }
+  }
+  return phase;
+}
+
+void accept_field(SimoJ2Material &material,
+                  const std::vector<Tensor2> &deformation) {
+  material.begin_trial();
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    material.stage(i, deformation[i]);
+  }
+  material.accept();
+}
+
+} // namespace
+
+TEST_CASE("a heterogeneous J2 increment converges", "[finite_strain][newton][j2]") {
+  auto tools = make_grid(Int3{5, 5, 7}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const J2Moduli soft{0.833, 0.386, 0.004, 0.003};
+  const J2Moduli hard{0.833, 0.386, 0.008, 0.006};
+  const auto phase = inclusion_phase(tools.fft, projector.local_size());
+  SimoJ2Material material(phase, projector.local_size(), soft, hard);
+  const Tensor2 macroscopic = published_pure_shear_step();
+  IncrementStart start;
+  start.deformation.assign(projector.local_size(), identity2());
+  material.begin_trial();
+  const auto solved =
+      solve_increment(projector, material, macroscopic, start, {}, MPI_COMM_WORLD);
+  REQUIRE(solved.converged);
+  REQUIRE(solved.history.size() >= 2);
+  REQUIRE(solved.history.back().krylov_iterations < 200);
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    REQUIRE(material.accumulated(i) == 0.0);
+  }
+  material.reject();
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    REQUIRE(material.accumulated(i) == 0.0);
+  }
+  accept_field(material, solved.deformation);
+  double plastic_max = 0.0;
+  for (std::size_t i = 0; i < material.size(); ++i) {
+    plastic_max = std::max(plastic_max, material.accumulated(i));
+  }
+  REQUIRE(plastic_max > 0.0);
+
+  const Tensor2 second = published_pure_shear(2.0 * 0.2 / 50.0);
+  IncrementStart continued;
+  continued.deformation = solved.deformation;
+  continued.macroscopic = macroscopic;
+  material.begin_trial();
+  const auto next =
+      solve_increment(projector, material, second, continued, {}, MPI_COMM_WORLD);
+  REQUIRE(next.converged);
+  REQUIRE(next.history.front().krylov_iterations < 200);
+  REQUIRE(next.history.back().krylov_iterations < 200);
+}
+
+TEST_CASE("two ranks reproduce one J2 increment", "[MPI][finite_strain][j2]") {
+  REQUIRE(mpi::get_size(MPI_COMM_WORLD) == 2);
+  const Int3 size{5, 5, 7};
+  const J2Moduli soft{0.833, 0.386, 0.004, 0.003};
+  const J2Moduli hard{0.833, 0.386, 0.008, 0.006};
+  const Tensor2 macroscopic = published_pure_shear_step();
+
+  auto serial_domain = domain::create(size);
+  auto serial_decomposition = decomposition::create(serial_domain, 1);
+  auto serial_fft =
+      fft::create(serial_decomposition, mpi::get_rank(MPI_COMM_SELF), MPI_COMM_SELF);
+  CompatibleProjector serial_projector(serial_fft, serial_domain);
+  const auto serial_box = serial_fft.get_inbox_bounds();
+  std::vector<std::uint8_t> serial_phase(serial_projector.local_size(), 0);
+  std::size_t serial_index = 0;
+  for (int z = serial_box.low[2]; z <= serial_box.high[2]; ++z) {
+    for (int y = serial_box.low[1]; y <= serial_box.high[1]; ++y) {
+      for (int x = serial_box.low[0]; x <= serial_box.high[0]; ++x, ++serial_index) {
+        if (x < 3 && y < 3) {
+          serial_phase[serial_index] = 1;
+        }
+      }
+    }
+  }
+  SimoJ2Material serial_material(serial_phase, serial_projector.local_size(), soft,
+                                 hard);
+  IncrementStart serial_start;
+  serial_start.deformation.assign(serial_projector.local_size(), identity2());
+  const auto serial = solve_increment(serial_projector, serial_material, macroscopic,
+                                      serial_start, {}, MPI_COMM_SELF);
+
+  auto parallel_tools = make_grid(size, MPI_COMM_WORLD);
+  CompatibleProjector parallel_projector(parallel_tools.fft, parallel_tools.domain);
+  const auto parallel_box = parallel_tools.fft.get_inbox_bounds();
+  std::vector<std::uint8_t> parallel_phase(parallel_projector.local_size(), 0);
+  std::size_t parallel_index = 0;
+  for (int z = parallel_box.low[2]; z <= parallel_box.high[2]; ++z) {
+    for (int y = parallel_box.low[1]; y <= parallel_box.high[1]; ++y) {
+      for (int x = parallel_box.low[0]; x <= parallel_box.high[0];
+           ++x, ++parallel_index) {
+        if (x < 3 && y < 3) {
+          parallel_phase[parallel_index] = 1;
+        }
+      }
+    }
+  }
+  SimoJ2Material parallel_material(parallel_phase, parallel_projector.local_size(),
+                                   soft, hard);
+  IncrementStart parallel_start;
+  parallel_start.deformation.assign(parallel_projector.local_size(), identity2());
+  const auto parallel =
+      solve_increment(parallel_projector, parallel_material, macroscopic,
+                      parallel_start, {}, MPI_COMM_WORLD);
+  REQUIRE(serial.converged);
+  REQUIRE(parallel.converged);
+
+  auto field_diff = [&](const NewtonResult &parallel_result,
+                        const NewtonResult &serial_result) {
+    parallel_index = 0;
+    double local_diff = 0.0;
+    for (int z = parallel_box.low[2]; z <= parallel_box.high[2]; ++z) {
+      for (int y = parallel_box.low[1]; y <= parallel_box.high[1]; ++y) {
+        for (int x = parallel_box.low[0]; x <= parallel_box.high[0];
+             ++x, ++parallel_index) {
+          const auto global = serial_box.to_linear(std::array<int, 3>{x, y, z});
+          for (int a = 0; a < 3; ++a) {
+            for (int b = 0; b < 3; ++b) {
+              local_diff = std::max(
+                  local_diff,
+                  std::abs(
+                      parallel_result.deformation[parallel_index](a, b) -
+                      serial_result.deformation[static_cast<std::size_t>(global)](
+                          a, b)));
+              local_diff = std::max(
+                  local_diff,
+                  std::abs(
+                      parallel_result.piola[parallel_index](a, b) -
+                      serial_result.piola[static_cast<std::size_t>(global)](a, b)));
+            }
+          }
+        }
+      }
+    }
+    double reduced = 0.0;
+    MPI_Allreduce(&local_diff, &reduced, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    return reduced;
+  };
+  REQUIRE(field_diff(parallel, serial) < 1e-8);
+
+  accept_field(serial_material, serial.deformation);
+  accept_field(parallel_material, parallel.deformation);
+  const Tensor2 second = published_pure_shear(2.0 * 0.2 / 50.0);
+  IncrementStart serial_continued;
+  serial_continued.deformation = serial.deformation;
+  serial_continued.macroscopic = macroscopic;
+  IncrementStart parallel_continued;
+  parallel_continued.deformation = parallel.deformation;
+  parallel_continued.macroscopic = macroscopic;
+  serial_material.begin_trial();
+  const auto serial_again =
+      solve_increment(serial_projector, serial_material, second, serial_continued,
+                      {}, MPI_COMM_SELF);
+  parallel_material.begin_trial();
+  const auto parallel_again =
+      solve_increment(parallel_projector, parallel_material, second,
+                      parallel_continued, {}, MPI_COMM_WORLD);
+  REQUIRE(serial_again.converged);
+  REQUIRE(parallel_again.converged);
+  REQUIRE(field_diff(parallel_again, serial_again) < 1e-8);
 }
