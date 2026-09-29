@@ -1,0 +1,335 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @file test_equilibrium.cpp
+ * @brief Projector identities and the matrix-free Newton equilibrium solve.
+ */
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/decomposition/decomposition.hpp>
+#include <openpfc/kernel/decomposition/decomposition_factory.hpp>
+#include <openpfc/kernel/fft/fft_fftw.hpp>
+#include <openpfc/kernel/fft/kspace_iterator.hpp>
+#include <openpfc/kernel/mpi/mpi.hpp>
+#include <openpfc/solvers/finite_strain_fft/field_stats.hpp>
+#include <openpfc/solvers/finite_strain_fft/newton.hpp>
+
+#include <cmath>
+#include <complex>
+#include <cstdint>
+#include <vector>
+
+using Catch::Matchers::WithinAbs;
+using namespace pfc;
+using namespace pfc::finite_strain;
+
+namespace {
+
+struct GridTools {
+  Domain domain;
+  fft::CPUFFT fft;
+};
+
+GridTools make_grid(Int3 size, MPI_Comm comm) {
+  Domain domain = domain::create(size);
+  const int ranks = mpi::get_size(comm);
+  auto decomposition = decomposition::create(domain, ranks);
+  // MPI_Comm is an integer on this MPI, so the two-argument factory is
+  // ambiguous with the rank-id overload. Pass the rank explicitly.
+  return GridTools{domain, fft::create(decomposition, mpi::get_rank(comm), comm)};
+}
+
+std::vector<Tensor2> random_field(std::size_t n, std::uint32_t seed) {
+  std::vector<Tensor2> field(n);
+  std::uint32_t state = seed;
+  for (Tensor2 &value : field) {
+    for (int a = 0; a < 3; ++a) {
+      for (int b = 0; b < 3; ++b) {
+        state = state * 1664525u + 1013904223u;
+        value(a, b) = static_cast<double>(state >> 8) / 16777216.0 - 0.5;
+      }
+    }
+  }
+  return field;
+}
+
+double max_abs_diff(const std::vector<Tensor2> &a, const std::vector<Tensor2> &b) {
+  double diff = 0.0;
+  for (std::size_t n = 0; n < a.size(); ++n) {
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        diff = std::max(diff, std::abs(a[n](i, j) - b[n](i, j)));
+      }
+    }
+  }
+  return diff;
+}
+
+} // namespace
+
+TEST_CASE("even grids are rejected by the compatible projector",
+          "[finite_strain][projector]") {
+  auto domain = domain::create(Int3{4, 4, 4});
+  auto decomposition = decomposition::create(domain, 1);
+  auto fft = fft::create(decomposition);
+  REQUIRE_THROWS_AS(CompatibleProjector(fft, domain), std::invalid_argument);
+}
+
+TEST_CASE("projection removes the mean and is idempotent",
+          "[finite_strain][projector]") {
+  auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const auto field = random_field(projector.local_size(), 3u);
+  std::vector<Tensor2> once;
+  std::vector<Tensor2> twice;
+  projector.apply(field, once);
+  projector.apply(once, twice);
+  REQUIRE(max_abs_diff(once, twice) < 1e-10);
+
+  const auto stats =
+      tensor_field_stats(once, tools.fft.get_inbox_bounds(), MPI_COMM_WORLD, false);
+  const double scale = stats.frobenius_l2 + 1.0;
+  for (int a = 0; a < 3; ++a) {
+    for (int b = 0; b < 3; ++b) {
+      REQUIRE_THAT(stats.component[a][b].sum / scale, WithinAbs(0.0, 1e-10));
+    }
+  }
+}
+
+TEST_CASE("a constant tensor is removed and a gradient is left unchanged",
+          "[finite_strain][projector]") {
+  auto tools = make_grid(Int3{7, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const std::size_t n = projector.local_size();
+  Tensor2 constant;
+  constant(0, 1) = 0.4;
+  constant(2, 2) = -0.2;
+  std::vector<Tensor2> uniform(n, constant);
+  std::vector<Tensor2> projected_uniform;
+  projector.apply(uniform, projected_uniform);
+  REQUIRE(max_abs_diff(projected_uniform, std::vector<Tensor2>(n)) < 1e-10);
+
+  const auto inbox = tools.fft.get_inbox_bounds();
+  const int nx = domain::get_size(tools.domain)[0];
+  std::vector<double> scalar(n);
+  std::size_t index = 0;
+  for (int z = inbox.low[2]; z <= inbox.high[2]; ++z) {
+    for (int y = inbox.low[1]; y <= inbox.high[1]; ++y) {
+      for (int x = inbox.low[0]; x <= inbox.high[0]; ++x, ++index) {
+        scalar[index] = std::sin(2.0 * constants::pi * static_cast<double>(x) /
+                                 static_cast<double>(nx));
+      }
+    }
+  }
+  std::vector<std::complex<double>> hat(tools.fft.size_outbox());
+  tools.fft.forward(scalar, hat);
+  const auto outbox = tools.fft.get_outbox_bounds();
+  fft::kspace::for_each_kpoint(
+      outbox, tools.domain,
+      [&](std::size_t mode, double qx, double, double, int, int, int) {
+        hat[mode] *= std::complex<double>(0.0, qx);
+      });
+  std::vector<double> derivative(n);
+  tools.fft.backward(hat, derivative);
+
+  std::vector<Tensor2> gradient(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    gradient[i](0, 0) = derivative[i];
+  }
+  std::vector<Tensor2> projected_gradient;
+  projector.apply(gradient, projected_gradient);
+  REQUIRE(max_abs_diff(gradient, projected_gradient) < 1e-10);
+}
+
+TEST_CASE("projected nonzero modes are rank-one along the wave vector",
+          "[finite_strain][projector]") {
+  auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const auto field = random_field(projector.local_size(), 9u);
+  std::vector<Tensor2> projected;
+  projector.apply(field, projected);
+
+  const std::size_t n_freq = tools.fft.size_outbox();
+  std::vector<double> real(projected.size());
+  std::vector<std::vector<std::complex<double>>> hat(
+      9, std::vector<std::complex<double>>(n_freq));
+  for (int a = 0; a < 3; ++a) {
+    for (int b = 0; b < 3; ++b) {
+      for (std::size_t i = 0; i < projected.size(); ++i) {
+        real[i] = projected[i](a, b);
+      }
+      tools.fft.forward(real, hat[static_cast<std::size_t>(a * 3 + b)]);
+    }
+  }
+
+  const auto outbox = tools.fft.get_outbox_bounds();
+  fft::kspace::for_each_kpoint(
+      outbox, tools.domain,
+      [&](std::size_t mode, double qx, double qy, double qz, int, int, int) {
+        const double q2 = qx * qx + qy * qy + qz * qz;
+        const double q[3] = {qx, qy, qz};
+        if (q2 == 0.0) {
+          for (int c = 0; c < 9; ++c) {
+            REQUIRE_THAT(std::abs(hat[static_cast<std::size_t>(c)][mode]),
+                         WithinAbs(0.0, 1e-8));
+          }
+          return;
+        }
+        for (int a = 0; a < 3; ++a) {
+          for (int b = 0; b < 3; ++b) {
+            for (int c = 0; c < 3; ++c) {
+              const auto left =
+                  hat[static_cast<std::size_t>(a * 3 + b)][mode] * q[c];
+              const auto right =
+                  hat[static_cast<std::size_t>(a * 3 + c)][mode] * q[b];
+              REQUIRE_THAT(std::abs(left - right),
+                           WithinAbs(0.0, 1e-8 * (q2 + 1.0)));
+            }
+          }
+        }
+      });
+}
+
+TEST_CASE("homogeneous simple shear stays affine and equilibrated",
+          "[finite_strain][newton]") {
+  auto tools = make_grid(Int3{5, 5, 5}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const IsotropicModuli soft{0.833, 0.386};
+  NewtonControls controls;
+  const auto solved =
+      solve_simple_shear(projector, {}, 0.5, soft, soft, controls, MPI_COMM_WORLD);
+  REQUIRE(solved.converged);
+  REQUIRE(solved.history.size() == 2);
+  Tensor2 expected = identity2();
+  expected(0, 1) = 0.5;
+  std::vector<Tensor2> affine(solved.deformation.size(), expected);
+  REQUIRE(max_abs_diff(solved.deformation, affine) < 1e-8);
+  REQUIRE_THAT(solved.projected_residual, WithinAbs(0.0, 1e-8));
+  for (const NewtonStep &step : solved.history) {
+    REQUIRE_THAT(step.correction_over_reference, WithinAbs(0.0, 1e-12));
+    REQUIRE(step.krylov_iterations == 0);
+  }
+}
+
+TEST_CASE("a two-phase shear reaches the projected equilibrium tolerance",
+          "[finite_strain][newton]") {
+  auto tools = make_grid(Int3{7, 7, 7}, MPI_COMM_WORLD);
+  CompatibleProjector projector(tools.fft, tools.domain);
+  const auto inbox = tools.fft.get_inbox_bounds();
+  std::vector<std::uint8_t> phase(projector.local_size(), 0);
+  std::size_t index = 0;
+  int hard = 0;
+  for (int z = inbox.low[2]; z <= inbox.high[2]; ++z) {
+    for (int y = inbox.low[1]; y <= inbox.high[1]; ++y) {
+      for (int x = inbox.low[0]; x <= inbox.high[0]; ++x, ++index) {
+        if (x >= 5 && y < 2 && z >= 5) {
+          phase[index] = 1;
+          ++hard;
+        }
+      }
+    }
+  }
+  int hard_global = 0;
+  MPI_Allreduce(&hard, &hard_global, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  REQUIRE(hard_global > 0);
+
+  const IsotropicModuli soft{0.833, 0.386};
+  const IsotropicModuli stiff{8.33, 3.86};
+  const auto solved =
+      solve_simple_shear(projector, phase, 0.5, soft, stiff, {}, MPI_COMM_WORLD);
+  REQUIRE(solved.converged);
+  REQUIRE(solved.history.size() >= 2);
+  const double stress_norm =
+      tensor_field_stats(solved.piola, inbox, MPI_COMM_WORLD, false).frobenius_l2;
+  REQUIRE(stress_norm > 1.0);
+  REQUIRE(solved.projected_residual < 1e-6 * stress_norm);
+  REQUIRE(solved.history.back().correction_over_reference < 1e-5);
+
+  double fluctuation = 0.0;
+  for (const Tensor2 &value : solved.deformation) {
+    fluctuation = std::max(fluctuation, std::abs(value(0, 1) - 0.5));
+  }
+  double fluctuation_global = 0.0;
+  MPI_Allreduce(&fluctuation, &fluctuation_global, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  REQUIRE(fluctuation_global > 1e-3);
+}
+
+TEST_CASE("two ranks reproduce the single-rank finite-strain solution",
+          "[MPI][finite_strain][newton]") {
+  REQUIRE(mpi::get_size(MPI_COMM_WORLD) == 2);
+  const Int3 size{5, 5, 7};
+  const IsotropicModuli soft{1.0, 0.4};
+  const IsotropicModuli stiff{3.0, 1.2};
+
+  auto serial_domain = domain::create(size);
+  auto serial_decomposition = decomposition::create(serial_domain, 1);
+  auto serial_fft =
+      fft::create(serial_decomposition, mpi::get_rank(MPI_COMM_SELF), MPI_COMM_SELF);
+  CompatibleProjector serial_projector(serial_fft, serial_domain);
+  const auto serial_box = serial_fft.get_inbox_bounds();
+  std::vector<std::uint8_t> serial_phase(serial_projector.local_size(), 0);
+  std::size_t serial_index = 0;
+  for (int z = serial_box.low[2]; z <= serial_box.high[2]; ++z) {
+    for (int y = serial_box.low[1]; y <= serial_box.high[1]; ++y) {
+      for (int x = serial_box.low[0]; x <= serial_box.high[0]; ++x, ++serial_index) {
+        if (x >= 3 && y < 2 && z >= 4) {
+          serial_phase[serial_index] = 1;
+        }
+      }
+    }
+  }
+  const auto serial = solve_simple_shear(serial_projector, serial_phase, 0.35, soft,
+                                         stiff, {}, MPI_COMM_SELF);
+
+  auto parallel_tools = make_grid(size, MPI_COMM_WORLD);
+  CompatibleProjector parallel_projector(parallel_tools.fft, parallel_tools.domain);
+  const auto parallel_box = parallel_tools.fft.get_inbox_bounds();
+  std::vector<std::uint8_t> parallel_phase(parallel_projector.local_size(), 0);
+  std::size_t parallel_index = 0;
+  for (int z = parallel_box.low[2]; z <= parallel_box.high[2]; ++z) {
+    for (int y = parallel_box.low[1]; y <= parallel_box.high[1]; ++y) {
+      for (int x = parallel_box.low[0]; x <= parallel_box.high[0];
+           ++x, ++parallel_index) {
+        if (x >= 3 && y < 2 && z >= 4) {
+          parallel_phase[parallel_index] = 1;
+        }
+      }
+    }
+  }
+  const auto parallel = solve_simple_shear(parallel_projector, parallel_phase, 0.35,
+                                           soft, stiff, {}, MPI_COMM_WORLD);
+  REQUIRE(parallel.converged);
+  REQUIRE(serial.converged);
+
+  parallel_index = 0;
+  double local_diff = 0.0;
+  for (int z = parallel_box.low[2]; z <= parallel_box.high[2]; ++z) {
+    for (int y = parallel_box.low[1]; y <= parallel_box.high[1]; ++y) {
+      for (int x = parallel_box.low[0]; x <= parallel_box.high[0];
+           ++x, ++parallel_index) {
+        const auto global = serial_box.to_linear(std::array<int, 3>{x, y, z});
+        for (int a = 0; a < 3; ++a) {
+          for (int b = 0; b < 3; ++b) {
+            local_diff = std::max(
+                local_diff,
+                std::abs(
+                    parallel.deformation[parallel_index](a, b) -
+                    serial.deformation[static_cast<std::size_t>(global)](a, b)));
+            local_diff = std::max(
+                local_diff,
+                std::abs(parallel.piola[parallel_index](a, b) -
+                         serial.piola[static_cast<std::size_t>(global)](a, b)));
+          }
+        }
+      }
+    }
+  }
+  double diff = 0.0;
+  MPI_Allreduce(&local_diff, &diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  REQUIRE(diff < 1e-8);
+}
