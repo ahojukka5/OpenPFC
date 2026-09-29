@@ -87,6 +87,17 @@ The entries below are the development record since 0.2.0.
 
 ### Added
 
+- **Finite-strain Simo J2 plasticity** (`#205`). The law maps `F` to the
+  first Piola–Kirchhoff stress with the logarithmic Finger return map,
+  von Mises yield, associative flow, and linear isotropic hardening.
+  Committed history advances only through an explicit accept. A rejected
+  trial restores the previous state. The Newton solver still sees only
+  the local stress and tangent action, and one load increment can
+  continue from an accepted deformation. The tangent of that accepted
+  step is the first linearization of the next increment.
+  Saint-Venant–Kirchhoff and the small-strain microelasticity solver are
+  unchanged.
+
 - **Odd-grid finite-strain FFT Newton solver** (`#204`). The global
   solve consumes a local law `F -> P` plus a tangent action, projects
   with de Geus et al. Eq. (19), and drives `G : P = 0` by matrix-free

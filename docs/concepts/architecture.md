@@ -126,9 +126,11 @@ implements a method another application can call without taking on the donor
 application's physics, materials, or case files. Periodic microelasticity
 and an odd-grid finite-strain FFT Newton solver are the current members.
 The finite-strain solver takes a local `F -> P` law and a prescribed
-macroscopic deformation gradient. A solver may use kernel and runtime
-facilities. It is not a place for one application's calibration or
-acceptance thresholds.
+macroscopic deformation gradient. One increment can continue from an
+accepted field. Plastic history, when a law has any, stays inside that
+law and is committed only when the caller accepts the increment. A
+solver may use kernel and runtime facilities. It is not a place for one
+application's calibration or acceptance thresholds.
 
 ### Applications
 
