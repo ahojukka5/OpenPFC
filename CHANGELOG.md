@@ -7,6 +7,22 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Added
+
+- `StepController::pi` selects the PI.3.4 step-size controller. The
+  memoryless controller stays the default. The previous accepted metric
+  and the rejection streak are captured and restored with the controller,
+  because both affect a later `dt`.
+
+### Changed
+
+- Adaptive error normalization is `error / (atol + rtol * solution_scale)`.
+  `rtol` is no longer taken relative to 1 unless `SolutionScale::Unit` is
+  selected. An embedded decision scales each component by
+  `max(|y_accepted|, |y_candidate|)`. `AdaptiveControlConfig` is version
+  1.1.0. A rank with invalid evidence still enters the reduction and fails
+  it closed, so the other ranks do not wait on a buffer it will not send.
+
 ## [0.3.0] - 2026-09-24
 
 Source-level break from 0.2.0 for application code. This is not an

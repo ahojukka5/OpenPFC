@@ -67,6 +67,19 @@ enum class AggregationScope {
 };
 
 /**
+ * @brief Where the solution scale in `atol + rtol * scale` comes from
+ *
+ * `Unspecified` does not mean 1. Relative tolerances then have no scale
+ * and normalization fails closed. `Unit` is the explicit choice that
+ * `rtol` is relative to 1. `Supplied` reads `weights`.
+ */
+enum class SolutionScale {
+  Unspecified,
+  Unit,
+  Supplied
+};
+
+/**
  * @brief Method-independent error evidence for one step attempt
  *
  * @note Transient: not part of checkpoint state.
@@ -79,7 +92,10 @@ struct ErrorEvidence {
   std::vector<double> field_norms; ///< Non-negative per-field error/residual norms
   std::optional<double> combined_metric; ///< Optional pre-combined scalar
   std::optional<int> order_tag;          ///< Estimated method order (e.g. 3)
-  std::optional<std::vector<double>> weights; ///< Optional per-field scales
+  /// Per-field solution scales. Required when `solution_scale` is `Supplied`.
+  /// For a distributed field this is the same norm as `field_norms` (max-abs).
+  std::optional<std::vector<double>> weights;
+  SolutionScale solution_scale{SolutionScale::Unspecified};
 };
 
 /**
@@ -89,8 +105,11 @@ struct ErrorEvidence {
  * values.
  */
 struct ErrorTolerances {
-  double absolute{0.0}; ///< atol
-  double relative{0.0}; ///< rtol
+  double absolute{0.0}; ///< atol, used when `absolute_per_field` is empty
+  double relative{0.0}; ///< rtol, used when `relative_per_field` is empty
+  /// When set, length must equal the evidence field count.
+  std::optional<std::vector<double>> absolute_per_field;
+  std::optional<std::vector<double>> relative_per_field;
 };
 
 /**
@@ -138,7 +157,21 @@ namespace detail {
 [[nodiscard]] inline ErrorEvidence
 make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
               AggregationScope scope, std::optional<int> order_tag,
-              std::optional<std::span<const double>> weights) {
+              std::optional<std::span<const double>> weights,
+              SolutionScale scale) {
+  // Weights are the solution scale. They override a Unit/Unspecified request.
+  if (weights.has_value()) {
+    scale = SolutionScale::Supplied;
+  }
+  if (scale == SolutionScale::Supplied && !weights.has_value()) {
+    ErrorEvidence invalid;
+    invalid.kind = kind;
+    invalid.scope = scope;
+    invalid.valid = false;
+    invalid.order_tag = order_tag;
+    invalid.solution_scale = SolutionScale::Supplied;
+    return invalid;
+  }
   if (field_error_norms.empty() || !norms_are_finite_nonnegative(field_error_norms) ||
       !weights_match(field_error_norms, weights)) {
     ErrorEvidence invalid;
@@ -146,6 +179,7 @@ make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
     invalid.scope = scope;
     invalid.valid = false;
     invalid.order_tag = order_tag;
+    invalid.solution_scale = scale;
     return invalid;
   }
 
@@ -156,6 +190,7 @@ make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
   ev.field_norms.assign(field_error_norms.begin(), field_error_norms.end());
   ev.field_valid.assign(field_error_norms.size(), true);
   ev.order_tag = order_tag;
+  ev.solution_scale = scale;
   if (weights.has_value()) {
     ev.weights = std::vector<double>(weights->begin(), weights->end());
   }
@@ -183,9 +218,10 @@ make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
 [[nodiscard]] inline ErrorEvidence make_embedded_pair_evidence(
     std::span<const double> field_error_norms, AggregationScope scope,
     std::optional<int> order_tag = {},
-    std::optional<std::span<const double>> weights = {}) {
+    std::optional<std::span<const double>> weights = {},
+    SolutionScale scale = SolutionScale::Unspecified) {
   return detail::make_evidence(EvidenceKind::EmbeddedPair, field_error_norms, scope,
-                               order_tag, weights);
+                               order_tag, weights, scale);
 }
 
 /**
@@ -197,9 +233,10 @@ make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
 [[nodiscard]] inline ErrorEvidence make_residual_evidence(
     std::span<const double> field_error_norms, AggregationScope scope,
     std::optional<int> order_tag = {},
-    std::optional<std::span<const double>> weights = {}) {
+    std::optional<std::span<const double>> weights = {},
+    SolutionScale scale = SolutionScale::Unspecified) {
   return detail::make_evidence(EvidenceKind::ResidualAPosteriori, field_error_norms,
-                               scope, order_tag, weights);
+                               scope, order_tag, weights, scale);
 }
 
 /**
@@ -212,9 +249,10 @@ make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
 [[nodiscard]] inline ErrorEvidence make_method_specific_evidence(
     std::span<const double> field_error_norms, AggregationScope scope,
     std::optional<int> order_tag = {},
-    std::optional<std::span<const double>> weights = {}) {
+    std::optional<std::span<const double>> weights = {},
+    SolutionScale scale = SolutionScale::Unspecified) {
   return detail::make_evidence(EvidenceKind::MethodSpecific, field_error_norms, scope,
-                               order_tag, weights);
+                               order_tag, weights, scale);
 }
 
 /**
@@ -234,22 +272,25 @@ make_evidence(EvidenceKind kind, std::span<const double> field_error_norms,
 /**
  * @brief Promote rank-local evidence to already-reduced (or leave unchanged)
  *
- * - Invalid evidence is returned unchanged.
- * - `AlreadyReduced` is returned unchanged (no double-reduce).
+ * - `AlreadyReduced` is returned unchanged (no double-reduce). Callers on
+ *   one communicator pass the same scope.
+ * - Invalid evidence on one rank is returned unchanged.
  * - `RankLocal` with communicator size 1 sets `AlreadyReduced` and leaves
- *   norms unchanged (identity).
- * - `RankLocal` with size > 1 performs `MPI_Allreduce` MAX on each
- *   `field_norms[i]` and on `combined_metric` if present, AND-reduces
- *   validity flags, then sets `AlreadyReduced`.
+ *   norms unchanged (identity) when the evidence is valid.
+ * - `RankLocal` with size > 1 first reduces a fixed metadata record: field
+ *   counts, weight presence, scale kind, and the validity bit. Every rank
+ *   enters that reduction, including a rank whose evidence is already
+ *   invalid. If any rank is invalid, or the records disagree, every rank
+ *   receives `valid=false` and `AlreadyReduced` and no field buffer is
+ *   reduced. Otherwise `MPI_Allreduce` MAX combines each `field_norms[i]`,
+ *   each supplied scale, and `combined_metric` if present, AND-reduces
+ *   per-field validity, then sets `AlreadyReduced`.
  *
  * @param ev Evidence to reduce (taken by value)
  * @param comm MPI communicator (default world)
  */
 [[nodiscard]] inline ErrorEvidence
 reduce_error_evidence(ErrorEvidence ev, MPI_Comm comm = MPI_COMM_WORLD) {
-  if (!ev.valid) {
-    return ev;
-  }
   if (ev.scope == AggregationScope::AlreadyReduced) {
     return ev;
   }
@@ -258,20 +299,50 @@ reduce_error_evidence(ErrorEvidence ev, MPI_Comm comm = MPI_COMM_WORLD) {
   int err = MPI_Comm_size(comm, &size);
   pfc::mpi::throw_on_mpi_error(err, "MPI_Comm_size in reduce_error_evidence");
   if (size <= 1) {
+    if (ev.valid) {
+      ev.scope = AggregationScope::AlreadyReduced;
+    }
+    return ev;
+  }
+
+  // Counts, scale kind, and validity travel in one fixed record, before any
+  // variable-length buffer. A mismatch or an invalid rank fails closed on
+  // every rank. Reducing the buffers first would be undefined when the
+  // lengths differ, and an invalid rank must not skip the collective.
+  const int meta_local[7] = {
+      static_cast<int>(ev.field_norms.size()),
+      static_cast<int>(ev.field_valid.size()),
+      ev.combined_metric.has_value() ? 1 : 0,
+      ev.weights.has_value() ? 1 : 0,
+      ev.weights.has_value() ? static_cast<int>(ev.weights->size()) : 0,
+      static_cast<int>(ev.solution_scale),
+      ev.valid ? 1 : 0,
+  };
+  int meta_min[7] = {};
+  int meta_max[7] = {};
+  err = MPI_Allreduce(meta_local, meta_min, 7, MPI_INT, MPI_MIN, comm);
+  pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for error-evidence shape min");
+  err = MPI_Allreduce(meta_local, meta_max, 7, MPI_INT, MPI_MAX, comm);
+  pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for error-evidence shape max");
+  bool metadata_agrees = true;
+  for (int i = 0; i < 6; ++i) {
+    if (meta_min[i] != meta_max[i]) {
+      metadata_agrees = false;
+      break;
+    }
+  }
+  if (!metadata_agrees || meta_min[6] == 0) {
+    ev.valid = false;
     ev.scope = AggregationScope::AlreadyReduced;
     return ev;
   }
 
-  // Validity: AND across ranks (pack bools as ints).
-  int global_valid = ev.valid ? 1 : 0;
-  err = MPI_Allreduce(MPI_IN_PLACE, &global_valid, 1, MPI_INT, MPI_LAND, comm);
-  pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for global_valid in reduce_error_evidence");
-  ev.valid = (global_valid != 0);
-
   if (!ev.field_norms.empty()) {
     err = MPI_Allreduce(MPI_IN_PLACE, ev.field_norms.data(),
-                  static_cast<int>(ev.field_norms.size()), MPI_DOUBLE, MPI_MAX, comm);
-    pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for field_norms in reduce_error_evidence");
+                        static_cast<int>(ev.field_norms.size()), MPI_DOUBLE, MPI_MAX,
+                        comm);
+    pfc::mpi::throw_on_mpi_error(err,
+                                 "MPI_Allreduce for field_norms in reduce_error_evidence");
   }
 
   if (!ev.field_valid.empty()) {
@@ -279,9 +350,10 @@ reduce_error_evidence(ErrorEvidence ev, MPI_Comm comm = MPI_COMM_WORLD) {
     for (std::size_t i = 0; i < ev.field_valid.size(); ++i) {
       packed[i] = ev.field_valid[i] ? 1 : 0;
     }
-    err = MPI_Allreduce(MPI_IN_PLACE, packed.data(), static_cast<int>(packed.size()), MPI_INT,
-                  MPI_LAND, comm);
-    pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for field_valid in reduce_error_evidence");
+    err = MPI_Allreduce(MPI_IN_PLACE, packed.data(), static_cast<int>(packed.size()),
+                        MPI_INT, MPI_LAND, comm);
+    pfc::mpi::throw_on_mpi_error(err,
+                                 "MPI_Allreduce for field_valid in reduce_error_evidence");
     for (std::size_t i = 0; i < packed.size(); ++i) {
       ev.field_valid[i] = (packed[i] != 0);
     }
@@ -290,8 +362,18 @@ reduce_error_evidence(ErrorEvidence ev, MPI_Comm comm = MPI_COMM_WORLD) {
   if (ev.combined_metric.has_value()) {
     double combined = *ev.combined_metric;
     err = MPI_Allreduce(MPI_IN_PLACE, &combined, 1, MPI_DOUBLE, MPI_MAX, comm);
-    pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for combined_metric in reduce_error_evidence");
+    pfc::mpi::throw_on_mpi_error(
+        err, "MPI_Allreduce for combined_metric in reduce_error_evidence");
     ev.combined_metric = combined;
+  }
+
+  // Supplied scales use the same aggregate as the field norms (local
+  // max-abs). The global scale is the max across ranks, then the metric is
+  // ||e||_inf / (atol + rtol * ||y||_inf).
+  if (ev.weights.has_value()) {
+    err = MPI_Allreduce(MPI_IN_PLACE, ev.weights->data(),
+                        static_cast<int>(ev.weights->size()), MPI_DOUBLE, MPI_MAX, comm);
+    pfc::mpi::throw_on_mpi_error(err, "MPI_Allreduce for solution scales");
   }
 
   ev.scope = AggregationScope::AlreadyReduced;
@@ -306,13 +388,19 @@ reduce_error_evidence(ErrorEvidence ev, MPI_Comm comm = MPI_COMM_WORLD) {
  * on `EvidenceKind`. Does **not** compute or return a next `dt`.
  *
  * Valid path: for each field i,
- * `e_i = field_norms[i] / (atol + rtol * scale_i)` with
- * `scale_i = weights[i]` if present else `1.0`. Metric is the max-norm of
- * `e_i`. Accept iff `metric <= 1.0`, else Reject. If `den == 0` for any
- * field, treat as Reject (infinite error).
+ * `e_i = field_norms[i] / (atol_i + rtol_i * scale_i)`.
+ * Metric is the max of `e_i`. Accept iff `metric <= 1.0`, else Reject.
+ * If `den == 0` for any field, treat as Reject (infinite error).
  *
- * If `field_norms` is empty but `combined_metric` is set, fall back to
- * `combined_metric / (atol + rtol)`.
+ * `scale_i` is never the constant 1 unless `solution_scale` is `Unit`.
+ * `Unspecified` is legal only for pure absolute tolerances (`rtol_i == 0`).
+ * `Supplied` uses `weights[i]`, the same aggregate the producer used for
+ * `field_norms` (for a distributed field, both are local max-abs values;
+ * `reduce_error_evidence` takes the global max of each). A relative
+ * tolerance with no explicit scale yields `NoDecision`.
+ *
+ * If `field_norms` is empty but `combined_metric` is set, that scalar is
+ * one field and uses the same scale rule.
  *
  * Invalid / unavailable path: `verdict = NoDecision`,
  * `decision_available = false`, `metric = NaN`.
@@ -320,6 +408,85 @@ reduce_error_evidence(ErrorEvidence ev, MPI_Comm comm = MPI_COMM_WORLD) {
  * @param ev Evidence (prefer AlreadyReduced)
  * @param tol Injected absolute and relative tolerances
  */
+namespace detail {
+
+enum class DenomKind { Ok, NoDecision, ZeroDenominator };
+
+struct Denominator {
+  DenomKind kind{DenomKind::NoDecision};
+  double value{0.0};
+};
+
+[[nodiscard]] inline Denominator field_denominator(const ErrorEvidence &ev,
+                                                   const ErrorTolerances &tol,
+                                                   std::size_t index,
+                                                   std::size_t count) {
+  auto pick = [&](double scalar, const std::optional<std::vector<double>> &per_field,
+                  double &out) -> bool {
+    if (!per_field.has_value()) {
+      out = scalar;
+      return std::isfinite(out) && out >= 0.0;
+    }
+    if (per_field->size() != count) {
+      return false;
+    }
+    out = (*per_field)[index];
+    return std::isfinite(out) && out >= 0.0;
+  };
+
+  double atol = 0.0;
+  double rtol = 0.0;
+  if (!pick(tol.absolute, tol.absolute_per_field, atol) ||
+      !pick(tol.relative, tol.relative_per_field, rtol)) {
+    return Denominator{DenomKind::NoDecision, 0.0};
+  }
+  if (rtol == 0.0) {
+    if (atol == 0.0) {
+      return Denominator{DenomKind::ZeroDenominator, 0.0};
+    }
+    return Denominator{DenomKind::Ok, atol};
+  }
+
+  double scale = 0.0;
+  switch (ev.solution_scale) {
+  case SolutionScale::Unspecified:
+    return Denominator{DenomKind::NoDecision, 0.0};
+  case SolutionScale::Unit:
+    scale = 1.0;
+    break;
+  case SolutionScale::Supplied:
+    if (!ev.weights.has_value() || ev.weights->size() != count) {
+      return Denominator{DenomKind::NoDecision, 0.0};
+    }
+    scale = (*ev.weights)[index];
+    if (!std::isfinite(scale) || scale < 0.0) {
+      return Denominator{DenomKind::NoDecision, 0.0};
+    }
+    break;
+  }
+  const double den = atol + rtol * scale;
+  if (den == 0.0) {
+    return Denominator{DenomKind::ZeroDenominator, 0.0};
+  }
+  return Denominator{DenomKind::Ok, den};
+}
+
+[[nodiscard]] inline NormalizedError from_denominator(DenomKind kind, double ratio) {
+  if (kind == DenomKind::NoDecision) {
+    return make_no_decision();
+  }
+  if (kind == DenomKind::ZeroDenominator) {
+    return NormalizedError{.metric = std::numeric_limits<double>::infinity(),
+                           .verdict = StepAttemptVerdict::Reject,
+                           .decision_available = true};
+  }
+  const auto verdict =
+      (ratio <= 1.0) ? StepAttemptVerdict::Accept : StepAttemptVerdict::Reject;
+  return NormalizedError{.metric = ratio, .verdict = verdict, .decision_available = true};
+}
+
+} // namespace detail
+
 [[nodiscard]] inline NormalizedError
 normalize_error_evidence(const ErrorEvidence &ev, const ErrorTolerances &tol) {
   if (!ev.valid) {
@@ -334,36 +501,31 @@ normalize_error_evidence(const ErrorEvidence &ev, const ErrorTolerances &tol) {
     return detail::make_no_decision();
   }
 
-  double metric = 0.0;
-
   if (!ev.field_norms.empty()) {
     if (ev.weights.has_value() && ev.weights->size() != ev.field_norms.size()) {
       return detail::make_no_decision();
     }
+    double metric = 0.0;
     for (std::size_t i = 0; i < ev.field_norms.size(); ++i) {
-      const double scale =
-          (ev.weights.has_value()) ? (*ev.weights)[i] : 1.0;
-      const double den = tol.absolute + tol.relative * scale;
-      if (den == 0.0) {
-        return NormalizedError{.metric = std::numeric_limits<double>::infinity(),
-                               .verdict = StepAttemptVerdict::Reject,
-                               .decision_available = true};
+      const auto den =
+          detail::field_denominator(ev, tol, i, ev.field_norms.size());
+      if (den.kind != detail::DenomKind::Ok) {
+        return detail::from_denominator(den.kind, 0.0);
       }
-      metric = std::max(metric, ev.field_norms[i] / den);
+      metric = std::max(metric, ev.field_norms[i] / den.value);
     }
-  } else {
-    const double den = tol.absolute + tol.relative;
-    if (den == 0.0) {
-      return NormalizedError{.metric = std::numeric_limits<double>::infinity(),
-                             .verdict = StepAttemptVerdict::Reject,
-                             .decision_available = true};
-    }
-    metric = *ev.combined_metric / den;
+    return detail::from_denominator(detail::DenomKind::Ok, metric);
   }
 
-  const auto verdict =
-      (metric <= 1.0) ? StepAttemptVerdict::Accept : StepAttemptVerdict::Reject;
-  return NormalizedError{.metric = metric, .verdict = verdict, .decision_available = true};
+  const auto den = detail::field_denominator(ev, tol, 0, 1);
+  if (den.kind != detail::DenomKind::Ok) {
+    return detail::from_denominator(den.kind, 0.0);
+  }
+  if (!std::isfinite(*ev.combined_metric)) {
+    return detail::make_no_decision();
+  }
+  return detail::from_denominator(detail::DenomKind::Ok,
+                                  std::abs(*ev.combined_metric) / den.value);
 }
 
 } // namespace pfc::integrator

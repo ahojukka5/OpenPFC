@@ -359,9 +359,24 @@ next `saveat` alignment point. That seam lives on
   time only (rejected attempts never advance emission).
 
 `AdaptiveTimeController` (`adaptive_controller.hpp`) consumes
-`ErrorEvidence` or an embedded-error vector, proposes the next `dt` from
-`AdaptiveControlConfig`, and calls `commit_attempt` / `reject_attempt`.
-Example: `examples/21_adaptive_stepping.cpp`. Coverage:
+`ErrorEvidence` or an embedded pair and calls `commit_attempt` /
+`reject_attempt`. The normalized error is
+`|e| / (atol + rtol * solution_scale)`. For an embedded pair the scale of
+each component is `max(|y_accepted|, |y_candidate|)`, and ranks take the
+maximum of those ratios. A relative tolerance is not measured against 1
+unless the evidence selects `SolutionScale::Unit`.
+
+The default controller is memoryless:
+`factor = safety_factor * metric^(-1/error_order)`.
+`StepController::pi` is the PI.3.4 law, used only on an accepted step that
+already has a previous accepted metric:
+`factor = safety_factor * metric^(-(k_I+k_P)/error_order) * previous^(k_P/error_order)`
+with `(k_I, k_P) = (0.3, 0.4)`. Rejections and the first acceptance keep the
+memoryless factor. `safety_factor` is applied once, outside the powers.
+`apply` stores the metric only after an accepted PI step; a zero metric
+clears it; a rejection leaves it. `capture_state` / `restore_state` keep
+that metric and the rejection streak. Fixed mode does not read or write the
+metric. Example: `examples/21_adaptive_stepping.cpp`. Coverage:
 `tests/unit/kernel/simulation/test_adaptive_controller.cpp`.
 
 Prefer this transaction API over rewriting history with `set_dt` +
@@ -406,11 +421,10 @@ explicit operator evaluation then an implicit `SolveFunction` solve into an
 isolated candidate, with driver commit via `apply_candidate`. First-order
 IMEX Euler (`ImexEulerStepper` in
 [`imex_euler.hpp`](../../include/openpfc/kernel/simulation/steppers/imex_euler.hpp))
-is landed on CPU; higher-order IMEX-RK and adaptive *controller* policy
-(accept/reject and next-`dt` selection that *uses* that config) remain
-follow-on / driver-owned work (GitHub milestone 0.2.1). The checkpoint protocol on
-`EulerStepper` (`save_state` / `restore_state` / `can_rollback`) is the hook
-those controller features are expected to use.
+is landed on CPU. The adaptive controller (memoryless and PI.3.4) is
+landed as well. Higher-order IMEX-RK remains follow-on work. PI history is
+restored through `AdaptiveTimeController::capture_state`, not through the
+stepper scratch checkpoint.
 
 ## 6. Migration path from virtual step methods to explicit stepper composition
 
