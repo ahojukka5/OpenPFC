@@ -379,6 +379,24 @@ that metric and the rejection streak. Fixed mode does not read or write the
 metric. Example: `examples/21_adaptive_stepping.cpp`. Coverage:
 `tests/unit/kernel/simulation/test_adaptive_controller.cpp`.
 
+`ETD1StepDoubling` (`etd_step_doubling.hpp`) is the spectral estimator.
+One attempt builds a single ETD1 step of `dt` and two ETD1 steps of
+`dt/2` from the same accepted state. The raw difference
+`y_half - y_full` is the local-error evidence. ETD1 is first order, so
+the difference is `O(dt^2)` and the controller uses `error_order = 2`.
+For that order the leading local error of the two-half-step result is
+the raw difference itself (`2^1 - 1 = 1`). The accepted field is
+`y_half`. The solution is not Richardson-extrapolated. `set_dt(dt)`
+runs before the full step, the real full-step field is copied, then
+`set_dt(dt/2)` rebuilds the half-step coefficients. Commit and reject
+both restore the macro-step cache. A rejection restores `psi` and
+`psi_hat` and does not move `Time`, so a save keyed off accepted time
+stays put. Every rank is given the same `dt`. The difference is scaled
+with `decide_from_embedded_error` (`max(|y_start|, |y_half|)`). A plain
+attempt costs 3 nonlinear evaluations and 9 transforms. Example:
+`examples/24_adaptive_etd.cpp`. Coverage:
+`tests/unit/kernel/simulation/test_etd_step_doubling.cpp`.
+
 Prefer this transaction API over rewriting history with `set_dt` +
 `set_increment`. When Simulator wires adaptive loops, every MPI rank must use
 the **same** clipped `attempted_dt` for a given attempt (rank-consistency is

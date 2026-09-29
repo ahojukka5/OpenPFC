@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `ETD1StepDoubling` estimates the local error of a stiff spectral step
+  by one ETD1 step of `dt` and two ETD1 steps of `dt/2`. The accepted
+  field is the two-half-step result. The raw difference is kept, and the
+  solution is not extrapolated. CPU only.
 - `StepController::pi` selects the PI.3.4 step-size controller. The
   memoryless controller stays the default. The previous accepted metric
   and the rejection streak are captured and restored with the controller,
