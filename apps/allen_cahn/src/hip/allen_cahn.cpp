@@ -86,7 +86,12 @@ int main(int argc, char *argv[]) {
         const double inv_dy2 = inv_dx2;
         const double inv_eps2 = 1.0 / (cfg.epsilon * cfg.epsilon);
         std::vector<double> u_host(nlocal);
-        allen_cahn::fill_initial_condition(&u_host, decomp, rank);
+        if (cfg.two_front) {
+          allen_cahn::fill_two_front_initial_condition(&u_host, decomp, rank, cfg.M,
+                                                       cfg.epsilon);
+        } else {
+          allen_cahn::fill_initial_condition(&u_host, decomp, rank);
+        }
         const std::int64_t n_local_initial = allen_cahn::count_cells_above(
             u_host, allen_cahn::RunConfig::kLevelSetThreshold);
         if (!cfg.png_output_initial.empty()) {
@@ -122,6 +127,10 @@ int main(int argc, char *argv[]) {
         // a run of thousands of steps.
         allen_cahn::AreaSamples areas;
         areas.initial = allen_cahn::global_area_cells(MPI_COMM_WORLD, n_local_initial);
+        allen_cahn::SubcellSamples sub;
+        sub.planar = cfg.two_front;
+        allen_cahn::sample_subcell(MPI_COMM_WORLD, decomp, rank, u_host.data(), nx, ny,
+                                   &sub, allen_cahn::SampleWhen::Initial);
         const int step_half = cfg.n_steps / 2;
         const int step_three_quarter = (3 * cfg.n_steps) / 4;
 
@@ -141,6 +150,15 @@ int main(int argc, char *argv[]) {
             u.with_host_view([&](double *data, std::size_t n) {
               n_local = allen_cahn::count_cells_above(
                   data, n, allen_cahn::RunConfig::kLevelSetThreshold);
+              if (done == step_half) {
+                allen_cahn::sample_subcell(MPI_COMM_WORLD, decomp, rank, data, nx, ny,
+                                           &sub, allen_cahn::SampleWhen::Half);
+              }
+              if (done == step_three_quarter) {
+                allen_cahn::sample_subcell(MPI_COMM_WORLD, decomp, rank, data, nx, ny,
+                                           &sub,
+                                           allen_cahn::SampleWhen::ThreeQuarter);
+              }
             });
             // Read-only peek: the device buffer is still authoritative, and
             // saying so avoids a pointless host->device push next step.
@@ -180,8 +198,13 @@ int main(int argc, char *argv[]) {
             MPI_COMM_WORLD,
             allen_cahn::count_cells_above(
                 u_host, allen_cahn::RunConfig::kLevelSetThreshold));
-        const auto kinetics = allen_cahn::analyse_interface_kinetics(areas, cfg, dx);
-        allen_cahn::report_interface_kinetics(rank, areas, cfg, kinetics);
+        allen_cahn::sample_subcell(MPI_COMM_WORLD, decomp, rank, u_host.data(), nx, ny,
+                                   &sub, allen_cahn::SampleWhen::Final);
+        auto kinetics = allen_cahn::analyse_interface_kinetics(areas, cfg, dx);
+        if (cfg.two_front) {
+          allen_cahn::skip_disc_check_for_flat_fronts(&kinetics);
+        }
+        allen_cahn::report_interface_kinetics(rank, areas, cfg, kinetics, &sub, dx);
 
         // The exit status answers "did the run finish?", not "did the physics
         // agree?". Pass --strict when you want the verdict to gate a script.

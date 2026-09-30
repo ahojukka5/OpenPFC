@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <iostream>
 #include <mpi.h>
+#include <sstream>
 #include <vector>
 
 #include <allen_cahn/common.hpp>
@@ -373,6 +374,194 @@ TEST_CASE("a sub-grid interface needs a near-critical driving force",
   // continuum law says it should.
   REQUIRE(k.verdict != allen_cahn::CheckVerdict::Pass);
   REQUIRE(k.v_late < 0.75 * k.v_predicted);
+}
+
+TEST_CASE("a manufactured zero crossing is recovered inside the cell",
+          "[AllenCahn][kinetics][unit][subcell]") {
+  // Root at 1.25. The first positive sample is index 2, three quarters of a
+  // cell away. The interpolant lands on the root.
+  const double row[] = {-1.0, -0.2, 0.6, 1.0};
+  const auto hit =
+      allen_cahn::periodic_zero_crossing(row, 4, allen_cahn::Crossing::Rising);
+  REQUIRE(hit.found);
+  constexpr double truth = 1.25;
+  constexpr double integer_index = 2.0;
+  REQUIRE_THAT(hit.position, WithinAbs(truth, 1e-12));
+  REQUIRE(std::abs(hit.position - truth) < std::abs(integer_index - truth));
+}
+
+TEST_CASE("sub-cell area follows the interpolated front, not the cell count",
+          "[AllenCahn][kinetics][unit][subcell]") {
+  // Columns -1, -1, +1, +0.2. The positive interval is (1.5, 3 + 1/6),
+  // length 5/3 per row, against an integer count of 2 per row.
+  constexpr int nx = 4;
+  constexpr int ny = 3;
+  const double column[] = {-1.0, -1.0, 1.0, 0.2};
+  std::vector<double> field(static_cast<std::size_t>(nx * ny));
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      field[static_cast<std::size_t>(ix + nx * iy)] = column[ix];
+    }
+  }
+  const double area = allen_cahn::periodic_positive_area(field.data(), nx, ny);
+  constexpr double truth = (5.0 / 3.0) * ny;
+  constexpr double integer_count = 2.0 * ny;
+  REQUIRE_THAT(area, WithinAbs(truth, 1e-12));
+  REQUIRE(std::abs(area - truth) < std::abs(integer_count - truth));
+
+  std::vector<double> filled(field.size(), 1.0);
+  REQUIRE_THAT(allen_cahn::periodic_positive_area(filled.data(), nx, ny),
+               WithinAbs(static_cast<double>(nx * ny), 1e-12));
+  std::vector<double> empty(field.size(), -1.0);
+  REQUIRE_THAT(allen_cahn::periodic_positive_area(empty.data(), nx, ny),
+               WithinAbs(0.0, 1e-15));
+}
+
+TEST_CASE("--two-front is opt-in and the default seed stays Gaussian",
+          "[AllenCahn][kinetics][unit][subcell]") {
+  char a0[] = "allen_cahn";
+  char a1[] = "32";
+  char a2[] = "32";
+  // Sized for every index parse_args can read. A 3-slot array makes the
+  // inlined argc checks look like out-of-bounds loads.
+  char *gaussian_argv[10] = {a0, a1, a2};
+  const auto gaussian = allen_cahn::parse_args(3, gaussian_argv);
+  REQUIRE_FALSE(gaussian.two_front);
+  REQUIRE(gaussian.nx_glob == 32);
+
+  char b0[] = "allen_cahn";
+  char b1[] = "--two-front";
+  char b2[] = "--strict";
+  char b3[] = "48";
+  char *front_argv[10] = {b0, b1, b2, b3};
+  const auto fronts = allen_cahn::parse_args(4, front_argv);
+  REQUIRE(fronts.two_front);
+  REQUIRE(fronts.strict);
+  REQUIRE(fronts.nx_glob == 48);
+}
+
+TEST_CASE("two-front initial condition matches the heteroclinic",
+          "[AllenCahn][kinetics][unit][subcell]") {
+  int nproc = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+  REQUIRE(nproc == 1);
+
+  allen_cahn::RunConfig cfg;
+  cfg.nx_glob = 64;
+  cfg.ny_glob = 8;
+  cfg.two_front = true;
+  auto domain = pfc::domain::create(pfc::GridSize({cfg.nx_glob, cfg.ny_glob, 1}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({kDx, kDx, kDx}));
+  auto decomp = pfc::decomposition::create(domain, 1);
+  const auto local = pfc::decomposition::local_box(decomp, 0).size;
+  const int nx = local[0];
+  const int ny = local[1];
+  std::vector<double> u(static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny));
+  allen_cahn::fill_two_front_initial_condition(&u, decomp, 0, cfg.M, cfg.epsilon);
+
+  const double delta = allen_cahn::interface_width_cells(cfg.M, cfg.epsilon, kDx);
+  const double x_left = 0.25 * cfg.nx_glob;
+  const double x_right = 0.75 * cfg.nx_glob;
+  // The seam sits in the phi ≈ -1 matrix, so the periodic identification does
+  // not add a third front.
+  REQUIRE_THAT(u[0], WithinAbs(-1.0, 1e-3));
+  REQUIRE_THAT(u[static_cast<std::size_t>(nx - 1)], WithinAbs(-1.0, 1e-3));
+
+  int n_rising = 0;
+  int n_falling = 0;
+  for (int i = 0; i < nx; ++i) {
+    const int j = (i + 1 == nx) ? 0 : i + 1;
+    const double a = u[static_cast<std::size_t>(i)];
+    const double b = u[static_cast<std::size_t>(j)];
+    n_rising += (a <= 0.0 && b > 0.0) ? 1 : 0;
+    n_falling += (a > 0.0 && b <= 0.0) ? 1 : 0;
+    const double x = static_cast<double>(i);
+    const double profile = std::tanh((x - x_left) / delta) -
+                           std::tanh((x - x_right) / delta) - 1.0;
+    REQUIRE_THAT(a, WithinAbs(profile, 1e-12));
+    if (std::abs(x - x_left) <= delta) {
+      REQUIRE_THAT(a, WithinAbs(std::tanh((x - x_left) / delta), 1e-3));
+    }
+  }
+  REQUIRE(n_rising == 1);
+  REQUIRE(n_falling == 1);
+
+  const auto fronts = allen_cahn::planar_fronts(u.data(), nx, ny);
+  REQUIRE(fronts.rising.found);
+  REQUIRE(fronts.falling.found);
+  REQUIRE_THAT(fronts.rising.position, WithinAbs(x_left, 0.05));
+  REQUIRE_THAT(fronts.falling.position, WithinAbs(x_right, 0.05));
+  REQUIRE(fronts.falling.position - fronts.rising.position > 10.0);
+  // Every row carries the same pair: the average does not move the front.
+  REQUIRE_THAT(fronts.rising.position,
+               WithinAbs(allen_cahn::periodic_zero_crossing(u.data(), nx,
+                                                            allen_cahn::Crossing::Rising)
+                             .position,
+                         1e-12));
+}
+
+TEST_CASE("sub-cell numbers print beside the cell count and stay out of the verdict",
+          "[AllenCahn][kinetics][unit][subcell]") {
+  allen_cahn::AreaSamples areas;
+  areas.initial = 10;
+  areas.half = 12;
+  areas.three_quarter = 14;
+  areas.final_ = 16;
+  allen_cahn::InterfaceKinetics kinetics;
+  kinetics.r_initial = 1.8;
+  kinetics.r_half = 2.0;
+  kinetics.r_three_quarter = 2.1;
+  kinetics.r_final = 2.2;
+  kinetics.verdict = allen_cahn::CheckVerdict::Pass;
+  kinetics.reason = "steady interface speed consistent with the disc law";
+  allen_cahn::RunConfig cfg;
+  cfg.nx_glob = 64;
+  cfg.n_steps = 100;
+  cfg.dt = 0.1;
+
+  allen_cahn::SubcellSamples radial;
+  radial.area_initial = 12.5;
+  radial.area_half = 13.5;
+  radial.area_three_quarter = 14.5;
+  radial.area_final = 15.5;
+  std::ostringstream radial_out;
+  allen_cahn::report_interface_kinetics(0, areas, cfg, kinetics, &radial, kDx,
+                                        radial_out);
+  const std::string radial_text = radial_out.str();
+  REQUIRE(radial_text.find("N0=10") != std::string::npos);
+  REQUIRE(radial_text.find("R0=") != std::string::npos);
+  REQUIRE(radial_text.find("subcell") != std::string::npos);
+  REQUIRE(radial_text.find("x_left") == std::string::npos);
+  REQUIRE(radial_text.find("physics_check=PASS") != std::string::npos);
+
+  allen_cahn::SubcellSamples flat = radial;
+  flat.planar = true;
+  flat.fronts_initial.rising = allen_cahn::FrontHit{16.25, true};
+  flat.fronts_half.rising = allen_cahn::FrontHit{15.25, true};
+  flat.fronts_three_quarter.rising = allen_cahn::FrontHit{14.75, true};
+  flat.fronts_final.rising = allen_cahn::FrontHit{14.25, true};
+  flat.fronts_initial.falling = allen_cahn::FrontHit{48.0, true};
+  flat.fronts_half.falling = allen_cahn::FrontHit{49.0, true};
+  flat.fronts_three_quarter.falling = allen_cahn::FrontHit{49.5, true};
+  flat.fronts_final.falling = allen_cahn::FrontHit{50.0, true};
+  std::ostringstream flat_out;
+  allen_cahn::report_interface_kinetics(0, areas, cfg, kinetics, &flat, kDx, flat_out);
+  const std::string flat_text = flat_out.str();
+  REQUIRE(flat_text.find("N0=10") != std::string::npos);
+  REQUIRE(flat_text.find("R0=") != std::string::npos);
+  REQUIRE(flat_text.find("x_left=16.25") != std::string::npos);
+  REQUIRE(flat_text.find("x_right=48") != std::string::npos);
+  // Moved one cell left over t/2 = 5, so the speed into the matrix is 0.2.
+  REQUIRE_THAT(allen_cahn::rising_front_speed(flat, cfg), WithinAbs(0.2, 1e-12));
+  REQUIRE(flat_text.find("v_front=") != std::string::npos);
+  // The report does not consult the sub-cell numbers when it prints the verdict.
+  REQUIRE(flat_text.find("physics_check=PASS") != std::string::npos);
+
+  allen_cahn::skip_disc_check_for_flat_fronts(&kinetics);
+  REQUIRE(kinetics.verdict == allen_cahn::CheckVerdict::Skipped);
+  REQUIRE(allen_cahn::RunConfig::kVelocityBandLo == 0.75);
+  REQUIRE(allen_cahn::RunConfig::kVelocityBandHi == 1.25);
 }
 
 int main(int argc, char *argv[]) {
