@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A periodic Fourier velocity can be projected with the Leray operator,
+  advanced by a 2/3-dealiased rotational term, and stepped with
+  integrating-factor RK4.
 - `ns2d_flux_balance` reports spectral divergence and the closed-box
   flux of the trigonometric velocity for Taylor–Green, the two-mode
   field, and the unit-square double shear.

@@ -13,6 +13,7 @@ if(OpenPFC_ENABLE_HEFFTE)
       ${CMAKE_CURRENT_SOURCE_DIR}/test_complex_outbox.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test_fft_backend_selection.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test_dealias.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test_incompressible.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test_fft_comprehensive.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test_heap_concept.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test_fft_buffer_sizes.cpp
