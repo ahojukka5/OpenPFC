@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `incompressible_flow` runs periodic 3-D Taylor–Green on the installed
+  Fourier velocity. The 2-D streamfunction prototype stays under
+  `examples/`.
 - `taylor_green3d` checks the periodic Fourier velocity on the 3-D
   Taylor–Green vortex. One ladder refines the grid at fixed dt.
   Another refines dt at fixed N. Field error is the common-band
