@@ -25,6 +25,7 @@
 
 #include <ns2d/band_error.hpp>
 #include <ns2d/cases.hpp>
+#include <ns2d/temporal_order.hpp>
 #include <ns2d/vorticity_stream.hpp>
 
 using Catch::Matchers::WithinAbs;
@@ -273,6 +274,15 @@ TEST_CASE("Minion-Brown unit-square shear has two opposite sheets at t=0",
   REQUIRE(d.div_linf < 1.0e-6);
   REQUIRE(ns2d::shear_cells_per_thickness(64, rho) ==
           Catch::Approx(64.0 / 30.0).margin(1.0e-12));
+}
+
+TEST_CASE("observed order is log2 of successive errors above the floor",
+          "[ns2d][order]") {
+  const auto fourth = ns2d::observed_order(16.0, 1.0, 1.0e-11);
+  REQUIRE(fourth.has_value());
+  REQUIRE_THAT(*fourth, WithinAbs(4.0, 1.0e-12));
+  REQUIRE_FALSE(ns2d::observed_order(1.0e-12, 1.0e-13, 1.0e-11).has_value());
+  REQUIRE_FALSE(ns2d::observed_order(1.0e-4, 0.0, 1.0e-11).has_value());
 }
 
 TEST_CASE("common-band error vanishes for a shared Fourier mode",

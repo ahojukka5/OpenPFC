@@ -238,6 +238,100 @@ not set the gap. It does not establish an error against a grid finer
 than 512, a temporal order, or a finished \(1024^2\) run at this
 \(\Delta t\).
 
+### Fixed-grid temporal order (issue #225)
+
+The spatial table changes \(N\) at one \(\Delta t\). The runs below
+hold the grid fixed and change the step. Error is the same-grid
+common-band difference (`restrict_hat_by_k` with scale 1). Order is
+\(p=\log_2\bigl(e(\Delta t)/e(\Delta t/2)\bigr)\) on absolute \(L^2\)
+against the finest step, and only when both errors exceed
+\(10^{-11}\). The finest step is not an order denominator: its error
+against itself is zero. A step that becomes non-finite is kept. Its
+diagnostics are left at zero, so the status column is the record.
+Taylor–Green is not a case. One MPI rank. The 2/3 projection stays on.
+Parent `7aa7cc9a57a8`, driver content `804741a32904`. Rows are under
+`/scratch/project_462001519/juaho/ns2d-225/` and are not committed.
+
+Shear, \(N=512\), unit square, \(\nu=10^{-4}\), \(\rho=30\),
+\(\varepsilon=0.05\), at \(t=0.4\) (before roll-up), \(0.8\), and
+\(1.2\). The steps are
+\(\Delta t=(0.4/2048)\times\{16,8,4,2,1\}\), so the reference is
+\(0.4/2048\).
+
+```bash
+./examples/ns2d_vorticity/ns2d_temporal_refine \
+  --case shear \
+  --outdir /scratch/project_462001519/juaho/ns2d-225/shear
+```
+
+Absolute vorticity \(L^2\) against \(\Delta t=0.4/2048\). The order
+on a row is the comparison with the next finer step:
+
+| \(\Delta t\) | \(t=0.4\) | \(t=0.8\) | \(t=1.2\) | \(p(0.4)\) | \(p(0.8)\) | \(p(1.2)\) |
+|---:|---:|---:|---:|---:|---:|---:|
+| \(0.4/128\) | non-finite |  |  |  |  |  |
+| \(0.4/256\) | \(6.64\times 10^{-10}\) | \(1.95\times 10^{-6}\) | non-finite | 4.005 | 4.004 |  |
+| \(0.4/512\) | \(4.14\times 10^{-11}\) | \(1.22\times 10^{-7}\) | \(3.48\times 10^{-7}\) | roundoff | 4.087 | 4.088 |
+| \(0.4/1024\) | \(2.54\times 10^{-12}\) | \(7.17\times 10^{-9}\) | \(2.05\times 10^{-8}\) |  |  |  |
+| \(0.4/2048\) | 0 | 0 | 0 |  |  |  |
+
+A fourth-order gap measured against this reference, rather than
+against an exact solution, has observed order 4.005 on the
+\(0.4/256\) pair and 4.087 on the \(0.4/512\) pair. The measured
+vorticity orders agree to about \(0.001\). Velocity \(L^2\) gives
+4.005 at \(t=0.8\) on the coarse pair and 4.088 on the fine pair.
+At \(t=0.4\) the velocity errors are already below the floor, so
+that order is withheld. The blank cells on \(0.4/1024\) are the reference pair,
+not a missing run.
+
+\(\Delta t=0.4/128\) is non-finite at the \(t=0.4\) sample, so no
+CFL is recorded for it. \(\Delta t=0.4/256\) is finite at \(t=0.8\)
+with speed CFL 1.15 and non-finite at the \(t=1.2\) sample. That is
+the same CFL as the last finite sample of the \(N=1024\) spatial run.
+The abort threshold of 2 does not catch it. Every finer step
+finishes. Speed CFL at \(t=0.8\) is then 0.58, 0.29, and 0.14.
+Spectral divergence on the finished rows stays at most about
+\(10^{-12}\). Mean \(\omega\) stays at its grid value, near
+\(-1.4\times 10^{-7}\), and the drift from the initial mean is about
+\(10^{-14}\).
+
+At the spatial-study step \(\Delta t=0.4/512\) and \(t=1.2\), the
+vorticity error is \(3.5\times 10^{-7}\) absolute and
+\(4.3\times 10^{-8}\) relative. Kinetic energy differs by
+\(4\times 10^{-12}\) and enstrophy by \(4\times 10^{-9}\). The outer
+half of the retained band holds \(2.8\times 10^{-5}\) of the
+vorticity RMS, so this \(N=512\) window is not resolution-limited.
+
+Two-mode, \(N=64\) on \([0,2\pi]^2\), \(\nu=0.05\), \(t=0.2\). The
+initial field is modes 1 and 2, and the quadratic products through
+mode 4 sit inside the 2/3 mask, so this \(N\) is set by that content
+rather than by the shear study. Steps are
+\(\Delta t=(0.2/160)\times\{32,16,8,4,2,1\}\).
+
+```bash
+./examples/ns2d_vorticity/ns2d_temporal_refine \
+  --case two-mode \
+  --outdir /scratch/project_462001519/juaho/ns2d-225/two-mode
+```
+
+Every step finishes, with speed CFL at most 0.22. Absolute vorticity
+\(L^2\) is \(1.63\times 10^{-10}\) at \(\Delta t=0.04\) and
+\(1.02\times 10^{-11}\) at \(\Delta t=0.02\). That is the one pair
+above the floor, and it gives \(p=3.994\). Finer steps are roundoff.
+Velocity \(L^2\) on that pair is below the floor on the fine member,
+so its order is withheld. This case does not show fourth order over
+a range. The existing Catch2 check still rejects a first-order step:
+\(L^\infty\) on the two-mode field at \(N=32\) must drop by more than
+8 when \(\Delta t\) is halved, and that test does not read these
+roundoff values.
+
+The shear field errors support fourth order on the two completed
+doublings that stay above the floor at \(t=0.8\), and on the inner
+doubling at \(t=1.2\). The stable step for this shear through
+\(t=1.2\) is \(\Delta t\le 0.4/512\). The two coarser steps do not
+finish that window. The runs do not establish an order inside the
+floor, or a cause for the non-finite rows.
+
 ### Preserved ETD1 failure (do not treat as the #21 gate)
 
 The first PR #22 runs used ETD1 (forward Euler on the Jacobian),
