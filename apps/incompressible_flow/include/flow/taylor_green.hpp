@@ -1,0 +1,290 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+#pragma once
+
+/**
+ * @file taylor_green.hpp
+ * @brief 3-D Taylor–Green on the installed Fourier velocity.
+ *
+ * The cube is [0, 2π]³. The initial velocity is
+ * `u = sin(x) cos(y) cos(z)`, `v = -cos(x) sin(y) cos(z)`, `w = 0`.
+ * The step is integrating-factor RK4 of `P(u × ω)` after a state-level
+ * 2/3 mask. This file does not own a projector. One MPI rank owns every
+ * mode. The 2-D vorticity–streamfunction prototype is not this case.
+ */
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <complex>
+#include <cstddef>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include <mpi.h>
+
+#include <openpfc/kernel/data/constants.hpp>
+#include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/fft/kspace_iterator.hpp>
+#include <openpfc/kernel/field/incompressible.hpp>
+#include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
+
+namespace flow {
+
+using Complex = pfc::field::Complex;
+
+inline constexpr double kinetic_energy_0 = 0.125;
+inline constexpr double enstrophy_0 = 0.75;
+inline constexpr double cfl_limit = 2.0;
+
+struct Diagnostics {
+  double ke{0.0};
+  double enstrophy{0.0};
+  double dissipation{0.0};
+  double div_l2{0.0};
+  double div_linf{0.0};
+  double modal_div_max{0.0};
+  double cfl{0.0};
+  double mean_u{0.0};
+  double mean_v{0.0};
+  double mean_w{0.0};
+  double w_l2{0.0};
+  double max_abs_w{0.0};
+  bool finite{true};
+};
+
+struct State {
+  std::unique_ptr<pfc::sim::stacks::SpectralCPUStack> stack;
+  std::array<int, 3> n{};
+  std::array<double, 3> spacing{};
+  double nu{0.0};
+  double dt{0.0};
+  std::vector<Complex> u;
+  std::vector<Complex> v;
+  std::vector<Complex> w;
+  std::vector<double> exp_dt;
+  std::vector<double> exp_half;
+
+  State() = default;
+  State(const State &) = delete;
+  State &operator=(const State &) = delete;
+  State(State &&) noexcept = default;
+  State &operator=(State &&) noexcept = default;
+};
+
+[[nodiscard]] inline double cell_count(std::array<int, 3> n) noexcept {
+  return static_cast<double>(n[0]) * static_cast<double>(n[1]) *
+         static_cast<double>(n[2]);
+}
+
+[[nodiscard]] inline long long steps_for(double time, double dt) {
+  if (!(time > 0.0) || !(dt > 0.0)) {
+    throw std::invalid_argument("incompressible_flow: time and dt must be positive");
+  }
+  const double ratio = time / dt;
+  const auto steps = std::llround(ratio);
+  if (steps < 1 || std::abs(ratio - static_cast<double>(steps)) > 1.0e-8) {
+    throw std::invalid_argument(
+        "incompressible_flow: time must be an integer number of steps");
+  }
+  return steps;
+}
+
+[[nodiscard]] inline State make_state(int n, double nu, double dt, int rank,
+                                      int nproc) {
+  if (n < 8 || n % 2 != 0) {
+    throw std::invalid_argument(
+        "incompressible_flow: N must be even and at least 8");
+  }
+  if (nu < 0.0 || !(dt > 0.0)) {
+    throw std::invalid_argument("incompressible_flow: nu must be >= 0 and dt > 0");
+  }
+  const double h = pfc::two_pi / static_cast<double>(n);
+  auto domain = pfc::domain::create(pfc::GridSize({n, n, n}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({h, h, h}));
+  State state;
+  state.stack = std::make_unique<pfc::sim::stacks::SpectralCPUStack>(
+      std::move(domain), rank, nproc, MPI_COMM_WORLD);
+  state.n = {n, n, n};
+  state.spacing = {h, h, h};
+  state.nu = nu;
+  state.dt = dt;
+  auto &fft = state.stack->fft();
+  const auto ncells = static_cast<std::size_t>(n) * static_cast<std::size_t>(n) *
+                      static_cast<std::size_t>(n);
+  if (fft.size_inbox() != ncells) {
+    throw std::runtime_error(
+        "incompressible_flow: one rank must own the full real grid");
+  }
+  const auto nhat = fft.size_outbox();
+  state.u.assign(nhat, Complex{});
+  state.v.assign(nhat, Complex{});
+  state.w.assign(nhat, Complex{});
+  pfc::field::viscous_exponentials(fft.get_outbox_bounds(), state.n, state.spacing,
+                                   nu, dt, state.exp_dt, state.exp_half);
+  return state;
+}
+
+inline void initialize_taylor_green(State &state) {
+  auto &fft = state.stack->fft();
+  const auto inbox = fft.get_inbox_bounds();
+  const auto nreal = fft.size_inbox();
+  std::vector<double> rx(nreal, 0.0), ry(nreal, 0.0), rz(nreal, 0.0);
+  for (int k = inbox.low[2]; k <= inbox.high[2]; ++k) {
+    for (int j = inbox.low[1]; j <= inbox.high[1]; ++j) {
+      for (int i = inbox.low[0]; i <= inbox.high[0]; ++i) {
+        const auto idx = static_cast<std::size_t>(inbox.to_linear({i, j, k}));
+        const double x = static_cast<double>(i) * state.spacing[0];
+        const double y = static_cast<double>(j) * state.spacing[1];
+        const double z = static_cast<double>(k) * state.spacing[2];
+        rx[idx] = std::sin(x) * std::cos(y) * std::cos(z);
+        ry[idx] = -std::cos(x) * std::sin(y) * std::cos(z);
+        rz[idx] = 0.0;
+      }
+    }
+  }
+  fft.forward(rx, state.u);
+  fft.forward(ry, state.v);
+  fft.forward(rz, state.w);
+  const auto outbox = fft.get_outbox_bounds();
+  const auto nhat = state.u.size();
+  pfc::field::leray_project(outbox, state.n, state.spacing, state.u.data(),
+                            state.v.data(), state.w.data(), nhat);
+  pfc::field::apply_two_thirds(outbox, state.n, state.spacing, state.u.data(),
+                               state.v.data(), state.w.data(), nhat);
+}
+
+inline void step(State &state) {
+  auto &fft = state.stack->fft();
+  const auto outbox = fft.get_outbox_bounds();
+  pfc::field::ifrk4_velocity(
+      outbox, state.n, state.spacing, state.u, state.v, state.w, state.exp_dt,
+      state.exp_half, state.dt,
+      [&](const std::vector<Complex> &u, const std::vector<Complex> &v,
+          const std::vector<Complex> &w, std::vector<Complex> &tu,
+          std::vector<Complex> &tv, std::vector<Complex> &tw) {
+        pfc::field::rotational_tendency(fft, state.n, state.spacing, u, v, w, tu, tv,
+                                        tw, true);
+      },
+      true);
+}
+
+[[nodiscard]] inline bool hats_finite(const State &state) {
+  auto ok = [](const std::vector<Complex> &hat) {
+    for (const auto &z : hat) {
+      if (!std::isfinite(z.real()) || !std::isfinite(z.imag())) return false;
+    }
+    return true;
+  };
+  return ok(state.u) && ok(state.v) && ok(state.w);
+}
+
+[[nodiscard]] inline Diagnostics diagnose(State &state) {
+  auto &fft = state.stack->fft();
+  const auto outbox = fft.get_outbox_bounds();
+  const auto inbox = fft.get_inbox_bounds();
+  const auto nhat = state.u.size();
+  const double ncells = cell_count(state.n);
+
+  std::vector<double> rx(fft.size_inbox()), ry(fft.size_inbox()),
+      rz(fft.size_inbox());
+  fft.backward(state.u, rx);
+  fft.backward(state.v, ry);
+  fft.backward(state.w, rz);
+
+  std::vector<Complex> ox(nhat), oy(nhat), oz(nhat);
+  pfc::field::curl_hat(outbox, state.n, state.spacing, state.u.data(),
+                       state.v.data(), state.w.data(), ox.data(), oy.data(),
+                       oz.data(), nhat);
+  std::vector<double> oxr(fft.size_inbox()), oyr(fft.size_inbox()),
+      ozr(fft.size_inbox());
+  fft.backward(ox, oxr);
+  fft.backward(oy, oyr);
+  fft.backward(oz, ozr);
+
+  std::vector<Complex> div_hat(nhat);
+  pfc::fft::kspace::for_each_kpoint(
+      outbox, state.n, state.spacing,
+      [&](std::size_t idx, double, double, double, int i, int j, int k) {
+        div_hat[idx] = pfc::field::modal_divergence(
+            state.u[idx], state.v[idx], state.w[idx],
+            pfc::field::odd_wave(i, j, k, state.n, state.spacing));
+      });
+  std::vector<double> div_real(fft.size_inbox());
+  fft.backward(div_hat, div_real);
+
+  Diagnostics diag;
+  diag.finite = hats_finite(state);
+  double ke_sum = 0.0;
+  double enstrophy_sum = 0.0;
+  double w2 = 0.0;
+  double su = 0.0;
+  double sv = 0.0;
+  double sw = 0.0;
+  double peak = 0.0;
+  double max_w = 0.0;
+  double div2 = 0.0;
+  double div_linf = 0.0;
+  for (int k = inbox.low[2]; k <= inbox.high[2]; ++k) {
+    for (int j = inbox.low[1]; j <= inbox.high[1]; ++j) {
+      for (int i = inbox.low[0]; i <= inbox.high[0]; ++i) {
+        const auto idx = static_cast<std::size_t>(inbox.to_linear({i, j, k}));
+        const double u = rx[idx];
+        const double v = ry[idx];
+        const double w = rz[idx];
+        su += u;
+        sv += v;
+        sw += w;
+        ke_sum += u * u + v * v + w * w;
+        w2 += w * w;
+        peak = std::max(peak,
+                        std::max(std::abs(u), std::max(std::abs(v), std::abs(w))));
+        max_w = std::max(max_w, std::abs(w));
+        enstrophy_sum +=
+            oxr[idx] * oxr[idx] + oyr[idx] * oyr[idx] + ozr[idx] * ozr[idx];
+        div2 += div_real[idx] * div_real[idx];
+        div_linf = std::max(div_linf, std::abs(div_real[idx]));
+        if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(w))
+          diag.finite = false;
+      }
+    }
+  }
+  diag.ke = 0.5 * ke_sum / ncells;
+  diag.enstrophy = enstrophy_sum / ncells;
+  diag.dissipation = state.nu * diag.enstrophy;
+  diag.div_l2 = std::sqrt(div2 / ncells);
+  diag.div_linf = div_linf;
+  diag.modal_div_max = pfc::field::max_modal_divergence(
+      outbox, state.n, state.spacing, state.u.data(), state.v.data(), state.w.data(),
+      nhat);
+  diag.cfl = state.dt * peak / state.spacing[0];
+  diag.mean_u = su / ncells;
+  diag.mean_v = sv / ncells;
+  diag.mean_w = sw / ncells;
+  diag.w_l2 = std::sqrt(w2 / ncells);
+  diag.max_abs_w = max_w;
+  return diag;
+}
+
+/// Stop reason for one series. `ok` means every requested sample finished.
+[[nodiscard]] inline std::string advance(State &state, long long steps) {
+  auto stop = [&](const Diagnostics &diag) -> std::string {
+    if (!diag.finite) return "nonfinite";
+    if (diag.cfl > cfl_limit) return "cfl";
+    return {};
+  };
+  const auto initial = diagnose(state);
+  if (const auto why = stop(initial); !why.empty()) return why;
+  for (long long taken = 0; taken < steps; ++taken) {
+    step(state);
+    const auto diag = diagnose(state);
+    if (const auto why = stop(diag); !why.empty()) return why;
+  }
+  return "ok";
+}
+
+} // namespace flow
