@@ -23,6 +23,7 @@
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
 
+#include <ns2d/band_error.hpp>
 #include <ns2d/cases.hpp>
 #include <ns2d/vorticity_stream.hpp>
 
@@ -272,6 +273,25 @@ TEST_CASE("Minion-Brown unit-square shear has two opposite sheets at t=0",
   REQUIRE(d.div_linf < 1.0e-6);
   REQUIRE(ns2d::shear_cells_per_thickness(64, rho) ==
           Catch::Approx(64.0 / 30.0).margin(1.0e-12));
+}
+
+TEST_CASE("common-band error vanishes for a shared Fourier mode",
+          "[ns2d][band]") {
+  StackSolver fine(32, ns2d::Params{0.0, 0.01}, 1.0);
+  StackSolver coarse(16, ns2d::Params{0.0, 0.01}, 1.0);
+  const auto ic = [](double x, double y, double) {
+    return std::sin(2.0 * pfc::pi * x) * std::sin(2.0 * pfc::pi * y);
+  };
+  fine.solver.initialize_omega(ic);
+  coarse.solver.initialize_omega(ic);
+  std::vector<ns2d::SpectralPlane::Complex> hat;
+  fine.solver.copy_omega_hat(hat);
+  const auto err = ns2d::common_band_error_from_hat(
+      fine.solver.plane(), hat, coarse.solver, MPI_COMM_WORLD);
+  REQUIRE_THAT(err.omega_l2, WithinAbs(0.0, 1.0e-10));
+  REQUIRE_THAT(err.omega_linf, WithinAbs(0.0, 1.0e-10));
+  REQUIRE_THAT(err.velocity_l2, WithinAbs(0.0, 1.0e-10));
+  REQUIRE_THAT(err.omega_l2_rel, WithinAbs(0.0, 1.0e-10));
 }
 
 int main(int argc, char *argv[]) {

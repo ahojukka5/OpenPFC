@@ -111,6 +111,13 @@ public:
     m_plane.fft().backward(m_omega_hat, w.vec());
   }
 
+  /// Current vorticity coefficients after the 2/3 projection.
+  void copy_omega_hat(std::vector<Complex> &hat) {
+    hat.resize(m_plane.out_n());
+    m_plane.fft().forward(m_stack->u().vec(), hat);
+    m_plane.project_hat(hat);
+  }
+
   void jacobian_from_current(bool project_inputs) {
     m_plane.fft().forward(m_stack->u().vec(), m_omega_hat);
     if (project_inputs) m_plane.project_hat(m_omega_hat);

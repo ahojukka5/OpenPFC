@@ -167,6 +167,77 @@ under `/scratch/project_462001519/juaho/ns2d-21-ifrk4/`. Frames were
 not rendered in this session; the claim of roll-up is from the
 converged diagnostics, not from a screenshot.
 
+### Fixed-dt field error (issue #224)
+
+The CFL \(0.4\) table changes \(\Delta t\) with \(N\). The run below
+holds one step,
+\(\Delta t = 0.4/512 = 7.8125\times 10^{-4}\), on the same shear
+(\(\nu=10^{-4}\), \(\rho=30\), \(\varepsilon=0.05\), unit square).
+Output times are \(t=0.4\), \(0.8\), and \(1.2\) (512, 1024, and 1536
+steps). The reference is \(N=512\). Error is the common-band
+difference: `restrict_hat_by_k` copies matching modes, scaled by
+\(N_{\mathrm{coarse}}^2/N_{\mathrm{fine}}^2\), and the norms are
+discrete RMS values on the coarse grid. One MPI rank. The 2/3
+projection stays on. Taylor–Green is not this comparison.
+
+```bash
+./examples/ns2d_vorticity/ns2d_spatial_refine \
+  --resolutions 64,128,256,512 --reference 512 \
+  --times 0.4,0.8,1.2 \
+  --control-n 256 --control-dt-factor 0.5 \
+  --outdir /scratch/project_462001519/juaho/ns2d-224/ladder-512
+```
+
+\(N=1024\) at this same \(\Delta t\) matches \(N=512\) through
+\(t=0.8\) (kinetic energy differs by \(3\times 10^{-11}\)) and is
+non-finite at the \(t=1.2\) sample. Its speed CFL at \(t=0.8\) is
+1.15, below the driver's abort threshold of 2, so the run records
+the failure and does not use that grid as the reference. Rows:
+`/scratch/project_462001519/juaho/ns2d-224/ladder/`. The completed
+64–512 rows are under `ladder-512/`. Both `run.json` files record
+parent `6316f822425a` and driver content `a474b887e3bb`.
+
+Relative vorticity \(L^2\) against \(N=512\):
+
+| \(N\) | \(t=0.4\) | \(t=0.8\) | \(t=1.2\) | outer fraction, \(t=1.2\) |
+|------:|----------:|----------:|----------:|--------------------------:|
+| 64 | \(1.12\times 10^{-2}\) | \(8.44\times 10^{-2}\) | \(1.71\times 10^{-1}\) | 0.289 |
+| 128 | \(8.81\times 10^{-5}\) | \(6.50\times 10^{-3}\) | \(1.52\times 10^{-2}\) | 0.093 |
+| 256 | \(6.58\times 10^{-8}\) | \(1.37\times 10^{-5}\) | \(3.76\times 10^{-5}\) | 0.0091 |
+
+The outer fraction is the share of vorticity RMS in modes with
+\(\max(|k_i|,|k_j|) > N/6\). The 2/3 mask already drops modes past
+about \(N/3\), so this is the outer half of the retained band.
+
+At \(t=1.2\), \(N=64\) (about 2.1 cells per \(1/\rho\)) is still
+under-resolved: relative vorticity error \(0.17\), and 29% of the
+vorticity RMS sits in that outer band. \(N=128\) is at
+\(1.5\times 10^{-2}\). \(N=256\) is at \(3.76\times 10^{-5}\), with
+velocity relative \(L^2\) \(6.1\times 10^{-7}\) and
+\(L^\infty(\omega)=1.6\times 10^{-3}\). Doubling \(N\) from 128 to
+256 cuts the \(t=1.2\) vorticity \(L^2\) by about 400. That drop is
+spectral, not a low algebraic order.
+
+Repeating \(N=256\) at \(\Delta t/2\) changes the vorticity by a
+relative \(L^2\) of \(4.1\times 10^{-8}\) at \(t=1.2\). That gap is
+about a thousand times smaller than the \(N=256\) versus \(N=512\)
+difference, so the spatial table is not timestep-limited.
+
+Kinetic energy at \(t=1.2\) is already 0.425162 from \(N=128\) upward.
+Enstrophy agrees to five digits from \(N=256\) (32.1923; \(N=64\) is
+32.45 and \(N=128\) is 32.1946). Those scalars hide the
+\(1.5\times 10^{-2}\) vorticity error still present at \(N=128\).
+
+Spectral divergence on every completed row stays at most about
+\(10^{-12}\). Mean \(\omega\) stays at its grid value, near
+\(10^{-7}\).
+
+This establishes rapid common-band convergence of the shear once the
+layer is past \(N=64\), at a step small enough that time error does
+not set the gap. It does not establish an error against a grid finer
+than 512, a temporal order, or a finished \(1024^2\) run at this
+\(\Delta t\).
+
 ### Preserved ETD1 failure (do not treat as the #21 gate)
 
 The first PR #22 runs used ETD1 (forward Euler on the Jacobian),
