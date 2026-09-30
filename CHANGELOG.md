@@ -9,6 +9,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `ns2d_spatial_refine` reports common-band vorticity and velocity
+  error for the unit-square double shear at one fixed timestep.
 - `ETD1StepDoubling` estimates the local error of a stiff spectral step
   by one ETD1 step of `dt` and two ETD1 steps of `dt/2`. The accepted
   field is the two-half-step result. The raw difference is kept, and the

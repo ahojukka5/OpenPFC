@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Research prototype for issues #21 (NS), #23 (MHD), and #113
-# (island coalescence). Not a shipped apps/ catalog entry.
+# (island coalescence). Admission to apps/ is a separate decision.
 
 set(_ns2d_heffte_tgt "")
 if(TARGET Heffte::Heffte)
@@ -18,6 +18,11 @@ target_include_directories(ns2d_vorticity PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(ns2d_vorticity PRIVATE OpenPFC ${_ns2d_heffte_tgt})
 
+add_executable(ns2d_spatial_refine src/spatial_refine.cpp)
+target_include_directories(ns2d_spatial_refine PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(ns2d_spatial_refine PRIVATE OpenPFC ${_ns2d_heffte_tgt})
+
 add_executable(mhd2d src/mhd.cpp)
 target_include_directories(mhd2d PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(mhd2d PRIVATE OpenPFC ${_ns2d_heffte_tgt})
@@ -30,6 +35,16 @@ if(OpenPFC_BUILD_TESTS)
                    --verify --N 16 --steps 8 --dt 0.05 --nu 0.1)
   set_tests_properties(ns2d-vorticity-cli-verify PROPERTIES
                        PASS_REGULAR_EXPRESSION "VERIFY PASS"
+                       TIMEOUT 120)
+  add_test(NAME ns2d-spatial-refine-smoke
+           COMMAND $<TARGET_FILE:ns2d_spatial_refine>
+                   --resolutions 16,32 --reference 32
+                   --dt 0.01 --times 0.02
+                   --nu 1e-3 --rho 10 --eps 0.05
+                   --control-n 16 --control-dt-factor 0.5
+                   --outdir ${CMAKE_CURRENT_BINARY_DIR}/spatial_refine_smoke)
+  set_tests_properties(ns2d-spatial-refine-smoke PROPERTIES
+                       PASS_REGULAR_EXPRESSION "spatial_refine status=ok"
                        TIMEOUT 120)
   add_test(NAME mhd2d-cli-verify
            COMMAND $<TARGET_FILE:mhd2d>
