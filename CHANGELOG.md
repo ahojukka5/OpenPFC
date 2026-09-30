@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `allen_cahn` prints a sub-cell equivalent radius beside each cell-count
+  radius. `--two-front` starts from a periodic pair of cubic heteroclinic
+  fronts and prints their positions and one front's speed. Those numbers
+  do not enter `physics_check`. The flat-front run skips the disc criterion.
 - `ETD1StepDoubling` estimates the local error of a stiff spectral step
   by one ETD1 step of `dt` and two ETD1 steps of `dt/2`. The accepted
   field is the two-half-step result. The raw difference is kept, and the
