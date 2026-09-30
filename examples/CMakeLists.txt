@@ -147,3 +147,6 @@ endif()
 
 # Issue #21 research prototype under examples/, not an apps/ executable.
 add_subdirectory(ns2d_vorticity)
+
+# Issue #229 verification driver under examples/, not an apps/ executable.
+add_subdirectory(taylor_green3d)
