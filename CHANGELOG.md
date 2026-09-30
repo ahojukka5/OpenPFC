@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `incompressible_flow` adds a decaying homogeneous-isotropic case.
+  The initial spectrum is the Yoffe–McComb \(k^4\) density, one seeded
+  realization, with the 2/3 mask left on.
 - `incompressible_flow` runs periodic 3-D Taylor–Green on the installed
   Fourier velocity. The 2-D streamfunction prototype stays under
   `examples/`.

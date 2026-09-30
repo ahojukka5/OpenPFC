@@ -23,9 +23,9 @@ mass, composition bounds, and total-energy CSV output; see its
 [diagnostics guide](../../apps/cahn_hilliard/README.md#coarsening-preset-and-diagnostics).
 
 Use **incompressible_flow** for periodic 3-D Navier–Stokes on the
-Fourier velocity. The shipped case is Taylor–Green. The 2-D
-vorticity–streamfunction prototype stays under
-`examples/ns2d_vorticity/`.
+Fourier velocity. The shipped cases are Taylor–Green and decaying
+homogeneous isotropic turbulence. The 2-D vorticity–streamfunction
+prototype stays under `examples/ns2d_vorticity/`.
 
 Start with tungsten if you want the production-style PFC path. It reads JSON or TOML, uses the `App` pipeline, writes configured fields, and has CPU, CUDA and HIP variants when the build enables them. Start with Allen–Cahn if you want a small visual sanity check with optional PNG output and fewer moving pieces. Use Heat3D when your question is about finite-difference orders, the spectral heat-equation path, timings or scaling comparisons. Use **cahn_hilliard** for conserved fourth-order spinodal decomposition (Fe–Cr-like regular solution) on the same JSON spectral-ETD path as tungsten. Use **thin_film** for lubrication dewetting / coating (\(k^4\) capillary plus disjoining pressure, including an \(A=0\) leveling case). Use **surface_diffusion** for Mullins thermal smoothing of nanoscale roughness (exact \(k^4\) decay). Use **kawahara** for odd-order capillary–gravity dispersive waves (\(ik^3\) vs \(ik^5\), not a smoother). Use **ehd_film** for a sixth-order elastohydrodynamic gap under a bending plate (\(\lambda\sim-k^6\)). Use **gradient_elasticity** for size-dependent isotropic elasticity (Helmholtz–Navier, periodic eigenstrain, one-shot spectral \(2\times 2\)). Use **higher_order_pfc** for a deliberately very high-order PFC kernel (two-mode \(k^8\) free energy, \(k^{10}\) conserved dynamics) where the second correlation peak opens a band the classical \(k^4\) kernel cannot. Use **inverse_homogenization** when the question is a *target effective elasticity tensor* on a periodic unit cell (issue #161). Shipped binaries are `openpfc_homogenize` (forward \(C_H\)) and `openpfc_inverse_homogenize` (Allen–Cahn inverse loop); HIP builds add device Green twins. New applications follow the [admission criteria](../../apps/README.md#what-belongs-here). Use **wave2d** for a minimal **coupled first-order** wave-equation demo (displacement + velocity) with mixed periodic / physical y-boundaries. Use **kobayashi** for a **coupled phase-field + temperature** dendritic-growth-style demo (periodic torus, manual FD, PNG of \(\phi\)). Use **alloy_dendrite_elastic** when the question is *quantitative* solidification with optional eigenstrain elasticity: it is the Echebarria–Karma dilute-alloy phase field with the anti-trapping current, coupled to solute, to temperature, and to a spectral microelasticity solve on the same decomposition. Use **vlasov_maxwell** for 1D2V electromagnetic Vlasov–Maxwell kinetics (Landau damping, two-stream, Weibel). AluminumNew is mostly useful as a compact example of an `App<Model>` program wired through JSON.
 
@@ -195,14 +195,18 @@ mpirun -n 1 ./apps/vlasov_maxwell/vlasov_run --case=landau --summary=results/lan
 
 `incompressible_flow` advances a periodic 3-D velocity with the
 installed Leray projector and a 2/3-dealiased rotational term. The
-shipped case is Taylor–Green on \([0,2\pi]^3\). One MPI rank, CPU, and
-HeFFTe. The refinement tables stay with
+shipped cases are Taylor–Green and decaying homogeneous isotropic
+turbulence on \([0,2\pi]^3\). One MPI rank, CPU, and HeFFTe. The
+Taylor–Green refinement tables stay with
 [`examples/taylor_green3d/README.md`](../../examples/taylor_green3d/README.md).
-See [`apps/incompressible_flow/README.md`](../../apps/incompressible_flow/README.md).
+The decaying-turbulence assumptions and the resolution ladder are in
+[`apps/incompressible_flow/README.md`](../../apps/incompressible_flow/README.md).
 
 ```bash
 ./apps/incompressible_flow/incompressible_flow \
   --case taylor-green --n 32 --nu 0.05 --dt 0.01 --time 0.1
+./apps/incompressible_flow/incompressible_flow \
+  --case decaying-hit --n 32 --nu 0.02 --dt 0.015625 --time 0.0625 --seed 1
 ```
 
 ## Building your own application
