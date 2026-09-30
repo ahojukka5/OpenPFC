@@ -332,6 +332,146 @@ doubling at \(t=1.2\). The stable step for this shear through
 finish that window. The runs do not establish an order inside the
 floor, or a cause for the non-finite rows.
 
+### Closed-box flux (issue #226)
+
+The recovered velocity is a curl in the stored Fourier basis,
+\(\hat u = i k_y^{\mathrm{odd}}\hat\psi\) and
+\(\hat v = -i k_x^{\mathrm{odd}}\hat\psi\). The 2/3 mask is a
+multiplier, so it leaves that curl a curl. The modal divergence
+\(i k_x^{\mathrm{odd}}\hat u + i k_y^{\mathrm{odd}}\hat v\) is zero
+in exact arithmetic. `face_flux` integrates the trigonometric
+interpolant of those coefficients, with the unstored negative-\(k_x\)
+conjugate filled in. On any closed axis-aligned box that integral is
+zero in exact arithmetic. The numbers below are the size of that
+summation. They stay in one band across \(N\), \(\Delta t\), and box
+size, and that band is roundoff of the represented field.
+
+The domain integral of the divergence is the zero mode times the
+area. Every periodic Fourier series has that coefficient equal to
+zero. The column is computed from the mode. A zero there is the
+periodic sum, shared by a field with a large local divergence.
+
+The `trap_net` column is a composite trapezoid on grid nodes, filled
+only when all four corners lie on nodes. It samples the same nodal
+values with a low-order rule. On a full period the opposite faces
+use the same nodes, so that trapezoid is zero by the periodic
+identification.
+
+`relative` divides `net` by the sum of the absolute face integrals.
+That ratio tracks the residual when the denominator is larger than
+roundoff. On the Taylor–Green full-period box the denominator is
+about \(10^{-31}\) and the printed relative reaches \(0.81\), while
+`net` stays at \(4\times 10^{-31}\).
+
+One MPI rank. The 2/3 projection stays on. Parent `b80e241c721e`,
+driver content `fed509516444`. Rows are under
+`/scratch/project_462001519/juaho/ns2d-226/` and are not committed.
+Shear uses the steps that finish in the temporal study: \(N=128\),
+\(256\), and \(512\) at \(\Delta t=0.4/512\), and \(N=256\) again at
+\(\Delta t=0.4/1024\). Unit square, \(\nu=10^{-4}\), \(\rho=30\),
+\(\varepsilon=0.05\), at \(t=0.4\), \(0.8\), and \(1.2\). Boxes are
+the full period, the half box \([0,L/2]^2\), the quarter
+\([L/8,3L/8]^2\), one cell \([0,\Delta x]^2\), and the off-node
+rectangle \([0.2L,0.7L]\times[0.15L,0.45L]\).
+
+```bash
+./examples/ns2d_vorticity/ns2d_flux_balance \
+  --case shear \
+  --outdir /scratch/project_462001519/juaho/ns2d-226/shear
+```
+
+All 60 shear rows have status `ok`. Absolute spectral `net` at
+\(t=1.2\) and \(\Delta t=0.4/512\):
+
+| box | \(N=128\) | \(N=256\) | \(N=512\) |
+|---|---:|---:|---:|
+| full | \(9\times 10^{-33}\) | \(8\times 10^{-32}\) | \(2\times 10^{-31}\) |
+| half | \(1\times 10^{-16}\) | \(6\times 10^{-17}\) | \(5\times 10^{-16}\) |
+| quarter | \(8\times 10^{-16}\) | \(2\times 10^{-15}\) | \(7\times 10^{-16}\) |
+| cell | \(9\times 10^{-18}\) | \(1\times 10^{-17}\) | \(1\times 10^{-18}\) |
+| offset | \(4\times 10^{-16}\) | \(1\times 10^{-15}\) | \(2\times 10^{-15}\) |
+
+The largest `|net|` on the ladder, including \(t=0.4\), \(t=0.8\),
+and the half-step, is \(4.5\times 10^{-15}\). The largest `|imag|`
+is \(7\times 10^{-17}\). Halving \(\Delta t\) at \(N=256\) leaves
+both in that range. On the half, quarter, cell, and offset boxes the
+sum of absolute face integrals is \(10^{-2}\) to \(10^{-1}\), and
+`relative` is at most about \(10^{-14}\). The full-period denominator
+is itself about \(10^{-16}\).
+
+Grid \(\|\nabla\cdot u\|_\infty\) at \(t=1.2\) is
+\(1.9\times 10^{-13}\), \(3.9\times 10^{-13}\), and
+\(1.0\times 10^{-12}\) at \(N=128\), \(256\), and \(512\). It grows
+with \(N\) and stays the same size at half the step
+(\(4.2\times 10^{-13}\) at \(N=256\)). The modal amplitude of the
+odd-multiplier divergence is at most \(2.2\times 10^{-14}\).
+`domain_div` is 0 on every row. These are the FFT round-trip of a
+zero spectrum.
+
+The quarter box is a fixed fraction of the square. Its trapezoid at
+\(t=0.8\) is \(7.4\times 10^{-5}\), \(1.8\times 10^{-5}\), and
+\(4.6\times 10^{-6}\), a factor of about 4 each time \(N\) doubles.
+At \(t=1.2\) it is \(2.1\times 10^{-5}\), \(5.0\times 10^{-6}\), and
+\(1.3\times 10^{-6}\). The one-cell trapezoid at \(t=1.2\) is
+\(-3.2\times 10^{-6}\), \(-2.4\times 10^{-7}\), and
+\(-1.8\times 10^{-8}\). The spectral `net` on those boxes stays at
+\(10^{-15}\) or smaller. The \(N=256\) half-step reproduces the
+quarter and cell trapezoids to the printed digits. The offset corners
+miss the nodes, so `trap_net` is blank there; the spectral `|net|`
+on that box is at most \(1.8\times 10^{-15}\).
+
+Mean \(\omega\) stays at the grid value of the sampled shear,
+\(-5.7\times 10^{-7}\), \(-2.9\times 10^{-7}\), and
+\(-1.4\times 10^{-7}\). The drift from the initial mean is at most
+about \(5\times 10^{-14}\). Kinetic energy at \(t=1.2\) is
+\(0.425162\). Enstrophy is \(32.1946\) at \(N=128\) and \(32.1923\)
+at \(N=256\) and \(N=512\), the scalars from the spatial study.
+Halving \(\Delta t\) at \(N=256\) changes that kinetic energy by
+\(3\times 10^{-12}\). Speed CFL on the finished rows is at most
+\(0.58\).
+
+Taylor–Green uses \(N=32\) and \(N=64\), \(\nu=0.1\),
+\(\Delta t=0.05\), \(t=0\) and \(t=1\), on \([0,2\pi]^2\).
+
+```bash
+./examples/ns2d_vorticity/ns2d_flux_balance \
+  --case taylor \
+  --outdir /scratch/project_462001519/juaho/ns2d-226/taylor
+```
+
+Every box has `|net|` at most \(2.2\times 10^{-16}\) and `|imag|` at
+most \(2.8\times 10^{-17}\). \(\|\nabla\cdot u\|_\infty\) is
+\(3\times 10^{-15}\) to \(1.0\times 10^{-14}\). `domain_div` is 0.
+Mean drift is at most \(1\times 10^{-17}\). Kinetic energy at
+\(t=1\) differs from \(\tfrac14 e^{-0.4}\) by about \(10^{-15}\).
+The on-node trapezoids on this field are roundoff as well: a mode
+with \(|k_x|=|k_y|\) cancels under this trapezoid.
+
+Two-mode uses \(N=64\), \(\nu=0.05\), \(\Delta t=0.01\), \(t=0\) and
+\(t=0.2\).
+
+```bash
+./examples/ns2d_vorticity/ns2d_flux_balance \
+  --case two-mode \
+  --outdir /scratch/project_462001519/juaho/ns2d-226/two-mode
+```
+
+Spectral `|net|` is at most \(2.2\times 10^{-16}\),
+\(\|\nabla\cdot u\|_\infty\) is about \(5\times 10^{-15}\), and the
+mean drift at \(t=0.2\) is \(3\times 10^{-18}\). At \(t=0.2\) the
+quarter trapezoid is \(4.4\times 10^{-11}\) and the one-cell
+trapezoid is \(-1.2\times 10^{-6}\). The initial field is modes
+\((1,1)\) and \((2,2)\), which cancel under the trapezoid. The step
+produces unequal wavenumbers, and the trapezoid moves while the
+spectral flux stays at roundoff.
+
+The Catch2 checks cover the analytic flux and the curl. A cosine
+velocity matches the analytic partial-box flux to \(10^{-12}\).
+Taylor–Green spectral flux on several boxes is within \(10^{-9}\).
+Mode \((3,1)\) keeps that flux at roundoff on the index box
+\(\{2,\ldots,7\}\times\{1,\ldots,4\}\), and the trapezoid there
+exceeds \(10^{-4}\).
+
 ### Preserved ETD1 failure (do not treat as the #21 gate)
 
 The first PR #22 runs used ETD1 (forward Euler on the Jacobian),
