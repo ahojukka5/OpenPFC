@@ -25,6 +25,7 @@
 
 #include <ns2d/band_error.hpp>
 #include <ns2d/cases.hpp>
+#include <ns2d/flux_balance.hpp>
 #include <ns2d/temporal_order.hpp>
 #include <ns2d/vorticity_stream.hpp>
 
@@ -283,6 +284,70 @@ TEST_CASE("observed order is log2 of successive errors above the floor",
   REQUIRE_THAT(*fourth, WithinAbs(4.0, 1.0e-12));
   REQUIRE_FALSE(ns2d::observed_order(1.0e-12, 1.0e-13, 1.0e-11).has_value());
   REQUIRE_FALSE(ns2d::observed_order(1.0e-4, 0.0, 1.0e-11).has_value());
+}
+
+TEST_CASE("spectral face flux matches the integral of a cosine",
+          "[ns2d][flux]") {
+  StackSolver ss(32, ns2d::Params{0.0, 0.01}, 1.0);
+  ss.stack.u().apply(
+      [](double x, double, double) { return std::cos(2.0 * pfc::pi * x); });
+  std::vector<ns2d::SpectralPlane::Complex> u_hat(ss.solver.plane().out_n());
+  std::vector<ns2d::SpectralPlane::Complex> v_hat(ss.solver.plane().out_n());
+  ss.solver.plane().fft().forward(ss.stack.u().vec(), u_hat);
+  const ns2d::AxisBox box{0.25, 0.5, 0.1, 0.7};
+  const auto flux = ns2d::face_flux(ss.solver.plane(), u_hat, v_hat, box);
+  const double height = box.y1 - box.y0;
+  const double exact =
+      height * (std::cos(2.0 * pfc::pi * box.x1) - std::cos(2.0 * pfc::pi * box.x0));
+  REQUIRE_THAT(flux.net, WithinAbs(exact, 1.0e-12));
+  REQUIRE_THAT(flux.imag, WithinAbs(0.0, 1.0e-12));
+  const ns2d::AxisBox period{0.0, 1.0, 0.0, 1.0};
+  const auto closed = ns2d::face_flux(ss.solver.plane(), u_hat, v_hat, period);
+  REQUIRE_THAT(closed.net, WithinAbs(0.0, 1.0e-12));
+  REQUIRE(ns2d::modal_div_amplitude(ss.solver.plane(), u_hat, v_hat) > 0.1);
+}
+
+TEST_CASE("streamfunction velocity has roundoff closed-box flux",
+          "[ns2d][flux]") {
+  StackSolver ss(32, ns2d::Params{0.1, 0.01});
+  ss.solver.initialize_omega(
+      [](double x, double y, double) { return ns2d::taylor_green_omega(x, y, 0.1, 0.0); });
+  std::vector<ns2d::SpectralPlane::Complex> u_hat(ss.solver.plane().out_n());
+  std::vector<ns2d::SpectralPlane::Complex> v_hat(ss.solver.plane().out_n());
+  ss.solver.plane().fft().forward(ss.solver.u(), u_hat);
+  ss.solver.plane().fft().forward(ss.solver.v(), v_hat);
+  const double length = 2.0 * pfc::pi;
+  const double dx = length / 32.0;
+  const ns2d::AxisBox boxes[] = {
+      {0.0, length, 0.0, length},
+      {0.0, dx, 0.0, dx},
+      {2.0 * dx, 7.0 * dx, dx, 4.0 * dx},
+      {0.2 * length, 0.7 * length, 0.15 * length, 0.45 * length},
+  };
+  for (const auto &box : boxes) {
+    const auto flux = ns2d::face_flux(ss.solver.plane(), u_hat, v_hat, box);
+    REQUIRE_THAT(flux.net, WithinAbs(0.0, 1.0e-9));
+    REQUIRE_THAT(flux.imag, WithinAbs(0.0, 1.0e-9));
+  }
+  REQUIRE(ns2d::modal_div_amplitude(ss.solver.plane(), u_hat, v_hat) < 1.0e-12);
+
+  // Mode (1,1) cancels under this trapezoid. Mode (3,1) is still a curl
+  // inside the 2/3 mask, and the same nodes do not.
+  StackSolver unequal(32, ns2d::Params{0.1, 0.01});
+  unequal.solver.initialize_omega(
+      [](double x, double y, double) { return std::sin(3.0 * x) * std::sin(y); });
+  std::vector<ns2d::SpectralPlane::Complex> uu(unequal.solver.plane().out_n());
+  std::vector<ns2d::SpectralPlane::Complex> vv(unequal.solver.plane().out_n());
+  unequal.solver.plane().fft().forward(unequal.solver.u(), uu);
+  unequal.solver.plane().fft().forward(unequal.solver.v(), vv);
+  const ns2d::AxisBox cell{2.0 * dx, 7.0 * dx, dx, 4.0 * dx};
+  const auto spectral = ns2d::face_flux(unequal.solver.plane(), uu, vv, cell);
+  const auto trap = ns2d::trapezoid_flux(
+      unequal.solver.plane(), unequal.solver.u(), unequal.solver.v(), cell);
+  REQUIRE(trap.has_value());
+  REQUIRE_THAT(spectral.net, WithinAbs(0.0, 1.0e-9));
+  REQUIRE(std::abs(*trap) > 1.0e-4);
+  REQUIRE(std::abs(*trap) > 100.0 * std::abs(spectral.net));
 }
 
 TEST_CASE("common-band error vanishes for a shared Fourier mode",

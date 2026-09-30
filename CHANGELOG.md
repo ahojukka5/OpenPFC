@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `ns2d_flux_balance` reports spectral divergence and the closed-box
+  flux of the trigonometric velocity for Taylor–Green, the two-mode
+  field, and the unit-square double shear.
 - `ns2d_temporal_refine` reports the observed IFRK4 order of the
   two-mode field and the unit-square double shear at fixed resolution.
 - `ns2d_spatial_refine` reports common-band vorticity and velocity

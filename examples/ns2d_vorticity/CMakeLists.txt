@@ -28,6 +28,11 @@ target_include_directories(ns2d_temporal_refine PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(ns2d_temporal_refine PRIVATE OpenPFC ${_ns2d_heffte_tgt})
 
+add_executable(ns2d_flux_balance src/flux_balance.cpp)
+target_include_directories(ns2d_flux_balance PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(ns2d_flux_balance PRIVATE OpenPFC ${_ns2d_heffte_tgt})
+
 add_executable(mhd2d src/mhd.cpp)
 target_include_directories(mhd2d PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(mhd2d PRIVATE OpenPFC ${_ns2d_heffte_tgt})
@@ -58,6 +63,14 @@ if(OpenPFC_BUILD_TESTS)
                    --outdir ${CMAKE_CURRENT_BINARY_DIR}/temporal_refine_smoke)
   set_tests_properties(ns2d-temporal-refine-smoke PROPERTIES
                        PASS_REGULAR_EXPRESSION "temporal_refine status=ok"
+                       TIMEOUT 120)
+  add_test(NAME ns2d-flux-balance-smoke
+           COMMAND $<TARGET_FILE:ns2d_flux_balance>
+                   --case two-mode --n 16
+                   --dt 0.02 --times 0.02 --nu 0.05
+                   --outdir ${CMAKE_CURRENT_BINARY_DIR}/flux_balance_smoke)
+  set_tests_properties(ns2d-flux-balance-smoke PROPERTIES
+                       PASS_REGULAR_EXPRESSION "flux_balance status=ok"
                        TIMEOUT 120)
   add_test(NAME mhd2d-cli-verify
            COMMAND $<TARGET_FILE:mhd2d>
