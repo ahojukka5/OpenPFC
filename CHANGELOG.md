@@ -9,6 +9,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `ns2d_temporal_refine` reports the observed IFRK4 order of the
+  two-mode field and the unit-square double shear at fixed resolution.
 - `ns2d_spatial_refine` reports common-band vorticity and velocity
   error for the unit-square double shear at one fixed timestep.
 - `ETD1StepDoubling` estimates the local error of a stiff spectral step
