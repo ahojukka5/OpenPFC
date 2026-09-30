@@ -5,10 +5,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Inverse homogenization (`apps/inverse_homogenization`)
 
-**Issue [#161](https://github.com/VTT-ProperTune/OpenPFC/issues/161).** Explicit
-catalog exception: this is the sixteenth application because it is
-PDE-constrained inverse design on the existing FFT/phase-field stack, not
-another PDE demo. Do not treat it as a licence to add a seventeenth app.
+**Issue [#161](https://github.com/VTT-ProperTune/OpenPFC/issues/161).**
+PDE-constrained inverse design on the existing FFT/phase-field stack,
+not another forward PDE demo. Later applications are admitted by the
+criteria in [`../README.md`](../README.md#what-belongs-here), not by a
+fixed catalog size.
 
 The central problem is **microstructure inverse design**: given a target
 homogenized elasticity tensor \(C_{\mathrm{target}}\), find a periodic
@@ -35,7 +36,7 @@ Limitations in the report chapter, not as missing stages.
 
 What is **not** claimed: grey linear \(C(h)\) cannot produce \(\nu<0\);
 SIMP from noise did not enter the rotating-square basin; coupled dendrite
-device Green is issue #157, not this app. Catalog stays closed.
+device Green is issue #157, not this app.
 
 ## Convergence (issues #59 / #63)
 

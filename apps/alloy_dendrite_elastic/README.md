@@ -32,7 +32,7 @@ FFT solve, coupled, in one application; that combination is the point.
 | Binary | Stage | What it does |
 |---|---|---|
 | `alloy_dendrite_planar` | 1 | Isothermal planar front measured against the thin-interface prediction: velocity, kinetic coefficient, solute boundary layer, **effective partition coefficient**, and the two conservation invariants. |
-| `alloy_dendrite_growth` | 2 / 3 / 4 | Deterministic dendrite, 2-D or 3-D (`--nz`), with tip-velocity and tip-radius diagnostics written to CSV. `--elastic=1` is the eigenstrain coupling. `--gradient` / `--pulling` / `--seed2-*` is FTA directional solidification and the two-seed bicrystal on this binary, not a sixteenth application (issue #155 campaign; leftover of #85 after #154). |
+| `alloy_dendrite_growth` | 2 / 3 / 4 | Deterministic dendrite, 2-D or 3-D (`--nz`), with tip-velocity and tip-radius diagnostics written to CSV. `--elastic=1` is the eigenstrain coupling. `--gradient` / `--pulling` / `--seed2-*` is FTA directional solidification and the two-seed bicrystal on this binary, not a separate application (issue #155 campaign; leftover of #85 after #154). |
 | `alloy_dendrite_hip_parity` | — | Runs the CPU stepper and the HIP stepper on one deterministic thermo-solutal case and subtracts them; also dumps and compares the gathered global fields so a 1-rank run can be differenced against an N-rank one. Fails on `--tol`. |
 | `alloy_dendrite_coupled_cost` | — | Times one coupled GPU step part by part: GPU phase field, device→host, host prep, host Eyre–Milton, host→device. Answers whether the elastic solve belongs on the device. |
 
@@ -561,7 +561,7 @@ contraction, local reflection, residual reduction, and `d f_el/d phi`.
 The inner loop does not copy the six tensor fields to the host.
 `alloy_dendrite_coupled_cost --device=1` times that path.
 `alloy_dendrite_hip_growth` is the coupled GPU science driver on the same
-application (not a sixteenth catalog entry). It now writes `--fields-dir`
+application (not a separate application). It now writes `--fields-dir`
 bricks (`phi`, `U`, and with `--elastic=1` also `f_el` / `dfel_dphi`) and
 measures the tip on gathered 2-D planes at any rank count. HIP defaults
 follow the CPU growth driver: `lambda = D_l/a2`, Al-4.5wt%Cu stiffness
@@ -1091,7 +1091,7 @@ not from that code, but reading them changed several decisions:
   least-squares slopes for that reason.
 
 FTA directional solidification and the two-seed bicrystal from #103 now
-live here as flags on `alloy_dendrite_growth` rather than as a sixteenth
+live here as flags on `alloy_dendrite_growth` rather than as a separate
 application. The formula is the same Bridgman field; the discretisation
 is this application's collocated high-order FD and single `phi`, not
 their two-order-parameter Ji stencil.

@@ -145,5 +145,5 @@ if(OpenPFC_BUILD_TESTS AND MPIEXEC_EXECUTABLE)
                        "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
 endif()
 
-# Issue #21 research prototype: not a shipped apps/ catalog entry.
+# Issue #21 research prototype under examples/, not an apps/ executable.
 add_subdirectory(ns2d_vorticity)
