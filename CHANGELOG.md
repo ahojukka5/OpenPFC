@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `taylor_green3d` checks the periodic Fourier velocity on the 3-D
+  Taylor–Green vortex. One ladder refines the grid at fixed dt.
+  Another refines dt at fixed N. Field error is the common-band
+  difference.
 - A periodic Fourier velocity can be projected with the Leray operator,
   advanced by a 2/3-dealiased rotational term, and stepped with
   integrating-factor RK4.

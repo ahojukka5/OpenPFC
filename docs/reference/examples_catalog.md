@@ -113,6 +113,7 @@ catalog entries.
 |------------|--------|----------------------|
 | `ns2d_vorticity` | `ns2d_vorticity/src/ns2d.cpp` | Issue #21 2-D vorticity–streamfunction Navier–Stokes (CPU). See [`../../examples/ns2d_vorticity/README.md`](../../examples/ns2d_vorticity/README.md). |
 | `mhd2d` | `ns2d_vorticity/src/mhd.cpp` | Issue #23 2-D incompressible visco-resistive MHD (CPU). Same README. |
+| `taylor_green3d` | `taylor_green3d/src/taylor_green.cpp` | Issue #229 3-D periodic Taylor–Green on the Fourier velocity (CPU). See [`../../examples/taylor_green3d/README.md`](../../examples/taylor_green3d/README.md). |
 
 ## Sources not built by default
 
