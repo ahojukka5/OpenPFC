@@ -9,7 +9,7 @@
  *        operator.
  *
  * @details
- * Not a seventeenth application: the same Fe–Cr Cahn–Hilliard model, plus
+ * Not a separate application: the same Fe–Cr Cahn–Hilliard model, plus
  * the Khachaturyan Green solve already used by the dendrite and by inverse
  * homogenization. Both phases are treated as solids of equal stiffness
  * (a coherent α/α′ pair, not a solid–liquid contrast), so the modulus is

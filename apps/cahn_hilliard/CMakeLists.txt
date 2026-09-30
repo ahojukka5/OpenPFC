@@ -39,7 +39,7 @@ cahn_hilliard_cpu_executable(cahn_hilliard src/cahn_hilliard.cpp)
 install(TARGETS cahn_hilliard DESTINATION bin)
 
 # Coherent Vegard misfit on the existing Green operator (host-only, #157).
-# Not a seventeenth application: same Fe–Cr model, extra binary like
+# Not a separate application: same Fe–Cr model, extra binary like
 # thin_film_nonlinear.
 cahn_hilliard_cpu_executable(cahn_hilliard_elastic src/cahn_hilliard_elastic.cpp)
 install(TARGETS cahn_hilliard_elastic DESTINATION bin)

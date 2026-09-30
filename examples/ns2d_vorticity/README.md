@@ -5,9 +5,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # 2-D vorticity–streamfunction Navier–Stokes (issue #21)
 
-Research prototype, not a shipped `apps/` catalog entry. It lives under
-`examples/` so the sixteen-application catalog stays closed. Shared
-spectral pieces are `include/ns2d/spectral.hpp`. Navier–Stokes is
+Bounded research prototype under `examples/`, not a shipped application.
+It is a verification experiment for the spectral stack. Moving it to
+`apps/` is a separate decision under the
+[admission criteria](../../apps/README.md#what-belongs-here); a fixed
+application count is not why it stays here. Shared spectral pieces are
+`include/ns2d/spectral.hpp`. Navier–Stokes is
 `vorticity_stream.hpp` (#21/#22). Two-dimensional incompressible
 visco-resistive MHD is `mhd.hpp` (#23). This is **not** Strauss reduced
 MHD and it is **not** Cahn–Hilliard–Navier–Stokes.

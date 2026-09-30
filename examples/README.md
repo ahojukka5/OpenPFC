@@ -40,8 +40,9 @@ incompressible MHD (`mhd2d`,
 [#23](https://github.com/ahojukka5/OpenPFC/issues/23)). See
 [`ns2d_vorticity/README.md`](ns2d_vorticity/README.md). Conference
 figures for the accepted MHD windows:
-[`ns2d_vorticity/VISUALS.md`](ns2d_vorticity/VISUALS.md). Not a shipped
-`apps/` catalog entry.
+[`ns2d_vorticity/VISUALS.md`](ns2d_vorticity/VISUALS.md). Bounded
+prototype under `examples/`. Promotion to `apps/` follows the
+[admission criteria](../apps/README.md#what-belongs-here).
 
 ## Full catalog and curriculum
 
