@@ -13,6 +13,13 @@ This page collects **honest** expectations: OpenPFC is a serious HPC framework, 
 - **Timestep** `dt` must respect the **explicit** pieces of your splitting; blowing up often means `dt` is too large for the nonlinear or stabilized explicit stages—not “MPI is broken.”  
 - **Resolution** changes physics: interface widths, defect cores, and nucleation depend on grid spacing; do not compare runs at different resolutions without a convergence mindset.
 - **Aliasing:** a cubic nonlinearity evaluated in real space and transformed back aliases the highest third of the spectrum onto retained modes. OpenPFC does **not** apply a 2/3-rule mask by default. Call `pfc::fft::kspace::fill_two_thirds_mask` and multiply the nonlinear spectrum when you need Orszag dealiasing (`kernel/fft/dealias.hpp`).
+- **Incompressible velocity:** `pfc::field::leray_project` removes the
+  longitudinal part of a periodic Fourier velocity,
+  \(P = I - kk^{\mathsf T}/|k|^2\). The wavevector is the odd multiplier, so
+  the mean and the even-grid Nyquist mode stay unchanged. The quadratic term
+  is \(P(u\times\omega)\) after a state-level 2/3 truncation
+  (`kernel/field/incompressible.hpp`). That mask is on for this term only.
+  A 3/2 padded product is not used.
 - **Nyquist (odd derivatives):** `SpectralGradient` zeros `i k` at the even-grid Nyquist mode. The real-to-complex Nyquist coefficient is real; a nonzero `i k_N` is not uniquely defined.
 - **2-D vorticity NS (issue #21) and incompressible MHD (issue #23):**
   `examples/ns2d_vorticity` reuses the 2/3 mask and odd-\(k\) rule, and
