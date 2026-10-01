@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Neumann Poisson solve on one Fourier × Chebyshev rank. Each mode
+  matches the endpoint slopes of u'' − k²u = f. The mean mode keeps
+  the zero-integral gauge and rejects an incompatible jump. This is
+  the mixed boundary-value oracle, not a channel wall.
 - A Dirichlet Poisson solve on one Fourier × Chebyshev rank. The
   periodic direction is transformed, and each mode reuses the
   Chebyshev Dirichlet Helmholtz solve with λ = k². This is the mixed
