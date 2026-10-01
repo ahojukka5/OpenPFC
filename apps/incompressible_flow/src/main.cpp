@@ -5,9 +5,10 @@
  * @file main.cpp
  * @brief Periodic incompressible flow.
  *
- * Taylor–Green and one decaying homogeneous-isotropic realization.
- * The box length is [0, 2π]^3 and is not a flag. Dealiasing stays on.
- * Forcing, walls, and a 2-D streamfunction case are not this executable.
+ * Taylor–Green, one decaying homogeneous-isotropic realization, and one
+ * constant-power low-mode forcing. The box length is [0, 2π]^3 and is
+ * not a flag. Dealiasing stays on. Walls and a 2-D streamfunction case
+ * are not this executable.
  */
 
 #include <cstdint>
@@ -20,10 +21,12 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include <openpfc/runtime/common/mpi_main.hpp>
 
 #include <flow/decaying_hit.hpp>
+#include <flow/forced_hit.hpp>
 #include <flow/taylor_green.hpp>
 
 namespace {
@@ -35,20 +38,22 @@ struct Options {
   std::optional<double> dt;
   std::optional<double> time;
   std::optional<std::uint64_t> seed;
+  std::optional<double> power;
   std::string series;
   std::string outdir{"results/incompressible-flow"};
 };
 
 void usage(std::ostream &os) {
-  os << "Usage: incompressible_flow --case taylor-green|decaying-hit\n"
+  os << "Usage: incompressible_flow\n"
+        "       --case taylor-green|decaying-hit|forced-hit\n"
         "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
-        "       [--series spatial|temporal] [--outdir DIR]\n"
+        "       [--power EPS] [--series NAME] [--outdir DIR]\n"
         "\n"
         "Periodic 3-D Navier-Stokes on [0, 2pi]^3. N is even and at\n"
         "least 8. time is an integer number of steps. The 2/3 mask\n"
-        "stays on. Ranks share the HeFFTe pencil. --series runs the\n"
-        "locked one-rank decaying-hit ladder and ignores n, nu, dt,\n"
-        "time, and seed.\n";
+        "stays on. Ranks share the HeFFTe pencil. --series runs a\n"
+        "locked one-rank ladder and ignores n, nu, dt, time, seed,\n"
+        "and power.\n";
 }
 
 std::optional<int> parse_int(std::string_view text) {
@@ -132,6 +137,12 @@ bool parse(int argc, char **argv, Options &opt) {
       auto parsed = parse_u64(*value);
       if (!parsed) return false;
       opt.seed = *parsed;
+    } else if (flag == "--power") {
+      auto value = need("--power");
+      if (!value) return false;
+      auto parsed = parse_double(*value);
+      if (!parsed || !(*parsed > 0.0)) return false;
+      opt.power = *parsed;
     } else if (flag == "--series") {
       auto value = need("--series");
       if (!value) return false;
@@ -145,20 +156,32 @@ bool parse(int argc, char **argv, Options &opt) {
       return false;
     }
   }
-  if (opt.which != "taylor-green" && opt.which != "decaying-hit") {
+  if (opt.which != "taylor-green" && opt.which != "decaying-hit" &&
+      opt.which != "forced-hit") {
     std::cerr << "unknown case: " << opt.which << "\n";
     return false;
   }
-  if (!opt.series.empty() && opt.series != "spatial" && opt.series != "temporal") {
-    std::cerr << "unknown series: " << opt.series << "\n";
+  if (opt.which == "decaying-hit" && !opt.series.empty() &&
+      opt.series != "spatial" && opt.series != "temporal") {
+    std::cerr << "decaying-hit series must be spatial or temporal\n";
+    return false;
+  }
+  if (opt.which == "forced-hit" && !opt.series.empty() &&
+      opt.series != "stationary") {
+    std::cerr << "forced-hit series must be stationary\n";
+    return false;
+  }
+  if (opt.which != "forced-hit" && opt.power) {
+    std::cerr << opt.which << " does not take --power\n";
     return false;
   }
   if (opt.which == "taylor-green" && (opt.seed || !opt.series.empty())) {
     std::cerr << "taylor-green does not take --seed or --series\n";
     return false;
   }
-  if (!opt.series.empty() && (opt.n || opt.nu || opt.dt || opt.time || opt.seed)) {
-    std::cerr << "the locked series does not take n, nu, dt, time, or seed\n";
+  if (!opt.series.empty() &&
+      (opt.n || opt.nu || opt.dt || opt.time || opt.seed || opt.power)) {
+    std::cerr << "the locked series does not take n, nu, dt, time, seed, or power\n";
     return false;
   }
   return true;
@@ -328,6 +351,96 @@ int run_hit(const Options &opt, int rank, int nproc) {
   return status == "ok" ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+int run_forced(const Options &opt, int rank, int nproc) {
+  const int n = opt.n.value_or(32);
+  const double nu = opt.nu.value_or(flow::forced_nu);
+  const double dt = opt.dt.value_or(1.0 / 64.0);
+  const double time = opt.time.value_or(0.0625);
+  const double power = opt.power.value_or(flow::forced_power);
+  const std::uint64_t seed = opt.seed.value_or(flow::protocol_seed);
+  const long long steps = flow::steps_for(time, dt);
+  auto state = flow::make_state(n, nu, dt, rank, nproc);
+  flow::initialize_decaying_hit(state, seed);
+  std::ofstream csv;
+  if (rank == 0) {
+    std::filesystem::create_directories(opt.outdir);
+    csv.open(opt.outdir + "/diagnostics.csv");
+    csv << "time,ke,enstrophy,dissipation,injection,band_ke,u_rms,re_lambda,"
+           "k_max_eta,div_l2,modal_div_max,cfl,status\n";
+  }
+
+  auto measure = [&](double sample) {
+    const auto outbox = state.stack->fft().get_outbox_bounds();
+    std::vector<flow::Complex> fu, fv, fw;
+    const auto force =
+        flow::write_band_force(outbox, state.n, state.spacing, state.u, state.v,
+                               state.w, fu, fv, fw, power);
+    const auto diag = flow::diagnose(state);
+    const auto scales = flow::measure_scales(state, diag);
+    std::string status = "ok";
+    if (!diag.finite)
+      status = "nonfinite";
+    else if (diag.cfl > flow::cfl_limit)
+      status = "cfl";
+    if (rank == 0) {
+      csv << std::scientific << std::setprecision(16) << sample << ',' << diag.ke
+          << ',' << diag.enstrophy << ',' << diag.dissipation << ','
+          << force.injection << ',' << force.band_ke << ',' << scales.u_rms << ','
+          << scales.re_lambda << ',' << scales.k_max_eta << ',' << diag.div_l2
+          << ',' << diag.modal_div_max << ',' << diag.cfl << ',' << status
+          << '\n';
+      csv.flush();
+    }
+    if (rank == 0) {
+      std::cout << "incompressible_flow sample t=" << std::scientific
+                << std::setprecision(8) << sample << " status=" << status
+                << " ke=" << diag.ke << " injection=" << force.injection
+                << std::endl;
+    }
+    return std::tuple<std::string, flow::Diagnostics, flow::BandForce>{status, diag,
+                                                                       force};
+  };
+
+  auto [status, initial, initial_force] = measure(0.0);
+  if (status != "ok") {
+    if (rank == 0) std::cout << "incompressible_flow status=" << status << std::endl;
+    return EXIT_FAILURE;
+  }
+  flow::Diagnostics final_diag = initial;
+  flow::BandForce final_force = initial_force;
+  for (long long taken = 1; taken <= steps; ++taken) {
+    flow::step_forced(state, power);
+    if (taken != steps) continue;
+    auto result = measure(time);
+    status = std::get<0>(result);
+    final_diag = std::get<1>(result);
+    final_force = std::get<2>(result);
+  }
+  const double budget = (final_diag.ke - initial.ke) -
+                        0.5 *
+                            (initial_force.injection + final_force.injection -
+                             initial.dissipation - final_diag.dissipation) *
+                            time;
+  if (rank == 0) {
+    std::ofstream meta(opt.outdir + "/metadata.txt");
+    meta << std::setprecision(16);
+    meta << "case=forced-hit\n"
+         << "forcing=doering-petrov-2004-eq3\n"
+         << "citation=arXiv:physics/0404049\n"
+         << "band=|k|=1\n"
+         << "power=" << power << "\n"
+         << "seed=" << seed << "\n"
+         << "n=" << n << "\n"
+         << "nu=" << nu << "\n"
+         << "dt=" << std::scientific << dt << "\n"
+         << "time=" << time << "\n"
+         << "steps=" << steps << "\n"
+         << "budget_residual=" << budget << "\n";
+    std::cout << "incompressible_flow status=" << status << std::endl;
+  }
+  return status == "ok" ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -346,9 +459,12 @@ int main(int argc, char **argv) {
           return EXIT_FAILURE;
         }
         try {
+          if (!opt.series.empty() && opt.which == "forced-hit")
+            return flow::run_forced_series(opt.series, opt.outdir, rank);
           if (!opt.series.empty())
             return flow::run_series(opt.series, opt.outdir, rank);
           if (opt.which == "taylor-green") return run_taylor(opt, rank, nproc);
+          if (opt.which == "forced-hit") return run_forced(opt, rank, nproc);
           return run_hit(opt, rank, nproc);
         } catch (const std::exception &ex) {
           std::cerr << ex.what() << std::endl;
