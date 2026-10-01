@@ -1,0 +1,137 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+#include <openpfc/kernel/fft/chebyshev.hpp>
+
+using Catch::Matchers::WithinAbs;
+
+namespace {
+
+[[nodiscard]] std::vector<double> mode_values(int degree, int mode) {
+  const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+  std::vector<double> values(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    values[j] = std::cos(mode * std::acos(std::clamp(nodes[j], -1.0, 1.0)));
+  }
+  return values;
+}
+
+[[nodiscard]] std::vector<double>
+matrix_derivative(const std::vector<double> &values) {
+  const int n = static_cast<int>(values.size()) - 1;
+  const auto x = pfc::fft::chebyshev_lobatto(n);
+  std::vector<double> c(values.size(), 1.0);
+  c.front() = 2.0;
+  c.back() = 2.0;
+  for (int i = 0; i <= n; ++i) {
+    if (i % 2 != 0) c[static_cast<std::size_t>(i)] *= -1.0;
+  }
+  std::vector<std::vector<double>> dense(values.size(),
+                                         std::vector<double>(values.size()));
+  for (int i = 0; i <= n; ++i) {
+    double row_sum = 0.0;
+    for (int j = 0; j <= n; ++j) {
+      if (i == j) continue;
+      const double entry = (c[static_cast<std::size_t>(i)] /
+                            c[static_cast<std::size_t>(j)]) /
+                           (x[static_cast<std::size_t>(i)] -
+                            x[static_cast<std::size_t>(j)]);
+      dense[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = entry;
+      row_sum += entry;
+    }
+    dense[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] = -row_sum;
+  }
+  std::vector<double> derivative(values.size());
+  for (int i = 0; i <= n; ++i) {
+    double sum = 0.0;
+    for (int j = 0; j <= n; ++j) {
+      sum += dense[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] *
+             values[static_cast<std::size_t>(j)];
+    }
+    derivative[static_cast<std::size_t>(i)] = sum;
+  }
+  return derivative;
+}
+
+[[nodiscard]] double max_abs_diff(const std::vector<double> &left,
+                                  const std::vector<double> &right) {
+  double peak = 0.0;
+  for (std::size_t i = 0; i < left.size(); ++i) {
+    peak = std::max(peak, std::abs(left[i] - right[i]));
+  }
+  return peak;
+}
+
+} // namespace
+
+TEST_CASE("Chebyshev coefficients reproduce the Lobatto samples",
+          "[fft][chebyshev]") {
+  const auto nodes = pfc::fft::chebyshev_lobatto(8);
+  REQUIRE_THAT(nodes.front(), WithinAbs(1.0, 0.0));
+  REQUIRE_THAT(nodes.back(), WithinAbs(-1.0, 1e-15));
+
+  for (int mode = 0; mode <= 8; ++mode) {
+    const auto values = mode_values(8, mode);
+    const auto coefficients = pfc::fft::chebyshev_coefficients(values);
+    for (int k = 0; k <= 8; ++k) {
+      const double expect = k == mode ? 1.0 : 0.0;
+      REQUIRE_THAT(coefficients[static_cast<std::size_t>(k)],
+                   WithinAbs(expect, 1e-12));
+    }
+    const auto back = pfc::fft::chebyshev_values(coefficients);
+    REQUIRE(max_abs_diff(back, values) < 1e-12);
+  }
+}
+
+TEST_CASE("Chebyshev derivative matches the differentiation matrix",
+          "[fft][chebyshev]") {
+  const int degree = 12;
+  const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+  std::vector<double> values(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    values[j] = std::exp(nodes[j]);
+  }
+  const auto spectral = pfc::fft::chebyshev_derivative(values);
+  const auto matrix = matrix_derivative(values);
+  REQUIRE(max_abs_diff(spectral, matrix) < 1e-10);
+
+  const auto linear = mode_values(1, 1);
+  const auto slope = pfc::fft::chebyshev_derivative(linear);
+  REQUIRE_THAT(slope[0], WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(slope[1], WithinAbs(1.0, 1e-12));
+
+  const auto grid = pfc::fft::chebyshev_lobatto(6);
+  const auto quadratic = mode_values(6, 2);
+  const auto quad = pfc::fft::chebyshev_derivative(quadratic);
+  REQUIRE_THAT(quad.front(), WithinAbs(4.0, 1e-11));
+  REQUIRE_THAT(quad.back(), WithinAbs(-4.0, 1e-11));
+  for (std::size_t j = 1; j + 1 < quad.size(); ++j) {
+    REQUIRE_THAT(quad[j], WithinAbs(4.0 * grid[j], 1e-11));
+  }
+}
+
+TEST_CASE("Chebyshev derivative of exp converges on the Lobatto grid",
+          "[fft][chebyshev]") {
+  const auto error_at = [](int degree) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> values(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) values[j] = std::exp(nodes[j]);
+    const auto derivative = pfc::fft::chebyshev_derivative(values);
+    double peak = 0.0;
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      peak = std::max(peak, std::abs(derivative[j] - values[j]));
+    }
+    return peak;
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-8);
+  REQUIRE(fine < coarse);
+}
