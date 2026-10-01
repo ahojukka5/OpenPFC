@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Neumann Poisson solve on one Chebyshev–Lobatto interval. The
+  forcing series is integrated twice, both endpoint slopes are matched
+  when they agree with the forcing, and the constant makes the integral
+  over the interval zero. This is the one-dimensional oracle, not a
+  channel wall.
 - A Dirichlet Poisson solve on one Chebyshev–Lobatto interval. The
   forcing series is integrated twice and the two constants match the
   endpoint values. This is the one-dimensional oracle, not a channel wall.

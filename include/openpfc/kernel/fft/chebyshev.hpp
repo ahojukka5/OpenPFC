@@ -11,8 +11,9 @@
  * The transform and the first derivative use one ordinary complex FFT of
  * length 2n. The mixed Laplacian differentiates one periodic Fourier
  * direction and this Chebyshev axis on a single rank. Dirichlet
- * Poisson integrates the series and matches both endpoints. A channel
- * wall is still a separate step.
+ * Poisson matches both endpoint values. Neumann Poisson matches both
+ * endpoint slopes and sets the integral to zero. A channel wall is
+ * still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -52,5 +53,13 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx,
 [[nodiscard]] std::vector<double>
 chebyshev_dirichlet_poisson(std::span<const double> forcing,
                             double value_at_plus, double value_at_minus);
+
+/// Solve u'' = forcing on [-1, 1], with both endpoint slopes prescribed.
+/// The additive constant is chosen so the integral over the interval is zero.
+/// `forcing` is sampled on the Lobatto grid from +1 down to -1.
+/// The result uses that same grid. Incompatible slopes are rejected.
+[[nodiscard]] std::vector<double>
+chebyshev_neumann_poisson(std::span<const double> forcing, double slope_at_plus,
+                          double slope_at_minus);
 
 } // namespace pfc::fft

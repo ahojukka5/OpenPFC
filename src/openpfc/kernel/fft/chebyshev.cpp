@@ -10,7 +10,9 @@
  * The interior derivative is the theta derivative divided by -sin(theta).
  * Endpoints use the same weighted sum as Trefethen's chebfft.
  * Dirichlet Poisson integrates the coefficients twice. The two
- * constants are fixed by the endpoint values.
+ * constants are fixed by the endpoint values. Neumann Poisson uses
+ * the same integrals, rejects a slope jump the forcing cannot
+ * support, and fixes the constant so the integral is zero.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -390,6 +392,52 @@ chebyshev_dirichlet_poisson(std::span<const double> forcing,
       0.5 * ((value_at_plus + value_at_minus) - (at_plus + at_minus));
   solution[1] +=
       0.5 * ((value_at_plus - value_at_minus) - (at_plus - at_minus));
+
+  const auto nodes = chebyshev_lobatto(degree);
+  std::vector<double> values(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    values[j] = clenshaw(solution, nodes[j]);
+  }
+  return values;
+}
+
+std::vector<double> chebyshev_neumann_poisson(std::span<const double> forcing,
+                                              double slope_at_plus,
+                                              double slope_at_minus) {
+  if (forcing.size() < 2) {
+    throw std::invalid_argument("chebyshev: Neumann Poisson needs both endpoints");
+  }
+  if (forcing.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  auto slope = integrate_coefficients(chebyshev_coefficients(forcing));
+
+  double series_plus = 0.0;
+  double series_minus = 0.0;
+  for (int k = 0; k < static_cast<int>(slope.size()); ++k) {
+    const double term = slope[static_cast<std::size_t>(k)];
+    series_plus += term;
+    series_minus += (k % 2 == 0) ? term : -term;
+  }
+  const double jump = slope_at_plus - slope_at_minus;
+  const double series_jump = series_plus - series_minus;
+  const double scale = 1.0 + std::abs(slope_at_plus) + std::abs(slope_at_minus) +
+                       std::abs(series_plus) + std::abs(series_minus);
+  if (std::abs(jump - series_jump) > 1e-8 * scale) {
+    throw std::invalid_argument(
+        "chebyshev: Neumann slopes are incompatible with the forcing");
+  }
+  slope.front() +=
+      0.5 * ((slope_at_plus + slope_at_minus) - (series_plus + series_minus));
+  auto solution = integrate_coefficients(slope);
+
+  double even_tail = 0.0;
+  for (int k = 2; k < static_cast<int>(solution.size()); k += 2) {
+    const double mode = static_cast<double>(k);
+    even_tail += solution[static_cast<std::size_t>(k)] / (1.0 - mode * mode);
+  }
+  solution.front() = -even_tail;
 
   const auto nodes = chebyshev_lobatto(degree);
   std::vector<double> values(nodes.size());
