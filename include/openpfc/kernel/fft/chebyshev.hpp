@@ -14,7 +14,8 @@
  * Poisson matches both endpoint values. Neumann Poisson matches both
  * endpoint slopes and sets the integral to zero. Dirichlet Helmholtz
  * solves u'' - lambda u = f with those endpoint values. Neumann
- * Helmholtz matches both endpoint slopes. A channel wall is still a
+ * Helmholtz matches both endpoint slopes. Robin Poisson mixes the
+ * value and the slope at each end. A channel wall is still a
  * separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
@@ -81,5 +82,17 @@ chebyshev_dirichlet_helmholtz(std::span<const double> forcing, double lambda,
 [[nodiscard]] std::vector<double>
 chebyshev_neumann_helmholtz(std::span<const double> forcing, double lambda,
                             double slope_at_plus, double slope_at_minus);
+
+/// Solve u'' = forcing on [-1, 1].
+/// Each end imposes weight_value * u + weight_slope * u' = data.
+/// Pure value weights reuse the Dirichlet solve. Pure slope weights
+/// reuse the Neumann solve and its zero-integral gauge.
+/// `forcing` is sampled on the Lobatto grid from +1 down to -1.
+/// The result uses that same grid.
+[[nodiscard]] std::vector<double>
+chebyshev_robin_poisson(std::span<const double> forcing, double value_weight_plus,
+                        double slope_weight_plus, double data_plus,
+                        double value_weight_minus, double slope_weight_minus,
+                        double data_minus);
 
 } // namespace pfc::fft

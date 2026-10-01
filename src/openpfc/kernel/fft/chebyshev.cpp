@@ -17,6 +17,8 @@
  * The two highest coefficients match the endpoint values. A zero
  * lambda reuses the Poisson integral. Neumann Helmholtz matches both
  * endpoint slopes. A zero lambda reuses the Neumann Poisson solve.
+ * Robin Poisson mixes the value and the slope at each end. Pure
+ * value data and pure slope data reuse those solves.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -626,6 +628,66 @@ std::vector<double> chebyshev_neumann_helmholtz(std::span<const double> forcing,
   return solve_matched_helmholtz(forcing, lambda, slope_at_plus, slope_at_minus,
                                  HelmholtzMatch::slopes,
                                  "chebyshev: Helmholtz Neumann problem is singular");
+}
+
+std::vector<double>
+chebyshev_robin_poisson(std::span<const double> forcing, double value_weight_plus,
+                        double slope_weight_plus, double data_plus,
+                        double value_weight_minus, double slope_weight_minus,
+                        double data_minus) {
+  if (forcing.size() < 2) {
+    throw std::invalid_argument("chebyshev: Robin Poisson needs both endpoints");
+  }
+  if (forcing.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const bool plus_empty = value_weight_plus == 0.0 && slope_weight_plus == 0.0;
+  const bool minus_empty = value_weight_minus == 0.0 && slope_weight_minus == 0.0;
+  if (plus_empty || minus_empty) {
+    throw std::invalid_argument("chebyshev: Robin condition needs a weight");
+  }
+  if (slope_weight_plus == 0.0 && slope_weight_minus == 0.0) {
+    return chebyshev_dirichlet_poisson(forcing, data_plus / value_weight_plus,
+                                       data_minus / value_weight_minus);
+  }
+  if (value_weight_plus == 0.0 && value_weight_minus == 0.0) {
+    return chebyshev_neumann_poisson(forcing, data_plus / slope_weight_plus,
+                                     data_minus / slope_weight_minus);
+  }
+
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  const auto slope = integrate_coefficients(chebyshev_coefficients(forcing));
+  auto solution = integrate_coefficients(slope);
+  const auto values = endpoint_sum(solution);
+  const auto slopes = endpoint_sum(slope);
+  const double plus_constant = value_weight_plus;
+  const double plus_linear = value_weight_plus + slope_weight_plus;
+  const double minus_constant = value_weight_minus;
+  const double minus_linear = -value_weight_minus + slope_weight_minus;
+  const double rhs_plus = data_plus - value_weight_plus * values.at_plus -
+                          slope_weight_plus * slopes.at_plus;
+  const double rhs_minus = data_minus - value_weight_minus * values.at_minus -
+                           slope_weight_minus * slopes.at_minus;
+  const double constant_scale = column_scale(plus_constant, minus_constant);
+  const double linear_scale = column_scale(plus_linear, minus_linear);
+  const double plus_constant_scaled = plus_constant / constant_scale;
+  const double minus_constant_scaled = minus_constant / constant_scale;
+  const double plus_linear_scaled = plus_linear / linear_scale;
+  const double minus_linear_scaled = minus_linear / linear_scale;
+  const double determinant = plus_constant_scaled * minus_linear_scaled -
+                             minus_constant_scaled * plus_linear_scaled;
+  if (!(std::abs(determinant) > 1e-8)) {
+    throw std::invalid_argument("chebyshev: Robin Poisson problem is singular");
+  }
+  const double constant =
+      (rhs_plus * minus_linear_scaled - plus_linear_scaled * rhs_minus) /
+      determinant / constant_scale;
+  const double linear =
+      (plus_constant_scaled * rhs_minus - minus_constant_scaled * rhs_plus) /
+      determinant / linear_scale;
+  solution.front() += constant;
+  solution[1] += linear;
+  return evaluate_series(solution, degree);
 }
 
 } // namespace pfc::fft
