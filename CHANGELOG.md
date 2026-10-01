@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Robin Poisson solve on one Fourier × Chebyshev rank. Each mode
+  matches value_weight * u + slope_weight * du/dz = data for
+  u'' − k²u = f. The weights do not vary along the periodic axis.
+  A zero wavenumber reuses the Robin Poisson solve. This is the
+  mixed boundary-value oracle, not a channel wall.
 - A Neumann Poisson solve on one Fourier × Chebyshev rank. Each mode
   matches the endpoint slopes of u'' − k²u = f. The mean mode keeps
   the zero-integral gauge and rejects an incompatible jump. This is
