@@ -18,7 +18,9 @@
  * lambda reuses the Poisson integral. Neumann Helmholtz matches both
  * endpoint slopes. A zero lambda reuses the Neumann Poisson solve.
  * Robin Poisson mixes the value and the slope at each end. Pure
- * value data and pure slope data reuse those solves.
+ * value data and pure slope data reuse those solves. Robin
+ * Helmholtz uses that mix for u'' - lambda u = f. A zero lambda
+ * reuses the Robin Poisson integral.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -298,6 +300,68 @@ solve_matched_helmholtz(std::span<const double> forcing, double lambda,
   }
   const double rhs_plus = at_plus - particular_ends.at_plus;
   const double rhs_minus = at_minus - particular_ends.at_minus;
+  const double highest =
+      (rhs_plus * next_minus - next_plus * rhs_minus) / determinant / highest_scale;
+  const double next = (highest_plus * rhs_minus - highest_minus * rhs_plus) /
+                      determinant / next_scale;
+
+  std::vector<double> solution(coefficients.size());
+  for (std::size_t mode = 0; mode < solution.size(); ++mode) {
+    solution[mode] =
+        particular[mode] + highest * along_highest[mode] + next * along_next[mode];
+  }
+  if (!coefficients_finite(solution)) {
+    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  }
+  return evaluate_series(solution, degree);
+}
+
+struct RobinWeights {
+  double value_plus{0.0};
+  double slope_plus{0.0};
+  double value_minus{0.0};
+  double slope_minus{0.0};
+};
+
+[[nodiscard]] EndpointSum robin_boundary(std::span<const double> coefficients,
+                                         RobinWeights weights) {
+  const auto values = endpoint_sum(coefficients);
+  const auto slopes = slope_sum(coefficients);
+  return EndpointSum{
+      weights.value_plus * values.at_plus + weights.slope_plus * slopes.at_plus,
+      weights.value_minus * values.at_minus + weights.slope_minus * slopes.at_minus};
+}
+
+[[nodiscard]] std::vector<double>
+solve_robin_helmholtz(std::span<const double> forcing, double lambda,
+                      RobinWeights weights, double data_plus, double data_minus) {
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  const auto coefficients = chebyshev_coefficients(forcing);
+  const auto particular = helmholtz_series(coefficients, lambda, 0.0, 0.0);
+  const std::vector<double> zero(coefficients.size(), 0.0);
+  const auto along_highest = helmholtz_series(zero, lambda, 1.0, 0.0);
+  const auto along_next = helmholtz_series(zero, lambda, 0.0, 1.0);
+  if (!coefficients_finite(particular) || !coefficients_finite(along_highest) ||
+      !coefficients_finite(along_next)) {
+    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  }
+
+  const auto particular_ends = robin_boundary(particular, weights);
+  const auto highest_ends = robin_boundary(along_highest, weights);
+  const auto next_ends = robin_boundary(along_next, weights);
+  const double highest_scale =
+      column_scale(highest_ends.at_plus, highest_ends.at_minus);
+  const double next_scale = column_scale(next_ends.at_plus, next_ends.at_minus);
+  const double highest_plus = highest_ends.at_plus / highest_scale;
+  const double highest_minus = highest_ends.at_minus / highest_scale;
+  const double next_plus = next_ends.at_plus / next_scale;
+  const double next_minus = next_ends.at_minus / next_scale;
+  const double determinant = highest_plus * next_minus - next_plus * highest_minus;
+  if (!(std::abs(determinant) > 1e-8)) {
+    throw std::invalid_argument("chebyshev: Helmholtz Robin problem is singular");
+  }
+  const double rhs_plus = data_plus - particular_ends.at_plus;
+  const double rhs_minus = data_minus - particular_ends.at_minus;
   const double highest =
       (rhs_plus * next_minus - next_plus * rhs_minus) / determinant / highest_scale;
   const double next = (highest_plus * rhs_minus - highest_minus * rhs_plus) /
@@ -688,6 +752,44 @@ chebyshev_robin_poisson(std::span<const double> forcing, double value_weight_plu
   solution.front() += constant;
   solution[1] += linear;
   return evaluate_series(solution, degree);
+}
+
+std::vector<double>
+chebyshev_robin_helmholtz(std::span<const double> forcing, double lambda,
+                          double value_weight_plus, double slope_weight_plus,
+                          double data_plus, double value_weight_minus,
+                          double slope_weight_minus, double data_minus) {
+  if (forcing.size() < 2) {
+    throw std::invalid_argument("chebyshev: Robin Helmholtz needs both endpoints");
+  }
+  if (forcing.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const bool plus_empty = value_weight_plus == 0.0 && slope_weight_plus == 0.0;
+  const bool minus_empty = value_weight_minus == 0.0 && slope_weight_minus == 0.0;
+  if (plus_empty || minus_empty) {
+    throw std::invalid_argument(
+        "chebyshev: Robin Helmholtz condition needs a weight");
+  }
+  if (lambda == 0.0) {
+    return chebyshev_robin_poisson(forcing, value_weight_plus, slope_weight_plus,
+                                   data_plus, value_weight_minus, slope_weight_minus,
+                                   data_minus);
+  }
+  if (slope_weight_plus == 0.0 && slope_weight_minus == 0.0) {
+    return chebyshev_dirichlet_helmholtz(forcing, lambda,
+                                         data_plus / value_weight_plus,
+                                         data_minus / value_weight_minus);
+  }
+  if (value_weight_plus == 0.0 && value_weight_minus == 0.0) {
+    return chebyshev_neumann_helmholtz(forcing, lambda,
+                                       data_plus / slope_weight_plus,
+                                       data_minus / slope_weight_minus);
+  }
+  return solve_robin_helmholtz(forcing, lambda,
+                               RobinWeights{value_weight_plus, slope_weight_plus,
+                                            value_weight_minus, slope_weight_minus},
+                               data_plus, data_minus);
 }
 
 } // namespace pfc::fft

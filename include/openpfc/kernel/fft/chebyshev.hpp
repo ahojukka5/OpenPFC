@@ -15,8 +15,9 @@
  * endpoint slopes and sets the integral to zero. Dirichlet Helmholtz
  * solves u'' - lambda u = f with those endpoint values. Neumann
  * Helmholtz matches both endpoint slopes. Robin Poisson mixes the
- * value and the slope at each end. A channel wall is still a
- * separate step.
+ * value and the slope at each end. Robin Helmholtz uses the same
+ * mix for u'' - lambda u = f. A zero lambda reuses the Robin
+ * Poisson integral. A channel wall is still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -94,5 +95,18 @@ chebyshev_robin_poisson(std::span<const double> forcing, double value_weight_plu
                         double slope_weight_plus, double data_plus,
                         double value_weight_minus, double slope_weight_minus,
                         double data_minus);
+
+/// Solve u'' - lambda u = forcing on [-1, 1].
+/// Each end imposes weight_value * u + weight_slope * u' = data.
+/// A zero lambda reuses the Robin Poisson solve. Pure value weights
+/// reuse the Dirichlet Helmholtz solve. Pure slope weights reuse the
+/// Neumann Helmholtz solve.
+/// `forcing` is sampled on the Lobatto grid from +1 down to -1.
+/// The result uses that same grid.
+[[nodiscard]] std::vector<double>
+chebyshev_robin_helmholtz(std::span<const double> forcing, double lambda,
+                          double value_weight_plus, double slope_weight_plus,
+                          double data_plus, double value_weight_minus,
+                          double slope_weight_minus, double data_minus);
 
 } // namespace pfc::fft
