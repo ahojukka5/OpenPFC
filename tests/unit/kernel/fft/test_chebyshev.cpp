@@ -821,6 +821,250 @@ TEST_CASE("Fourier-Chebyshev Dirichlet Poisson rejects a bad grid",
       std::invalid_argument);
 }
 
+TEST_CASE("Fourier-Fourier-Chebyshev Neumann Poisson recovers separable solutions",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+
+  const auto slopes_of = [](int nx, int ny, double period_x, double period_y,
+                            auto slope) {
+    std::vector<double> at_plus(static_cast<std::size_t>(nx) *
+                                static_cast<std::size_t>(ny));
+    std::vector<double> at_minus(at_plus.size());
+    for (int iy = 0; iy < ny; ++iy) {
+      const double y = period_y * static_cast<double>(iy) / static_cast<double>(ny);
+      for (int ix = 0; ix < nx; ++ix) {
+        const double x =
+            period_x * static_cast<double>(ix) / static_cast<double>(nx);
+        const auto index =
+            static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(ix);
+        at_plus[index] = slope(x, y, 1.0);
+        at_minus[index] = slope(x, y, -1.0);
+      }
+    }
+    return std::pair{at_plus, at_minus};
+  };
+
+  const auto along_x_force =
+      volume_field(16, 1, 8, period, period, [](double x, double, double z) {
+        return -2.0 - 4.0 * z * std::cos(2.0 * x);
+      });
+  const auto [along_x_plus, along_x_minus] =
+      slopes_of(16, 1, period, period, [](double x, double, double z) {
+        return -2.0 * z + std::cos(2.0 * x);
+      });
+  const auto along_x_got = pfc::fft::fourier_chebyshev_neumann_poisson(
+      along_x_force, 16, 1, period, period, along_x_plus, along_x_minus);
+  const auto along_x_one = pfc::fft::fourier_chebyshev_neumann_poisson(
+      along_x_force, 16, period, along_x_plus, along_x_minus);
+  REQUIRE(max_abs_diff(along_x_got, along_x_one) == 0.0);
+
+  const auto along_y_force =
+      volume_field(1, 16, 8, period, period, [](double, double y, double z) {
+        return -2.0 - 4.0 * z * std::cos(2.0 * y);
+      });
+  const auto [along_y_plus, along_y_minus] =
+      slopes_of(1, 16, period, period, [](double, double y, double z) {
+        return -2.0 * z + std::cos(2.0 * y);
+      });
+  const auto along_y_got = pfc::fft::fourier_chebyshev_neumann_poisson(
+      along_y_force, 1, 16, period, period, along_y_plus, along_y_minus);
+  const auto along_y_one = pfc::fft::fourier_chebyshev_neumann_poisson(
+      along_y_force, 16, period, along_y_plus, along_y_minus);
+  REQUIRE(max_abs_diff(along_y_got, along_y_one) == 0.0);
+
+  const auto error_of = [&](int nx, int ny, int degree, double period_x,
+                            double period_y, auto exact, auto force, auto slope) {
+    const auto forcing = volume_field(nx, ny, degree, period_x, period_y, force);
+    const auto truth = volume_field(nx, ny, degree, period_x, period_y, exact);
+    const auto [at_plus, at_minus] = slopes_of(nx, ny, period_x, period_y, slope);
+    const auto got = pfc::fft::fourier_chebyshev_neumann_poisson(
+        forcing, nx, ny, period_x, period_y, at_plus, at_minus);
+    double mean_integral = 0.0;
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        std::vector<double> column(static_cast<std::size_t>(degree) + 1);
+        for (int iz = 0; iz <= degree; ++iz) {
+          column[static_cast<std::size_t>(iz)] =
+              got[(static_cast<std::size_t>(iz) * static_cast<std::size_t>(ny) +
+                   static_cast<std::size_t>(iy)) *
+                      static_cast<std::size_t>(nx) +
+                  static_cast<std::size_t>(ix)];
+        }
+        const auto derivative = pfc::fft::chebyshev_derivative(column);
+        const auto index =
+            static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(ix);
+        REQUIRE_THAT(derivative.front(), WithinAbs(at_plus[index], 1e-9));
+        REQUIRE_THAT(derivative.back(), WithinAbs(at_minus[index], 1e-9));
+        mean_integral += interval_integral(column);
+      }
+    }
+    REQUIRE_THAT(mean_integral / static_cast<double>(nx * ny),
+                 WithinAbs(0.0, 1e-10));
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              16, 12, 8, period, period,
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(y) * (1.0 / 3.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(y) * (5.0 * z * z - 11.0 / 3.0);
+              },
+              [](double x, double y, double z) {
+                return -2.0 * z * std::cos(2.0 * x) * std::cos(y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              16, 8, 8, period, period,
+              [](double x, double y, double z) {
+                return z * std::cos(2.0 * x) * std::cos(y);
+              },
+              [](double x, double y, double z) {
+                return -5.0 * z * std::cos(2.0 * x) * std::cos(y);
+              },
+              [](double x, double y, double) {
+                return std::cos(2.0 * x) * std::cos(y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 8, period, period,
+              [](double x, double, double z) {
+                return std::cos(2.0 * x) * (1.0 / 3.0 - z * z);
+              },
+              [](double x, double, double z) {
+                return std::cos(2.0 * x) * (4.0 * z * z - 10.0 / 3.0);
+              },
+              [](double x, double, double z) {
+                return -2.0 * z * std::cos(2.0 * x);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 8, period, period,
+              [](double, double y, double z) {
+                return std::cos(y) * (1.0 / 3.0 - z * z);
+              },
+              [](double, double y, double z) {
+                return std::cos(y) * (z * z - 7.0 / 3.0);
+              },
+              [](double, double y, double z) { return -2.0 * z * std::cos(y); }) <
+          1e-10);
+  const double period_y = 4.0 * pi;
+  REQUIRE(error_of(
+              8, 8, 8, period, period_y,
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(0.5 * y) * (1.0 / 3.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(0.5 * y) *
+                       (4.25 * z * z - 4.25 / 3.0 - 2.0);
+              },
+              [](double x, double y, double z) {
+                return -2.0 * z * std::cos(2.0 * x) * std::cos(0.5 * y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              5, 6, 8, period, period,
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(2.0 * y) * (1.0 / 3.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(2.0 * y) *
+                       (8.0 * z * z - 14.0 / 3.0);
+              },
+              [](double x, double y, double z) {
+                return -2.0 * z * std::cos(2.0 * x) * std::cos(2.0 * y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 4, 8, period, period,
+              [](double x, double y, double z) {
+                return std::cos(4.0 * x) * std::cos(2.0 * y) * (1.0 / 3.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(4.0 * x) * std::cos(2.0 * y) *
+                       (20.0 * z * z - 26.0 / 3.0);
+              },
+              [](double x, double y, double z) {
+                return -2.0 * z * std::cos(4.0 * x) * std::cos(2.0 * y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              4, 4, 8, period, period,
+              [](double, double, double z) { return 1.0 / 3.0 - z * z; },
+              [](double, double, double) { return -2.0; },
+              [](double, double, double z) { return -2.0 * z; }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 8, period, period,
+              [](double x, double y, double z) {
+                return 1.0 / 3.0 - z * z + z * std::cos(2.0 * x) * std::cos(y);
+              },
+              [](double x, double y, double z) {
+                return -2.0 - 5.0 * z * std::cos(2.0 * x) * std::cos(y);
+              },
+              [](double x, double y, double z) {
+                return -2.0 * z + std::cos(2.0 * x) * std::cos(y);
+              }) < 1e-10);
+
+  const auto product_force =
+      volume_field(16, 12, 8, period, period, [](double x, double y, double z) {
+        return std::cos(2.0 * x) * std::cos(y) * (5.0 * z * z - 11.0 / 3.0);
+      });
+  const auto [product_plus, product_minus] =
+      slopes_of(16, 12, period, period, [](double x, double y, double z) {
+        return -2.0 * z * std::cos(2.0 * x) * std::cos(y);
+      });
+  const auto solved = pfc::fft::fourier_chebyshev_neumann_poisson(
+      product_force, 16, 12, period, period, product_plus, product_minus);
+  const auto residual =
+      pfc::fft::fourier_chebyshev_laplacian(solved, 16, 12, period, period);
+  REQUIRE(max_abs_diff(residual, product_force) < 1e-8);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Neumann Poisson rejects a bad condition",
+          "[fft][chebyshev]") {
+  const std::vector<double> forcing{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  const std::vector<double> one_plane{1.0, 2.0, 3.0, 4.0};
+  const std::vector<double> trace{0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> short_trace{0.0};
+  const std::vector<double> wide{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_neumann_poisson({}, 2, 2, 1.0, 1.0, trace, trace),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(forcing, 0, 2, 1.0,
+                                                                1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(forcing, 2, 0, 1.0,
+                                                                1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(one_plane, 3, 2, 1.0,
+                                                                1.0, wide, wide),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(forcing, 2, 2, 0.0,
+                                                                1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(forcing, 2, 2, 1.0,
+                                                                -1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(
+                        forcing, 2, 2, 1.0, 1.0, short_trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(one_plane, 2, 2, 1.0,
+                                                                1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(forcing, 4, 1, 1.0,
+                                                                -1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(forcing, 1, 4, 0.0,
+                                                                1.0, trace, trace),
+                    std::invalid_argument);
+
+  const double period = 2.0 * std::acos(-1.0);
+  const auto field = volume_field(4, 4, 8, period, period,
+                                  [](double, double, double) { return -2.0; });
+  const std::vector<double> flat(16, 0.0);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_neumann_poisson(field, 4, 4, period,
+                                                                period, flat, flat),
+                    std::invalid_argument);
+}
+
 TEST_CASE("Fourier-Chebyshev Neumann Poisson recovers separable solutions",
           "[fft][chebyshev]") {
   const double pi = std::acos(-1.0);
