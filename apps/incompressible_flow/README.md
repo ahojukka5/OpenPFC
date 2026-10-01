@@ -246,15 +246,62 @@ below \(k_{\max}\eta=1\).
 
 \(N=128\) took 601 s, \(N=64\) took 33 s, and \(N=32\) took 2.7 s.
 
+## Forced homogeneous isotropic turbulence
+
+```bash
+./apps/incompressible_flow/incompressible_flow \
+  --case forced-hit --n 32 --nu 0.02 --power 0.25 --dt 0.015625 \
+  --time 0.0625 --seed 1 --outdir results/forced-hit
+```
+
+The force is the constant-power scheme of Doering and Petrov
+(arXiv:physics/0404049, 2004, equation 3). On \([0,2\pi]^3\) the
+forced shell is the integer wavevectors with \(|k|=1\):
+
+\[
+\mathbf f=\varepsilon\frac{P\mathbf u}{2E_{\mathrm{band}}}.
+\]
+
+\(P\) keeps that shell, \(\varepsilon\) is the injected power, and
+\(E_{\mathrm{band}}\) is the kinetic energy in the shell. The mean
+mode is not forced. If \(E_{\mathrm{band}}\le 10^{-24}\) the force is
+zero for that evaluation. The initial field is the decaying-hit seed.
+Default power is \(0.25\) and default viscosity is \(0.02\). This is
+the only forcing scheme in the binary.
+
+`diagnostics.csv` adds the instantaneous injection and the band
+energy. The two-point residual in `metadata.txt` is
+\(E(T)-E(0)-\int(P-\varepsilon_{\mathrm{diss}})\,dt\) with the
+trapezoid on the two samples.
+
+### Stationary ladder
+
+The ladder is fixed before the campaign. It is not a
+continuous-integration test. Viscosity is \(0.02\), power is
+\(0.25\), and the seed is 1. Samples are every \(0.5\) through
+\(t=20\). Block averages use \([10,20]\), five blocks of length 2.
+The uncertainty of a mean is the sample standard deviation of those
+block means, divided by \(\sqrt{5}\). Spatial grids are
+\(N=128,64,32\) at \(\Delta t=1/256\), finest first. \(N=64\) is
+repeated at \(\Delta t=1/512\) and at \(\Delta t=1/128\). Speed CFL
+above 2, or a non-finite field, stops that resolution and keeps the
+row. These constants are not changed after the rows exist.
+
+```bash
+./apps/incompressible_flow/incompressible_flow \
+  --case forced-hit --series stationary --outdir results/forced-hit
+```
+
 ## Limits
 
-The run is periodic, three-dimensional, and unforced. The locked
-ladder is one rank. A user run may use the HeFFTe pencil. It
-does not add walls, a channel, a pipe, a second viscosity, or a
-forcing spectrum. A 2-D double shear is not reimplemented here. The
+The run is periodic and three-dimensional. Taylor–Green and
+decaying-hit are unforced. forced-hit adds the one low-mode scheme
+above. The locked ladders are one rank. A user run may use the
+HeFFTe pencil. There are no walls, no channel, no pipe, and no
+second viscosity. A 2-D double shear is not reimplemented here. The
 decaying-hit case is one prescribed spectrum, not an ensemble, and it
-does not claim an inertial range. On the locked ladder, kinetic
-energy, enstrophy, and \(\mathrm{Re}_\lambda\) agree between
+does not claim an inertial range. On the locked decaying ladder,
+kinetic energy, enstrophy, and \(\mathrm{Re}_\lambda\) agree between
 \(N=64\) and \(N=128\) to better than \(10^{-4}\) relative at the
 sample times. The vorticity field at \(N=64\) remains a few percent
 from \(N=128\). \(N=128\) keeps \(k_{\max}\eta>2\). \(N=32\) stays
