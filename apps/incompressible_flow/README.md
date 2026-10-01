@@ -292,6 +292,54 @@ row. These constants are not changed after the rows exist.
   --case forced-hit --series stationary --outdir results/forced-hit
 ```
 
+The one-rank ladder finished with `status=ok` on every row. The
+numbers below were copied from
+`/scratch/project_462001519/juaho/flow3d-231/summary.csv`. Full
+precision stays in that file. The constants above were not changed.
+
+Averages use \([10,20]\). The budget residual is
+\(E(20)-E(10)-\int_{10}^{20}(P-\varepsilon)\,dt\), with the
+trapezoid on the half-unit samples. It checks that identity. The
+window can still drift while that residual stays small.
+
+| run | \(N\) | \(\Delta t\) | \(\langle E\rangle\) | stderr | \(\langle\varepsilon\rangle\) | \(\mathrm{Re}_\lambda\) | \(k_{\max}\eta\) | budget residual |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| spatial | 128 | \(1/256\) | 1.254104 | 0.024317 | 0.256418 | 45.3983 | 3.14496 | \(-6.906\times 10^{-5}\) |
+| spatial | 64 | \(1/256\) | 1.254029 | 0.024300 | 0.256448 | 45.3910 | 1.57241 | \(-7.152\times 10^{-5}\) |
+| spatial | 32 | \(1/256\) | 1.256298 | 0.027497 | 0.261146 | 44.9999 | 0.74505 | \(-2.850\times 10^{-4}\) |
+| control | 64 | \(1/512\) | 1.254030 | 0.024301 | 0.256443 | 45.3916 | 1.57242 | \(-6.711\times 10^{-5}\) |
+| coarse | 64 | \(1/128\) | 1.254008 | 0.024294 | 0.256496 | 45.3845 | 1.57231 | \(-1.074\times 10^{-4}\) |
+
+Injection is \(0.25\) on every row. Its block uncertainty is at most
+\(1.9\times 10^{-17}\).
+
+On \(N=128\), kinetic energy is \(1.350101\) at \(t=10\) and
+\(1.285856\) at \(t=20\), a fall of \(0.064245\). The first block
+mean is \(1.336675\) and the last is \(1.241558\). Mean dissipation
+is \(0.256418\), which exceeds the injected power by
+\(6.42\times 10^{-3}\). The budget residual on this row,
+\(-6.906\times 10^{-5}\), is how far that fall misses the trapezoid
+of \(P-\varepsilon\). \(N=64\) has the same pattern. Kinetic energy
+is still falling at the end of the window.
+
+From \(N=64\) to \(N=128\), the kinetic-energy, dissipation, and
+\(\mathrm{Re}_\lambda\) means agree to relative \(6.0\times 10^{-5}\),
+\(1.2\times 10^{-4}\), and \(1.6\times 10^{-4}\). On \(N=32\),
+\(k_{\max}\eta=0.745\). The dissipation mean there differs from
+\(N=128\) by a relative \(1.8\times 10^{-2}\).
+
+At \(N=64\), halving the step moves the kinetic-energy mean by a
+relative \(1.0\times 10^{-6}\) and the dissipation mean by
+\(1.8\times 10^{-5}\). Doubling the step moves them by
+\(1.7\times 10^{-5}\) and \(1.9\times 10^{-4}\). The largest speed
+CFL in the samples is \(0.283\), on \(N=128\). The largest modal
+divergence is \(1.33\times 10^{-10}\), on \(N=128\) at \(t=0\).
+Nodal divergence \(L^2\) stays near \(10^{-16}\).
+
+\(N=128\) took 11143 s. The \(N=64\) spatial run took 862 s,
+\(N=32\) took 58 s, the halved step took 1528 s, and the doubled
+step took 360 s.
+
 ## Device step
 
 A HIP or CUDA build compiles the same integrating-factor stages into
@@ -314,4 +362,8 @@ kinetic energy, enstrophy, and \(\mathrm{Re}_\lambda\) agree between
 \(N=64\) and \(N=128\) to better than \(10^{-4}\) relative at the
 sample times. The vorticity field at \(N=64\) remains a few percent
 from \(N=128\). \(N=128\) keeps \(k_{\max}\eta>2\). \(N=32\) stays
-below \(k_{\max}\eta=1\).
+below \(k_{\max}\eta=1\). On the locked forced ladder, mean
+dissipation on \([10,20]\) exceeds the injected power, so kinetic
+energy still falls through that window. \(N=64\) and \(N=128\)
+agree on those window means to about \(10^{-4}\) relative.
+\(N=32\) again stays below \(k_{\max}\eta=1\).
