@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Robin Poisson solve on one Fourier × Fourier × Chebyshev
+  rank. Each mode reuses the Chebyshev Robin Helmholtz solve
+  with λ = k_x² + k_y². The weights do not vary on the periodic
+  plane. A unit count in either direction reuses the
+  one-direction solve. This is still one rank, not a channel wall.
 - A Neumann Poisson solve on one Fourier × Fourier × Chebyshev
   rank. Each mode reuses the Chebyshev Neumann Helmholtz solve
   with λ = k_x² + k_y². The mean mode keeps the zero-integral
