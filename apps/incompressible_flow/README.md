@@ -292,6 +292,15 @@ row. These constants are not changed after the rows exist.
   --case forced-hit --series stationary --outdir results/forced-hit
 ```
 
+## Device step
+
+A HIP or CUDA build compiles the same integrating-factor stages into
+`openpfc_incompressible_hip` or `openpfc_incompressible_cuda`. One
+build links one of those libraries. `incompressible_device_parity`
+compares one host step with one device step on the same pencil. That
+comparison has not been run. The command-line application remains the
+CPU path.
+
 ## Limits
 
 The run is periodic and three-dimensional. Taylor–Green and

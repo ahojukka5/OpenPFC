@@ -199,7 +199,10 @@ installed Leray projector and a 2/3-dealiased rotational term. The
 shipped cases are Taylor–Green, decaying homogeneous isotropic
 turbulence, and constant-power low-mode forcing on \([0,2\pi]^3\).
 CPU and HeFFTe. Ranks share the pencil. The locked ladders stay
-one rank. The Taylor–Green refinement tables stay with
+one rank. A HIP or CUDA build also compiles the same step as a
+device library. The command-line application remains the CPU path,
+and the device comparison has not been run. The Taylor–Green
+refinement tables stay with
 [`examples/taylor_green3d/README.md`](../../examples/taylor_green3d/README.md).
 The turbulence assumptions and the resolution ladders are in
 [`apps/incompressible_flow/README.md`](../../apps/incompressible_flow/README.md).
