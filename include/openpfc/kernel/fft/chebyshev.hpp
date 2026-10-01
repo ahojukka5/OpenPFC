@@ -28,8 +28,10 @@
  * solve with λ = k_x² + k_y². Neumann slopes there do the
  * same, and the mean mode keeps the integral gauge. Robin
  * data there mixes the value and the slope with weights that
- * do not vary on the periodic plane. A channel wall is still
- * a separate step.
+ * do not vary on the periodic plane. Helmholtz there adds λ
+ * to k_x² + k_y² and reuses those weights. A zero λ reuses
+ * the Robin Poisson solve. A channel wall is still a separate
+ * step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -155,6 +157,22 @@ fourier_chebyshev_neumann_poisson(std::span<const double> forcing, int nx, int n
     double value_weight_plus, double slope_weight_plus,
     std::span<const double> data_at_plus, double value_weight_minus,
     double slope_weight_minus, std::span<const double> data_at_minus);
+
+/// Solve (d²/dz² + d²/dy² + d²/dx² - λ) u = forcing on one rank.
+/// Each end imposes value_weight * u + slope_weight * du/dz = data.
+/// `data_at_plus` and `data_at_minus` each have length `nx * ny`,
+/// row-major with x contiguous. The weights do not vary on the
+/// periodic plane. The slope weight multiplies du/dz, so an
+/// outward unit weight is +1 at z = +1 and -1 at z = -1. Each
+/// mode solves u'' - (k_x² + k_y² + λ) u = f. A zero λ reuses
+/// the Robin Poisson solve. A unit count in either periodic
+/// direction reuses the one-direction solve.
+[[nodiscard]] std::vector<double> fourier_chebyshev_robin_helmholtz(
+    std::span<const double> forcing, int nx, int ny, double period_x,
+    double period_y, double lambda, double value_weight_plus,
+    double slope_weight_plus, std::span<const double> data_at_plus,
+    double value_weight_minus, double slope_weight_minus,
+    std::span<const double> data_at_minus);
 
 /// Solve u'' = forcing on [-1, 1], with both endpoints prescribed.
 /// `forcing` is sampled on the Lobatto grid from +1 down to -1.
