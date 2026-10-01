@@ -9,6 +9,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- An impermeable channel wall on one Fourier × Fourier ×
+  Chebyshev rank. The Neumann pressure correction makes the
+  wall-normal acceleration vanish at both Chebyshev ends and
+  removes the divergence. No-slip stays Dirichlet data on the
+  velocity. Plane Couette and plane Poiseuille stay fixed
+  points of that balance. Turbulent channel is not included.
 - A Robin Helmholtz solve on one Fourier × Fourier × Chebyshev
   rank. Each mode solves u'' − (k_x² + k_y² + λ) u = f with
   weights that do not vary on the periodic plane. A zero λ

@@ -65,7 +65,8 @@ if(OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
   add_executable(test_incompressible_flow
     tests/test_taylor_green.cpp
     tests/test_decaying_hit.cpp
-    tests/test_forced_hit.cpp)
+    tests/test_forced_hit.cpp
+    tests/test_channel.cpp)
   target_include_directories(test_incompressible_flow PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_incompressible_flow PRIVATE OpenPFC Catch2::Catch2
