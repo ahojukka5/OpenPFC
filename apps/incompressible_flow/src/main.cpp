@@ -46,8 +46,9 @@ void usage(std::ostream &os) {
         "\n"
         "Periodic 3-D Navier-Stokes on [0, 2pi]^3. N is even and at\n"
         "least 8. time is an integer number of steps. The 2/3 mask\n"
-        "stays on. One MPI rank. --series runs the locked decaying-hit\n"
-        "ladder and ignores n, nu, dt, time, and seed.\n";
+        "stays on. Ranks share the HeFFTe pencil. --series runs the\n"
+        "locked one-rank decaying-hit ladder and ignores n, nu, dt,\n"
+        "time, and seed.\n";
 }
 
 std::optional<int> parse_int(std::string_view text) {
@@ -171,23 +172,28 @@ void write_taylor_row(std::ostream &os, double time, const flow::Diagnostics &di
      << diag.max_abs_w << ',' << diag.cfl << ',' << status << '\n';
 }
 
-int run_taylor(const Options &opt, int rank) {
+int run_taylor(const Options &opt, int rank, int nproc) {
   const int n = opt.n.value_or(32);
   const double nu = opt.nu.value_or(0.05);
   const double dt = opt.dt.value_or(0.01);
   const double time = opt.time.value_or(0.1);
   const long long steps = flow::steps_for(time, dt);
-  auto state = flow::make_state(n, nu, dt, rank, 1);
+  auto state = flow::make_state(n, nu, dt, rank, nproc);
   flow::initialize_taylor_green(state);
-  std::filesystem::create_directories(opt.outdir);
-  std::ofstream csv(opt.outdir + "/diagnostics.csv");
-  csv << "time,ke,enstrophy,dissipation,div_l2,div_linf,modal_div_max,"
-         "w_l2,max_abs_w,cfl,status\n";
+  std::ofstream csv;
+  if (rank == 0) {
+    std::filesystem::create_directories(opt.outdir);
+    csv.open(opt.outdir + "/diagnostics.csv");
+    csv << "time,ke,enstrophy,dissipation,div_l2,div_linf,modal_div_max,"
+           "w_l2,max_abs_w,cfl,status\n";
+  }
 
   auto report = [&](double sample, const flow::Diagnostics &diag,
                     std::string_view status) {
-    write_taylor_row(csv, sample, diag, status);
-    csv.flush();
+    if (rank == 0) {
+      write_taylor_row(csv, sample, diag, status);
+      csv.flush();
+    }
     if (rank == 0) {
       std::cout << "incompressible_flow sample t=" << std::scientific
                 << std::setprecision(8) << sample << " status=" << status
@@ -232,32 +238,39 @@ void write_hit_row(std::ostream &os, double time, const flow::Diagnostics &diag,
      << ',' << status << '\n';
 }
 
-int run_hit(const Options &opt, int rank) {
+int run_hit(const Options &opt, int rank, int nproc) {
   const int n = opt.n.value_or(32);
   const double nu = opt.nu.value_or(flow::protocol_nu);
   const double dt = opt.dt.value_or(1.0 / 64.0);
   const double time = opt.time.value_or(0.0625);
   const std::uint64_t seed = opt.seed.value_or(flow::protocol_seed);
   const long long steps = flow::steps_for(time, dt);
-  auto state = flow::make_state(n, nu, dt, rank, 1);
+  auto state = flow::make_state(n, nu, dt, rank, nproc);
   flow::initialize_decaying_hit(state, seed);
-  std::filesystem::create_directories(opt.outdir);
-  std::ofstream csv(opt.outdir + "/diagnostics.csv");
-  csv << "time,ke,enstrophy,omega_rms,dissipation,u_rms,lambda,re_lambda,"
-         "integral_scale,eta,k_max,k_max_eta,div_l2,div_linf,modal_div_max,cfl,"
-         "outer_ke_fraction,status\n";
-  std::ofstream spectrum(opt.outdir + "/spectrum.csv");
-  spectrum << "time,shell,shell_ke\n";
+  std::ofstream csv;
+  std::ofstream spectrum;
+  if (rank == 0) {
+    std::filesystem::create_directories(opt.outdir);
+    csv.open(opt.outdir + "/diagnostics.csv");
+    csv << "time,ke,enstrophy,omega_rms,dissipation,u_rms,lambda,re_lambda,"
+           "integral_scale,eta,k_max,k_max_eta,div_l2,div_linf,modal_div_max,cfl,"
+           "outer_ke_fraction,status\n";
+    spectrum.open(opt.outdir + "/spectrum.csv");
+    spectrum << "time,shell,shell_ke\n";
+  }
 
   auto report = [&](double sample, const flow::Diagnostics &diag,
                     const flow::Scales &scales, std::string_view status) {
-    write_hit_row(csv, sample, diag, scales, status);
-    csv.flush();
-    spectrum << std::scientific << std::setprecision(16);
-    for (const auto &shell : flow::shell_energies(state)) {
-      spectrum << sample << ',' << shell.index << ',' << shell.ke << '\n';
+    const auto shells = flow::shell_energies(state);
+    if (rank == 0) {
+      write_hit_row(csv, sample, diag, scales, status);
+      csv.flush();
+      spectrum << std::scientific << std::setprecision(16);
+      for (const auto &shell : shells) {
+        spectrum << sample << ',' << shell.index << ',' << shell.ke << '\n';
+      }
+      spectrum.flush();
     }
-    spectrum.flush();
     if (rank == 0) {
       std::cout << "incompressible_flow sample t=" << std::scientific
                 << std::setprecision(8) << sample << " status=" << status
@@ -325,18 +338,18 @@ int main(int argc, char **argv) {
           if (rank == 0) usage(std::cerr);
           return EXIT_FAILURE;
         }
-        if (nproc != 1) {
+        if (!opt.series.empty() && nproc != 1) {
           if (rank == 0) {
-            std::cerr << "incompressible_flow: one rank is required so every "
-                         "Fourier mode is owned locally\n";
+            std::cerr << "incompressible_flow: the locked series is the "
+                         "one-rank protocol\n";
           }
           return EXIT_FAILURE;
         }
         try {
           if (!opt.series.empty())
             return flow::run_series(opt.series, opt.outdir, rank);
-          if (opt.which == "taylor-green") return run_taylor(opt, rank);
-          return run_hit(opt, rank);
+          if (opt.which == "taylor-green") return run_taylor(opt, rank, nproc);
+          return run_hit(opt, rank, nproc);
         } catch (const std::exception &ex) {
           std::cerr << ex.what() << std::endl;
           return EXIT_FAILURE;

@@ -10,8 +10,10 @@
  * The cube is [0, 2π]³. The initial velocity is
  * `u = sin(x) cos(y) cos(z)`, `v = -cos(x) sin(y) cos(z)`, `w = 0`.
  * The step is integrating-factor RK4 of `P(u × ω)` after a state-level
- * 2/3 mask. This file does not own a projector. One MPI rank owns every
- * mode. The 2-D vorticity–streamfunction prototype is not this case.
+ * 2/3 mask. This file does not own a projector. Each rank owns the FFT
+ * pencil HeFFTe assigns it. Diagnostics are sums and maxima over that
+ * pencil, reduced across the communicator. The 2-D
+ * vorticity–streamfunction prototype is not this case.
  */
 
 #include <algorithm>
@@ -114,12 +116,6 @@ struct State {
   state.nu = nu;
   state.dt = dt;
   auto &fft = state.stack->fft();
-  const auto ncells = static_cast<std::size_t>(n) * static_cast<std::size_t>(n) *
-                      static_cast<std::size_t>(n);
-  if (fft.size_inbox() != ncells) {
-    throw std::runtime_error(
-        "incompressible_flow: one rank must own the full real grid");
-  }
   const auto nhat = fft.size_outbox();
   state.u.assign(nhat, Complex{});
   state.v.assign(nhat, Complex{});
@@ -253,20 +249,29 @@ inline void step(State &state) {
       }
     }
   }
-  diag.ke = 0.5 * ke_sum / ncells;
-  diag.enstrophy = enstrophy_sum / ncells;
+  double sums[7] = {ke_sum, enstrophy_sum, w2, su, sv, sw, div2};
+  double peaks[4] = {
+      peak, max_w, div_linf,
+      pfc::field::max_modal_divergence(outbox, state.n, state.spacing, state.u.data(),
+                                       state.v.data(), state.w.data(), nhat)};
+  int finite = diag.finite ? 1 : 0;
+  const MPI_Comm comm = state.stack->mpi_comm();
+  MPI_Allreduce(MPI_IN_PLACE, sums, 7, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(MPI_IN_PLACE, peaks, 4, MPI_DOUBLE, MPI_MAX, comm);
+  MPI_Allreduce(MPI_IN_PLACE, &finite, 1, MPI_INT, MPI_MIN, comm);
+  diag.finite = finite != 0;
+  diag.ke = 0.5 * sums[0] / ncells;
+  diag.enstrophy = sums[1] / ncells;
   diag.dissipation = state.nu * diag.enstrophy;
-  diag.div_l2 = std::sqrt(div2 / ncells);
-  diag.div_linf = div_linf;
-  diag.modal_div_max = pfc::field::max_modal_divergence(
-      outbox, state.n, state.spacing, state.u.data(), state.v.data(), state.w.data(),
-      nhat);
-  diag.cfl = state.dt * peak / state.spacing[0];
-  diag.mean_u = su / ncells;
-  diag.mean_v = sv / ncells;
-  diag.mean_w = sw / ncells;
-  diag.w_l2 = std::sqrt(w2 / ncells);
-  diag.max_abs_w = max_w;
+  diag.div_l2 = std::sqrt(sums[6] / ncells);
+  diag.div_linf = peaks[2];
+  diag.modal_div_max = peaks[3];
+  diag.cfl = state.dt * peaks[0] / state.spacing[0];
+  diag.mean_u = sums[3] / ncells;
+  diag.mean_v = sums[4] / ncells;
+  diag.mean_w = sums[5] / ncells;
+  diag.w_l2 = std::sqrt(sums[2] / ncells);
+  diag.max_abs_w = peaks[1];
   return diag;
 }
 

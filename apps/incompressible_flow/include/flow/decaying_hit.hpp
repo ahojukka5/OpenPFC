@@ -199,6 +199,8 @@ inline void initialize_decaying_hit(State &state, std::uint64_t seed) {
                            std::norm(state.w[idx]);
         bins[static_cast<std::size_t>(shell)] += herm * mag * scale;
       });
+  MPI_Allreduce(MPI_IN_PLACE, bins.data(), static_cast<int>(bins.size()), MPI_DOUBLE,
+                MPI_SUM, state.stack->mpi_comm());
   std::vector<Shell> shells;
   for (int s = 1; s < static_cast<int>(bins.size()); ++s) {
     if (bins[static_cast<std::size_t>(s)] == 0.0) continue;
@@ -253,6 +255,8 @@ inline void initialize_decaying_hit(State &state, std::uint64_t seed) {
                            std::norm(state.w[idx]);
         outer += herm * mag * weight;
       });
+  MPI_Allreduce(MPI_IN_PLACE, &outer, 1, MPI_DOUBLE, MPI_SUM,
+                state.stack->mpi_comm());
   scales.outer_ke_fraction = (scales.modal_ke > 0.0) ? outer / scales.modal_ke : 0.0;
   return scales;
 }

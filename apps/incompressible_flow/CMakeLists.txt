@@ -55,4 +55,21 @@ if(OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
                         ${_flow_heffte_tgt})
   add_test(NAME incompressible-flow-cpu COMMAND test_incompressible_flow)
   set_tests_properties(incompressible-flow-cpu PROPERTIES TIMEOUT 180)
+  if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE AND
+     (OpenPFC_MPI_TEST_MAX_WORLD_SIZE EQUAL 0 OR
+      OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER_EQUAL 2))
+    add_test(NAME incompressible-flow-mpi
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+        $<TARGET_FILE:test_incompressible_flow> ${MPIEXEC_POSTFLAGS} "[mpi]")
+    set_tests_properties(incompressible-flow-mpi PROPERTIES
+      TIMEOUT 180 PROCESSORS 2)
+    add_test(NAME incompressible-flow-smoke-mpi
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+        $<TARGET_FILE:incompressible_flow> ${MPIEXEC_POSTFLAGS}
+        --case taylor-green --n 16 --nu 0.05 --dt 0.015625 --time 0.03125
+        --outdir ${CMAKE_CURRENT_BINARY_DIR}/smoke-mpi)
+    set_tests_properties(incompressible-flow-smoke-mpi PROPERTIES
+      PASS_REGULAR_EXPRESSION "incompressible_flow status=ok"
+      TIMEOUT 120 PROCESSORS 2)
+  endif()
 endif()
