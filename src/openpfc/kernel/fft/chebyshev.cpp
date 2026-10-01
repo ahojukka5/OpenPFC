@@ -16,6 +16,7 @@
 #include <cmath>
 #include <complex>
 #include <fftw3.h>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -113,6 +114,23 @@ forward_bins(std::span<const double> values) {
 
 [[nodiscard]] double endpoint_weight(int k, int n) {
   return (k == 0 || k == n) ? 2.0 : 1.0;
+}
+
+[[nodiscard]] std::size_t mixed_index(int iz, int ix, int nx) {
+  return static_cast<std::size_t>(iz) * static_cast<std::size_t>(nx) +
+         static_cast<std::size_t>(ix);
+}
+
+[[nodiscard]] double periodic_wavenumber(int mode, int count, double period) {
+  int alias = mode;
+  if (mode > count / 2) alias = mode - count;
+  const double pi = std::acos(-1.0);
+  return (2.0 * pi * static_cast<double>(alias)) / period;
+}
+
+[[nodiscard]] std::vector<double>
+second_derivative(std::span<const double> values) {
+  return chebyshev_derivative(chebyshev_derivative(values));
 }
 
 } // namespace
@@ -222,6 +240,96 @@ std::vector<double> chebyshev_derivative(std::span<const double> values) {
   derivative[static_cast<std::size_t>(n)] =
       right * inv + 0.5 * end_sign * static_cast<double>(n) * nyquist;
   return derivative;
+}
+
+std::vector<double>
+fourier_chebyshev_laplacian(std::span<const double> values, int nx,
+                            double period) {
+  if (nx < 1) {
+    throw std::invalid_argument(
+        "chebyshev: periodic count must be positive");
+  }
+  if (!(period > 0.0)) {
+    throw std::invalid_argument("chebyshev: period must be positive");
+  }
+  if (values.empty() ||
+      values.size() % static_cast<std::size_t>(nx) != 0) {
+    throw std::invalid_argument(
+        "chebyshev: values do not match the periodic count");
+  }
+  const auto lines = values.size() / static_cast<std::size_t>(nx);
+  if (lines > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int nline = static_cast<int>(lines);
+  std::vector<std::complex<double>> modes(values.size());
+
+  if (nx == 1) {
+    for (int iz = 0; iz < nline; ++iz) {
+      modes[static_cast<std::size_t>(iz)] = values[static_cast<std::size_t>(iz)];
+    }
+  } else {
+    Plan plan(nx);
+    std::vector<std::complex<double>> line(static_cast<std::size_t>(nx));
+    for (int iz = 0; iz < nline; ++iz) {
+      for (int ix = 0; ix < nx; ++ix) {
+        line[static_cast<std::size_t>(ix)] = values[mixed_index(iz, ix, nx)];
+      }
+      plan.load(line);
+      fftw_execute(plan.forward);
+      const auto bins = plan.read();
+      for (int mode = 0; mode < nx; ++mode) {
+        modes[mixed_index(iz, mode, nx)] = bins[static_cast<std::size_t>(mode)];
+      }
+    }
+  }
+
+  for (int mode = 0; mode < nx; ++mode) {
+    const double wavenumber = periodic_wavenumber(mode, nx, period);
+    const double square = wavenumber * wavenumber;
+    std::vector<double> real(static_cast<std::size_t>(nline));
+    std::vector<double> imag(static_cast<std::size_t>(nline));
+    for (int iz = 0; iz < nline; ++iz) {
+      const auto coefficient = modes[mixed_index(iz, mode, nx)];
+      real[static_cast<std::size_t>(iz)] = coefficient.real();
+      imag[static_cast<std::size_t>(iz)] = coefficient.imag();
+    }
+    const auto dreal = second_derivative(real);
+    const auto dimag = second_derivative(imag);
+    for (int iz = 0; iz < nline; ++iz) {
+      const auto coefficient = modes[mixed_index(iz, mode, nx)];
+      modes[mixed_index(iz, mode, nx)] =
+          std::complex<double>(dreal[static_cast<std::size_t>(iz)],
+                               dimag[static_cast<std::size_t>(iz)]) -
+          square * coefficient;
+    }
+  }
+
+  std::vector<double> laplacian(values.size());
+  if (nx == 1) {
+    for (int iz = 0; iz < nline; ++iz) {
+      laplacian[static_cast<std::size_t>(iz)] =
+          modes[static_cast<std::size_t>(iz)].real();
+    }
+    return laplacian;
+  }
+
+  Plan plan(nx);
+  std::vector<std::complex<double>> line(static_cast<std::size_t>(nx));
+  const double scale = static_cast<double>(nx);
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int mode = 0; mode < nx; ++mode) {
+      line[static_cast<std::size_t>(mode)] = modes[mixed_index(iz, mode, nx)];
+    }
+    plan.load(line);
+    fftw_execute(plan.backward);
+    const auto samples = plan.read();
+    for (int ix = 0; ix < nx; ++ix) {
+      laplacian[mixed_index(iz, ix, nx)] =
+          samples[static_cast<std::size_t>(ix)].real() / scale;
+    }
+  }
+  return laplacian;
 }
 
 } // namespace pfc::fft
