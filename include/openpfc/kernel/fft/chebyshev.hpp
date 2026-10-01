@@ -23,7 +23,8 @@
  * gauge. Robin data on that rank mixes the value and the slope
  * with weights that do not vary along x. Helmholtz on that rank
  * adds λ to k² and reuses those weights. A zero λ reuses the
- * Robin Poisson solve. A channel wall is still a separate step.
+ * Robin Poisson solve. A second periodic direction adds k_y²
+ * on that rank. A channel wall is still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -56,6 +57,16 @@ chebyshev_derivative(std::span<const double> values);
 [[nodiscard]] std::vector<double>
 fourier_chebyshev_laplacian(std::span<const double> values, int nx,
                             double period);
+
+/// Laplacian d²/dz² + d²/dy² + d²/dx² on one rank.
+/// `nx` and `ny` uniform nodes span periodic intervals `period_x`
+/// and `period_y`. The bounded axis is Chebyshev–Lobatto, stored
+/// from +1 down to -1. `values` is row-major with x contiguous,
+/// then y, then z. A unit count in either periodic direction
+/// reuses the one-direction Laplacian.
+[[nodiscard]] std::vector<double>
+fourier_chebyshev_laplacian(std::span<const double> values, int nx, int ny,
+                            double period_x, double period_y);
 
 /// Solve (d²/dz² + d²/dx²) u = forcing, periodic in x.
 /// Both Chebyshev ends are Dirichlet. `value_at_plus` and
