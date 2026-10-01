@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Robin Helmholtz solve on one Chebyshev–Lobatto interval. Each end
+  imposes a mix of the value and the slope on u'' − λu = f. A zero λ
+  reuses the Robin Poisson integral. This is the one-dimensional
+  oracle, not a channel wall.
 - A Robin Poisson solve on one Chebyshev–Lobatto interval. Each end
   imposes a mix of the value and the slope. Pure value data and pure
   slope data reuse those solves. This is the one-dimensional oracle,
