@@ -266,6 +266,91 @@ TEST_CASE("Fourier-Chebyshev Laplacian rejects a bad grid",
       std::invalid_argument);
 }
 
+TEST_CASE("Fourier-Chebyshev Dirichlet Poisson recovers separable solutions",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto error_of = [&](int nx, int degree, auto exact, auto force) {
+    const auto forcing = tensor_field(nx, degree, period, force);
+    const auto truth = tensor_field(nx, degree, period, exact);
+    std::vector<double> at_plus(static_cast<std::size_t>(nx));
+    std::vector<double> at_minus(static_cast<std::size_t>(nx));
+    for (int ix = 0; ix < nx; ++ix) {
+      const double x = period * static_cast<double>(ix) / static_cast<double>(nx);
+      at_plus[static_cast<std::size_t>(ix)] = exact(x, 1.0);
+      at_minus[static_cast<std::size_t>(ix)] = exact(x, -1.0);
+    }
+    const auto got = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+        forcing, nx, period, at_plus, at_minus);
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto plus = static_cast<std::size_t>(ix);
+      const auto minus =
+          static_cast<std::size_t>(degree) * static_cast<std::size_t>(nx) + plus;
+      REQUIRE_THAT(got[plus], WithinAbs(at_plus[plus], 1e-10));
+      REQUIRE_THAT(got[minus], WithinAbs(at_minus[plus], 1e-10));
+    }
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              1, 8, [](double, double z) { return 1.0 - z * z; },
+              [](double, double) { return -2.0; }) < 1e-11);
+  REQUIRE(error_of(
+              16, 8,
+              [](double x, double z) { return std::cos(2.0 * x) * (1.0 - z * z); },
+              [](double x, double z) {
+                return std::cos(2.0 * x) * (4.0 * z * z - 6.0);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              16, 8, [](double x, double z) { return z * std::cos(2.0 * x); },
+              [](double x, double z) { return -4.0 * z * std::cos(2.0 * x); }) <
+          1e-10);
+  REQUIRE(error_of(
+              8, 8, [](double, double z) { return 1.0 - z * z + 0.25 * z; },
+              [](double, double) { return -2.0; }) < 1e-11);
+  REQUIRE(error_of(
+              8, 8,
+              [](double x, double z) { return std::cos(4.0 * x) * (1.0 - z * z); },
+              [](double x, double z) {
+                return std::cos(4.0 * x) * (16.0 * z * z - 18.0);
+              }) < 1e-10);
+
+  const auto forcing = tensor_field(16, 8, period, [](double x, double z) {
+    return std::cos(2.0 * x) * (4.0 * z * z - 6.0);
+  });
+  const std::vector<double> zeros(16, 0.0);
+  const auto got = pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 16, period,
+                                                                 zeros, zeros);
+  const auto residual = pfc::fft::fourier_chebyshev_laplacian(got, 16, period);
+  REQUIRE(max_abs_diff(residual, forcing) < 1e-8);
+}
+
+TEST_CASE("Fourier-Chebyshev Dirichlet Poisson rejects a bad grid",
+          "[fft][chebyshev]") {
+  const std::vector<double> forcing{1.0, 2.0, 3.0, 4.0};
+  const std::vector<double> trace{0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> short_trace{0.0};
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_dirichlet_poisson({}, 4, 1.0, trace, trace),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 0, 1.0, trace, trace),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 3, 1.0, trace, trace),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 4, 0.0, trace, trace),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(
+                        forcing, 4, 1.0, short_trace, trace),
+                    std::invalid_argument);
+  const std::vector<double> one_line{1.0, 2.0, 3.0, 4.0};
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_dirichlet_poisson(one_line, 4, 1.0, trace, trace),
+      std::invalid_argument);
+}
+
 TEST_CASE("Chebyshev Dirichlet Poisson recovers polynomial solutions",
           "[fft][chebyshev]") {
   const auto error_of = [](int degree, auto force, auto exact, double at_plus,

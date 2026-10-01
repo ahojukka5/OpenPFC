@@ -20,7 +20,9 @@
  * Robin Poisson mixes the value and the slope at each end. Pure
  * value data and pure slope data reuse those solves. Robin
  * Helmholtz uses that mix for u'' - lambda u = f. A zero lambda
- * reuses the Robin Poisson integral.
+ * reuses the Robin Poisson integral. A Fourier × Chebyshev
+ * Dirichlet Poisson transforms the periodic direction and solves
+ * u'' - k^2 u = f on each mode.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -575,6 +577,122 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx,
     }
   }
   return laplacian;
+}
+
+std::vector<double> fourier_chebyshev_dirichlet_poisson(
+    std::span<const double> forcing, int nx, double period,
+    std::span<const double> value_at_plus, std::span<const double> value_at_minus) {
+  if (nx < 1) {
+    throw std::invalid_argument("chebyshev: periodic count must be positive");
+  }
+  if (!(period > 0.0)) {
+    throw std::invalid_argument("chebyshev: period must be positive");
+  }
+  if (forcing.empty() || forcing.size() % static_cast<std::size_t>(nx) != 0) {
+    throw std::invalid_argument(
+        "chebyshev: forcing does not match the periodic count");
+  }
+  if (value_at_plus.size() != static_cast<std::size_t>(nx) ||
+      value_at_minus.size() != static_cast<std::size_t>(nx)) {
+    throw std::invalid_argument(
+        "chebyshev: boundary trace does not match the periodic count");
+  }
+  const auto lines = forcing.size() / static_cast<std::size_t>(nx);
+  if (lines > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int nline = static_cast<int>(lines);
+  if (nline < 2) {
+    throw std::invalid_argument("chebyshev: Dirichlet Poisson needs both endpoints");
+  }
+
+  std::vector<std::complex<double>> modes(forcing.size());
+  std::vector<std::complex<double>> plus_hat(static_cast<std::size_t>(nx));
+  std::vector<std::complex<double>> minus_hat(static_cast<std::size_t>(nx));
+  if (nx == 1) {
+    for (int iz = 0; iz < nline; ++iz) {
+      modes[static_cast<std::size_t>(iz)] = forcing[static_cast<std::size_t>(iz)];
+    }
+    plus_hat[0] = value_at_plus[0];
+    minus_hat[0] = value_at_minus[0];
+  } else {
+    Plan plan(nx);
+    std::vector<std::complex<double>> line(static_cast<std::size_t>(nx));
+    for (int iz = 0; iz < nline; ++iz) {
+      for (int ix = 0; ix < nx; ++ix) {
+        line[static_cast<std::size_t>(ix)] = forcing[mixed_index(iz, ix, nx)];
+      }
+      plan.load(line);
+      fftw_execute(plan.forward);
+      const auto bins = plan.read();
+      for (int mode = 0; mode < nx; ++mode) {
+        modes[mixed_index(iz, mode, nx)] = bins[static_cast<std::size_t>(mode)];
+      }
+    }
+    for (int ix = 0; ix < nx; ++ix) {
+      line[static_cast<std::size_t>(ix)] =
+          value_at_plus[static_cast<std::size_t>(ix)];
+    }
+    plan.load(line);
+    fftw_execute(plan.forward);
+    plus_hat = plan.read();
+    for (int ix = 0; ix < nx; ++ix) {
+      line[static_cast<std::size_t>(ix)] =
+          value_at_minus[static_cast<std::size_t>(ix)];
+    }
+    plan.load(line);
+    fftw_execute(plan.forward);
+    minus_hat = plan.read();
+  }
+
+  for (int mode = 0; mode < nx; ++mode) {
+    const double wavenumber = periodic_wavenumber(mode, nx, period);
+    const double lambda = wavenumber * wavenumber;
+    std::vector<double> real(static_cast<std::size_t>(nline));
+    std::vector<double> imag(static_cast<std::size_t>(nline));
+    for (int iz = 0; iz < nline; ++iz) {
+      const auto coefficient = modes[mixed_index(iz, mode, nx)];
+      real[static_cast<std::size_t>(iz)] = coefficient.real();
+      imag[static_cast<std::size_t>(iz)] = coefficient.imag();
+    }
+    const auto real_solution = chebyshev_dirichlet_helmholtz(
+        real, lambda, plus_hat[static_cast<std::size_t>(mode)].real(),
+        minus_hat[static_cast<std::size_t>(mode)].real());
+    const auto imag_solution = chebyshev_dirichlet_helmholtz(
+        imag, lambda, plus_hat[static_cast<std::size_t>(mode)].imag(),
+        minus_hat[static_cast<std::size_t>(mode)].imag());
+    for (int iz = 0; iz < nline; ++iz) {
+      modes[mixed_index(iz, mode, nx)] =
+          std::complex<double>(real_solution[static_cast<std::size_t>(iz)],
+                               imag_solution[static_cast<std::size_t>(iz)]);
+    }
+  }
+
+  std::vector<double> solution(forcing.size());
+  if (nx == 1) {
+    for (int iz = 0; iz < nline; ++iz) {
+      solution[static_cast<std::size_t>(iz)] =
+          modes[static_cast<std::size_t>(iz)].real();
+    }
+    return solution;
+  }
+
+  Plan plan(nx);
+  std::vector<std::complex<double>> line(static_cast<std::size_t>(nx));
+  const double scale = static_cast<double>(nx);
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int mode = 0; mode < nx; ++mode) {
+      line[static_cast<std::size_t>(mode)] = modes[mixed_index(iz, mode, nx)];
+    }
+    plan.load(line);
+    fftw_execute(plan.backward);
+    const auto samples = plan.read();
+    for (int ix = 0; ix < nx; ++ix) {
+      solution[mixed_index(iz, ix, nx)] =
+          samples[static_cast<std::size_t>(ix)].real() / scale;
+    }
+  }
+  return solution;
 }
 
 std::vector<double>
