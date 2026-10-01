@@ -18,8 +18,9 @@
  * value and the slope at each end. Robin Helmholtz uses the same
  * mix for u'' - lambda u = f. A zero lambda reuses the Robin
  * Poisson integral. Dirichlet values on a Fourier × Chebyshev
- * rank reuse the Helmholtz solve with λ = k². A channel wall is
- * still a separate step.
+ * rank reuse the Helmholtz solve with λ = k². Neumann slopes on
+ * that rank do the same, and the mean mode keeps the integral
+ * gauge. A channel wall is still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -60,6 +61,15 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx,
 [[nodiscard]] std::vector<double> fourier_chebyshev_dirichlet_poisson(
     std::span<const double> forcing, int nx, double period,
     std::span<const double> value_at_plus, std::span<const double> value_at_minus);
+
+/// Solve (d²/dz² + d²/dx²) u = forcing, periodic in x.
+/// Both Chebyshev ends prescribe the slope. `slope_at_plus` and
+/// `slope_at_minus` each have length `nx`. The mean mode keeps the
+/// zero-integral gauge and rejects an incompatible slope jump.
+/// `forcing` is row-major with the periodic index contiguous.
+[[nodiscard]] std::vector<double> fourier_chebyshev_neumann_poisson(
+    std::span<const double> forcing, int nx, double period,
+    std::span<const double> slope_at_plus, std::span<const double> slope_at_minus);
 
 /// Solve u'' = forcing on [-1, 1], with both endpoints prescribed.
 /// `forcing` is sampled on the Lobatto grid from +1 down to -1.
