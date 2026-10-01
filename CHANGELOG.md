@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Robin Helmholtz solve on one Fourier × Chebyshev rank. Each
+  mode solves u'' − (k² + λ) u = f and matches the same endpoint
+  weights as the Robin Poisson solve. A zero λ reuses that solve.
+  This is the mixed boundary-value oracle, not a channel wall.
 - A Robin Poisson solve on one Fourier × Chebyshev rank. Each mode
   matches value_weight * u + slope_weight * du/dz = data for
   u'' − k²u = f. The weights do not vary along the periodic axis.

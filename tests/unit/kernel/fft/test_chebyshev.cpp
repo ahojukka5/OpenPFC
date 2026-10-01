@@ -642,6 +642,174 @@ TEST_CASE("Fourier-Chebyshev Robin Poisson rejects a bad condition",
                     std::invalid_argument);
 }
 
+TEST_CASE("Fourier-Chebyshev Robin Helmholtz recovers separable solutions",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto error_of = [&](int nx, int degree, double lambda, double value_plus,
+                            double slope_plus, double value_minus,
+                            double slope_minus, auto exact, auto force, auto data) {
+    const auto forcing = tensor_field(nx, degree, period, force);
+    const auto truth = tensor_field(nx, degree, period, exact);
+    std::vector<double> data_plus(static_cast<std::size_t>(nx));
+    std::vector<double> data_minus(static_cast<std::size_t>(nx));
+    for (int ix = 0; ix < nx; ++ix) {
+      const double x = period * static_cast<double>(ix) / static_cast<double>(nx);
+      data_plus[static_cast<std::size_t>(ix)] = data(x, 1.0);
+      data_minus[static_cast<std::size_t>(ix)] = data(x, -1.0);
+    }
+    const auto got = pfc::fft::fourier_chebyshev_robin_helmholtz(
+        forcing, nx, period, lambda, value_plus, slope_plus, data_plus, value_minus,
+        slope_minus, data_minus);
+    double mean_integral = 0.0;
+    for (int ix = 0; ix < nx; ++ix) {
+      std::vector<double> column(static_cast<std::size_t>(degree) + 1);
+      for (int iz = 0; iz <= degree; ++iz) {
+        column[static_cast<std::size_t>(iz)] =
+            got[static_cast<std::size_t>(iz) * static_cast<std::size_t>(nx) +
+                static_cast<std::size_t>(ix)];
+      }
+      const auto derivative = pfc::fft::chebyshev_derivative(column);
+      REQUIRE_THAT(value_plus * column.front() + slope_plus * derivative.front(),
+                   WithinAbs(data_plus[static_cast<std::size_t>(ix)], 1e-9));
+      REQUIRE_THAT(value_minus * column.back() + slope_minus * derivative.back(),
+                   WithinAbs(data_minus[static_cast<std::size_t>(ix)], 1e-9));
+      mean_integral += interval_integral(column);
+    }
+    if (lambda == 0.0 && value_plus == 0.0 && value_minus == 0.0) {
+      REQUIRE_THAT(mean_integral / static_cast<double>(nx), WithinAbs(0.0, 1e-10));
+    }
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              1, 8, 1.0, 1.0, 1.0, 1.0, -1.0,
+              [](double, double z) { return 1.0 - z * z; },
+              [](double, double z) { return z * z - 3.0; },
+              [](double, double) { return -2.0; }) < 1e-11);
+  REQUIRE(error_of(
+              8, 8, 1.0, 1.0, 1.0, 1.0, -1.0,
+              [](double, double z) { return 1.0 - z * z; },
+              [](double, double z) { return z * z - 3.0; },
+              [](double, double) { return -2.0; }) < 1e-11);
+  REQUIRE(
+      error_of(
+          16, 8, 1.0, 1.0, 1.0, 1.0, -1.0,
+          [](double x, double z) { return std::cos(2.0 * x) * (1.0 - z * z); },
+          [](double x, double z) { return std::cos(2.0 * x) * (5.0 * z * z - 7.0); },
+          [](double x, double) { return -2.0 * std::cos(2.0 * x); }) < 1e-10);
+  REQUIRE(error_of(
+              16, 8, 1.0, 1.0, 1.0, 1.0, -1.0,
+              [](double x, double z) { return z * std::cos(2.0 * x); },
+              [](double x, double z) { return -5.0 * z * std::cos(2.0 * x); },
+              [](double x, double z) {
+                return (z > 0.0 ? 2.0 : -2.0) * std::cos(2.0 * x);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 1.0, 1.0, 1.0, 1.0, -1.0,
+              [](double x, double z) { return std::cos(4.0 * x) * (1.0 - z * z); },
+              [](double x, double z) {
+                return std::cos(4.0 * x) * (17.0 * z * z - 19.0);
+              },
+              [](double x, double) { return -2.0 * std::cos(4.0 * x); }) < 1e-10);
+  REQUIRE(error_of(
+              16, 8, 1.0, 1.0, 1.0, 1.0, -1.0,
+              [](double x, double z) { return 1.0 - z * z + z * std::cos(2.0 * x); },
+              [](double x, double z) {
+                return z * z - 3.0 - 5.0 * z * std::cos(2.0 * x);
+              },
+              [](double x, double z) {
+                return -2.0 + (z > 0.0 ? 2.0 : -2.0) * std::cos(2.0 * x);
+              }) < 1e-10);
+  REQUIRE(
+      error_of(
+          16, 8, 1.0, 1.0, 0.0, 1.0, 0.0,
+          [](double x, double z) { return std::cos(2.0 * x) * (1.0 - z * z); },
+          [](double x, double z) { return std::cos(2.0 * x) * (5.0 * z * z - 7.0); },
+          [](double, double) { return 0.0; }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 1.0, 0.0, 1.0, 0.0, 1.0,
+              [](double, double z) { return 1.0 / 3.0 - z * z; },
+              [](double, double z) { return z * z - 7.0 / 3.0; },
+              [](double, double z) { return -2.0 * z; }) < 1e-11);
+  REQUIRE(error_of(
+              16, 8, 1.0, 1.0, 0.0, 0.0, 1.0,
+              [](double x, double z) { return z * std::cos(2.0 * x); },
+              [](double x, double z) { return -5.0 * z * std::cos(2.0 * x); },
+              [](double x, double) { return std::cos(2.0 * x); }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 0.0, 1.0, 1.0, 1.0, -1.0,
+              [](double, double z) { return 1.0 - z * z; },
+              [](double, double) { return -2.0; },
+              [](double, double) { return -2.0; }) < 1e-11);
+  REQUIRE(error_of(
+              8, 8, 0.0, 0.0, 1.0, 0.0, 1.0,
+              [](double, double z) { return 1.0 / 3.0 - z * z; },
+              [](double, double) { return -2.0; },
+              [](double, double z) { return -2.0 * z; }) < 1e-11);
+
+  const auto forcing = tensor_field(16, 8, period, [](double x, double z) {
+    return std::cos(2.0 * x) * (5.0 * z * z - 7.0);
+  });
+  std::vector<double> data_plus(16);
+  std::vector<double> data_minus(16);
+  for (int ix = 0; ix < 16; ++ix) {
+    const double x = period * static_cast<double>(ix) / 16.0;
+    data_plus[static_cast<std::size_t>(ix)] = -2.0 * std::cos(2.0 * x);
+    data_minus[static_cast<std::size_t>(ix)] = -2.0 * std::cos(2.0 * x);
+  }
+  const auto got = pfc::fft::fourier_chebyshev_robin_helmholtz(
+      forcing, 16, period, 1.0, 1.0, 1.0, data_plus, 1.0, -1.0, data_minus);
+  auto residual = pfc::fft::fourier_chebyshev_laplacian(got, 16, period);
+  for (std::size_t i = 0; i < residual.size(); ++i) {
+    residual[i] -= got[i];
+  }
+  REQUIRE(max_abs_diff(residual, forcing) < 1e-8);
+}
+
+TEST_CASE("Fourier-Chebyshev Robin Helmholtz rejects a bad condition",
+          "[fft][chebyshev]") {
+  const std::vector<double> forcing{1.0, 2.0, 3.0, 4.0};
+  const std::vector<double> trace{0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> short_trace{0.0};
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        {}, 4, 1.0, 1.0, 1.0, 1.0, trace, 1.0, -1.0, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        forcing, 0, 1.0, 1.0, 1.0, 1.0, trace, 1.0, -1.0, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        forcing, 3, 1.0, 1.0, 1.0, 1.0, trace, 1.0, -1.0, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        forcing, 4, 0.0, 1.0, 1.0, 1.0, trace, 1.0, -1.0, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_robin_helmholtz(forcing, 4, 1.0, 1.0, 1.0, 1.0,
+                                                  short_trace, 1.0, -1.0, trace),
+      std::invalid_argument);
+  const std::vector<double> one_line{1.0, 2.0, 3.0, 4.0};
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        one_line, 4, 1.0, 1.0, 1.0, 1.0, trace, 1.0, -1.0, trace),
+                    std::invalid_argument);
+
+  const double period = 2.0 * std::acos(-1.0);
+  const auto field = tensor_field(8, 8, period, [](double, double) { return -2.0; });
+  const std::vector<double> flat(8, 0.0);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        field, 8, period, 1.0, 0.0, 0.0, flat, 1.0, 0.0, flat),
+                    std::invalid_argument);
+  const std::vector<double> pair(8, 0.0);
+  const std::vector<double> pair_trace(4, 0.0);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_robin_helmholtz(pair, 4, period, 1.0, 1.0, 0.0,
+                                                  pair_trace, 0.5, 1.0, pair_trace),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_robin_helmholtz(
+                        field, 8, period, 0.0, 0.0, 1.0, flat, 0.0, 1.0, flat),
+                    std::invalid_argument);
+}
+
 TEST_CASE("Chebyshev Dirichlet Poisson recovers polynomial solutions",
           "[fft][chebyshev]") {
   const auto error_of = [](int degree, auto force, auto exact, double at_plus,
