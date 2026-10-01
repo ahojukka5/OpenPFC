@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A one-dimensional Chebyshev–Lobatto transform and derivative, built
+  from an ordinary FFT of the even extension. This is the transform
+  oracle. It does not impose a wall boundary condition.
 - `incompressible_flow` can take one integrating-factor step on HIP or
   CUDA. The stages stay in device memory. The parity driver is built
   with that library. It has not been run, so this entry does not

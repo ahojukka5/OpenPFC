@@ -7,6 +7,10 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_kspace_iterator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_power_spectrum.cpp
 )
+if(OpenPFC_HAS_FFTW3)
+  target_sources(openpfc-tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/test_chebyshev.cpp)
+endif()
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/test_fft.cpp

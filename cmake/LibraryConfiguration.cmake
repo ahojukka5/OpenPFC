@@ -17,6 +17,12 @@ endif()
 # Split compiled sources into object libraries (kernel/runtime vs frontend) for
 # clearer layering and faster incremental rebuilds; link as one `openpfc` for
 # install/export (see docs/archive/refactoring_roadmap.md Phase D).
+set(OpenPFC_HAS_FFTW3 OFF)
+find_library(OpenPFC_FFTW3_LIBRARY NAMES fftw3)
+if(OpenPFC_FFTW3_LIBRARY)
+  set(OpenPFC_HAS_FFTW3 ON)
+endif()
+
 set(_openpfc_kernel_obj_sources
     src/openpfc/kernel/decomposition/decomposition.cpp
     src/openpfc/kernel/decomposition/decomposition_factory.cpp
@@ -26,6 +32,9 @@ set(_openpfc_kernel_obj_sources
     src/openpfc/kernel/profiling/timer_report.cpp
     src/openpfc/kernel/utils/logging.cpp
 )
+if(OpenPFC_HAS_FFTW3)
+  list(APPEND _openpfc_kernel_obj_sources src/openpfc/kernel/fft/chebyshev.cpp)
+endif()
 if(OpenPFC_ENABLE_HEFFTE)
   list(APPEND _openpfc_kernel_obj_sources src/openpfc/runtime/cpu/fft.cpp)
 endif()
@@ -52,6 +61,11 @@ add_library(openpfc
 )
 
 add_library(OpenPFC ALIAS openpfc)
+if(OpenPFC_HAS_FFTW3)
+  # Private: the static archive records the FFTW dependency for its
+  # consumers without exporting the absolute library path.
+  target_link_libraries(openpfc PRIVATE ${OpenPFC_FFTW3_LIBRARY})
+endif()
 
 # Object libraries need the same include paths / standards as the merged `openpfc`
 # target so their translation units compile identically to the old monolithic lib.
