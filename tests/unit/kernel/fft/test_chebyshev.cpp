@@ -546,3 +546,80 @@ TEST_CASE("Chebyshev Neumann Helmholtz rejects a one-point grid",
   REQUIRE_THROWS_AS(pfc::fft::chebyshev_neumann_helmholtz(one, 1.0, 1.0, 1.0),
                     std::invalid_argument);
 }
+
+TEST_CASE("Chebyshev Robin Poisson recovers polynomial solutions",
+          "[fft][chebyshev]") {
+  const auto error_of = [](int degree, auto force, auto exact, double value_plus,
+                           double slope_plus, double data_plus, double value_minus,
+                           double slope_minus, double data_minus) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> forcing(nodes.size());
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      forcing[j] = force(nodes[j]);
+      truth[j] = exact(nodes[j]);
+    }
+    const auto got =
+        pfc::fft::chebyshev_robin_poisson(forcing, value_plus, slope_plus, data_plus,
+                                          value_minus, slope_minus, data_minus);
+    const auto slope = pfc::fft::chebyshev_derivative(got);
+    REQUIRE_THAT(value_plus * got.front() + slope_plus * slope.front(),
+                 WithinAbs(data_plus, 1e-9));
+    REQUIRE_THAT(value_minus * got.back() + slope_minus * slope.back(),
+                 WithinAbs(data_minus, 1e-9));
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              8, [](double) { return -2.0; }, [](double x) { return 1.0 - x * x; },
+              1.0, 0.0, 0.0, 1.0, 0.0, 0.0) < 1e-11);
+  REQUIRE(error_of(
+              8, [](double) { return 0.0; }, [](double x) { return x; }, 2.0, 0.0,
+              2.0, 2.0, 0.0, -2.0) < 1e-12);
+  REQUIRE(error_of(
+              8, [](double) { return -2.0; },
+              [](double x) { return 1.0 / 3.0 - x * x; }, 0.0, 1.0, -2.0, 0.0, 1.0,
+              2.0) < 1e-11);
+  REQUIRE(error_of(
+              8, [](double) { return 0.0; }, [](double x) { return x; }, 1.0, 0.0,
+              1.0, 0.0, 1.0, 1.0) < 1e-12);
+  REQUIRE(error_of(
+              8, [](double) { return -2.0; }, [](double x) { return 1.0 - x * x; },
+              1.0, 1.0, -2.0, 1.0, 1.0, 2.0) < 1e-11);
+  REQUIRE(error_of(
+              8, [](double) { return -2.0; },
+              [](double x) { return 1.0 - x * x + 0.5 * x; }, 1.0, 1.0, -1.0, 1.0,
+              1.0, 2.0) < 1e-11);
+
+  const auto nodes = pfc::fft::chebyshev_lobatto(8);
+  const std::vector<double> forcing(nodes.size(), -2.0);
+  const auto gauged =
+      pfc::fft::chebyshev_robin_poisson(forcing, 0.0, 1.0, -2.0, 0.0, 1.0, 2.0);
+  REQUIRE_THAT(interval_integral(gauged), WithinAbs(0.0, 1e-10));
+  const auto second =
+      pfc::fft::chebyshev_derivative(pfc::fft::chebyshev_derivative(gauged));
+  REQUIRE(max_abs_diff(second, forcing) < 1e-9);
+}
+
+TEST_CASE("Chebyshev Robin Poisson rejects an unusable condition",
+          "[fft][chebyshev]") {
+  REQUIRE_THROWS_AS(
+      pfc::fft::chebyshev_robin_poisson({}, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+      std::invalid_argument);
+  const std::vector<double> one{0.0};
+  REQUIRE_THROWS_AS(
+      pfc::fft::chebyshev_robin_poisson(one, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+      std::invalid_argument);
+
+  const auto nodes = pfc::fft::chebyshev_lobatto(8);
+  const std::vector<double> forcing(nodes.size(), -2.0);
+  REQUIRE_THROWS_AS(
+      pfc::fft::chebyshev_robin_poisson(forcing, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::chebyshev_robin_poisson(forcing, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::chebyshev_robin_poisson(forcing, 1.0, 0.0, 0.0, 0.5, 1.0, 0.0),
+      std::invalid_argument);
+}

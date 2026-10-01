@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Robin Poisson solve on one Chebyshev–Lobatto interval. Each end
+  imposes a mix of the value and the slope. Pure value data and pure
+  slope data reuse those solves. This is the one-dimensional oracle,
+  not a channel wall.
 - A Neumann Helmholtz solve on one Chebyshev–Lobatto interval. The
   equation is u'' − λu = f, and the two highest modes match the
   endpoint slopes. A zero λ reuses the Neumann Poisson solve. This is
