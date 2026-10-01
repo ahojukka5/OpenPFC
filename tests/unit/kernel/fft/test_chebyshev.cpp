@@ -253,3 +253,69 @@ TEST_CASE("Fourier-Chebyshev Laplacian rejects a bad grid",
       pfc::fft::fourier_chebyshev_laplacian(values, 4, -1.0),
       std::invalid_argument);
 }
+
+TEST_CASE("Chebyshev Dirichlet Poisson recovers polynomial solutions",
+          "[fft][chebyshev]") {
+  const auto error_of = [](int degree, auto force, auto exact, double at_plus,
+                           double at_minus) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> forcing(nodes.size());
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      forcing[j] = force(nodes[j]);
+      truth[j] = exact(nodes[j]);
+    }
+    const auto got =
+        pfc::fft::chebyshev_dirichlet_poisson(forcing, at_plus, at_minus);
+    REQUIRE_THAT(got.front(), WithinAbs(at_plus, 1e-12));
+    REQUIRE_THAT(got.back(), WithinAbs(at_minus, 1e-12));
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              8, [](double) { return -2.0; },
+              [](double x) { return 1.0 - x * x; }, 0.0, 0.0) < 1e-11);
+  REQUIRE(error_of(
+              8, [](double) { return 0.0; }, [](double x) { return x; }, 1.0,
+              -1.0) < 1e-12);
+  REQUIRE(error_of(
+              10, [](double x) { return -6.0 * x; },
+              [](double x) { return x - x * x * x; }, 0.0, 0.0) < 1e-11);
+
+  const auto nodes = pfc::fft::chebyshev_lobatto(12);
+  const std::vector<double> forcing(nodes.size(), -2.0);
+  const auto solution =
+      pfc::fft::chebyshev_dirichlet_poisson(forcing, 0.0, 0.0);
+  const auto second =
+      pfc::fft::chebyshev_derivative(pfc::fft::chebyshev_derivative(solution));
+  REQUIRE(max_abs_diff(second, forcing) < 1e-9);
+}
+
+TEST_CASE("Chebyshev Dirichlet Poisson converges for a smooth forcing",
+          "[fft][chebyshev]") {
+  const auto error_at = [](int degree) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> forcing(nodes.size());
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      forcing[j] = std::exp(nodes[j]);
+      truth[j] = std::exp(nodes[j]);
+    }
+    const auto got = pfc::fft::chebyshev_dirichlet_poisson(
+        forcing, std::exp(1.0), std::exp(-1.0));
+    return max_abs_diff(got, truth);
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-10);
+  REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Chebyshev Dirichlet Poisson rejects a one-point grid",
+          "[fft][chebyshev]") {
+  REQUIRE_THROWS_AS(pfc::fft::chebyshev_dirichlet_poisson({}, 0.0, 0.0),
+                    std::invalid_argument);
+  const std::vector<double> one{0.0};
+  REQUIRE_THROWS_AS(pfc::fft::chebyshev_dirichlet_poisson(one, 0.0, 1.0),
+                    std::invalid_argument);
+}

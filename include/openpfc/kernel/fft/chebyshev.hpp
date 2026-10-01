@@ -10,8 +10,9 @@
  * Values on x_j = cos(pi j / n) are an even extension of a cosine series.
  * The transform and the first derivative use one ordinary complex FFT of
  * length 2n. The mixed Laplacian differentiates one periodic Fourier
- * direction and this Chebyshev axis on a single rank. A boundary
- * condition is a separate step.
+ * direction and this Chebyshev axis on a single rank. Dirichlet
+ * Poisson integrates the series and matches both endpoints. A channel
+ * wall is still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -44,5 +45,12 @@ chebyshev_derivative(std::span<const double> values);
 [[nodiscard]] std::vector<double>
 fourier_chebyshev_laplacian(std::span<const double> values, int nx,
                             double period);
+
+/// Solve u'' = forcing on [-1, 1], with both endpoints prescribed.
+/// `forcing` is sampled on the Lobatto grid from +1 down to -1.
+/// The result uses that same grid.
+[[nodiscard]] std::vector<double>
+chebyshev_dirichlet_poisson(std::span<const double> forcing,
+                            double value_at_plus, double value_at_minus);
 
 } // namespace pfc::fft
