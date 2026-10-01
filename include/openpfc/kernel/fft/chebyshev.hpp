@@ -12,8 +12,9 @@
  * length 2n. The mixed Laplacian differentiates one periodic Fourier
  * direction and this Chebyshev axis on a single rank. Dirichlet
  * Poisson matches both endpoint values. Neumann Poisson matches both
- * endpoint slopes and sets the integral to zero. A channel wall is
- * still a separate step.
+ * endpoint slopes and sets the integral to zero. Dirichlet Helmholtz
+ * solves u'' - lambda u = f with those endpoint values. A channel
+ * wall is still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -61,5 +62,14 @@ chebyshev_dirichlet_poisson(std::span<const double> forcing,
 [[nodiscard]] std::vector<double>
 chebyshev_neumann_poisson(std::span<const double> forcing, double slope_at_plus,
                           double slope_at_minus);
+
+/// Solve u'' - lambda u = forcing on [-1, 1], with both endpoints
+/// prescribed. A zero lambda reuses the Dirichlet Poisson solve.
+/// The two highest modes are fixed by the endpoint values.
+/// `forcing` is sampled on the Lobatto grid from +1 down to -1.
+/// The result uses that same grid.
+[[nodiscard]] std::vector<double>
+chebyshev_dirichlet_helmholtz(std::span<const double> forcing, double lambda,
+                              double value_at_plus, double value_at_minus);
 
 } // namespace pfc::fft

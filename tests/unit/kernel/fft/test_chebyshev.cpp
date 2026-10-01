@@ -391,3 +391,79 @@ TEST_CASE("Chebyshev Neumann Poisson rejects incompatible data",
   REQUIRE_THROWS_AS(pfc::fft::chebyshev_neumann_poisson(zero, 1.0, -1.0),
                     std::invalid_argument);
 }
+
+TEST_CASE("Chebyshev Dirichlet Helmholtz recovers polynomial solutions",
+          "[fft][chebyshev]") {
+  const auto error_of = [](int degree, double lambda, auto force, auto exact,
+                           double at_plus, double at_minus) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> forcing(nodes.size());
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      forcing[j] = force(nodes[j]);
+      truth[j] = exact(nodes[j]);
+    }
+    const auto got =
+        pfc::fft::chebyshev_dirichlet_helmholtz(forcing, lambda, at_plus, at_minus);
+    REQUIRE_THAT(got.front(), WithinAbs(at_plus, 1e-12));
+    REQUIRE_THAT(got.back(), WithinAbs(at_minus, 1e-12));
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              8, 0.0, [](double) { return -2.0; },
+              [](double x) { return 1.0 - x * x; }, 0.0, 0.0) < 1e-11);
+  REQUIRE(error_of(
+              8, 1.0, [](double x) { return x * x - 3.0; },
+              [](double x) { return 1.0 - x * x; }, 0.0, 0.0) < 1e-11);
+  REQUIRE(error_of(
+              8, -1.0, [](double x) { return x; }, [](double x) { return x; }, 1.0,
+              -1.0) < 1e-12);
+
+  const auto nodes = pfc::fft::chebyshev_lobatto(12);
+  std::vector<double> forcing(nodes.size());
+  std::vector<double> field(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    const double x = nodes[j];
+    forcing[j] = x * x - 3.0;
+    field[j] = 1.0 - x * x;
+  }
+  const auto solution =
+      pfc::fft::chebyshev_dirichlet_helmholtz(forcing, 1.0, 0.0, 0.0);
+  const auto second =
+      pfc::fft::chebyshev_derivative(pfc::fft::chebyshev_derivative(solution));
+  std::vector<double> residual(solution.size());
+  for (std::size_t j = 0; j < solution.size(); ++j) {
+    residual[j] = second[j] - solution[j];
+  }
+  REQUIRE(max_abs_diff(residual, forcing) < 1e-9);
+  REQUIRE(max_abs_diff(solution, field) < 1e-11);
+}
+
+TEST_CASE("Chebyshev Dirichlet Helmholtz converges for a smooth solution",
+          "[fft][chebyshev]") {
+  const auto error_at = [](int degree) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    const std::vector<double> forcing(nodes.size(), 0.0);
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      truth[j] = std::exp(nodes[j]);
+    }
+    const auto got = pfc::fft::chebyshev_dirichlet_helmholtz(
+        forcing, 1.0, std::exp(1.0), std::exp(-1.0));
+    return max_abs_diff(got, truth);
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-10);
+  REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Chebyshev Dirichlet Helmholtz rejects a one-point grid",
+          "[fft][chebyshev]") {
+  REQUIRE_THROWS_AS(pfc::fft::chebyshev_dirichlet_helmholtz({}, 1.0, 0.0, 0.0),
+                    std::invalid_argument);
+  const std::vector<double> one{0.0};
+  REQUIRE_THROWS_AS(pfc::fft::chebyshev_dirichlet_helmholtz(one, 1.0, 0.0, 1.0),
+                    std::invalid_argument);
+}
