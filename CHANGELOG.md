@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Dirichlet Poisson solve on one Chebyshev–Lobatto interval. The
+  forcing series is integrated twice and the two constants match the
+  endpoint values. This is the one-dimensional oracle, not a channel wall.
 - A one-rank Laplacian for one periodic Fourier direction times a
   Chebyshev–Lobatto axis. The bounded derivative reuses the
   one-dimensional transform. A wall boundary condition is separate.

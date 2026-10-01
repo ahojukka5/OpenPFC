@@ -9,6 +9,8 @@
  * The endpoint bins use weight 2, so U_0 = 2n a_0 and U_n = 2n a_n.
  * The interior derivative is the theta derivative divided by -sin(theta).
  * Endpoints use the same weighted sum as Trefethen's chebfft.
+ * Dirichlet Poisson integrates the coefficients twice. The two
+ * constants are fixed by the endpoint values.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -131,6 +133,36 @@ forward_bins(std::span<const double> values) {
 [[nodiscard]] std::vector<double>
 second_derivative(std::span<const double> values) {
   return chebyshev_derivative(chebyshev_derivative(values));
+}
+
+/// Indefinite integral with the constant of integration set to zero.
+/// a_k = (c_{k-1} b_{k-1} - b_{k+1}) / (2k), c_0 = 2.
+[[nodiscard]] std::vector<double>
+integrate_coefficients(std::span<const double> derivative) {
+  const int n = static_cast<int>(derivative.size()) - 1;
+  std::vector<double> integral(static_cast<std::size_t>(n + 2), 0.0);
+  for (int k = 1; k <= n + 1; ++k) {
+    const double weight = (k == 1) ? 2.0 : 1.0;
+    const double previous = derivative[static_cast<std::size_t>(k - 1)];
+    const double next =
+        (k + 1 <= n) ? derivative[static_cast<std::size_t>(k + 1)] : 0.0;
+    integral[static_cast<std::size_t>(k)] =
+        (weight * previous - next) / (2.0 * static_cast<double>(k));
+  }
+  return integral;
+}
+
+[[nodiscard]] double clenshaw(std::span<const double> coefficients, double x) {
+  double ahead = 0.0;
+  double current = 0.0;
+  for (int k = static_cast<int>(coefficients.size()) - 1; k >= 1; --k) {
+    const double updated = 2.0 * x * current - ahead +
+                           coefficients[static_cast<std::size_t>(k)];
+    ahead = current;
+    current = updated;
+  }
+  const double constant = coefficients.empty() ? 0.0 : coefficients.front();
+  return constant + x * current - ahead;
 }
 
 } // namespace
@@ -330,6 +362,41 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx,
     }
   }
   return laplacian;
+}
+
+std::vector<double>
+chebyshev_dirichlet_poisson(std::span<const double> forcing,
+                            double value_at_plus, double value_at_minus) {
+  if (forcing.size() < 2) {
+    throw std::invalid_argument(
+        "chebyshev: Dirichlet Poisson needs both endpoints");
+  }
+  if (forcing.size() >
+      static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  const auto slope = integrate_coefficients(chebyshev_coefficients(forcing));
+  auto solution = integrate_coefficients(slope);
+
+  double at_plus = 0.0;
+  double at_minus = 0.0;
+  for (int k = 0; k < static_cast<int>(solution.size()); ++k) {
+    const double term = solution[static_cast<std::size_t>(k)];
+    at_plus += term;
+    at_minus += (k % 2 == 0) ? term : -term;
+  }
+  solution.front() +=
+      0.5 * ((value_at_plus + value_at_minus) - (at_plus + at_minus));
+  solution[1] +=
+      0.5 * ((value_at_plus - value_at_minus) - (at_plus - at_minus));
+
+  const auto nodes = chebyshev_lobatto(degree);
+  std::vector<double> values(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    values[j] = clenshaw(solution, nodes[j]);
+  }
+  return values;
 }
 
 } // namespace pfc::fft
