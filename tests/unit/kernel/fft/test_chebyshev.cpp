@@ -5,7 +5,9 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -2618,5 +2620,140 @@ TEST_CASE("Chebyshev Robin Helmholtz rejects an unusable condition",
   const std::vector<double> pair{0.0, 0.0};
   REQUIRE_THROWS_AS(
       pfc::fft::chebyshev_robin_helmholtz(pair, 1.0, 1.0, 0.0, 0.0, 0.5, 1.0, 0.0),
+      std::invalid_argument);
+}
+
+namespace {
+
+[[nodiscard]] double max_abs(const std::vector<double> &values) {
+  double peak = 0.0;
+  for (double value : values) peak = std::max(peak, std::abs(value));
+  return peak;
+}
+
+[[nodiscard]] double wall_normal(const pfc::fft::WallAcceleration &acceleration,
+                                 int nx, int ny, int nline) {
+  double peak = 0.0;
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto top = static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+                       static_cast<std::size_t>(ix);
+      const auto bottom =
+          (static_cast<std::size_t>(nline - 1) * static_cast<std::size_t>(ny) +
+           static_cast<std::size_t>(iy)) *
+              static_cast<std::size_t>(nx) +
+          static_cast<std::size_t>(ix);
+      peak = std::max(peak, std::abs(acceleration.z[top]));
+      peak = std::max(peak, std::abs(acceleration.z[bottom]));
+    }
+  }
+  return peak;
+}
+
+} // namespace
+
+TEST_CASE("Channel wall cancels a polynomial normal tendency", "[fft][chebyshev]") {
+  const double period = 2.0 * std::acos(-1.0);
+  const auto zero = [](double, double, double) { return 0.0; };
+  const std::array grids{std::pair{8, 6}, std::pair{8, 1}, std::pair{1, 6}};
+  for (const int degree : {2, 4, 8, 16}) {
+    for (const auto &grid : grids) {
+      const int nx = grid.first;
+      const int ny = grid.second;
+      const auto quiescent = volume_field(nx, ny, degree, period, period, zero);
+      for (const auto &sample : {std::function<double(double, double, double)>{
+                                     [](double, double, double) { return 1.0; }},
+                                 std::function<double(double, double, double)>{
+                                     [](double, double, double z) { return z; }}}) {
+        const auto normal = volume_field(nx, ny, degree, period, period, sample);
+        const auto got = pfc::fft::impermeable_acceleration(
+            quiescent, quiescent, normal, nx, ny, period, period);
+        REQUIRE(max_abs(got.x) < 1e-10);
+        REQUIRE(max_abs(got.y) < 1e-10);
+        REQUIRE(max_abs(got.z) < 1e-10);
+        const auto again = pfc::fft::impermeable_acceleration(
+            got.x, got.y, got.z, nx, ny, period, period);
+        REQUIRE(max_abs(again.x) < 1e-10);
+        REQUIRE(max_abs(again.y) < 1e-10);
+        REQUIRE(max_abs(again.z) < 1e-10);
+      }
+
+      if (nx >= 8) {
+        const auto horizontal =
+            volume_field(nx, ny, degree, period, period,
+                         [](double x, double, double) { return std::cos(2.0 * x); });
+        const auto removed = pfc::fft::impermeable_acceleration(
+            horizontal, quiescent, quiescent, nx, ny, period, period);
+        REQUIRE(max_abs(removed.x) < 1e-10);
+        REQUIRE(max_abs(removed.y) < 1e-10);
+        REQUIRE(max_abs(removed.z) < 1e-10);
+      }
+    }
+  }
+}
+
+TEST_CASE("Channel wall keeps a streamwise mode impermeable", "[fft][chebyshev]") {
+  const double period = 2.0 * std::acos(-1.0);
+  const auto zero = [](double, double, double) { return 0.0; };
+  const auto sample = [](double x, double, double z) {
+    return z * std::cos(2.0 * x);
+  };
+  for (const auto &grid : {std::pair{8, 6}, std::pair{8, 1}}) {
+    for (const int degree : {2, 8, 16}) {
+      const int nx = grid.first;
+      const int ny = grid.second;
+      const auto tendency_x = volume_field(nx, ny, degree, period, period, sample);
+      const auto quiescent = volume_field(nx, ny, degree, period, period, zero);
+      const auto got = pfc::fft::impermeable_acceleration(
+          tendency_x, quiescent, quiescent, nx, ny, period, period);
+      REQUIRE(wall_normal(got, nx, ny, degree + 1) < 1e-9);
+      // Degree 2 puts this divergence into the two tau modes, so the
+      // pressure correction is zero there. A resolved degree sees it.
+      if (degree >= 8) {
+        REQUIRE(max_abs_diff(got.x, tendency_x) > 1e-3);
+        REQUIRE(max_abs(got.z) > 1e-3);
+      }
+      if (degree == 16) {
+        const auto again = pfc::fft::impermeable_acceleration(
+            got.x, got.y, got.z, nx, ny, period, period);
+        REQUIRE(max_abs_diff(again.x, got.x) < 1e-8);
+        REQUIRE(max_abs_diff(again.y, got.y) < 1e-8);
+        REQUIRE(max_abs_diff(again.z, got.z) < 1e-8);
+      }
+    }
+  }
+}
+
+TEST_CASE("Channel wall rejects a bad grid", "[fft][chebyshev]") {
+  const std::vector<double> empty;
+  const std::vector<double> plane{0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> slab{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> short_field{0.0, 0.0, 0.0, 0.0};
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(empty, empty, empty, 2, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(slab, slab, slab, 0, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(slab, slab, slab, 2, 0, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(slab, short_field, slab, 2, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(slab, slab, slab, 3, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(slab, slab, slab, 2, 2, 0.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(slab, slab, slab, 2, 2, 1.0, -1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(plane, plane, plane, 2, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::impermeable_acceleration(plane, plane, plane, 2, 2, -2.0, 1.0),
       std::invalid_argument);
 }

@@ -349,15 +349,35 @@ compares one host step with one device step on the same pencil. That
 comparison has not been run. The command-line application remains the
 CPU path.
 
+## Channel wall
+
+The periodic binary stays periodic. A separate steady balance
+checks an impermeable wall on one Fourier × Fourier × Chebyshev
+rank. The pressure correction is the Neumann Poisson solve.
+\(\mathrm{d}p/\mathrm{d}z\) matches the normal tendency at each
+Chebyshev end, and the corrected acceleration is
+divergence-free. No-slip is the Dirichlet value of the velocity
+at those ends.
+
+Plane Couette is \(u=z\), with wall values \(\pm 1\), zero body
+force, zero flow rate, and unit wall shear. Plane Poiseuille is
+\(u=1-z^2\), with zero wall values, flow rate \(4/3\), and wall
+shear \(\mp 2\). A constant streamwise body force \(2\nu\)
+balances that profile. The same force is a constant pressure
+gradient for this profile. Both stay spectrally exact from
+degree 2. Turbulent channel statistics are not this case.
+
 ## Limits
 
 The run is periodic and three-dimensional. Taylor–Green and
 decaying-hit are unforced. forced-hit adds the one low-mode scheme
 above. The locked ladders are one rank. A user run may use the
-HeFFTe pencil. There are no walls, no channel, no pipe, and no
-second viscosity. A 2-D double shear is not reimplemented here. The
-decaying-hit case is one prescribed spectrum, not an ensemble, and it
-does not claim an inertial range. On the locked decaying ladder,
+HeFFTe pencil. The periodic cases use one viscosity on a cube.
+Pipe flow is outside this application. The channel section
+records the steady laminar balance on the Chebyshev ends. A 2-D
+double shear is not reimplemented here. The decaying-hit case
+is one prescribed spectrum, not an ensemble, and it does not
+claim an inertial range. On the locked decaying ladder,
 kinetic energy, enstrophy, and \(\mathrm{Re}_\lambda\) agree between
 \(N=64\) and \(N=128\) to better than \(10^{-4}\) relative at the
 sample times. The vorticity field at \(N=64\) remains a few percent

@@ -32,6 +32,10 @@
  * integral gauge. Robin data there reuses that solve with weights
  * fixed on the periodic plane. Helmholtz there adds λ to
  * that sum. A zero λ reuses the Robin Poisson solve.
+ * A channel wall subtracts that pressure gradient. The
+ * wall-normal acceleration then vanishes at both ends, and
+ * the divergence of the tendency is removed. No-slip remains
+ * Dirichlet data on the velocity.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -394,6 +398,81 @@ solve_robin_helmholtz(std::span<const double> forcing, double lambda,
     throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
   }
   return evaluate_series(solution, degree);
+}
+
+/// Derivative along one periodic axis. A count below 2 is zero and
+/// does not build a plan. The Nyquist bin of an even count is zero
+/// because that sine vanishes on the samples.
+[[nodiscard]] std::vector<double>
+periodic_derivative(std::span<const double> values, int nx, int ny, int nline,
+                    double period_x, double period_y, bool along_x) {
+  std::vector<double> derivative(values.size(), 0.0);
+  const int count = along_x ? nx : ny;
+  if (count < 2) return derivative;
+  const double period = along_x ? period_x : period_y;
+  Plan plan(count);
+  std::vector<std::complex<double>> line(static_cast<std::size_t>(count));
+  const double scale = static_cast<double>(count);
+  const int outer = along_x ? ny : nx;
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int fixed = 0; fixed < outer; ++fixed) {
+      if (along_x) {
+        for (int ix = 0; ix < nx; ++ix) {
+          line[static_cast<std::size_t>(ix)] =
+              values[tensor_index(iz, fixed, ix, ny, nx)];
+        }
+      } else {
+        for (int iy = 0; iy < ny; ++iy) {
+          line[static_cast<std::size_t>(iy)] =
+              values[tensor_index(iz, iy, fixed, ny, nx)];
+        }
+      }
+      plan.load(line);
+      fftw_execute(plan.forward);
+      auto bins = plan.read();
+      for (int mode = 0; mode < count; ++mode) {
+        const bool nyquist = count % 2 == 0 && mode == count / 2;
+        const double wave = nyquist ? 0.0 : periodic_wavenumber(mode, count, period);
+        const auto bin = bins[static_cast<std::size_t>(mode)];
+        bins[static_cast<std::size_t>(mode)] = std::complex<double>(0.0, wave) * bin;
+      }
+      plan.load(bins);
+      fftw_execute(plan.backward);
+      const auto samples = plan.read();
+      if (along_x) {
+        for (int ix = 0; ix < nx; ++ix) {
+          derivative[tensor_index(iz, fixed, ix, ny, nx)] =
+              samples[static_cast<std::size_t>(ix)].real() / scale;
+        }
+      } else {
+        for (int iy = 0; iy < ny; ++iy) {
+          derivative[tensor_index(iz, iy, fixed, ny, nx)] =
+              samples[static_cast<std::size_t>(iy)].real() / scale;
+        }
+      }
+    }
+  }
+  return derivative;
+}
+
+[[nodiscard]] std::vector<double> normal_derivative(std::span<const double> values,
+                                                    int nx, int ny, int nline) {
+  std::vector<double> derivative(values.size(), 0.0);
+  std::vector<double> column(static_cast<std::size_t>(nline));
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      for (int iz = 0; iz < nline; ++iz) {
+        column[static_cast<std::size_t>(iz)] =
+            values[tensor_index(iz, iy, ix, ny, nx)];
+      }
+      const auto slope = chebyshev_derivative(column);
+      for (int iz = 0; iz < nline; ++iz) {
+        derivative[tensor_index(iz, iy, ix, ny, nx)] =
+            slope[static_cast<std::size_t>(iz)];
+      }
+    }
+  }
+  return derivative;
 }
 
 } // namespace
@@ -1865,6 +1944,71 @@ std::vector<double> fourier_chebyshev_robin_helmholtz(
     }
   }
   return solution;
+}
+
+WallAcceleration impermeable_acceleration(std::span<const double> tendency_x,
+                                          std::span<const double> tendency_y,
+                                          std::span<const double> tendency_z, int nx,
+                                          int ny, double period_x, double period_y) {
+  if (nx < 1 || ny < 1) {
+    throw std::invalid_argument("chebyshev: periodic count must be positive");
+  }
+  if (!(period_x > 0.0) || !(period_y > 0.0)) {
+    throw std::invalid_argument("chebyshev: period must be positive");
+  }
+  const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+  if (tendency_x.size() != tendency_y.size() ||
+      tendency_x.size() != tendency_z.size() || tendency_x.empty() ||
+      tendency_x.size() % plane != 0) {
+    throw std::invalid_argument(
+        "chebyshev: tendency does not match the periodic count");
+  }
+  const auto lines = tendency_x.size() / plane;
+  if (lines > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int nline = static_cast<int>(lines);
+  if (nline < 2) {
+    throw std::invalid_argument("chebyshev: channel wall needs both endpoints");
+  }
+
+  const auto divergence_x =
+      periodic_derivative(tendency_x, nx, ny, nline, period_x, period_y, true);
+  const auto divergence_y =
+      periodic_derivative(tendency_y, nx, ny, nline, period_x, period_y, false);
+  const auto divergence_z = normal_derivative(tendency_z, nx, ny, nline);
+  std::vector<double> divergence(tendency_x.size());
+  for (std::size_t i = 0; i < divergence.size(); ++i) {
+    divergence[i] = divergence_x[i] + divergence_y[i] + divergence_z[i];
+  }
+
+  std::vector<double> slope_at_plus(plane);
+  std::vector<double> slope_at_minus(plane);
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto slot = tensor_index(0, iy, ix, ny, nx);
+      slope_at_plus[slot] = tendency_z[slot];
+      slope_at_minus[slot] = tendency_z[tensor_index(nline - 1, iy, ix, ny, nx)];
+    }
+  }
+  const auto pressure = fourier_chebyshev_neumann_poisson(
+      divergence, nx, ny, period_x, period_y, slope_at_plus, slope_at_minus);
+  const auto gradient_x =
+      periodic_derivative(pressure, nx, ny, nline, period_x, period_y, true);
+  const auto gradient_y =
+      periodic_derivative(pressure, nx, ny, nline, period_x, period_y, false);
+  const auto gradient_z = normal_derivative(pressure, nx, ny, nline);
+
+  WallAcceleration acceleration;
+  acceleration.x.resize(tendency_x.size());
+  acceleration.y.resize(tendency_x.size());
+  acceleration.z.resize(tendency_x.size());
+  for (std::size_t i = 0; i < tendency_x.size(); ++i) {
+    acceleration.x[i] = tendency_x[i] - gradient_x[i];
+    acceleration.y[i] = tendency_y[i] - gradient_y[i];
+    acceleration.z[i] = tendency_z[i] - gradient_z[i];
+  }
+  return acceleration;
 }
 
 std::vector<double>
