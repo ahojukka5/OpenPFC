@@ -326,6 +326,52 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
   message(STATUS "openpfc_microelasticity_hip (periodic microelasticity) enabled")
 endif()
 
+# Periodic incompressible rotational step. One backend per build: HIP and
+# CUDA must not both define these symbols in one link.
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL
+   AND OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE AND OpenPFC_ENABLE_CUDA_SPECTRAL)
+  message(FATAL_ERROR
+    "openpfc_incompressible device kernels support one spectral backend per build")
+endif()
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
+  set_source_files_properties(
+      src/openpfc/kernel/field/incompressible_device_kernels.hip
+      PROPERTIES LANGUAGE HIP)
+  add_library(openpfc_incompressible_hip
+      src/openpfc/kernel/field/incompressible_device_kernels.hip)
+  target_include_directories(openpfc_incompressible_hip
+      PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>)
+  target_link_libraries(openpfc_incompressible_hip PUBLIC OpenPFC hip::host)
+  target_compile_definitions(openpfc_incompressible_hip PUBLIC
+      OpenPFC_ENABLE_HIP OpenPFC_ENABLE_HIP_SPECTRAL)
+  set_target_properties(openpfc_incompressible_hip PROPERTIES
+      HIP_STANDARD 20
+      HIP_STANDARD_REQUIRED ON)
+  message(STATUS "openpfc_incompressible_hip (periodic rotational step) enabled")
+endif()
+if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE AND OpenPFC_ENABLE_CUDA_SPECTRAL)
+  set_source_files_properties(
+      src/openpfc/kernel/field/incompressible_device_kernels.cu
+      PROPERTIES LANGUAGE CUDA)
+  add_library(openpfc_incompressible_cuda
+      src/openpfc/kernel/field/incompressible_device_kernels.cu)
+  target_include_directories(openpfc_incompressible_cuda
+      PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>)
+  target_link_libraries(openpfc_incompressible_cuda PUBLIC OpenPFC CUDA::cudart)
+  target_compile_definitions(openpfc_incompressible_cuda PUBLIC
+      OpenPFC_ENABLE_CUDA OpenPFC_ENABLE_CUDA_SPECTRAL)
+  set_target_properties(openpfc_incompressible_cuda PROPERTIES
+      CUDA_SEPARABLE_COMPILATION ON
+      CUDA_RESOLVE_DEVICE_SYMBOLS ON
+      CUDA_STANDARD 20
+      CUDA_STANDARD_REQUIRED ON)
+  message(STATUS "openpfc_incompressible_cuda (periodic rotational step) enabled")
+endif()
+
 # Add tomlplusplus include directory (header-only library)
 # Since it's header-only (often from FetchContent), we just need the include path
 # Use $<BUILD_INTERFACE:...> to avoid export issues with build directory paths

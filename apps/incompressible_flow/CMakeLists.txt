@@ -90,3 +90,35 @@ if(OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
       TIMEOUT 120 PROCESSORS 2)
   endif()
 endif()
+
+if(TARGET openpfc_incompressible_hip OR TARGET openpfc_incompressible_cuda)
+  set(_flow_device_lib "")
+  if(TARGET openpfc_incompressible_hip)
+    set(_flow_device_lib openpfc_incompressible_hip)
+  elseif(TARGET openpfc_incompressible_cuda)
+    set(_flow_device_lib openpfc_incompressible_cuda)
+  endif()
+  add_executable(incompressible_device_parity
+    tests/incompressible_device_parity.cpp)
+  target_include_directories(incompressible_device_parity PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(incompressible_device_parity PRIVATE
+    OpenPFC ${_flow_device_lib} ${_flow_heffte_tgt})
+  if(OpenPFC_BUILD_TESTS)
+    add_test(NAME incompressible-flow-device-parity
+             COMMAND $<TARGET_FILE:incompressible_device_parity> --n=16)
+    set_tests_properties(incompressible-flow-device-parity PROPERTIES
+      PASS_REGULAR_EXPRESSION "FLOW_DEVICE_PARITY_PASS"
+      TIMEOUT 300)
+    if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE AND
+       (OpenPFC_MPI_TEST_MAX_WORLD_SIZE EQUAL 0 OR
+        OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER_EQUAL 2))
+      add_test(NAME incompressible-flow-device-parity-mpi
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+          $<TARGET_FILE:incompressible_device_parity> ${MPIEXEC_POSTFLAGS} --n=16)
+      set_tests_properties(incompressible-flow-device-parity-mpi PROPERTIES
+        PASS_REGULAR_EXPRESSION "FLOW_DEVICE_PARITY_PASS"
+        TIMEOUT 300 PROCESSORS 2)
+    endif()
+  endif()
+endif()

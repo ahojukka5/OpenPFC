@@ -98,6 +98,9 @@ inline gpuError_t gpuEventQuery(gpuEvent_t event) { return cudaEventQuery(event)
 inline gpuError_t gpuEventSynchronize(gpuEvent_t event) {
   return cudaEventSynchronize(event);
 }
+inline gpuError_t gpuEventElapsedTime(float *ms, gpuEvent_t start, gpuEvent_t stop) {
+  return cudaEventElapsedTime(ms, start, stop);
+}
 inline gpuError_t gpuDeviceSynchronize() { return cudaDeviceSynchronize(); }
 inline gpuError_t gpuGetLastError() { return cudaGetLastError(); }
 inline const char *gpuGetErrorString(gpuError_t error) {
@@ -154,6 +157,9 @@ inline gpuError_t gpuEventRecord(gpuEvent_t event, gpuStream_t stream) {
 inline gpuError_t gpuEventQuery(gpuEvent_t event) { return hipEventQuery(event); }
 inline gpuError_t gpuEventSynchronize(gpuEvent_t event) {
   return hipEventSynchronize(event);
+}
+inline gpuError_t gpuEventElapsedTime(float *ms, gpuEvent_t start, gpuEvent_t stop) {
+  return hipEventElapsedTime(ms, start, stop);
 }
 inline gpuError_t gpuDeviceSynchronize() { return hipDeviceSynchronize(); }
 inline gpuError_t gpuGetLastError() { return hipGetLastError(); }

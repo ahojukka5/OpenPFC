@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `incompressible_flow` can take one integrating-factor step on HIP or
+  CUDA. The stages stay in device memory. The parity driver is built
+  with that library. It has not been run, so this entry does not
+  report a comparison or a step time.
 - `incompressible_flow` adds a constant-power low-mode forcing case.
   The force follows the velocity on the \(|k|=1\) shell and holds the
   injected power fixed. The band energy is summed across the pencil.
