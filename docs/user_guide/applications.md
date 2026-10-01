@@ -196,7 +196,8 @@ mpirun -n 1 ./apps/vlasov_maxwell/vlasov_run --case=landau --summary=results/lan
 `incompressible_flow` advances a periodic 3-D velocity with the
 installed Leray projector and a 2/3-dealiased rotational term. The
 shipped cases are Taylor–Green and decaying homogeneous isotropic
-turbulence on \([0,2\pi]^3\). One MPI rank, CPU, and HeFFTe. The
+turbulence on \([0,2\pi]^3\). CPU and HeFFTe. Ranks share the
+pencil. The locked decaying-hit ladder stays one rank. The
 Taylor–Green refinement tables stay with
 [`examples/taylor_green3d/README.md`](../../examples/taylor_green3d/README.md).
 The decaying-turbulence assumptions and the resolution ladder are in

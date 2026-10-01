@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `incompressible_flow` sums kinetic energy, spectra, and divergence
+  across the HeFFTe pencil. A user run may use more than one rank.
+  The locked decaying-hit ladder stays the one-rank protocol.
 - `incompressible_flow` adds a decaying homogeneous-isotropic case.
   The initial spectrum is the Yoffe–McComb \(k^4\) density, one seeded
   realization, with the 2/3 mask left on.

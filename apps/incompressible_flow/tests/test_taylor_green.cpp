@@ -31,6 +31,11 @@ int world_size() {
   return n;
 }
 
+void world(int &rank, int &nproc) {
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+}
+
 } // namespace
 
 TEST_CASE("Taylor-Green starts at the analytic energy and grows a third component",
@@ -65,6 +70,34 @@ TEST_CASE("Taylor-Green starts at the analytic energy and grows a third componen
   REQUIRE(stepped.ke < flow::kinetic_energy_0 - 1.0e-8);
   REQUIRE(stepped.w_l2 > 1.0e-8);
   REQUIRE(flow::advance(state, 0) == "ok");
+}
+
+TEST_CASE("Taylor-Green energy is the same on every pencil", "[flow][taylor][mpi]") {
+  int rank = 0;
+  int nproc = 1;
+  world(rank, nproc);
+  constexpr double nu = 0.05;
+  constexpr double dt = 0.01;
+  constexpr int n = 16;
+  auto state = flow::make_state(n, nu, dt, rank, nproc);
+  flow::initialize_taylor_green(state);
+  const auto initial = flow::diagnose(state);
+  REQUIRE(initial.finite);
+  REQUIRE(initial.modal_div_max < 1.0e-8);
+  REQUIRE(initial.div_l2 < 1.0e-10);
+  REQUIRE(initial.w_l2 < 1.0e-12);
+  REQUIRE_THAT(initial.ke, WithinAbs(flow::kinetic_energy_0, 1.0e-12));
+  REQUIRE_THAT(initial.enstrophy, WithinAbs(flow::enstrophy_0, 1.0e-10));
+  REQUIRE(std::abs(initial.mean_u) < 1.0e-12);
+  REQUIRE(std::abs(initial.mean_v) < 1.0e-12);
+  REQUIRE(std::abs(initial.mean_w) < 1.0e-12);
+
+  flow::step(state);
+  const auto stepped = flow::diagnose(state);
+  REQUIRE(stepped.finite);
+  REQUIRE(stepped.modal_div_max < 1.0e-8);
+  REQUIRE(stepped.ke < flow::kinetic_energy_0 - 1.0e-8);
+  REQUIRE(stepped.w_l2 > 1.0e-8);
 }
 
 int main(int argc, char *argv[]) {

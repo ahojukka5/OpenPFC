@@ -49,6 +49,16 @@ std::optional<flow::Complex> coefficient(const flow::State &state, int si, int s
   return found;
 }
 
+flow::Complex owned_mode(const flow::State &state, int si, int sj, int sk,
+                         int component, int &owners) {
+  const auto local = coefficient(state, si, sj, sk, component);
+  owners = local.has_value() ? 1 : 0;
+  double packed[2] = {local ? local->real() : 0.0, local ? local->imag() : 0.0};
+  MPI_Allreduce(MPI_IN_PLACE, &owners, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, packed, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  return flow::Complex(packed[0], packed[1]);
+}
+
 } // namespace
 
 TEST_CASE("decaying HIT is a repeatable divergence-free spectrum", "[flow][hit]") {
@@ -125,4 +135,51 @@ TEST_CASE("decaying HIT is a repeatable divergence-free spectrum", "[flow][hit]"
   REQUIRE(stepped.modal_div_max < 1.0e-8);
   REQUIRE(stepped.ke < initial.ke - 1.0e-4);
   REQUIRE(flow::advance(first, 0) == "ok");
+}
+
+TEST_CASE("decaying HIT spectrum is the same on every pencil", "[flow][hit][mpi]") {
+  int rank = 0;
+  int nproc = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+  constexpr int n = 16;
+  constexpr double nu = 0.02;
+  constexpr double dt = 0.01;
+  auto state = flow::make_state(n, nu, dt, rank, nproc);
+  flow::initialize_decaying_hit(state, 1);
+
+  int longitudinal_owners = 0;
+  const auto longitudinal = owned_mode(state, 1, 0, 0, 0, longitudinal_owners);
+  REQUIRE(longitudinal_owners == 1);
+  REQUIRE(longitudinal == flow::Complex{});
+
+  int transverse_owners = 0;
+  const auto transverse = owned_mode(state, 1, 0, 0, 1, transverse_owners);
+  REQUIRE(transverse_owners == 1);
+  REQUIRE(std::abs(transverse) > 0.0);
+
+  int positive_owners = 0;
+  int negative_owners = 0;
+  const auto positive = owned_mode(state, 0, 1, 0, 0, positive_owners);
+  const auto negative = owned_mode(state, 0, -1, 0, 0, negative_owners);
+  REQUIRE(positive_owners == 1);
+  REQUIRE(negative_owners == 1);
+  REQUIRE(std::abs(negative - std::conj(positive)) < 1.0e-14);
+
+  const auto initial = flow::diagnose(state);
+  const auto scales = flow::measure_scales(state, initial);
+  const double modal = flow::modal_kinetic_energy(state);
+  REQUIRE(initial.finite);
+  REQUIRE(initial.modal_div_max < 1.0e-8);
+  REQUIRE(initial.div_l2 < 1.0e-10);
+  REQUIRE_THAT(modal, WithinRel(initial.ke, 1.0e-8));
+  REQUIRE(modal > 0.4);
+  REQUIRE(modal < 0.7);
+  REQUIRE(scales.k_max == 5);
+
+  flow::step(state);
+  const auto stepped = flow::diagnose(state);
+  REQUIRE(stepped.finite);
+  REQUIRE(stepped.modal_div_max < 1.0e-8);
+  REQUIRE(stepped.ke < initial.ke);
 }

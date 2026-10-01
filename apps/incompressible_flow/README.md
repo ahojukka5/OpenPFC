@@ -15,7 +15,8 @@ RK4.
 
 ## Equation
 
-The cube is \([0,2\pi]^3\). One MPI rank advances
+The cube is \([0,2\pi]^3\). The HeFFTe pencil may be shared across
+ranks. One rank remains a complete run. The advance is
 
 \[
 \partial_t\hat{\mathbf u}=P(\mathbf u\times\boldsymbol\omega)
@@ -247,7 +248,8 @@ below \(k_{\max}\eta=1\).
 
 ## Limits
 
-The run is periodic, three-dimensional, unforced, and one rank. It
+The run is periodic, three-dimensional, and unforced. The locked
+ladder is one rank. A user run may use the HeFFTe pencil. It
 does not add walls, a channel, a pipe, a second viscosity, or a
 forcing spectrum. A 2-D double shear is not reimplemented here. The
 decaying-hit case is one prescribed spectrum, not an ensemble, and it
