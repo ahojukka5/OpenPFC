@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Dirichlet Poisson solve on one Fourier × Fourier × Chebyshev
+  rank. Each mode reuses the Chebyshev Dirichlet Helmholtz solve
+  with λ = k_x² + k_y². A unit count in either direction reuses
+  the one-direction solve. This is still one rank, not a channel
+  wall.
 - A Laplacian on one Fourier × Fourier × Chebyshev rank. Each
   periodic direction contributes its squared wavenumber. A unit
   count in either direction reuses the one-direction Laplacian.
