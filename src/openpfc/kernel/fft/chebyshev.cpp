@@ -13,6 +13,9 @@
  * constants are fixed by the endpoint values. Neumann Poisson uses
  * the same integrals, rejects a slope jump the forcing cannot
  * support, and fixes the constant so the integral is zero.
+ * Dirichlet Helmholtz uses a tau recurrence for u'' - lambda u = f.
+ * The two highest coefficients match the endpoint values. A zero
+ * lambda reuses the Poisson integral.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -165,6 +168,80 @@ integrate_coefficients(std::span<const double> derivative) {
   }
   const double constant = coefficients.empty() ? 0.0 : coefficients.front();
   return constant + x * current - ahead;
+}
+
+/// Coefficient of T_k in u'', for u = sum a_j T_j.
+/// Only modes j >= k + 2 of the same parity contribute.
+[[nodiscard]] double
+second_derivative_coefficient(std::span<const double> coefficients, int mode) {
+  const double weight = (mode == 0) ? 2.0 : 1.0;
+  double sum = 0.0;
+  const double wave = static_cast<double>(mode);
+  for (int j = mode + 2; j < static_cast<int>(coefficients.size()); j += 2) {
+    const double higher = static_cast<double>(j);
+    sum += higher * (higher * higher - wave * wave) *
+           coefficients[static_cast<std::size_t>(j)];
+  }
+  return sum / weight;
+}
+
+/// Coefficients of a polynomial solution with the two highest modes set.
+[[nodiscard]] std::vector<double> helmholtz_series(std::span<const double> forcing,
+                                                   double lambda, double highest,
+                                                   double next) {
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  std::vector<double> coefficients(forcing.size(), 0.0);
+  coefficients[static_cast<std::size_t>(degree)] = highest;
+  if (degree >= 1) {
+    coefficients[static_cast<std::size_t>(degree - 1)] = next;
+  }
+  for (int mode = degree - 2; mode >= 0; --mode) {
+    const double second = second_derivative_coefficient(coefficients, mode);
+    coefficients[static_cast<std::size_t>(mode)] =
+        (second - forcing[static_cast<std::size_t>(mode)]) / lambda;
+  }
+  return coefficients;
+}
+
+struct EndpointSum {
+  double at_plus{0.0};
+  double at_minus{0.0};
+};
+
+[[nodiscard]] EndpointSum endpoint_sum(std::span<const double> coefficients) {
+  EndpointSum sum;
+  for (int mode = 0; mode < static_cast<int>(coefficients.size()); ++mode) {
+    const double term = coefficients[static_cast<std::size_t>(mode)];
+    sum.at_plus += term;
+    sum.at_minus += (mode % 2 == 0) ? term : -term;
+  }
+  return sum;
+}
+
+[[nodiscard]] bool coefficients_finite(std::span<const double> coefficients) {
+  for (double value : coefficients) {
+    if (!std::isfinite(value)) return false;
+  }
+  return true;
+}
+
+[[nodiscard]] double column_scale(double at_plus, double at_minus) {
+  double scale = 1.0;
+  const double plus = std::abs(at_plus);
+  const double minus = std::abs(at_minus);
+  if (plus > scale) scale = plus;
+  if (minus > scale) scale = minus;
+  return scale;
+}
+
+[[nodiscard]] std::vector<double>
+evaluate_series(std::span<const double> coefficients, int degree) {
+  const auto nodes = chebyshev_lobatto(degree);
+  std::vector<double> values(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    values[j] = clenshaw(coefficients, nodes[j]);
+  }
+  return values;
 }
 
 } // namespace
@@ -445,6 +522,64 @@ std::vector<double> chebyshev_neumann_poisson(std::span<const double> forcing,
     values[j] = clenshaw(solution, nodes[j]);
   }
   return values;
+}
+
+std::vector<double> chebyshev_dirichlet_helmholtz(std::span<const double> forcing,
+                                                  double lambda,
+                                                  double value_at_plus,
+                                                  double value_at_minus) {
+  if (forcing.size() < 2) {
+    throw std::invalid_argument(
+        "chebyshev: Helmholtz Dirichlet needs both endpoints");
+  }
+  if (forcing.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  if (lambda == 0.0) {
+    return chebyshev_dirichlet_poisson(forcing, value_at_plus, value_at_minus);
+  }
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  const auto coefficients = chebyshev_coefficients(forcing);
+  const auto particular = helmholtz_series(coefficients, lambda, 0.0, 0.0);
+  const std::vector<double> zero(coefficients.size(), 0.0);
+  const auto along_highest = helmholtz_series(zero, lambda, 1.0, 0.0);
+  const auto along_next = helmholtz_series(zero, lambda, 0.0, 1.0);
+  if (!coefficients_finite(particular) || !coefficients_finite(along_highest) ||
+      !coefficients_finite(along_next)) {
+    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  }
+
+  const auto particular_ends = endpoint_sum(particular);
+  const auto highest_ends = endpoint_sum(along_highest);
+  const auto next_ends = endpoint_sum(along_next);
+  const double highest_scale =
+      column_scale(highest_ends.at_plus, highest_ends.at_minus);
+  const double next_scale = column_scale(next_ends.at_plus, next_ends.at_minus);
+  const double highest_plus = highest_ends.at_plus / highest_scale;
+  const double highest_minus = highest_ends.at_minus / highest_scale;
+  const double next_plus = next_ends.at_plus / next_scale;
+  const double next_minus = next_ends.at_minus / next_scale;
+  const double determinant = highest_plus * next_minus - next_plus * highest_minus;
+  if (!(std::abs(determinant) > 1e-8)) {
+    throw std::invalid_argument(
+        "chebyshev: Helmholtz Dirichlet problem is singular");
+  }
+  const double rhs_plus = value_at_plus - particular_ends.at_plus;
+  const double rhs_minus = value_at_minus - particular_ends.at_minus;
+  const double highest =
+      (rhs_plus * next_minus - next_plus * rhs_minus) / determinant / highest_scale;
+  const double next = (highest_plus * rhs_minus - highest_minus * rhs_plus) /
+                      determinant / next_scale;
+
+  std::vector<double> solution(coefficients.size());
+  for (std::size_t mode = 0; mode < solution.size(); ++mode) {
+    solution[mode] =
+        particular[mode] + highest * along_highest[mode] + next * along_next[mode];
+  }
+  if (!coefficients_finite(solution)) {
+    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  }
+  return evaluate_series(solution, degree);
 }
 
 } // namespace pfc::fft
