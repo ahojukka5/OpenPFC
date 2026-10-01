@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Dirichlet Poisson solve on one Fourier × Chebyshev rank. The
+  periodic direction is transformed, and each mode reuses the
+  Chebyshev Dirichlet Helmholtz solve with λ = k². This is the mixed
+  boundary-value oracle, not a channel wall.
 - A Robin Helmholtz solve on one Chebyshev–Lobatto interval. Each end
   imposes a mix of the value and the slope on u'' − λu = f. A zero λ
   reuses the Robin Poisson integral. This is the one-dimensional

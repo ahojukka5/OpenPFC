@@ -17,7 +17,9 @@
  * Helmholtz matches both endpoint slopes. Robin Poisson mixes the
  * value and the slope at each end. Robin Helmholtz uses the same
  * mix for u'' - lambda u = f. A zero lambda reuses the Robin
- * Poisson integral. A channel wall is still a separate step.
+ * Poisson integral. Dirichlet values on a Fourier × Chebyshev
+ * rank reuse the Helmholtz solve with λ = k². A channel wall is
+ * still a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -50,6 +52,14 @@ chebyshev_derivative(std::span<const double> values);
 [[nodiscard]] std::vector<double>
 fourier_chebyshev_laplacian(std::span<const double> values, int nx,
                             double period);
+
+/// Solve (d²/dz² + d²/dx²) u = forcing, periodic in x.
+/// Both Chebyshev ends are Dirichlet. `value_at_plus` and
+/// `value_at_minus` each have length `nx`.
+/// `forcing` is row-major with the periodic index contiguous.
+[[nodiscard]] std::vector<double> fourier_chebyshev_dirichlet_poisson(
+    std::span<const double> forcing, int nx, double period,
+    std::span<const double> value_at_plus, std::span<const double> value_at_minus);
 
 /// Solve u'' = forcing on [-1, 1], with both endpoints prescribed.
 /// `forcing` is sampled on the Lobatto grid from +1 down to -1.
