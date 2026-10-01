@@ -467,3 +467,82 @@ TEST_CASE("Chebyshev Dirichlet Helmholtz rejects a one-point grid",
   REQUIRE_THROWS_AS(pfc::fft::chebyshev_dirichlet_helmholtz(one, 1.0, 0.0, 1.0),
                     std::invalid_argument);
 }
+
+TEST_CASE("Chebyshev Neumann Helmholtz recovers polynomial solutions",
+          "[fft][chebyshev]") {
+  const auto error_of = [](int degree, double lambda, auto force, auto exact,
+                           double at_plus, double at_minus) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> forcing(nodes.size());
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      forcing[j] = force(nodes[j]);
+      truth[j] = exact(nodes[j]);
+    }
+    const auto got =
+        pfc::fft::chebyshev_neumann_helmholtz(forcing, lambda, at_plus, at_minus);
+    const auto slope = pfc::fft::chebyshev_derivative(got);
+    REQUIRE_THAT(slope.front(), WithinAbs(at_plus, 1e-9));
+    REQUIRE_THAT(slope.back(), WithinAbs(at_minus, 1e-9));
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              8, 0.0, [](double) { return -2.0; },
+              [](double x) { return 1.0 / 3.0 - x * x; }, -2.0, 2.0) < 1e-11);
+  const auto gauged = pfc::fft::chebyshev_lobatto(8);
+  std::vector<double> gauged_force(gauged.size(), -2.0);
+  const auto gauged_solution =
+      pfc::fft::chebyshev_neumann_helmholtz(gauged_force, 0.0, -2.0, 2.0);
+  REQUIRE_THAT(interval_integral(gauged_solution), WithinAbs(0.0, 1e-10));
+
+  REQUIRE(error_of(
+              8, 1.0, [](double x) { return x * x - 7.0 / 3.0; },
+              [](double x) { return 1.0 / 3.0 - x * x; }, -2.0, 2.0) < 1e-11);
+  REQUIRE(error_of(
+              8, 1.0, [](double x) { return -x; }, [](double x) { return x; }, 1.0,
+              1.0) < 1e-12);
+
+  const auto nodes = pfc::fft::chebyshev_lobatto(12);
+  std::vector<double> forcing(nodes.size());
+  for (std::size_t j = 0; j < nodes.size(); ++j) {
+    forcing[j] = nodes[j] * nodes[j] - 7.0 / 3.0;
+  }
+  const auto solution =
+      pfc::fft::chebyshev_neumann_helmholtz(forcing, 1.0, -2.0, 2.0);
+  const auto second =
+      pfc::fft::chebyshev_derivative(pfc::fft::chebyshev_derivative(solution));
+  std::vector<double> residual(solution.size());
+  for (std::size_t j = 0; j < solution.size(); ++j) {
+    residual[j] = second[j] - solution[j];
+  }
+  REQUIRE(max_abs_diff(residual, forcing) < 1e-9);
+}
+
+TEST_CASE("Chebyshev Neumann Helmholtz converges for a smooth solution",
+          "[fft][chebyshev]") {
+  const auto error_at = [](int degree) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    const std::vector<double> forcing(nodes.size(), 0.0);
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      truth[j] = std::exp(nodes[j]);
+    }
+    const auto got = pfc::fft::chebyshev_neumann_helmholtz(
+        forcing, 1.0, std::exp(1.0), std::exp(-1.0));
+    return max_abs_diff(got, truth);
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-10);
+  REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Chebyshev Neumann Helmholtz rejects a one-point grid",
+          "[fft][chebyshev]") {
+  REQUIRE_THROWS_AS(pfc::fft::chebyshev_neumann_helmholtz({}, 1.0, 0.0, 0.0),
+                    std::invalid_argument);
+  const std::vector<double> one{0.0};
+  REQUIRE_THROWS_AS(pfc::fft::chebyshev_neumann_helmholtz(one, 1.0, 1.0, 1.0),
+                    std::invalid_argument);
+}

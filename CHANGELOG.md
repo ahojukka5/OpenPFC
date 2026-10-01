@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Neumann Helmholtz solve on one Chebyshev–Lobatto interval. The
+  equation is u'' − λu = f, and the two highest modes match the
+  endpoint slopes. A zero λ reuses the Neumann Poisson solve. This is
+  the one-dimensional oracle, not a channel wall.
 - A Dirichlet Helmholtz solve on one Chebyshev–Lobatto interval. The
   equation is u'' − λu = f, and the two highest modes match the
   endpoint values. A zero λ reuses the Poisson solve. This is the

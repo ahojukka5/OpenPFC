@@ -13,8 +13,9 @@
  * direction and this Chebyshev axis on a single rank. Dirichlet
  * Poisson matches both endpoint values. Neumann Poisson matches both
  * endpoint slopes and sets the integral to zero. Dirichlet Helmholtz
- * solves u'' - lambda u = f with those endpoint values. A channel
- * wall is still a separate step.
+ * solves u'' - lambda u = f with those endpoint values. Neumann
+ * Helmholtz matches both endpoint slopes. A channel wall is still a
+ * separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -71,5 +72,14 @@ chebyshev_neumann_poisson(std::span<const double> forcing, double slope_at_plus,
 [[nodiscard]] std::vector<double>
 chebyshev_dirichlet_helmholtz(std::span<const double> forcing, double lambda,
                               double value_at_plus, double value_at_minus);
+
+/// Solve u'' - lambda u = forcing on [-1, 1], with both endpoint
+/// slopes prescribed. A zero lambda reuses the Neumann Poisson solve.
+/// The two highest modes are set by the endpoint slopes.
+/// `forcing` is sampled on the Lobatto grid from +1 down to -1.
+/// The result uses that same grid.
+[[nodiscard]] std::vector<double>
+chebyshev_neumann_helmholtz(std::span<const double> forcing, double lambda,
+                            double slope_at_plus, double slope_at_minus);
 
 } // namespace pfc::fft

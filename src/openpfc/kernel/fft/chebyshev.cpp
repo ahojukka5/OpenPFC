@@ -15,7 +15,8 @@
  * support, and fixes the constant so the integral is zero.
  * Dirichlet Helmholtz uses a tau recurrence for u'' - lambda u = f.
  * The two highest coefficients match the endpoint values. A zero
- * lambda reuses the Poisson integral.
+ * lambda reuses the Poisson integral. Neumann Helmholtz matches both
+ * endpoint slopes. A zero lambda reuses the Neumann Poisson solve.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -218,6 +219,26 @@ struct EndpointSum {
   return sum;
 }
 
+/// T_k'(1) = k^2 and T_k'(-1) = (-1)^{k-1} k^2.
+[[nodiscard]] EndpointSum slope_sum(std::span<const double> coefficients) {
+  EndpointSum sum;
+  for (int mode = 1; mode < static_cast<int>(coefficients.size()); ++mode) {
+    const double weight = static_cast<double>(mode) * static_cast<double>(mode) *
+                          coefficients[static_cast<std::size_t>(mode)];
+    sum.at_plus += weight;
+    sum.at_minus += (mode % 2 == 1) ? weight : -weight;
+  }
+  return sum;
+}
+
+enum class HelmholtzMatch { values, slopes };
+
+[[nodiscard]] EndpointSum matched_ends(std::span<const double> coefficients,
+                                       HelmholtzMatch match) {
+  if (match == HelmholtzMatch::values) return endpoint_sum(coefficients);
+  return slope_sum(coefficients);
+}
+
 [[nodiscard]] bool coefficients_finite(std::span<const double> coefficients) {
   for (double value : coefficients) {
     if (!std::isfinite(value)) return false;
@@ -242,6 +263,53 @@ evaluate_series(std::span<const double> coefficients, int degree) {
     values[j] = clenshaw(coefficients, nodes[j]);
   }
   return values;
+}
+
+[[nodiscard]] std::vector<double>
+solve_matched_helmholtz(std::span<const double> forcing, double lambda,
+                        double at_plus, double at_minus, HelmholtzMatch match,
+                        const char *singular) {
+  const int degree = static_cast<int>(forcing.size()) - 1;
+  const auto coefficients = chebyshev_coefficients(forcing);
+  const auto particular = helmholtz_series(coefficients, lambda, 0.0, 0.0);
+  const std::vector<double> zero(coefficients.size(), 0.0);
+  const auto along_highest = helmholtz_series(zero, lambda, 1.0, 0.0);
+  const auto along_next = helmholtz_series(zero, lambda, 0.0, 1.0);
+  if (!coefficients_finite(particular) || !coefficients_finite(along_highest) ||
+      !coefficients_finite(along_next)) {
+    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  }
+
+  const auto particular_ends = matched_ends(particular, match);
+  const auto highest_ends = matched_ends(along_highest, match);
+  const auto next_ends = matched_ends(along_next, match);
+  const double highest_scale =
+      column_scale(highest_ends.at_plus, highest_ends.at_minus);
+  const double next_scale = column_scale(next_ends.at_plus, next_ends.at_minus);
+  const double highest_plus = highest_ends.at_plus / highest_scale;
+  const double highest_minus = highest_ends.at_minus / highest_scale;
+  const double next_plus = next_ends.at_plus / next_scale;
+  const double next_minus = next_ends.at_minus / next_scale;
+  const double determinant = highest_plus * next_minus - next_plus * highest_minus;
+  if (!(std::abs(determinant) > 1e-8)) {
+    throw std::invalid_argument(singular);
+  }
+  const double rhs_plus = at_plus - particular_ends.at_plus;
+  const double rhs_minus = at_minus - particular_ends.at_minus;
+  const double highest =
+      (rhs_plus * next_minus - next_plus * rhs_minus) / determinant / highest_scale;
+  const double next = (highest_plus * rhs_minus - highest_minus * rhs_plus) /
+                      determinant / next_scale;
+
+  std::vector<double> solution(coefficients.size());
+  for (std::size_t mode = 0; mode < solution.size(); ++mode) {
+    solution[mode] =
+        particular[mode] + highest * along_highest[mode] + next * along_next[mode];
+  }
+  if (!coefficients_finite(solution)) {
+    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  }
+  return evaluate_series(solution, degree);
 }
 
 } // namespace
@@ -538,48 +606,26 @@ std::vector<double> chebyshev_dirichlet_helmholtz(std::span<const double> forcin
   if (lambda == 0.0) {
     return chebyshev_dirichlet_poisson(forcing, value_at_plus, value_at_minus);
   }
-  const int degree = static_cast<int>(forcing.size()) - 1;
-  const auto coefficients = chebyshev_coefficients(forcing);
-  const auto particular = helmholtz_series(coefficients, lambda, 0.0, 0.0);
-  const std::vector<double> zero(coefficients.size(), 0.0);
-  const auto along_highest = helmholtz_series(zero, lambda, 1.0, 0.0);
-  const auto along_next = helmholtz_series(zero, lambda, 0.0, 1.0);
-  if (!coefficients_finite(particular) || !coefficients_finite(along_highest) ||
-      !coefficients_finite(along_next)) {
-    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
-  }
+  return solve_matched_helmholtz(
+      forcing, lambda, value_at_plus, value_at_minus, HelmholtzMatch::values,
+      "chebyshev: Helmholtz Dirichlet problem is singular");
+}
 
-  const auto particular_ends = endpoint_sum(particular);
-  const auto highest_ends = endpoint_sum(along_highest);
-  const auto next_ends = endpoint_sum(along_next);
-  const double highest_scale =
-      column_scale(highest_ends.at_plus, highest_ends.at_minus);
-  const double next_scale = column_scale(next_ends.at_plus, next_ends.at_minus);
-  const double highest_plus = highest_ends.at_plus / highest_scale;
-  const double highest_minus = highest_ends.at_minus / highest_scale;
-  const double next_plus = next_ends.at_plus / next_scale;
-  const double next_minus = next_ends.at_minus / next_scale;
-  const double determinant = highest_plus * next_minus - next_plus * highest_minus;
-  if (!(std::abs(determinant) > 1e-8)) {
-    throw std::invalid_argument(
-        "chebyshev: Helmholtz Dirichlet problem is singular");
+std::vector<double> chebyshev_neumann_helmholtz(std::span<const double> forcing,
+                                                double lambda, double slope_at_plus,
+                                                double slope_at_minus) {
+  if (forcing.size() < 2) {
+    throw std::invalid_argument("chebyshev: Helmholtz Neumann needs both endpoints");
   }
-  const double rhs_plus = value_at_plus - particular_ends.at_plus;
-  const double rhs_minus = value_at_minus - particular_ends.at_minus;
-  const double highest =
-      (rhs_plus * next_minus - next_plus * rhs_minus) / determinant / highest_scale;
-  const double next = (highest_plus * rhs_minus - highest_minus * rhs_plus) /
-                      determinant / next_scale;
-
-  std::vector<double> solution(coefficients.size());
-  for (std::size_t mode = 0; mode < solution.size(); ++mode) {
-    solution[mode] =
-        particular[mode] + highest * along_highest[mode] + next * along_next[mode];
+  if (forcing.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
   }
-  if (!coefficients_finite(solution)) {
-    throw std::invalid_argument("chebyshev: Helmholtz degree is too large");
+  if (lambda == 0.0) {
+    return chebyshev_neumann_poisson(forcing, slope_at_plus, slope_at_minus);
   }
-  return evaluate_series(solution, degree);
+  return solve_matched_helmholtz(forcing, lambda, slope_at_plus, slope_at_minus,
+                                 HelmholtzMatch::slopes,
+                                 "chebyshev: Helmholtz Neumann problem is singular");
 }
 
 } // namespace pfc::fft
