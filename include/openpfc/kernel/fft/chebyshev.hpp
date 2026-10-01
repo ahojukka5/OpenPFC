@@ -20,7 +20,9 @@
  * Poisson integral. Dirichlet values on a Fourier × Chebyshev
  * rank reuse the Helmholtz solve with λ = k². Neumann slopes on
  * that rank do the same, and the mean mode keeps the integral
- * gauge. A channel wall is still a separate step.
+ * gauge. Robin data on that rank mixes the value and the slope
+ * with weights that do not vary along x. A channel wall is still
+ * a separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -70,6 +72,19 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx,
 [[nodiscard]] std::vector<double> fourier_chebyshev_neumann_poisson(
     std::span<const double> forcing, int nx, double period,
     std::span<const double> slope_at_plus, std::span<const double> slope_at_minus);
+
+/// Solve (d²/dz² + d²/dx²) u = forcing, periodic in x.
+/// Each end imposes value_weight * u + slope_weight * du/dz = data.
+/// `data_at_plus` and `data_at_minus` each have length `nx`.
+/// The weights do not vary along x. A zero wavenumber reuses the
+/// Robin Poisson solve, including its integral gauge when both
+/// ends prescribe only the slope.
+/// `forcing` is row-major with the periodic index contiguous.
+[[nodiscard]] std::vector<double> fourier_chebyshev_robin_poisson(
+    std::span<const double> forcing, int nx, double period, double value_weight_plus,
+    double slope_weight_plus, std::span<const double> data_at_plus,
+    double value_weight_minus, double slope_weight_minus,
+    std::span<const double> data_at_minus);
 
 /// Solve u'' = forcing on [-1, 1], with both endpoints prescribed.
 /// `forcing` is sampled on the Lobatto grid from +1 down to -1.
