@@ -27,6 +27,7 @@
  * data uses that reduction with weights fixed along x. Helmholtz
  * adds λ to k². A zero λ reuses the Robin Poisson solve.
  * A second periodic direction adds k_y² on the same rank.
+ * Dirichlet values there reuse the Helmholtz solve with that sum.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -822,6 +823,170 @@ std::vector<double> fourier_chebyshev_dirichlet_poisson(
     for (int ix = 0; ix < nx; ++ix) {
       solution[mixed_index(iz, ix, nx)] =
           samples[static_cast<std::size_t>(ix)].real() / scale;
+    }
+  }
+  return solution;
+}
+
+std::vector<double>
+fourier_chebyshev_dirichlet_poisson(std::span<const double> forcing, int nx, int ny,
+                                    double period_x, double period_y,
+                                    std::span<const double> value_at_plus,
+                                    std::span<const double> value_at_minus) {
+  if (nx < 1 || ny < 1) {
+    throw std::invalid_argument("chebyshev: periodic count must be positive");
+  }
+  if (!(period_x > 0.0) || !(period_y > 0.0)) {
+    throw std::invalid_argument("chebyshev: period must be positive");
+  }
+  const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+  if (forcing.empty() || forcing.size() % plane != 0) {
+    throw std::invalid_argument(
+        "chebyshev: forcing does not match the periodic count");
+  }
+  if (value_at_plus.size() != plane || value_at_minus.size() != plane) {
+    throw std::invalid_argument(
+        "chebyshev: boundary trace does not match the periodic count");
+  }
+  const auto lines = forcing.size() / plane;
+  if (lines > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int nline = static_cast<int>(lines);
+  if (nline < 2) {
+    throw std::invalid_argument("chebyshev: Dirichlet Poisson needs both endpoints");
+  }
+  if (ny == 1) {
+    return fourier_chebyshev_dirichlet_poisson(forcing, nx, period_x, value_at_plus,
+                                               value_at_minus);
+  }
+  if (nx == 1) {
+    return fourier_chebyshev_dirichlet_poisson(forcing, ny, period_y, value_at_plus,
+                                               value_at_minus);
+  }
+
+  std::vector<std::complex<double>> modes(forcing.size());
+  Plan plan_x(nx);
+  std::vector<std::complex<double>> line_x(static_cast<std::size_t>(nx));
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        line_x[static_cast<std::size_t>(ix)] =
+            forcing[tensor_index(iz, iy, ix, ny, nx)];
+      }
+      plan_x.load(line_x);
+      fftw_execute(plan_x.forward);
+      const auto bins = plan_x.read();
+      for (int mode = 0; mode < nx; ++mode) {
+        modes[tensor_index(iz, iy, mode, ny, nx)] =
+            bins[static_cast<std::size_t>(mode)];
+      }
+    }
+  }
+
+  Plan plan_y(ny);
+  std::vector<std::complex<double>> line_y(static_cast<std::size_t>(ny));
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int mx = 0; mx < nx; ++mx) {
+      for (int iy = 0; iy < ny; ++iy) {
+        line_y[static_cast<std::size_t>(iy)] =
+            modes[tensor_index(iz, iy, mx, ny, nx)];
+      }
+      plan_y.load(line_y);
+      fftw_execute(plan_y.forward);
+      const auto bins = plan_y.read();
+      for (int my = 0; my < ny; ++my) {
+        modes[tensor_index(iz, my, mx, ny, nx)] = bins[static_cast<std::size_t>(my)];
+      }
+    }
+  }
+
+  auto transform_trace = [&](std::span<const double> trace) {
+    std::vector<std::complex<double>> hat(plane);
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        line_x[static_cast<std::size_t>(ix)] =
+            trace[tensor_index(0, iy, ix, ny, nx)];
+      }
+      plan_x.load(line_x);
+      fftw_execute(plan_x.forward);
+      const auto bins = plan_x.read();
+      for (int mx = 0; mx < nx; ++mx) {
+        hat[tensor_index(0, iy, mx, ny, nx)] = bins[static_cast<std::size_t>(mx)];
+      }
+    }
+    for (int mx = 0; mx < nx; ++mx) {
+      for (int iy = 0; iy < ny; ++iy) {
+        line_y[static_cast<std::size_t>(iy)] = hat[tensor_index(0, iy, mx, ny, nx)];
+      }
+      plan_y.load(line_y);
+      fftw_execute(plan_y.forward);
+      const auto bins = plan_y.read();
+      for (int my = 0; my < ny; ++my) {
+        hat[tensor_index(0, my, mx, ny, nx)] = bins[static_cast<std::size_t>(my)];
+      }
+    }
+    return hat;
+  };
+  const auto plus_hat = transform_trace(value_at_plus);
+  const auto minus_hat = transform_trace(value_at_minus);
+
+  for (int mx = 0; mx < nx; ++mx) {
+    const double kx = periodic_wavenumber(mx, nx, period_x);
+    for (int my = 0; my < ny; ++my) {
+      const double ky = periodic_wavenumber(my, ny, period_y);
+      const double lambda = kx * kx + ky * ky;
+      const auto boundary = tensor_index(0, my, mx, ny, nx);
+      std::vector<double> real(static_cast<std::size_t>(nline));
+      std::vector<double> imag(static_cast<std::size_t>(nline));
+      for (int iz = 0; iz < nline; ++iz) {
+        const auto coefficient = modes[tensor_index(iz, my, mx, ny, nx)];
+        real[static_cast<std::size_t>(iz)] = coefficient.real();
+        imag[static_cast<std::size_t>(iz)] = coefficient.imag();
+      }
+      const auto real_solution = chebyshev_dirichlet_helmholtz(
+          real, lambda, plus_hat[boundary].real(), minus_hat[boundary].real());
+      const auto imag_solution = chebyshev_dirichlet_helmholtz(
+          imag, lambda, plus_hat[boundary].imag(), minus_hat[boundary].imag());
+      for (int iz = 0; iz < nline; ++iz) {
+        modes[tensor_index(iz, my, mx, ny, nx)] =
+            std::complex<double>(real_solution[static_cast<std::size_t>(iz)],
+                                 imag_solution[static_cast<std::size_t>(iz)]);
+      }
+    }
+  }
+
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int mx = 0; mx < nx; ++mx) {
+      for (int my = 0; my < ny; ++my) {
+        line_y[static_cast<std::size_t>(my)] =
+            modes[tensor_index(iz, my, mx, ny, nx)];
+      }
+      plan_y.load(line_y);
+      fftw_execute(plan_y.backward);
+      const auto samples = plan_y.read();
+      for (int iy = 0; iy < ny; ++iy) {
+        modes[tensor_index(iz, iy, mx, ny, nx)] =
+            samples[static_cast<std::size_t>(iy)];
+      }
+    }
+  }
+
+  std::vector<double> solution(forcing.size());
+  const double scale = static_cast<double>(nx) * static_cast<double>(ny);
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int mx = 0; mx < nx; ++mx) {
+        line_x[static_cast<std::size_t>(mx)] =
+            modes[tensor_index(iz, iy, mx, ny, nx)];
+      }
+      plan_x.load(line_x);
+      fftw_execute(plan_x.backward);
+      const auto samples = plan_x.read();
+      for (int ix = 0; ix < nx; ++ix) {
+        solution[tensor_index(iz, iy, ix, ny, nx)] =
+            samples[static_cast<std::size_t>(ix)].real() / scale;
+      }
     }
   }
   return solution;

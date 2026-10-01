@@ -24,7 +24,9 @@
  * with weights that do not vary along x. Helmholtz on that rank
  * adds λ to k² and reuses those weights. A zero λ reuses the
  * Robin Poisson solve. A second periodic direction adds k_y²
- * on that rank. A channel wall is still a separate step.
+ * on that rank. Dirichlet values there reuse the Helmholtz
+ * solve with λ = k_x² + k_y². A channel wall is still a
+ * separate step.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -75,6 +77,18 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx, int ny,
 [[nodiscard]] std::vector<double> fourier_chebyshev_dirichlet_poisson(
     std::span<const double> forcing, int nx, double period,
     std::span<const double> value_at_plus, std::span<const double> value_at_minus);
+
+/// Solve (d²/dz² + d²/dy² + d²/dx²) u = forcing on one rank.
+/// Both Chebyshev ends are Dirichlet. `value_at_plus` and
+/// `value_at_minus` each have length `nx * ny`, row-major with x
+/// contiguous. Each mode reuses the Dirichlet Helmholtz solve
+/// with λ = k_x² + k_y². A unit count in either periodic
+/// direction reuses the one-direction solve.
+[[nodiscard]] std::vector<double>
+fourier_chebyshev_dirichlet_poisson(std::span<const double> forcing, int nx, int ny,
+                                    double period_x, double period_y,
+                                    std::span<const double> value_at_plus,
+                                    std::span<const double> value_at_minus);
 
 /// Solve (d²/dz² + d²/dx²) u = forcing, periodic in x.
 /// Both Chebyshev ends prescribe the slope. `slope_at_plus` and

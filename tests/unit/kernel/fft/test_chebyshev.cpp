@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -491,6 +492,247 @@ TEST_CASE("Fourier-Fourier-Chebyshev Laplacian rejects a bad grid",
   REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 2, 2, 0.0, 1.0),
                     std::invalid_argument);
   REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 2, 2, 1.0, -1.0),
+                    std::invalid_argument);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Dirichlet Poisson recovers separable solutions",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+
+  const auto traces_of = [](int nx, int ny, double period_x, double period_y,
+                            auto exact) {
+    std::vector<double> at_plus(static_cast<std::size_t>(nx) *
+                                static_cast<std::size_t>(ny));
+    std::vector<double> at_minus(at_plus.size());
+    for (int iy = 0; iy < ny; ++iy) {
+      const double y = period_y * static_cast<double>(iy) / static_cast<double>(ny);
+      for (int ix = 0; ix < nx; ++ix) {
+        const double x =
+            period_x * static_cast<double>(ix) / static_cast<double>(nx);
+        const auto index =
+            static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(ix);
+        at_plus[index] = exact(x, y, 1.0);
+        at_minus[index] = exact(x, y, -1.0);
+      }
+    }
+    return std::pair{at_plus, at_minus};
+  };
+
+  const auto along_x = [](double x, double, double z) {
+    return std::cos(2.0 * x) * z;
+  };
+  const auto along_x_force =
+      volume_field(16, 1, 8, period, period, [](double x, double, double z) {
+        return -4.0 * std::cos(2.0 * x) * z;
+      });
+  const auto [along_x_plus, along_x_minus] =
+      traces_of(16, 1, period, period, along_x);
+  const auto along_x_got = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+      along_x_force, 16, 1, period, period, along_x_plus, along_x_minus);
+  const auto along_x_one = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+      along_x_force, 16, period, along_x_plus, along_x_minus);
+  REQUIRE(max_abs_diff(along_x_got, along_x_one) == 0.0);
+
+  const auto along_y = [](double, double y, double z) {
+    return std::cos(2.0 * y) * z;
+  };
+  const auto along_y_force =
+      volume_field(1, 16, 8, period, period, [](double, double y, double z) {
+        return -4.0 * std::cos(2.0 * y) * z;
+      });
+  const auto [along_y_plus, along_y_minus] =
+      traces_of(1, 16, period, period, along_y);
+  const auto along_y_got = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+      along_y_force, 1, 16, period, period, along_y_plus, along_y_minus);
+  const auto along_y_one = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+      along_y_force, 16, period, along_y_plus, along_y_minus);
+  REQUIRE(max_abs_diff(along_y_got, along_y_one) == 0.0);
+
+  const auto error_of = [&](int nx, int ny, int degree, double period_x,
+                            double period_y, auto exact, auto force) {
+    const auto forcing = volume_field(nx, ny, degree, period_x, period_y, force);
+    const auto truth = volume_field(nx, ny, degree, period_x, period_y, exact);
+    const auto [at_plus, at_minus] = traces_of(nx, ny, period_x, period_y, exact);
+    const auto got = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+        forcing, nx, ny, period_x, period_y, at_plus, at_minus);
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        const auto plus =
+            static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(ix);
+        const auto minus =
+            (static_cast<std::size_t>(degree) * static_cast<std::size_t>(ny) +
+             static_cast<std::size_t>(iy)) *
+                static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(ix);
+        REQUIRE_THAT(got[plus], WithinAbs(at_plus[plus], 1e-10));
+        REQUIRE_THAT(got[minus], WithinAbs(at_minus[plus], 1e-10));
+      }
+    }
+    return max_abs_diff(got, truth);
+  };
+
+  REQUIRE(error_of(
+              16, 12, 8, period, period,
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(y) * (1.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(y) * (5.0 * z * z - 7.0);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              16, 8, 8, period, period,
+              [](double x, double y, double z) {
+                return z * std::cos(2.0 * x) * std::cos(y);
+              },
+              [](double x, double y, double z) {
+                return -5.0 * z * std::cos(2.0 * x) * std::cos(y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 8, period, period,
+              [](double x, double, double z) {
+                return std::cos(2.0 * x) * (1.0 - z * z);
+              },
+              [](double x, double, double z) {
+                return std::cos(2.0 * x) * (4.0 * z * z - 6.0);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 8, 8, period, period,
+              [](double, double y, double z) { return std::cos(y) * (1.0 - z * z); },
+              [](double, double y, double z) {
+                return std::cos(y) * (z * z - 3.0);
+              }) < 1e-10);
+  const double period_y = 4.0 * pi;
+  REQUIRE(error_of(
+              8, 8, 8, period, period_y,
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(0.5 * y) * (1.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(0.5 * y) * (4.25 * z * z - 6.25);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              5, 6, 8, period, period,
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(2.0 * y) * (1.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(2.0 * x) * std::cos(2.0 * y) * (8.0 * z * z - 10.0);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              5, 6, 8, period, period,
+              [](double x, double y, double z) {
+                return z * std::cos(2.0 * x) * std::cos(2.0 * y);
+              },
+              [](double x, double y, double z) {
+                return -8.0 * z * std::cos(2.0 * x) * std::cos(2.0 * y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 4, 8, period, period,
+              [](double x, double y, double z) {
+                return std::cos(4.0 * x) * std::cos(2.0 * y) * (1.0 - z * z);
+              },
+              [](double x, double y, double z) {
+                return std::cos(4.0 * x) * std::cos(2.0 * y) * (20.0 * z * z - 22.0);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              8, 4, 8, period, period,
+              [](double x, double y, double z) {
+                return z * std::cos(4.0 * x) * std::cos(2.0 * y);
+              },
+              [](double x, double y, double z) {
+                return -20.0 * z * std::cos(4.0 * x) * std::cos(2.0 * y);
+              }) < 1e-10);
+  REQUIRE(error_of(
+              4, 4, 8, period, period,
+              [](double, double, double z) { return 1.0 - z * z; },
+              [](double, double, double) { return -2.0; }) < 1e-10);
+
+  const auto product_force =
+      volume_field(16, 12, 8, period, period, [](double x, double y, double z) {
+        return std::cos(2.0 * x) * std::cos(y) * (5.0 * z * z - 7.0);
+      });
+  const std::vector<double> zeros(static_cast<std::size_t>(16 * 12), 0.0);
+  const auto solved = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+      product_force, 16, 12, period, period, zeros, zeros);
+  const auto residual =
+      pfc::fft::fourier_chebyshev_laplacian(solved, 16, 12, period, period);
+  REQUIRE(max_abs_diff(residual, product_force) < 1e-8);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Dirichlet Poisson converges in z",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto exact = [](double x, double y, double z) {
+    return std::sin(2.0 * x) * std::sin(y) * std::exp(z);
+  };
+  const auto error_at = [&](int degree) {
+    const auto forcing =
+        volume_field(8, 8, degree, period, period, [](double x, double y, double z) {
+          return -4.0 * std::sin(2.0 * x) * std::sin(y) * std::exp(z);
+        });
+    const auto truth = volume_field(8, 8, degree, period, period, exact);
+    std::vector<double> at_plus(64);
+    std::vector<double> at_minus(64);
+    for (int iy = 0; iy < 8; ++iy) {
+      const double y = period * static_cast<double>(iy) / 8.0;
+      for (int ix = 0; ix < 8; ++ix) {
+        const double x = period * static_cast<double>(ix) / 8.0;
+        const auto index =
+            static_cast<std::size_t>(iy) * 8 + static_cast<std::size_t>(ix);
+        at_plus[index] = exact(x, y, 1.0);
+        at_minus[index] = exact(x, y, -1.0);
+      }
+    }
+    const auto got = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+        forcing, 8, 8, period, period, at_plus, at_minus);
+    return max_abs_diff(got, truth);
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-8);
+  REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Dirichlet Poisson rejects a bad grid",
+          "[fft][chebyshev]") {
+  const std::vector<double> forcing{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  const std::vector<double> one_plane{1.0, 2.0, 3.0, 4.0};
+  const std::vector<double> trace{0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> short_trace{0.0};
+  const std::vector<double> wide{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson({}, 2, 2, 1.0, 1.0,
+                                                                  trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 0, 2, 1.0,
+                                                                  1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 2, 0, 1.0,
+                                                                  1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(
+                        one_plane, 3, 2, 1.0, 1.0, wide, wide),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 2, 2, 0.0,
+                                                                  1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(
+                        forcing, 2, 2, 1.0, -1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(
+                        forcing, 2, 2, 1.0, 1.0, short_trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(
+                        one_plane, 2, 2, 1.0, 1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(
+                        forcing, 4, 1, 1.0, -1.0, trace, trace),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_dirichlet_poisson(forcing, 1, 4, 0.0,
+                                                                  1.0, trace, trace),
                     std::invalid_argument);
 }
 
