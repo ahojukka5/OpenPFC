@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A one-rank Laplacian for one periodic Fourier direction times a
+  Chebyshev–Lobatto axis. The bounded derivative reuses the
+  one-dimensional transform. A wall boundary condition is separate.
 - A one-dimensional Chebyshev–Lobatto transform and derivative, built
   from an ordinary FFT of the even extension. This is the transform
   oracle. It does not impose a wall boundary condition.

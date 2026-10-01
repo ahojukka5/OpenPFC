@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -58,6 +59,23 @@ matrix_derivative(const std::vector<double> &values) {
     derivative[static_cast<std::size_t>(i)] = sum;
   }
   return derivative;
+}
+
+template <typename Sample>
+[[nodiscard]] std::vector<double> tensor_field(int nx, int degree, double period,
+                                               Sample sample) {
+  const auto z = pfc::fft::chebyshev_lobatto(degree);
+  std::vector<double> values(static_cast<std::size_t>(nx) * z.size());
+  for (int iz = 0; iz <= degree; ++iz) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const double x =
+          period * static_cast<double>(ix) / static_cast<double>(nx);
+      values[static_cast<std::size_t>(iz) * static_cast<std::size_t>(nx) +
+             static_cast<std::size_t>(ix)] =
+          sample(x, z[static_cast<std::size_t>(iz)]);
+    }
+  }
+  return values;
 }
 
 [[nodiscard]] double max_abs_diff(const std::vector<double> &left,
@@ -134,4 +152,104 @@ TEST_CASE("Chebyshev derivative of exp converges on the Lobatto grid",
   const double fine = error_at(16);
   REQUIRE(fine < 1e-8);
   REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Fourier-Chebyshev Laplacian matches separable polynomials",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto laplace = [&](int nx, int degree, auto sample) {
+    const auto values = tensor_field(nx, degree, period, sample);
+    return pfc::fft::fourier_chebyshev_laplacian(values, nx, period);
+  };
+
+  const auto constant = laplace(8, 4, [](double, double) { return 1.0; });
+  REQUIRE(max_abs_diff(constant, std::vector<double>(constant.size(), 0.0)) <
+          1e-12);
+
+  const auto along_z = laplace(1, 8, [](double, double z) {
+    return 2.0 * z * z - 1.0;
+  });
+  REQUIRE(max_abs_diff(along_z, std::vector<double>(along_z.size(), 4.0)) <
+          1e-10);
+
+  const auto product = tensor_field(16, 8, period, [](double x, double z) {
+    return std::cos(2.0 * x) * (2.0 * z * z - 1.0);
+  });
+  const auto product_lap =
+      pfc::fft::fourier_chebyshev_laplacian(product, 16, period);
+  std::vector<double> product_expect(product.size());
+  const auto z = pfc::fft::chebyshev_lobatto(8);
+  for (int iz = 0; iz <= 8; ++iz) {
+    const double t2 = 2.0 * z[static_cast<std::size_t>(iz)] *
+                          z[static_cast<std::size_t>(iz)] -
+                      1.0;
+    for (int ix = 0; ix < 16; ++ix) {
+      const double x = period * static_cast<double>(ix) / 16.0;
+      product_expect[static_cast<std::size_t>(iz) * 16 +
+                     static_cast<std::size_t>(ix)] =
+          std::cos(2.0 * x) * (4.0 - 4.0 * t2);
+    }
+  }
+  REQUIRE(max_abs_diff(product_lap, product_expect) < 1e-9);
+
+  const auto nyquist = tensor_field(8, 2, period, [](double x, double) {
+    return std::cos(4.0 * x);
+  });
+  const auto nyquist_lap =
+      pfc::fft::fourier_chebyshev_laplacian(nyquist, 8, period);
+  std::vector<double> nyquist_expect(nyquist.size());
+  for (std::size_t i = 0; i < nyquist.size(); ++i) {
+    nyquist_expect[i] = -16.0 * nyquist[i];
+  }
+  REQUIRE(max_abs_diff(nyquist_lap, nyquist_expect) < 1e-9);
+}
+
+TEST_CASE("Fourier-Chebyshev Laplacian of a smooth mode converges in z",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto error_at = [&](int degree) {
+    const auto values = tensor_field(8, degree, period, [](double x, double z) {
+      return std::sin(2.0 * x) * std::exp(z);
+    });
+    const auto got =
+        pfc::fft::fourier_chebyshev_laplacian(values, 8, period);
+    const auto z = pfc::fft::chebyshev_lobatto(degree);
+    double peak = 0.0;
+    for (int iz = 0; iz <= degree; ++iz) {
+      for (int ix = 0; ix < 8; ++ix) {
+        const double x = period * static_cast<double>(ix) / 8.0;
+        const double expect = -3.0 * std::sin(2.0 * x) *
+                              std::exp(z[static_cast<std::size_t>(iz)]);
+        const auto index = static_cast<std::size_t>(iz) * 8 +
+                           static_cast<std::size_t>(ix);
+        peak = std::max(peak, std::abs(got[index] - expect));
+      }
+    }
+    return peak;
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-8);
+  REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Fourier-Chebyshev Laplacian rejects a bad grid",
+          "[fft][chebyshev]") {
+  const std::vector<double> values{1.0, 2.0, 3.0, 4.0};
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian({}, 4, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_laplacian(values, 0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_laplacian(values, 3, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_laplacian(values, 4, 0.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      pfc::fft::fourier_chebyshev_laplacian(values, 4, -1.0),
+      std::invalid_argument);
 }
