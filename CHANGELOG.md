@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- A Laplacian on one Fourier × Fourier × Chebyshev rank. Each
+  periodic direction contributes its squared wavenumber. A unit
+  count in either direction reuses the one-direction Laplacian.
+  This is still one rank, not a distributed axis.
 - A Robin Helmholtz solve on one Fourier × Chebyshev rank. Each
   mode solves u'' − (k² + λ) u = f and matches the same endpoint
   weights as the Robin Poisson solve. A zero λ reuses that solve.

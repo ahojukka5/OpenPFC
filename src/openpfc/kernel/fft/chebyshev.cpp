@@ -26,6 +26,7 @@
  * reduction. A zero wavenumber keeps the integral gauge. Robin
  * data uses that reduction with weights fixed along x. Helmholtz
  * adds λ to k². A zero λ reuses the Robin Poisson solve.
+ * A second periodic direction adds k_y² on the same rank.
  */
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -135,6 +136,13 @@ forward_bins(std::span<const double> values) {
 
 [[nodiscard]] std::size_t mixed_index(int iz, int ix, int nx) {
   return static_cast<std::size_t>(iz) * static_cast<std::size_t>(nx) +
+         static_cast<std::size_t>(ix);
+}
+
+[[nodiscard]] std::size_t tensor_index(int iz, int iy, int ix, int ny, int nx) {
+  return (static_cast<std::size_t>(iz) * static_cast<std::size_t>(ny) +
+          static_cast<std::size_t>(iy)) *
+             static_cast<std::size_t>(nx) +
          static_cast<std::size_t>(ix);
 }
 
@@ -577,6 +585,127 @@ fourier_chebyshev_laplacian(std::span<const double> values, int nx,
     for (int ix = 0; ix < nx; ++ix) {
       laplacian[mixed_index(iz, ix, nx)] =
           samples[static_cast<std::size_t>(ix)].real() / scale;
+    }
+  }
+  return laplacian;
+}
+
+std::vector<double> fourier_chebyshev_laplacian(std::span<const double> values,
+                                                int nx, int ny, double period_x,
+                                                double period_y) {
+  if (nx < 1 || ny < 1) {
+    throw std::invalid_argument("chebyshev: periodic count must be positive");
+  }
+  if (!(period_x > 0.0) || !(period_y > 0.0)) {
+    throw std::invalid_argument("chebyshev: period must be positive");
+  }
+  const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+  if (values.empty() || values.size() % plane != 0) {
+    throw std::invalid_argument("chebyshev: values do not match the periodic count");
+  }
+  const auto lines = values.size() / plane;
+  if (lines > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  if (ny == 1) {
+    return fourier_chebyshev_laplacian(values, nx, period_x);
+  }
+  if (nx == 1) {
+    return fourier_chebyshev_laplacian(values, ny, period_y);
+  }
+
+  const int nline = static_cast<int>(lines);
+  std::vector<std::complex<double>> modes(values.size());
+  Plan plan_x(nx);
+  std::vector<std::complex<double>> line_x(static_cast<std::size_t>(nx));
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        line_x[static_cast<std::size_t>(ix)] =
+            values[tensor_index(iz, iy, ix, ny, nx)];
+      }
+      plan_x.load(line_x);
+      fftw_execute(plan_x.forward);
+      const auto bins = plan_x.read();
+      for (int mode = 0; mode < nx; ++mode) {
+        modes[tensor_index(iz, iy, mode, ny, nx)] =
+            bins[static_cast<std::size_t>(mode)];
+      }
+    }
+  }
+
+  Plan plan_y(ny);
+  std::vector<std::complex<double>> line_y(static_cast<std::size_t>(ny));
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int mx = 0; mx < nx; ++mx) {
+      for (int iy = 0; iy < ny; ++iy) {
+        line_y[static_cast<std::size_t>(iy)] =
+            modes[tensor_index(iz, iy, mx, ny, nx)];
+      }
+      plan_y.load(line_y);
+      fftw_execute(plan_y.forward);
+      const auto bins = plan_y.read();
+      for (int my = 0; my < ny; ++my) {
+        modes[tensor_index(iz, my, mx, ny, nx)] = bins[static_cast<std::size_t>(my)];
+      }
+    }
+  }
+
+  for (int mx = 0; mx < nx; ++mx) {
+    const double kx = periodic_wavenumber(mx, nx, period_x);
+    for (int my = 0; my < ny; ++my) {
+      const double ky = periodic_wavenumber(my, ny, period_y);
+      const double square = kx * kx + ky * ky;
+      std::vector<double> real(static_cast<std::size_t>(nline));
+      std::vector<double> imag(static_cast<std::size_t>(nline));
+      for (int iz = 0; iz < nline; ++iz) {
+        const auto coefficient = modes[tensor_index(iz, my, mx, ny, nx)];
+        real[static_cast<std::size_t>(iz)] = coefficient.real();
+        imag[static_cast<std::size_t>(iz)] = coefficient.imag();
+      }
+      const auto dreal = second_derivative(real);
+      const auto dimag = second_derivative(imag);
+      for (int iz = 0; iz < nline; ++iz) {
+        const auto coefficient = modes[tensor_index(iz, my, mx, ny, nx)];
+        modes[tensor_index(iz, my, mx, ny, nx)] =
+            std::complex<double>(dreal[static_cast<std::size_t>(iz)],
+                                 dimag[static_cast<std::size_t>(iz)]) -
+            square * coefficient;
+      }
+    }
+  }
+
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int mx = 0; mx < nx; ++mx) {
+      for (int my = 0; my < ny; ++my) {
+        line_y[static_cast<std::size_t>(my)] =
+            modes[tensor_index(iz, my, mx, ny, nx)];
+      }
+      plan_y.load(line_y);
+      fftw_execute(plan_y.backward);
+      const auto samples = plan_y.read();
+      for (int iy = 0; iy < ny; ++iy) {
+        modes[tensor_index(iz, iy, mx, ny, nx)] =
+            samples[static_cast<std::size_t>(iy)];
+      }
+    }
+  }
+
+  std::vector<double> laplacian(values.size());
+  const double scale = static_cast<double>(nx) * static_cast<double>(ny);
+  for (int iz = 0; iz < nline; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int mx = 0; mx < nx; ++mx) {
+        line_x[static_cast<std::size_t>(mx)] =
+            modes[tensor_index(iz, iy, mx, ny, nx)];
+      }
+      plan_x.load(line_x);
+      fftw_execute(plan_x.backward);
+      const auto samples = plan_x.read();
+      for (int ix = 0; ix < nx; ++ix) {
+        laplacian[tensor_index(iz, iy, ix, ny, nx)] =
+            samples[static_cast<std::size_t>(ix)].real() / scale;
+      }
     }
   }
   return laplacian;

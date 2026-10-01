@@ -78,6 +78,30 @@ template <typename Sample>
   return values;
 }
 
+template <typename Sample>
+[[nodiscard]] std::vector<double> volume_field(int nx, int ny, int degree,
+                                               double period_x, double period_y,
+                                               Sample sample) {
+  const auto z = pfc::fft::chebyshev_lobatto(degree);
+  std::vector<double> values(static_cast<std::size_t>(nx) *
+                             static_cast<std::size_t>(ny) * z.size());
+  for (int iz = 0; iz <= degree; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      const double y = period_y * static_cast<double>(iy) / static_cast<double>(ny);
+      for (int ix = 0; ix < nx; ++ix) {
+        const double x =
+            period_x * static_cast<double>(ix) / static_cast<double>(nx);
+        values[(static_cast<std::size_t>(iz) * static_cast<std::size_t>(ny) +
+                static_cast<std::size_t>(iy)) *
+                   static_cast<std::size_t>(nx) +
+               static_cast<std::size_t>(ix)] =
+            sample(x, y, z[static_cast<std::size_t>(iz)]);
+      }
+    }
+  }
+  return values;
+}
+
 [[nodiscard]] double interval_integral(const std::vector<double> &values) {
   const auto coefficients = pfc::fft::chebyshev_coefficients(values);
   double sum = 0.0;
@@ -264,6 +288,210 @@ TEST_CASE("Fourier-Chebyshev Laplacian rejects a bad grid",
   REQUIRE_THROWS_AS(
       pfc::fft::fourier_chebyshev_laplacian(values, 4, -1.0),
       std::invalid_argument);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Laplacian matches separable polynomials",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto t2 = [](double z) { return 2.0 * z * z - 1.0; };
+
+  const auto delegated_x =
+      volume_field(16, 1, 8, period, period, [](double x, double, double z) {
+        return std::cos(2.0 * x) * (2.0 * z * z - 1.0);
+      });
+  const auto one_direction =
+      pfc::fft::fourier_chebyshev_laplacian(delegated_x, 16, period);
+  REQUIRE(max_abs_diff(pfc::fft::fourier_chebyshev_laplacian(delegated_x, 16, 1,
+                                                             period, period),
+                       one_direction) == 0.0);
+
+  const auto delegated_y =
+      volume_field(1, 16, 8, period, period, [](double, double y, double z) {
+        return std::cos(2.0 * y) * (2.0 * z * z - 1.0);
+      });
+  const auto along_y =
+      pfc::fft::fourier_chebyshev_laplacian(delegated_y, 16, period);
+  REQUIRE(max_abs_diff(pfc::fft::fourier_chebyshev_laplacian(delegated_y, 1, 16,
+                                                             period, period),
+                       along_y) == 0.0);
+
+  const auto product =
+      volume_field(16, 12, 8, period, period, [](double x, double y, double z) {
+        return std::cos(2.0 * x) * std::cos(y) * (2.0 * z * z - 1.0);
+      });
+  const auto product_lap =
+      pfc::fft::fourier_chebyshev_laplacian(product, 16, 12, period, period);
+  std::vector<double> product_expect(product.size());
+  const auto z = pfc::fft::chebyshev_lobatto(8);
+  for (int iz = 0; iz <= 8; ++iz) {
+    const double profile = t2(z[static_cast<std::size_t>(iz)]);
+    for (int iy = 0; iy < 12; ++iy) {
+      const double y = period * static_cast<double>(iy) / 12.0;
+      for (int ix = 0; ix < 16; ++ix) {
+        const double x = period * static_cast<double>(ix) / 16.0;
+        product_expect[(static_cast<std::size_t>(iz) * 12 +
+                        static_cast<std::size_t>(iy)) *
+                           16 +
+                       static_cast<std::size_t>(ix)] =
+            std::cos(2.0 * x) * std::cos(y) * (4.0 - 5.0 * profile);
+      }
+    }
+  }
+  REQUIRE(max_abs_diff(product_lap, product_expect) < 1e-9);
+
+  const auto along_x =
+      volume_field(8, 8, 8, period, period, [](double x, double, double z) {
+        return std::cos(2.0 * x) * (2.0 * z * z - 1.0);
+      });
+  const auto along_x_lap =
+      pfc::fft::fourier_chebyshev_laplacian(along_x, 8, 8, period, period);
+  std::vector<double> along_x_expect(along_x.size());
+  for (int iz = 0; iz <= 8; ++iz) {
+    const double profile = t2(z[static_cast<std::size_t>(iz)]);
+    for (int iy = 0; iy < 8; ++iy) {
+      for (int ix = 0; ix < 8; ++ix) {
+        const double x = period * static_cast<double>(ix) / 8.0;
+        along_x_expect[(static_cast<std::size_t>(iz) * 8 +
+                        static_cast<std::size_t>(iy)) *
+                           8 +
+                       static_cast<std::size_t>(ix)] =
+            std::cos(2.0 * x) * (4.0 - 4.0 * profile);
+      }
+    }
+  }
+  REQUIRE(max_abs_diff(along_x_lap, along_x_expect) < 1e-9);
+
+  const auto along_only_y =
+      volume_field(8, 8, 8, period, period, [](double, double y, double z) {
+        return std::cos(y) * (2.0 * z * z - 1.0);
+      });
+  const auto along_only_y_lap =
+      pfc::fft::fourier_chebyshev_laplacian(along_only_y, 8, 8, period, period);
+  std::vector<double> along_only_y_expect(along_only_y.size());
+  for (int iz = 0; iz <= 8; ++iz) {
+    const double profile = t2(z[static_cast<std::size_t>(iz)]);
+    for (int iy = 0; iy < 8; ++iy) {
+      const double y = period * static_cast<double>(iy) / 8.0;
+      for (int ix = 0; ix < 8; ++ix) {
+        along_only_y_expect
+            [(static_cast<std::size_t>(iz) * 8 + static_cast<std::size_t>(iy)) * 8 +
+             static_cast<std::size_t>(ix)] = std::cos(y) * (4.0 - profile);
+      }
+    }
+  }
+  REQUIRE(max_abs_diff(along_only_y_lap, along_only_y_expect) < 1e-9);
+
+  const double period_y = 4.0 * pi;
+  const auto stretched =
+      volume_field(8, 8, 2, period, period_y, [](double x, double y, double) {
+        return std::cos(2.0 * x) * std::cos(0.5 * y);
+      });
+  const auto stretched_lap =
+      pfc::fft::fourier_chebyshev_laplacian(stretched, 8, 8, period, period_y);
+  std::vector<double> stretched_expect(stretched.size(), 0.0);
+  for (std::size_t i = 0; i < stretched.size(); ++i) {
+    stretched_expect[i] = -4.25 * stretched[i];
+  }
+  REQUIRE(max_abs_diff(stretched_lap, stretched_expect) < 1e-9);
+
+  const auto odd =
+      volume_field(5, 6, 8, period, period, [](double x, double y, double z) {
+        return std::cos(2.0 * x) * std::cos(2.0 * y) * (2.0 * z * z - 1.0);
+      });
+  const auto odd_lap =
+      pfc::fft::fourier_chebyshev_laplacian(odd, 5, 6, period, period);
+  const auto z_odd = pfc::fft::chebyshev_lobatto(8);
+  std::vector<double> odd_expect(odd.size());
+  for (int iz = 0; iz <= 8; ++iz) {
+    const double profile = t2(z_odd[static_cast<std::size_t>(iz)]);
+    for (int iy = 0; iy < 6; ++iy) {
+      const double y = period * static_cast<double>(iy) / 6.0;
+      for (int ix = 0; ix < 5; ++ix) {
+        const double x = period * static_cast<double>(ix) / 5.0;
+        odd_expect[(static_cast<std::size_t>(iz) * 6 +
+                    static_cast<std::size_t>(iy)) *
+                       5 +
+                   static_cast<std::size_t>(ix)] =
+            std::cos(2.0 * x) * std::cos(2.0 * y) * (4.0 - 8.0 * profile);
+      }
+    }
+  }
+  REQUIRE(max_abs_diff(odd_lap, odd_expect) < 1e-9);
+
+  const auto nyquist =
+      volume_field(8, 4, 2, period, period, [](double x, double y, double) {
+        return std::cos(4.0 * x) * std::cos(2.0 * y);
+      });
+  const auto nyquist_lap =
+      pfc::fft::fourier_chebyshev_laplacian(nyquist, 8, 4, period, period);
+  std::vector<double> nyquist_expect(nyquist.size());
+  for (std::size_t i = 0; i < nyquist.size(); ++i) {
+    nyquist_expect[i] = -20.0 * nyquist[i];
+  }
+  REQUIRE(max_abs_diff(nyquist_lap, nyquist_expect) < 1e-9);
+
+  const auto sheet =
+      volume_field(4, 4, 0, period, period,
+                   [](double x, double, double) { return std::cos(2.0 * x); });
+  const auto sheet_lap =
+      pfc::fft::fourier_chebyshev_laplacian(sheet, 4, 4, period, period);
+  std::vector<double> sheet_expect(sheet.size());
+  for (std::size_t i = 0; i < sheet.size(); ++i) {
+    sheet_expect[i] = -4.0 * sheet[i];
+  }
+  REQUIRE(max_abs_diff(sheet_lap, sheet_expect) < 1e-12);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Laplacian converges in z", "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto error_at = [&](int degree) {
+    const auto values =
+        volume_field(8, 8, degree, period, period, [](double x, double y, double z) {
+          return std::sin(2.0 * x) * std::sin(y) * std::exp(z);
+        });
+    const auto got =
+        pfc::fft::fourier_chebyshev_laplacian(values, 8, 8, period, period);
+    const auto z = pfc::fft::chebyshev_lobatto(degree);
+    double peak = 0.0;
+    for (int iz = 0; iz <= degree; ++iz) {
+      const double ez = std::exp(z[static_cast<std::size_t>(iz)]);
+      for (int iy = 0; iy < 8; ++iy) {
+        const double y = period * static_cast<double>(iy) / 8.0;
+        for (int ix = 0; ix < 8; ++ix) {
+          const double x = period * static_cast<double>(ix) / 8.0;
+          const double expect = -4.0 * std::sin(2.0 * x) * std::sin(y) * ez;
+          const auto index =
+              (static_cast<std::size_t>(iz) * 8 + static_cast<std::size_t>(iy)) * 8 +
+              static_cast<std::size_t>(ix);
+          peak = std::max(peak, std::abs(got[index] - expect));
+        }
+      }
+    }
+    return peak;
+  };
+  const double coarse = error_at(8);
+  const double fine = error_at(16);
+  REQUIRE(fine < 1e-8);
+  REQUIRE(fine < coarse);
+}
+
+TEST_CASE("Fourier-Fourier-Chebyshev Laplacian rejects a bad grid",
+          "[fft][chebyshev]") {
+  const std::vector<double> values{1.0, 2.0, 3.0, 4.0};
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian({}, 4, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 0, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 2, 0, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 3, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 2, 2, 0.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_laplacian(values, 2, 2, 1.0, -1.0),
+                    std::invalid_argument);
 }
 
 TEST_CASE("Fourier-Chebyshev Dirichlet Poisson recovers separable solutions",
