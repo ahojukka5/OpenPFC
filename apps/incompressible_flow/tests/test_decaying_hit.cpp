@@ -183,3 +183,38 @@ TEST_CASE("decaying HIT spectrum is the same on every pencil", "[flow][hit][mpi]
   REQUIRE(stepped.modal_div_max < 1.0e-8);
   REQUIRE(stepped.ke < initial.ke);
 }
+
+TEST_CASE("modal divergence is normalized by N^3", "[flow][hit]") {
+  if (world_size() != 1) SKIP("one rank owns every Fourier mode");
+  constexpr int n = 16;
+  constexpr double nu = 0.02;
+  constexpr double dt = 0.01;
+  auto state = flow::make_state(n, nu, dt, 0, 1);
+  const auto outbox = state.stack->fft().get_outbox_bounds();
+  // Amplitude of an energetic shell at N=1024. Raw |k·û| then sits
+  // above 1e-8 after a double-precision Leray projection.
+  constexpr double amplitude = 1.0e9;
+  pfc::fft::kspace::for_each_kpoint(
+      outbox, state.n, state.spacing,
+      [&](std::size_t idx, double, double, double, int i, int j, int k) {
+        if (flow::signed_index(i, n) != 2) return;
+        if (flow::signed_index(j, n) != 3) return;
+        if (flow::signed_index(k, n) != 1) return;
+        state.u[idx] = flow::Complex(amplitude, 0.3 * amplitude);
+        state.v[idx] = flow::Complex(-0.4 * amplitude, 0.2 * amplitude);
+        state.w[idx] = flow::Complex(0.7 * amplitude, -0.5 * amplitude);
+      });
+  const auto nhat = state.u.size();
+  pfc::field::leray_project(outbox, state.n, state.spacing, state.u.data(),
+                            state.v.data(), state.w.data(), nhat);
+  const double raw = pfc::field::max_modal_divergence(
+      outbox, state.n, state.spacing, state.u.data(), state.v.data(),
+      state.w.data(), nhat);
+  const auto diag = flow::diagnose(state);
+  const double ncells = static_cast<double>(n) * static_cast<double>(n) *
+                        static_cast<double>(n);
+  REQUIRE(raw > 1.0e-8);
+  REQUIRE(diag.finite);
+  REQUIRE(diag.modal_div_max < 1.0e-8);
+  REQUIRE(diag.modal_div_max == raw / ncells);
+}
