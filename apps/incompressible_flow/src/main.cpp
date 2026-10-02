@@ -28,6 +28,9 @@
 #include <flow/decaying_hit.hpp>
 #include <flow/forced_hit.hpp>
 #include <flow/taylor_green.hpp>
+#if defined(OPENPFC_FLOW_DEVICE)
+#include <flow/device_session.hpp>
+#endif
 
 namespace {
 
@@ -44,6 +47,17 @@ struct Options {
 };
 
 void usage(std::ostream &os) {
+#if defined(OPENPFC_FLOW_DEVICE)
+  os << "Usage: incompressible_flow_hip\n"
+        "       --case taylor-green|decaying-hit\n"
+        "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
+        "       [--outdir DIR]\n"
+        "\n"
+        "Periodic 3-D Navier-Stokes on [0, 2pi]^3. The step uses the\n"
+        "HIP HeFFTe backend (rocFFT). Diagnostics copy the hats back\n"
+        "at a sample. Forced HIT and the locked series stay on\n"
+        "incompressible_flow.\n";
+#else
   os << "Usage: incompressible_flow\n"
         "       --case taylor-green|decaying-hit|forced-hit\n"
         "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
@@ -54,6 +68,7 @@ void usage(std::ostream &os) {
         "stays on. Ranks share the HeFFTe pencil. --series runs a\n"
         "locked one-rank ladder and ignores n, nu, dt, time, seed,\n"
         "and power.\n";
+#endif
 }
 
 std::optional<int> parse_int(std::string_view text) {
@@ -236,9 +251,19 @@ int run_taylor(const Options &opt, int rank, int nproc) {
     return EXIT_FAILURE;
   }
 
+#if defined(OPENPFC_FLOW_DEVICE)
+  auto device = flow::start_device_session(state, rank, nproc);
+#endif
   for (long long step = 1; step <= steps; ++step) {
+#if defined(OPENPFC_FLOW_DEVICE)
+    flow::step_device_session(*device);
+#else
     flow::step(state);
+#endif
     if (step != steps) continue;
+#if defined(OPENPFC_FLOW_DEVICE)
+    flow::finish_device_session(*device, state);
+#endif
     auto diag = flow::diagnose(state);
     if (!diag.finite)
       status = "nonfinite";
@@ -315,11 +340,21 @@ int run_hit(const Options &opt, int rank, int nproc) {
     return EXIT_FAILURE;
   }
 
+#if defined(OPENPFC_FLOW_DEVICE)
+  auto device = flow::start_device_session(state, rank, nproc);
+#endif
   flow::Diagnostics final_diag = initial;
   flow::Scales final_scales = initial_scales;
   for (long long step = 1; step <= steps; ++step) {
+#if defined(OPENPFC_FLOW_DEVICE)
+    flow::step_device_session(*device);
+#else
     flow::step(state);
+#endif
     if (step != steps) continue;
+#if defined(OPENPFC_FLOW_DEVICE)
+    flow::finish_device_session(*device, state);
+#endif
     final_diag = flow::diagnose(state);
     final_scales = flow::measure_scales(state, final_diag);
     if (!final_diag.finite)
@@ -334,6 +369,9 @@ int run_hit(const Options &opt, int rank, int nproc) {
     std::ofstream meta(opt.outdir + "/metadata.txt");
     meta << std::setprecision(16);
     meta << "case=decaying-hit\n"
+#if defined(OPENPFC_FLOW_DEVICE)
+         << "backend=hip-heffte\n"
+#endif
          << "spectrum=yoffe-mccomb-2018-eq10\n"
          << "citation=arXiv:1805.01238\n"
          << "c=" << flow::spectrum_c << "\n"
@@ -458,6 +496,18 @@ int main(int argc, char **argv) {
           }
           return EXIT_FAILURE;
         }
+#if defined(OPENPFC_FLOW_DEVICE)
+        if (!opt.series.empty() || opt.which == "forced-hit") {
+          if (rank == 0) {
+            std::cerr << "incompressible_flow: forced HIT and the locked series "
+                         "stay on incompressible_flow\n";
+          }
+          return EXIT_FAILURE;
+        }
+        if (rank == 0) {
+          std::cout << "incompressible_flow backend=hip-heffte" << std::endl;
+        }
+#endif
         try {
           if (!opt.series.empty() && opt.which == "forced-hit")
             return flow::run_forced_series(opt.series, opt.outdir, rank);

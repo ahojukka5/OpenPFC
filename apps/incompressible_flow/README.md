@@ -342,12 +342,12 @@ step took 360 s.
 
 ## Device step
 
-A HIP or CUDA build compiles the same integrating-factor stages into
-`openpfc_incompressible_hip` or `openpfc_incompressible_cuda`. One
-build links one of those libraries. `incompressible_device_parity`
-compares one host step with one device step on the same pencil. That
-comparison has not been run. The command-line application remains the
-CPU path.
+`incompressible_flow_hip` advances Taylor–Green and decaying HIT with
+the device integrating-factor step. HeFFTe uses rocFFT. The velocity
+and the Runge–Kutta stages stay on the device. Diagnostics copy the
+hats back at a sample. Forced HIT and the locked series stay on
+`incompressible_flow`. `incompressible_device_parity` compares one
+host step with one device step on the same pencil.
 
 ## Channel wall
 
