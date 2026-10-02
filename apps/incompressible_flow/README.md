@@ -369,8 +369,12 @@ degree 2. One explicit viscous step uses that acceleration.
 Couette and Poiseuille stay fixed under the step. The mode
 \(\sin(\pi z)\) advances at \(-\nu\pi^{2}\), and
 \(\sin(\pi z)\cos(2x)\) advances at \(-\nu(4+\pi^{2})\).
-These profiles are parallel, so the step does not evaluate a
-convective term. Turbulent channel statistics are not this case.
+These profiles are parallel, so that step leaves the convective
+term out. The term itself is −(u·∇)u on the same grid. It is zero
+on those profiles. The streamfunction (1−z²)² sin(x) matches the
+hand-derived product, and the impermeable projection of that
+product is the acceleration. Turbulent channel statistics are
+not this case.
 
 ## Limits
 
@@ -379,9 +383,9 @@ decaying-hit are unforced. forced-hit adds the one low-mode scheme
 above. The locked ladders are one rank. A user run may use the
 HeFFTe pencil. The periodic cases use one viscosity on a cube.
 Pipe flow is outside this application. The channel section
-records the steady laminar balance and one explicit viscous
-step on the Chebyshev ends. A 2-D double shear is not
-reimplemented here. The decaying-hit case
+records the steady laminar balance, one explicit viscous
+step, and the convective term on the Chebyshev ends. A 2-D
+double shear is not reimplemented here. The decaying-hit case
 is one prescribed spectrum, not an ensemble, and it does not
 claim an inertial range. On the locked decaying ladder,
 kinetic energy, enstrophy, and \(\mathrm{Re}_\lambda\) agree between
