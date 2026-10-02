@@ -7,12 +7,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
+#include <openpfc/kernel/field/fd_stencils.hpp>
 
 using Catch::Matchers::WithinAbs;
 
@@ -2756,4 +2758,319 @@ TEST_CASE("Channel wall rejects a bad grid", "[fft][chebyshev]") {
   REQUIRE_THROWS_AS(
       pfc::fft::impermeable_acceleration(plane, plane, plane, 2, 2, -2.0, 1.0),
       std::invalid_argument);
+}
+
+// Uniform nodes z_i = 1 - i*(2/n), i = 0..n. Orders 4 and 8 solve
+// u'' - λu = f with Dirichlet ends. An interior row uses the shipped
+// even central stencil when that window fits. A row whose window would
+// leave the grid uses a Fornberg closure of (order + 2) points. Known
+// boundary samples move to the right-hand side. This records accuracy
+// at equal point counts. It does not record wall time, memory, MPI, or
+// a GPU.
+namespace {
+
+struct DifferenceRow {
+  int begin = 0;
+  std::vector<double> weight;
+};
+
+[[nodiscard]] std::vector<double> fornberg_second(double origin,
+                                                  const std::vector<double> &nodes) {
+  const int n = static_cast<int>(nodes.size()) - 1;
+  constexpr int derivative = 2;
+  std::vector<std::vector<double>> weight(static_cast<std::size_t>(derivative + 1),
+                                          std::vector<double>(nodes.size(), 0.0));
+  weight[0][0] = 1.0;
+  double product = 1.0;
+  double previous_offset = nodes[0] - origin;
+  for (int i = 1; i <= n; ++i) {
+    const int highest = std::min(i, derivative);
+    double node_product = 1.0;
+    const double saved_offset = previous_offset;
+    previous_offset = nodes[static_cast<std::size_t>(i)] - origin;
+    for (int j = 0; j < i; ++j) {
+      const double separation =
+          nodes[static_cast<std::size_t>(i)] - nodes[static_cast<std::size_t>(j)];
+      node_product *= separation;
+      if (j == i - 1) {
+        for (int k = highest; k >= 1; --k) {
+          const auto row = static_cast<std::size_t>(k);
+          const auto col = static_cast<std::size_t>(i);
+          const auto prev = static_cast<std::size_t>(i - 1);
+          weight[row][col] = product *
+                             (static_cast<double>(k) * weight[row - 1][prev] -
+                              saved_offset * weight[row][prev]) /
+                             node_product;
+        }
+        weight[0][static_cast<std::size_t>(i)] =
+            -product * saved_offset * weight[0][static_cast<std::size_t>(i - 1)] /
+            node_product;
+      }
+      for (int k = highest; k >= 1; --k) {
+        const auto row = static_cast<std::size_t>(k);
+        const auto col = static_cast<std::size_t>(j);
+        weight[row][col] = (previous_offset * weight[row][col] -
+                            static_cast<double>(k) * weight[row - 1][col]) /
+                           separation;
+      }
+      weight[0][static_cast<std::size_t>(j)] =
+          previous_offset * weight[0][static_cast<std::size_t>(j)] / separation;
+    }
+    product = node_product;
+  }
+  return weight[static_cast<std::size_t>(derivative)];
+}
+
+template <int Order>
+[[nodiscard]] DifferenceRow central_row(int index, double spacing) {
+  using Stencil = pfc::field::fd::EvenCentralD2<Order>;
+  constexpr int half = Stencil::half_width;
+  DifferenceRow row;
+  row.begin = index - half;
+  row.weight.assign(static_cast<std::size_t>(2 * half + 1), 0.0);
+  const double scale =
+      1.0 / (static_cast<double>(Stencil::denom) * spacing * spacing);
+  row.weight[static_cast<std::size_t>(half)] =
+      static_cast<double>(Stencil::coeffs[0]) * scale;
+  for (int k = 1; k <= half; ++k) {
+    const double value =
+        static_cast<double>(Stencil::coeffs[static_cast<std::size_t>(k)]) * scale;
+    row.weight[static_cast<std::size_t>(half - k)] = value;
+    row.weight[static_cast<std::size_t>(half + k)] = value;
+  }
+  return row;
+}
+
+[[nodiscard]] DifferenceRow second_difference_row(int intervals, int order,
+                                                  int index) {
+  if (order != 4 && order != 8) {
+    throw std::invalid_argument("uniform difference: order must be 4 or 8");
+  }
+  if (intervals < order + 1) {
+    throw std::invalid_argument(
+        "uniform difference: grid is shorter than the stencil");
+  }
+  const int half = order / 2;
+  const double spacing = 2.0 / static_cast<double>(intervals);
+  if (index >= half && index <= intervals - half) {
+    return order == 4 ? central_row<4>(index, spacing)
+                      : central_row<8>(index, spacing);
+  }
+  const int width = order + 2;
+  int start = index - (width / 2 - 1);
+  if (start < 0) start = 0;
+  const int last = intervals - width + 1;
+  if (start > last) start = last;
+  std::vector<double> nodes(static_cast<std::size_t>(width));
+  for (int j = 0; j < width; ++j) {
+    nodes[static_cast<std::size_t>(j)] =
+        1.0 - static_cast<double>(start + j) * spacing;
+  }
+  DifferenceRow row;
+  row.begin = start;
+  row.weight = fornberg_second(1.0 - static_cast<double>(index) * spacing, nodes);
+  return row;
+}
+
+[[nodiscard]] std::vector<double> dense_solve(std::vector<double> matrix,
+                                              std::vector<double> rhs) {
+  const int size = static_cast<int>(rhs.size());
+  for (int column = 0; column < size; ++column) {
+    int pivot = column;
+    double largest =
+        std::abs(matrix[static_cast<std::size_t>(column * size + column)]);
+    for (int row = column + 1; row < size; ++row) {
+      const double value =
+          std::abs(matrix[static_cast<std::size_t>(row * size + column)]);
+      if (value > largest) {
+        largest = value;
+        pivot = row;
+      }
+    }
+    if (!(largest > 0.0)) {
+      throw std::runtime_error("uniform difference: singular stencil row");
+    }
+    if (pivot != column) {
+      for (int j = column; j < size; ++j) {
+        std::swap(matrix[static_cast<std::size_t>(column * size + j)],
+                  matrix[static_cast<std::size_t>(pivot * size + j)]);
+      }
+      std::swap(rhs[static_cast<std::size_t>(column)],
+                rhs[static_cast<std::size_t>(pivot)]);
+    }
+    const double diagonal = matrix[static_cast<std::size_t>(column * size + column)];
+    for (int row = column + 1; row < size; ++row) {
+      const double factor =
+          matrix[static_cast<std::size_t>(row * size + column)] / diagonal;
+      matrix[static_cast<std::size_t>(row * size + column)] = 0.0;
+      for (int j = column + 1; j < size; ++j) {
+        matrix[static_cast<std::size_t>(row * size + j)] -=
+            factor * matrix[static_cast<std::size_t>(column * size + j)];
+      }
+      rhs[static_cast<std::size_t>(row)] -=
+          factor * rhs[static_cast<std::size_t>(column)];
+    }
+  }
+  std::vector<double> solution(static_cast<std::size_t>(size));
+  for (int row = size - 1; row >= 0; --row) {
+    double sum = rhs[static_cast<std::size_t>(row)];
+    for (int column = row + 1; column < size; ++column) {
+      sum -= matrix[static_cast<std::size_t>(row * size + column)] *
+             solution[static_cast<std::size_t>(column)];
+    }
+    solution[static_cast<std::size_t>(row)] =
+        sum / matrix[static_cast<std::size_t>(row * size + row)];
+  }
+  return solution;
+}
+
+template <typename Force, typename Exact>
+[[nodiscard]] double uniform_dirichlet_error(int intervals, int order, double lambda,
+                                             Force force, Exact exact) {
+  const double spacing = 2.0 / static_cast<double>(intervals);
+  const int unknown = intervals - 1;
+  std::vector<double> matrix(static_cast<std::size_t>(unknown * unknown), 0.0);
+  std::vector<double> rhs(static_cast<std::size_t>(unknown), 0.0);
+  const double at_plus = exact(1.0);
+  const double at_minus = exact(-1.0);
+  for (int index = 1; index <= unknown; ++index) {
+    const DifferenceRow row = second_difference_row(intervals, order, index);
+    const int equation = index - 1;
+    const double node = 1.0 - static_cast<double>(index) * spacing;
+    rhs[static_cast<std::size_t>(equation)] = force(node);
+    for (int k = 0; k < static_cast<int>(row.weight.size()); ++k) {
+      const int node_index = row.begin + k;
+      const double value = row.weight[static_cast<std::size_t>(k)];
+      if (node_index == 0) {
+        rhs[static_cast<std::size_t>(equation)] -= value * at_plus;
+      } else if (node_index == intervals) {
+        rhs[static_cast<std::size_t>(equation)] -= value * at_minus;
+      } else {
+        matrix[static_cast<std::size_t>(equation * unknown + (node_index - 1))] +=
+            value;
+      }
+    }
+    matrix[static_cast<std::size_t>(equation * unknown + equation)] -= lambda;
+  }
+  const auto solution = dense_solve(std::move(matrix), std::move(rhs));
+  double peak = 0.0;
+  for (int index = 1; index <= unknown; ++index) {
+    const double node = 1.0 - static_cast<double>(index) * spacing;
+    peak = std::max(
+        peak, std::abs(solution[static_cast<std::size_t>(index - 1)] - exact(node)));
+  }
+  return peak;
+}
+
+[[nodiscard]] double chebyshev_mode_error(int degree) {
+  const int count = 8;
+  const double period = 2.0 * std::acos(-1.0);
+  const auto exact = [](double x, double z) {
+    return std::cos(2.0 * x) * std::exp(z);
+  };
+  const auto forcing = tensor_field(count, degree, period, [](double x, double z) {
+    return -3.0 * std::exp(z) * std::cos(2.0 * x);
+  });
+  const auto truth = tensor_field(count, degree, period, exact);
+  std::vector<double> at_plus(static_cast<std::size_t>(count));
+  std::vector<double> at_minus(static_cast<std::size_t>(count));
+  for (int ix = 0; ix < count; ++ix) {
+    const double x = period * static_cast<double>(ix) / static_cast<double>(count);
+    at_plus[static_cast<std::size_t>(ix)] = exact(x, 1.0);
+    at_minus[static_cast<std::size_t>(ix)] = exact(x, -1.0);
+  }
+  const auto got = pfc::fft::fourier_chebyshev_dirichlet_poisson(
+      forcing, count, period, at_plus, at_minus);
+  return max_abs_diff(got, truth);
+}
+
+void require_central_weights(int order) {
+  const int intervals = 32;
+  const int index = intervals / 2;
+  const double spacing = 2.0 / static_cast<double>(intervals);
+  const int half = order == 4 ? pfc::field::fd::EvenCentralD2<4>::half_width
+                              : pfc::field::fd::EvenCentralD2<8>::half_width;
+  const auto denom = order == 4 ? pfc::field::fd::EvenCentralD2<4>::denom
+                                : pfc::field::fd::EvenCentralD2<8>::denom;
+  const std::int64_t *coeffs = order == 4
+                                   ? pfc::field::fd::EvenCentralD2<4>::coeffs.data()
+                                   : pfc::field::fd::EvenCentralD2<8>::coeffs.data();
+  std::vector<double> nodes(static_cast<std::size_t>(2 * half + 1));
+  for (int j = 0; j <= 2 * half; ++j) {
+    nodes[static_cast<std::size_t>(j)] =
+        1.0 - static_cast<double>(index - half + j) * spacing;
+  }
+  const auto got =
+      fornberg_second(1.0 - static_cast<double>(index) * spacing, nodes);
+  const double scale = 1.0 / (static_cast<double>(denom) * spacing * spacing);
+  REQUIRE(std::abs(got[static_cast<std::size_t>(half)] -
+                   static_cast<double>(coeffs[0]) * scale) < 1e-9);
+  for (int k = 1; k <= half; ++k) {
+    const double expect = static_cast<double>(coeffs[k]) * scale;
+    REQUIRE(std::abs(got[static_cast<std::size_t>(half - k)] - expect) < 1e-9);
+    REQUIRE(std::abs(got[static_cast<std::size_t>(half + k)] - expect) < 1e-9);
+  }
+}
+
+} // namespace
+
+TEST_CASE("A uniform difference reproduces polynomials inside its order",
+          "[fft][chebyshev]") {
+  require_central_weights(4);
+  require_central_weights(8);
+
+  const auto quartic = [](double z) { return z * z * z * z; };
+  const auto quartic_force = [](double z) { return 12.0 * z * z; };
+  const auto octic = [](double z) {
+    const double square = z * z;
+    return square * square * square * square;
+  };
+  const auto octic_force = [](double z) {
+    const double square = z * z;
+    return 56.0 * square * square * square;
+  };
+  for (const int order : {4, 8}) {
+    REQUIRE(uniform_dirichlet_error(16, order, 0.0, quartic_force, quartic) < 1e-10);
+  }
+  REQUIRE(uniform_dirichlet_error(16, 8, 0.0, octic_force, octic) < 1e-10);
+  REQUIRE(uniform_dirichlet_error(16, 4, 0.0, octic_force, octic) > 1e-3);
+}
+
+TEST_CASE(
+    "Chebyshev and a uniform difference solve the same smooth Dirichlet problem",
+    "[fft][chebyshev]") {
+  const auto exact = [](double z) { return std::exp(z); };
+  const auto error_at = [&](int degree) {
+    const auto nodes = pfc::fft::chebyshev_lobatto(degree);
+    std::vector<double> forcing(nodes.size());
+    std::vector<double> truth(nodes.size());
+    for (std::size_t j = 0; j < nodes.size(); ++j) {
+      forcing[j] = exact(nodes[j]);
+      truth[j] = exact(nodes[j]);
+    }
+    const auto got =
+        pfc::fft::chebyshev_dirichlet_poisson(forcing, exact(1.0), exact(-1.0));
+    return max_abs_diff(got, truth);
+  };
+  const double chebyshev = error_at(16);
+  const double order4_coarse = uniform_dirichlet_error(16, 4, 0.0, exact, exact);
+  const double order4_fine = uniform_dirichlet_error(32, 4, 0.0, exact, exact);
+  const double order8 = uniform_dirichlet_error(16, 8, 0.0, exact, exact);
+  REQUIRE(chebyshev < 1e-10);
+  REQUIRE(chebyshev < order8);
+  REQUIRE(order4_fine * 8.0 < order4_coarse);
+}
+
+TEST_CASE("One Fourier mode of the smooth Dirichlet problem keeps that gap",
+          "[fft][chebyshev]") {
+  const auto modal = [](double z) { return std::exp(z); };
+  const auto modal_force = [](double z) { return -3.0 * std::exp(z); };
+  const double chebyshev = chebyshev_mode_error(16);
+  const double order4_coarse =
+      uniform_dirichlet_error(16, 4, 4.0, modal_force, modal);
+  const double order4_fine = uniform_dirichlet_error(32, 4, 4.0, modal_force, modal);
+  const double order8 = uniform_dirichlet_error(16, 8, 4.0, modal_force, modal);
+  REQUIRE(chebyshev < 1e-10);
+  REQUIRE(chebyshev < order8);
+  REQUIRE(order4_fine * 8.0 < order4_coarse);
 }

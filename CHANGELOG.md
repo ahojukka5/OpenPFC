@@ -9,6 +9,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Orders 4 and 8 of a uniform difference, on the same number of
+  points as a Chebyshev grid, solve one smooth Dirichlet problem.
+  At 17 points the Chebyshev error for exp(z) is below 1e-10 and
+  below the order-8 difference. Doubling the grid cuts the order-4
+  error by more than 8. A polynomial inside the stencil order is
+  exact. The same gap holds for one Fourier mode of that solution.
+  Wall time, memory, MPI, and a GPU are not part of this record.
 - An impermeable channel wall on one Fourier × Fourier ×
   Chebyshev rank. The Neumann pressure correction makes the
   wall-normal acceleration vanish at both Chebyshev ends and
