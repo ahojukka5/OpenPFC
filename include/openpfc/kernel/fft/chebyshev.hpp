@@ -30,7 +30,9 @@
  * data there mixes the value and the slope with weights that
  * do not vary on the periodic plane. Helmholtz there adds λ
  * to k_x² + k_y² and reuses those weights. A zero λ reuses
- * the Robin Poisson solve. A channel wall removes the
+ * the Robin Poisson solve. Partial derivatives on that rank
+ * use the same wavenumbers. The Nyquist sample of a periodic
+ * first derivative is zero. A channel wall removes the
  * pressure gradient so the normal acceleration vanishes at
  * the Chebyshev ends. No-slip remains Dirichlet data on the
  * velocity.
@@ -175,6 +177,21 @@ fourier_chebyshev_neumann_poisson(std::span<const double> forcing, int nx, int n
     double slope_weight_plus, std::span<const double> data_at_plus,
     double value_weight_minus, double slope_weight_minus,
     std::span<const double> data_at_minus);
+
+struct PartialDerivatives {
+  std::vector<double> x;
+  std::vector<double> y;
+  std::vector<double> z;
+};
+
+/// Partial derivatives of one scalar on the mixed grid.
+/// x and y are periodic. z is Chebyshev–Lobatto from +1 down to
+/// -1. A unit count leaves that periodic derivative at zero and
+/// does not build a plan. The Nyquist sample of a periodic first
+/// derivative is zero.
+[[nodiscard]] PartialDerivatives
+fourier_chebyshev_gradient(std::span<const double> values, int nx, int ny,
+                           double period_x, double period_y);
 
 struct WallAcceleration {
   std::vector<double> x;

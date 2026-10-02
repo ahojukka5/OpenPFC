@@ -3074,3 +3074,99 @@ TEST_CASE("One Fourier mode of the smooth Dirichlet problem keeps that gap",
   REQUIRE(chebyshev < order8);
   REQUIRE(order4_fine * 8.0 < order4_coarse);
 }
+
+TEST_CASE("Fourier-Chebyshev gradient matches a separable polynomial",
+          "[fft][chebyshev]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto field =
+      volume_field(8, 6, 4, period, period,
+                   [](double x, double, double z) { return z * std::cos(2.0 * x); });
+  const auto gradient =
+      pfc::fft::fourier_chebyshev_gradient(field, 8, 6, period, period);
+  const auto z = pfc::fft::chebyshev_lobatto(4);
+  std::vector<double> expect_x(field.size());
+  std::vector<double> expect_z(field.size());
+  for (int iz = 0; iz <= 4; ++iz) {
+    const double node = z[static_cast<std::size_t>(iz)];
+    for (int iy = 0; iy < 6; ++iy) {
+      for (int ix = 0; ix < 8; ++ix) {
+        const double x = period * static_cast<double>(ix) / 8.0;
+        const auto index =
+            (static_cast<std::size_t>(iz) * 6 + static_cast<std::size_t>(iy)) * 8 +
+            static_cast<std::size_t>(ix);
+        expect_x[index] = -2.0 * node * std::sin(2.0 * x);
+        expect_z[index] = std::cos(2.0 * x);
+      }
+    }
+  }
+  REQUIRE(max_abs_diff(gradient.x, expect_x) < 1e-12);
+  REQUIRE(max_abs_diff(gradient.y, std::vector<double>(field.size(), 0.0)) < 1e-12);
+  REQUIRE(max_abs_diff(gradient.z, expect_z) < 1e-12);
+
+  const auto along_y =
+      volume_field(4, 8, 2, period, period,
+                   [](double, double y, double node) { return node * std::sin(y); });
+  const auto slope_y =
+      pfc::fft::fourier_chebyshev_gradient(along_y, 4, 8, period, period);
+  const auto nodes = pfc::fft::chebyshev_lobatto(2);
+  std::vector<double> expect_yy(along_y.size());
+  std::vector<double> expect_yz(along_y.size());
+  for (int iz = 0; iz <= 2; ++iz) {
+    const double node = nodes[static_cast<std::size_t>(iz)];
+    for (int iy = 0; iy < 8; ++iy) {
+      const double y = period * static_cast<double>(iy) / 8.0;
+      for (int ix = 0; ix < 4; ++ix) {
+        const auto index =
+            (static_cast<std::size_t>(iz) * 8 + static_cast<std::size_t>(iy)) * 4 +
+            static_cast<std::size_t>(ix);
+        expect_yy[index] = node * std::cos(y);
+        expect_yz[index] = std::sin(y);
+      }
+    }
+  }
+  REQUIRE(max_abs_diff(slope_y.x, std::vector<double>(along_y.size(), 0.0)) < 1e-12);
+  REQUIRE(max_abs_diff(slope_y.y, expect_yy) < 1e-12);
+  REQUIRE(max_abs_diff(slope_y.z, expect_yz) < 1e-12);
+
+  const auto wall_normal = volume_field(
+      1, 4, 4, period, period, [](double, double, double node) { return node; });
+  const auto wall_slope =
+      pfc::fft::fourier_chebyshev_gradient(wall_normal, 1, 4, period, period);
+  REQUIRE(max_abs_diff(wall_slope.x, std::vector<double>(wall_normal.size(), 0.0)) <
+          1e-12);
+  REQUIRE(max_abs_diff(wall_slope.z, std::vector<double>(wall_normal.size(), 1.0)) <
+          1e-12);
+
+  const auto nyquist =
+      volume_field(8, 4, 2, period, period,
+                   [](double x, double, double) { return std::cos(4.0 * x); });
+  const auto nyquist_slope =
+      pfc::fft::fourier_chebyshev_gradient(nyquist, 8, 4, period, period);
+  REQUIRE(max_abs_diff(nyquist_slope.x, std::vector<double>(nyquist.size(), 0.0)) <
+          1e-12);
+
+  const auto odd = volume_field(
+      5, 1, 2, period, period, [](double x, double, double) { return std::sin(x); });
+  const auto odd_slope =
+      pfc::fft::fourier_chebyshev_gradient(odd, 5, 1, period, period);
+  std::vector<double> odd_expect(odd.size());
+  for (int iz = 0; iz <= 2; ++iz) {
+    for (int ix = 0; ix < 5; ++ix) {
+      const double x = period * static_cast<double>(ix) / 5.0;
+      odd_expect[static_cast<std::size_t>(iz) * 5 + static_cast<std::size_t>(ix)] =
+          std::cos(x);
+    }
+  }
+  REQUIRE(max_abs_diff(odd_slope.x, odd_expect) < 1e-12);
+  REQUIRE(max_abs_diff(odd_slope.y, std::vector<double>(odd.size(), 0.0)) < 1e-12);
+
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_gradient({}, 4, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_gradient(std::vector<double>(4, 0.0),
+                                                         0, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(pfc::fft::fourier_chebyshev_gradient(std::vector<double>(8, 1.0),
+                                                         4, 2, 1.0, 1.0),
+                    std::invalid_argument);
+}

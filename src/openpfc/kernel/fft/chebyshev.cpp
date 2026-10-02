@@ -1946,6 +1946,34 @@ std::vector<double> fourier_chebyshev_robin_helmholtz(
   return solution;
 }
 
+PartialDerivatives fourier_chebyshev_gradient(std::span<const double> values, int nx,
+                                              int ny, double period_x,
+                                              double period_y) {
+  if (nx < 1 || ny < 1) {
+    throw std::invalid_argument("chebyshev: periodic count must be positive");
+  }
+  if (!(period_x > 0.0) || !(period_y > 0.0)) {
+    throw std::invalid_argument("chebyshev: period must be positive");
+  }
+  const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+  if (values.empty() || values.size() % plane != 0) {
+    throw std::invalid_argument("chebyshev: values do not match the periodic count");
+  }
+  const auto lines = values.size() / plane;
+  if (lines > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("chebyshev: grid is too large");
+  }
+  const int nline = static_cast<int>(lines);
+  if (nline < 2) {
+    throw std::invalid_argument("chebyshev: gradient needs both endpoints");
+  }
+  PartialDerivatives gradient;
+  gradient.x = periodic_derivative(values, nx, ny, nline, period_x, period_y, true);
+  gradient.y = periodic_derivative(values, nx, ny, nline, period_x, period_y, false);
+  gradient.z = normal_derivative(values, nx, ny, nline);
+  return gradient;
+}
+
 WallAcceleration impermeable_acceleration(std::span<const double> tendency_x,
                                           std::span<const double> tendency_y,
                                           std::span<const double> tendency_z, int nx,
