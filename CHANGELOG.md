@@ -9,6 +9,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- One explicit viscous step on the laminar channel. Plane Couette
+  and plane Poiseuille stay fixed. The mode sin(π z) advances at
+  −ν π², and sin(π z) cos(2x) advances at −ν (4 + π²). These
+  profiles are parallel, so the step does not evaluate a
+  convective term. Turbulent channel statistics are not included.
 - Orders 4 and 8 of a uniform difference, on the same number of
   points as a Chebyshev grid, solve one smooth Dirichlet problem.
   At 17 points the Chebyshev error for exp(z) is below 1e-10 and

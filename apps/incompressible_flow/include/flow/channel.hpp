@@ -12,13 +12,16 @@
  * pressure gradient for that profile. The wall operator removes the
  * pressure gradient so the normal acceleration vanishes at the
  * Chebyshev ends. No-slip is the Dirichlet value of the velocity.
- * The periodic binary stays periodic. Turbulent channel statistics
- * are not this balance.
+ * The periodic binary stays periodic. One explicit viscous step
+ * uses that acceleration. A parallel profile has no convective
+ * term, so the step does not evaluate one. Turbulent channel
+ * statistics are not this balance.
  */
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <stdexcept>
 #include <vector>
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
@@ -60,6 +63,61 @@ struct ChannelBalance {
           static_cast<std::size_t>(iy)) *
              static_cast<std::size_t>(nx) +
          static_cast<std::size_t>(ix);
+}
+
+/// One explicit step of the linear viscous balance.
+/// The tendency is ν times the mixed Laplacian, plus a constant
+/// streamwise body force. The impermeable projection removes the
+/// pressure gradient. Dirichlet values are then restored at both
+/// Chebyshev ends: `wall_plus` and `wall_minus` on the streamwise
+/// velocity, and zero on the other two components. A parallel
+/// profile has no convective term, so this step does not evaluate
+/// one.
+inline void viscous_advance(std::vector<double> &velocity_x,
+                            std::vector<double> &velocity_y,
+                            std::vector<double> &velocity_z, int nx, int ny,
+                            double period_x, double period_y, double nu,
+                            double force, double step, double wall_plus,
+                            double wall_minus) {
+  if (!(nu >= 0.0)) {
+    throw std::invalid_argument("channel: viscosity must be non-negative");
+  }
+  if (!(step > 0.0)) {
+    throw std::invalid_argument("channel: step must be positive");
+  }
+  const auto advance_one = [&](const std::vector<double> &velocity, double body) {
+    const auto laplacian =
+        pfc::fft::fourier_chebyshev_laplacian(velocity, nx, ny, period_x, period_y);
+    std::vector<double> tendency(velocity.size(), 0.0);
+    for (std::size_t i = 0; i < velocity.size(); ++i) {
+      tendency[i] = nu * laplacian[i] + body;
+    }
+    return tendency;
+  };
+  const auto tendency_x = advance_one(velocity_x, force);
+  const auto tendency_y = advance_one(velocity_y, 0.0);
+  const auto tendency_z = advance_one(velocity_z, 0.0);
+  const auto acceleration = pfc::fft::impermeable_acceleration(
+      tendency_x, tendency_y, tendency_z, nx, ny, period_x, period_y);
+  for (std::size_t i = 0; i < velocity_x.size(); ++i) {
+    velocity_x[i] += step * acceleration.x[i];
+    velocity_y[i] += step * acceleration.y[i];
+    velocity_z[i] += step * acceleration.z[i];
+  }
+  const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+  const int nline = static_cast<int>(velocity_x.size() / plane);
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto top = channel_index(0, iy, ix, ny, nx);
+      const auto bottom = channel_index(nline - 1, iy, ix, ny, nx);
+      velocity_x[top] = wall_plus;
+      velocity_x[bottom] = wall_minus;
+      velocity_y[top] = 0.0;
+      velocity_y[bottom] = 0.0;
+      velocity_z[top] = 0.0;
+      velocity_z[bottom] = 0.0;
+    }
+  }
 }
 
 [[nodiscard]] inline ChannelBalance laminar_balance(LaminarProfile profile, int nx,
@@ -131,6 +189,11 @@ struct ChannelBalance {
   report.momentum = nu * (report.shear_plus - report.shear_minus) + force * 2.0;
 
   constexpr double step = 0.1;
+  auto stepped_x = velocity_x;
+  auto stepped_y = velocity_y;
+  auto stepped_z = velocity_z;
+  viscous_advance(stepped_x, stepped_y, stepped_z, nx, ny, period, period, nu, force,
+                  step, prescribed_plus, prescribed_minus);
   for (int iz = 0; iz < nline; ++iz) {
     const double node = z[static_cast<std::size_t>(iz)];
     const double exact = couette ? node : 1.0 - node * node;
@@ -168,24 +231,12 @@ struct ChannelBalance {
           report.max_normal =
               std::max(report.max_normal, std::abs(acceleration.z[index]));
         }
-        double stepped_x = velocity_x[index] + step * acceleration.x[index];
-        double stepped_y = velocity_y[index] + step * acceleration.y[index];
-        double stepped_z = velocity_z[index] + step * acceleration.z[index];
-        if (top) {
-          stepped_x = prescribed_plus;
-          stepped_y = 0.0;
-          stepped_z = 0.0;
-        } else if (bottom) {
-          stepped_x = prescribed_minus;
-          stepped_y = 0.0;
-          stepped_z = 0.0;
-        }
-        report.step_drift =
-            std::max(report.step_drift, std::abs(stepped_x - velocity_x[index]));
-        report.step_drift =
-            std::max(report.step_drift, std::abs(stepped_y - velocity_y[index]));
-        report.step_drift =
-            std::max(report.step_drift, std::abs(stepped_z - velocity_z[index]));
+        report.step_drift = std::max(report.step_drift,
+                                     std::abs(stepped_x[index] - velocity_x[index]));
+        report.step_drift = std::max(report.step_drift,
+                                     std::abs(stepped_y[index] - velocity_y[index]));
+        report.step_drift = std::max(report.step_drift,
+                                     std::abs(stepped_z[index] - velocity_z[index]));
       }
     }
   }
