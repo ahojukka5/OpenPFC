@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Fixed
+
+- Periodic incompressible diagnostics report the modal divergence of
+  û/N³. The stored hat includes the unnormalized factor N³, so raw
+  |k·û| at 1024³ lies on the double-precision floor near 2e-8 for a
+  solenoidal field.
+
 ### Added
 
 - One explicit channel step adds the convective acceleration to

@@ -12,7 +12,9 @@
  * The step is integrating-factor RK4 of `P(u × ω)` after a state-level
  * 2/3 mask. This file does not own a projector. Each rank owns the FFT
  * pencil HeFFTe assigns it. Diagnostics are sums and maxima over that
- * pencil, reduced across the communicator. The 2-D
+ * pencil, reduced across the communicator. Modal divergence is
+ * `|k · û| / N³`: the stored coefficient carries the unnormalized
+ * factor `N³`. The 2-D
  * vorticity–streamfunction prototype is not this case.
  */
 
@@ -265,7 +267,9 @@ inline void step(State &state) {
   diag.dissipation = state.nu * diag.enstrophy;
   diag.div_l2 = std::sqrt(sums[6] / ncells);
   diag.div_linf = peaks[2];
-  diag.modal_div_max = peaks[3];
+  // |k·û| on the stored hat grows like N³. Divide so one absolute
+  // tolerance still means a solenoidal field on a fine grid.
+  diag.modal_div_max = peaks[3] / ncells;
   diag.cfl = state.dt * peaks[0] / state.spacing[0];
   diag.mean_u = sums[3] / ncells;
   diag.mean_v = sums[4] / ncells;
