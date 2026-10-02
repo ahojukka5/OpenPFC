@@ -13,9 +13,9 @@
  * pressure gradient so the normal acceleration vanishes at the
  * Chebyshev ends. No-slip is the Dirichlet value of the velocity.
  * The periodic binary stays periodic. One explicit viscous step
- * uses that acceleration. A parallel profile has no convective
- * term, so the step does not evaluate one. Turbulent channel
- * statistics are not this balance.
+ * uses that acceleration. The convective term is evaluated on
+ * the same grid. A parallel profile has a zero product.
+ * Turbulent channel statistics are not this balance.
  */
 
 #include <algorithm>
@@ -63,6 +63,60 @@ struct ChannelBalance {
           static_cast<std::size_t>(iy)) *
              static_cast<std::size_t>(nx) +
          static_cast<std::size_t>(ix);
+}
+
+struct ConvectiveTerm {
+  std::vector<double> x;
+  std::vector<double> y;
+  std::vector<double> z;
+};
+
+/// Minus the convective acceleration, -(u·∇)u.
+/// Each partial derivative uses the mixed Fourier–Chebyshev grid.
+/// The result is the tendency contribution. It does not remove
+/// the pressure gradient and it does not restore wall values.
+[[nodiscard]] inline ConvectiveTerm
+convective_tendency(const std::vector<double> &velocity_x,
+                    const std::vector<double> &velocity_y,
+                    const std::vector<double> &velocity_z, int nx, int ny,
+                    double period_x, double period_y) {
+  if (velocity_x.size() != velocity_y.size() ||
+      velocity_x.size() != velocity_z.size()) {
+    throw std::invalid_argument("channel: velocity components differ in size");
+  }
+  const auto advect = [&](const pfc::fft::PartialDerivatives &slope) {
+    std::vector<double> term(slope.x.size(), 0.0);
+    for (std::size_t i = 0; i < term.size(); ++i) {
+      term[i] = -(velocity_x[i] * slope.x[i] + velocity_y[i] * slope.y[i] +
+                  velocity_z[i] * slope.z[i]);
+    }
+    return term;
+  };
+  const auto slope_x =
+      pfc::fft::fourier_chebyshev_gradient(velocity_x, nx, ny, period_x, period_y);
+  const auto slope_y =
+      pfc::fft::fourier_chebyshev_gradient(velocity_y, nx, ny, period_x, period_y);
+  const auto slope_z =
+      pfc::fft::fourier_chebyshev_gradient(velocity_z, nx, ny, period_x, period_y);
+  ConvectiveTerm term;
+  term.x = advect(slope_x);
+  term.y = advect(slope_y);
+  term.z = advect(slope_z);
+  return term;
+}
+
+/// Impermeable projection of the convective tendency.
+/// Wall-normal acceleration vanishes at both Chebyshev ends.
+/// No-slip stays Dirichlet data for the caller to restore.
+[[nodiscard]] inline pfc::fft::WallAcceleration
+convective_acceleration(const std::vector<double> &velocity_x,
+                        const std::vector<double> &velocity_y,
+                        const std::vector<double> &velocity_z, int nx, int ny,
+                        double period_x, double period_y) {
+  const auto tendency = convective_tendency(velocity_x, velocity_y, velocity_z, nx,
+                                            ny, period_x, period_y);
+  return pfc::fft::impermeable_acceleration(tendency.x, tendency.y, tendency.z, nx,
+                                            ny, period_x, period_y);
 }
 
 /// One explicit step of the linear viscous balance.

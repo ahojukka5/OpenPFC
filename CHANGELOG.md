@@ -9,6 +9,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- The convective term on the laminar channel. Parallel profiles
+  produce a zero product. The streamfunction (1 − z²)² sin(x)
+  matches the hand-derived product, and the impermeable
+  projection of that product is the acceleration. A time step
+  that adds the term to viscosity is not included. Turbulent
+  channel statistics are not included.
 - One explicit viscous step on the laminar channel. Plane Couette
   and plane Poiseuille stay fixed. The mode sin(π z) advances at
   −ν π², and sin(π z) cos(2x) advances at −ν (4 + π²). These

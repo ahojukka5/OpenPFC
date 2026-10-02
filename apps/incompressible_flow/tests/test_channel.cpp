@@ -10,7 +10,9 @@
  * balance: wall values, flow rate, wall shear, momentum, and a
  * zero acceleration. A viscous step holds both profiles and
  * advances sin(π z) at −ν π². The same step advances the
- * spanwise mode sin(π z) cos(2x) at −ν (4 + π²). Turbulent
+ * spanwise mode sin(π z) cos(2x) at −ν (4 + π²). Those
+ * profiles have a zero convective product. The streamfunction
+ * (1 − z²)² sin(x) matches a hand-derived product. Turbulent
  * channel statistics are not here.
  */
 
@@ -120,5 +122,173 @@ TEST_CASE("A wall-normal mode decays at the viscous rate", "[channel]") {
       REQUIRE(mode_fine < 1e-9);
       REQUIRE(mode_fine < mode_coarse);
     }
+  }
+}
+
+TEST_CASE("Parallel channel profiles have no convective term", "[channel]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const std::array<std::pair<int, int>, 3> grids{{{8, 6}, {8, 1}, {1, 6}}};
+
+  const auto product_peak = [&](int nx, int ny, int degree, int kind) {
+    const auto z = pfc::fft::chebyshev_lobatto(degree);
+    const int nline = static_cast<int>(z.size());
+    const std::size_t count = static_cast<std::size_t>(nx) *
+                              static_cast<std::size_t>(ny) *
+                              static_cast<std::size_t>(nline);
+    std::vector<double> velocity_x(count, 0.0);
+    std::vector<double> velocity_y(count, 0.0);
+    std::vector<double> velocity_z(count, 0.0);
+    for (int iz = 0; iz < nline; ++iz) {
+      const double node = z[static_cast<std::size_t>(iz)];
+      const double sine = std::sin(pi * node);
+      for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+          const double x =
+              period * static_cast<double>(ix) / static_cast<double>(nx);
+          const auto index = flow::channel_index(iz, iy, ix, ny, nx);
+          if (kind == 0) {
+            velocity_x[index] = node;
+          } else if (kind == 1) {
+            velocity_x[index] = 1.0 - node * node;
+          } else if (kind == 2) {
+            velocity_x[index] = sine;
+          } else {
+            velocity_y[index] = sine * std::cos(2.0 * x);
+          }
+        }
+      }
+    }
+    const auto term = flow::convective_tendency(velocity_x, velocity_y, velocity_z,
+                                                nx, ny, period, period);
+    double peak = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+      peak = std::max(peak, std::abs(term.x[i]));
+      peak = std::max(peak, std::abs(term.y[i]));
+      peak = std::max(peak, std::abs(term.z[i]));
+    }
+    return peak;
+  };
+
+  for (const auto &grid : grids) {
+    for (const int kind : {0, 1, 2}) {
+      REQUIRE(product_peak(grid.first, grid.second, kind == 2 ? 16 : 2, kind) <
+              1e-12);
+    }
+    if (grid.first >= 8) {
+      REQUIRE(product_peak(grid.first, grid.second, 16, 3) < 1e-12);
+    }
+  }
+}
+
+TEST_CASE("A no-slip polynomial has a known convective term", "[channel]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const auto shape = [](double z) {
+    const double factor = 1.0 - z * z;
+    return factor * factor;
+  };
+  const auto slope = [](double z) { return 4.0 * z * (z * z - 1.0); };
+
+  const auto residuals = [&](int nx, int ny, int degree) {
+    const auto z = pfc::fft::chebyshev_lobatto(degree);
+    const int nline = static_cast<int>(z.size());
+    const std::size_t count = static_cast<std::size_t>(nx) *
+                              static_cast<std::size_t>(ny) *
+                              static_cast<std::size_t>(nline);
+    std::vector<double> velocity_x(count, 0.0);
+    std::vector<double> velocity_y(count, 0.0);
+    std::vector<double> velocity_z(count, 0.0);
+    std::vector<double> expect_x(count, 0.0);
+    std::vector<double> expect_y(count, 0.0);
+    std::vector<double> expect_z(count, 0.0);
+    for (int iz = 0; iz < nline; ++iz) {
+      const double node = z[static_cast<std::size_t>(iz)];
+      const double profile = shape(node);
+      const double derivative = slope(node);
+      for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+          const double x =
+              period * static_cast<double>(ix) / static_cast<double>(nx);
+          const auto index = flow::channel_index(iz, iy, ix, ny, nx);
+          velocity_x[index] = derivative * std::sin(x);
+          velocity_z[index] = -profile * std::cos(x);
+          expect_x[index] = -2.0 * profile * (1.0 + node * node) * std::sin(2.0 * x);
+          expect_z[index] = -profile * derivative;
+        }
+      }
+    }
+    const auto term = flow::convective_tendency(velocity_x, velocity_y, velocity_z,
+                                                nx, ny, period, period);
+    double raw = 0.0;
+    double product = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+      raw = std::max(raw, std::abs(term.x[i] - expect_x[i]));
+      raw = std::max(raw, std::abs(term.y[i] - expect_y[i]));
+      raw = std::max(raw, std::abs(term.z[i] - expect_z[i]));
+      product = std::max(product, std::abs(expect_x[i]));
+      product = std::max(product, std::abs(expect_z[i]));
+    }
+    double projected_error = 0.0;
+    double divergence = 0.0;
+    double wall_normal = 0.0;
+    if (degree >= 8) {
+      const auto acceleration = flow::convective_acceleration(
+          velocity_x, velocity_y, velocity_z, nx, ny, period, period);
+      const auto projected = pfc::fft::impermeable_acceleration(
+          expect_x, expect_y, expect_z, nx, ny, period, period);
+      for (std::size_t i = 0; i < count; ++i) {
+        projected_error =
+            std::max(projected_error, std::abs(acceleration.x[i] - projected.x[i]));
+        projected_error =
+            std::max(projected_error, std::abs(acceleration.y[i] - projected.y[i]));
+        projected_error =
+            std::max(projected_error, std::abs(acceleration.z[i] - projected.z[i]));
+      }
+      const auto dx = pfc::fft::fourier_chebyshev_gradient(acceleration.x, nx, ny,
+                                                           period, period);
+      const auto dy = pfc::fft::fourier_chebyshev_gradient(acceleration.y, nx, ny,
+                                                           period, period);
+      const auto dz = pfc::fft::fourier_chebyshev_gradient(acceleration.z, nx, ny,
+                                                           period, period);
+      for (std::size_t i = 0; i < count; ++i) {
+        divergence = std::max(divergence, std::abs(dx.x[i] + dy.y[i] + dz.z[i]));
+      }
+      for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+          wall_normal = std::max(
+              wall_normal,
+              std::abs(acceleration.z[flow::channel_index(0, iy, ix, ny, nx)]));
+          wall_normal = std::max(
+              wall_normal,
+              std::abs(
+                  acceleration.z[flow::channel_index(nline - 1, iy, ix, ny, nx)]));
+        }
+      }
+    }
+    return std::array<double, 5>{
+        {raw, projected_error, divergence, product, wall_normal}};
+  };
+
+  for (const auto grid : {std::pair<int, int>{8, 1}, std::pair<int, int>{8, 6}}) {
+    const auto coarse = residuals(grid.first, grid.second, 4);
+    const auto fine = residuals(grid.first, grid.second, 8);
+    const auto finer = residuals(grid.first, grid.second, 16);
+    // The velocity fits a degree-4 grid, so the sampled product is
+    // exact from that degree. There is no coarser truncation gap.
+    // The streamwise pressure mode solves a Helmholtz problem, so
+    // its tau residual is about 2e-3 at degree 8 and falls below
+    // 1e-9 at degree 16. Degree 32 overflows that recurrence.
+    REQUIRE(coarse[3] > 0.5);
+    REQUIRE(coarse[0] < 1e-10);
+    REQUIRE(fine[0] < 1e-10);
+    REQUIRE(finer[0] < 1e-10);
+    REQUIRE(fine[1] < 1e-10);
+    REQUIRE(finer[1] < 1e-10);
+    REQUIRE(fine[2] < 1e-2);
+    REQUIRE(finer[2] < 1e-9);
+    REQUIRE(finer[2] < fine[2]);
+    REQUIRE(fine[4] < 1e-9);
+    REQUIRE(finer[4] < 1e-9);
   }
 }
