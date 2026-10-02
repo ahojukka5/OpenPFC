@@ -16,6 +16,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `incompressible_flow_hip` advances Taylor–Green and decaying HIT
+  with the device integrating-factor step. HeFFTe uses rocFFT.
+  Diagnostics copy the hats back at a sample. Forced HIT and the
+  locked series stay on `incompressible_flow`.
 - One explicit channel step adds the convective acceleration to
   the viscous step and restores the Dirichlet walls. A parallel
   profile agrees with the viscous step. The streamfunction

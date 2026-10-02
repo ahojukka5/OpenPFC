@@ -99,6 +99,35 @@ if(TARGET openpfc_incompressible_hip OR TARGET openpfc_incompressible_cuda)
   elseif(TARGET openpfc_incompressible_cuda)
     set(_flow_device_lib openpfc_incompressible_cuda)
   endif()
+  # Same sources as the CPU application. The HIP translation unit is the
+  # only extra file, and only the HIP binary defines OPENPFC_FLOW_DEVICE.
+  if(TARGET openpfc_incompressible_hip)
+    add_executable(incompressible_flow_hip
+      src/main.cpp
+      src/hit_series.cpp
+      src/forced_series.cpp
+      src/hip/device_advance.cpp)
+    target_include_directories(incompressible_flow_hip PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_definitions(incompressible_flow_hip PRIVATE
+      OPENPFC_FLOW_DEVICE=1)
+    target_link_libraries(incompressible_flow_hip PRIVATE
+      OpenPFC openpfc_incompressible_hip ${_flow_heffte_tgt})
+    install(TARGETS incompressible_flow_hip DESTINATION bin)
+    if(OpenPFC_BUILD_TESTS)
+      add_test(NAME incompressible-flow-hip-smoke
+               COMMAND $<TARGET_FILE:incompressible_flow_hip>
+                       --case taylor-green
+                       --n 16
+                       --nu 0.05
+                       --dt 0.015625
+                       --time 0.03125
+                       --outdir ${CMAKE_CURRENT_BINARY_DIR}/hip-smoke)
+      set_tests_properties(incompressible-flow-hip-smoke PROPERTIES
+        PASS_REGULAR_EXPRESSION "incompressible_flow status=ok"
+        TIMEOUT 180)
+    endif()
+  endif()
   add_executable(incompressible_device_parity
     tests/incompressible_device_parity.cpp)
   target_include_directories(incompressible_device_parity PRIVATE
