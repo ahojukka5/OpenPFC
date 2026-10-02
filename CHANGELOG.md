@@ -9,6 +9,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- One explicit channel step adds the convective acceleration to
+  the viscous step and restores the Dirichlet walls. A parallel
+  profile agrees with the viscous step. The streamfunction
+  (1 − z²)² sin(x) moves by the sum of the two accelerations.
+  A multi-step integrator is not included. Turbulent channel
+  statistics are not included.
 - The convective term on the laminar channel. Parallel profiles
   produce a zero product. The streamfunction (1 − z²)² sin(x)
   matches the hand-derived product, and the impermeable

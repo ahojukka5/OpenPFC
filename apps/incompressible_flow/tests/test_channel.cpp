@@ -12,7 +12,8 @@
  * advances sin(π z) at −ν π². The same step advances the
  * spanwise mode sin(π z) cos(2x) at −ν (4 + π²). Those
  * profiles have a zero convective product. The streamfunction
- * (1 − z²)² sin(x) matches a hand-derived product. Turbulent
+ * (1 − z²)² sin(x) matches a hand-derived product. One step
+ * adds that acceleration to the viscous step. Turbulent
  * channel statistics are not here.
  */
 
@@ -290,5 +291,177 @@ TEST_CASE("A no-slip polynomial has a known convective term", "[channel]") {
     REQUIRE(finer[2] < fine[2]);
     REQUIRE(fine[4] < 1e-9);
     REQUIRE(finer[4] < 1e-9);
+  }
+}
+
+TEST_CASE("A parallel profile agrees with the viscous step", "[channel]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const double nu = 0.3;
+  const double step = 0.1;
+  const std::array<std::pair<int, int>, 3> grids{{{8, 6}, {8, 1}, {1, 6}}};
+
+  const auto gap = [&](int nx, int ny, int degree, int kind) {
+    const auto z = pfc::fft::chebyshev_lobatto(degree);
+    const int nline = static_cast<int>(z.size());
+    const std::size_t count = static_cast<std::size_t>(nx) *
+                              static_cast<std::size_t>(ny) *
+                              static_cast<std::size_t>(nline);
+    std::vector<double> velocity_x(count, 0.0);
+    std::vector<double> velocity_y(count, 0.0);
+    std::vector<double> velocity_z(count, 0.0);
+    double wall_plus = 0.0;
+    double wall_minus = 0.0;
+    double force = 0.0;
+    if (kind == 0) {
+      wall_plus = 1.0;
+      wall_minus = -1.0;
+    } else if (kind == 1) {
+      force = 2.0 * nu;
+    }
+    for (int iz = 0; iz < nline; ++iz) {
+      const double node = z[static_cast<std::size_t>(iz)];
+      const double sine = std::sin(pi * node);
+      for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+          const double x =
+              period * static_cast<double>(ix) / static_cast<double>(nx);
+          const auto index = flow::channel_index(iz, iy, ix, ny, nx);
+          if (kind == 0) {
+            velocity_x[index] = node;
+          } else if (kind == 1) {
+            velocity_x[index] = 1.0 - node * node;
+          } else if (kind == 2) {
+            velocity_x[index] = sine;
+          } else {
+            velocity_y[index] = sine * std::cos(2.0 * x);
+          }
+        }
+      }
+    }
+    auto linear_x = velocity_x;
+    auto linear_y = velocity_y;
+    auto linear_z = velocity_z;
+    auto combined_x = velocity_x;
+    auto combined_y = velocity_y;
+    auto combined_z = velocity_z;
+    flow::viscous_advance(linear_x, linear_y, linear_z, nx, ny, period, period, nu,
+                          force, step, wall_plus, wall_minus);
+    flow::channel_advance(combined_x, combined_y, combined_z, nx, ny, period, period,
+                          nu, force, step, wall_plus, wall_minus);
+    double difference = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+      difference = std::max(difference, std::abs(combined_x[i] - linear_x[i]));
+      difference = std::max(difference, std::abs(combined_y[i] - linear_y[i]));
+      difference = std::max(difference, std::abs(combined_z[i] - linear_z[i]));
+    }
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        const auto top = flow::channel_index(0, iy, ix, ny, nx);
+        const auto bottom = flow::channel_index(nline - 1, iy, ix, ny, nx);
+        difference = std::max(difference, std::abs(combined_x[top] - wall_plus));
+        difference = std::max(difference, std::abs(combined_x[bottom] - wall_minus));
+        difference = std::max(difference, std::abs(combined_y[top]));
+        difference = std::max(difference, std::abs(combined_y[bottom]));
+        difference = std::max(difference, std::abs(combined_z[top]));
+        difference = std::max(difference, std::abs(combined_z[bottom]));
+      }
+    }
+    return difference;
+  };
+
+  for (const auto &grid : grids) {
+    for (const int kind : {0, 1, 2}) {
+      REQUIRE(gap(grid.first, grid.second, kind == 2 ? 16 : 2, kind) < 1e-10);
+    }
+    if (grid.first >= 8) {
+      REQUIRE(gap(grid.first, grid.second, 16, 3) < 1e-10);
+    }
+  }
+}
+
+TEST_CASE("One channel step adds the convective acceleration", "[channel]") {
+  const double pi = std::acos(-1.0);
+  const double period = 2.0 * pi;
+  const double nu = 0.3;
+  const double step = 0.1;
+  const auto shape = [](double z) {
+    const double factor = 1.0 - z * z;
+    return factor * factor;
+  };
+  const auto slope = [](double z) { return 4.0 * z * (z * z - 1.0); };
+
+  const auto check = [&](int nx, int ny, int degree) {
+    const auto z = pfc::fft::chebyshev_lobatto(degree);
+    const int nline = static_cast<int>(z.size());
+    const std::size_t count = static_cast<std::size_t>(nx) *
+                              static_cast<std::size_t>(ny) *
+                              static_cast<std::size_t>(nline);
+    std::vector<double> velocity_x(count, 0.0);
+    std::vector<double> velocity_y(count, 0.0);
+    std::vector<double> velocity_z(count, 0.0);
+    for (int iz = 0; iz < nline; ++iz) {
+      const double node = z[static_cast<std::size_t>(iz)];
+      for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+          const double x =
+              period * static_cast<double>(ix) / static_cast<double>(nx);
+          const auto index = flow::channel_index(iz, iy, ix, ny, nx);
+          velocity_x[index] = slope(node) * std::sin(x);
+          velocity_z[index] = -shape(node) * std::cos(x);
+        }
+      }
+    }
+    const auto convection = flow::convective_acceleration(
+        velocity_x, velocity_y, velocity_z, nx, ny, period, period);
+    auto reference_x = velocity_x;
+    auto reference_y = velocity_y;
+    auto reference_z = velocity_z;
+    flow::viscous_advance(reference_x, reference_y, reference_z, nx, ny, period,
+                          period, nu, 0.0, step, 0.0, 0.0);
+    auto viscous_x = reference_x;
+    auto viscous_y = reference_y;
+    auto viscous_z = reference_z;
+    for (std::size_t i = 0; i < count; ++i) {
+      reference_x[i] += step * convection.x[i];
+      reference_y[i] += step * convection.y[i];
+      reference_z[i] += step * convection.z[i];
+    }
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        const auto top = flow::channel_index(0, iy, ix, ny, nx);
+        const auto bottom = flow::channel_index(nline - 1, iy, ix, ny, nx);
+        reference_x[top] = 0.0;
+        reference_x[bottom] = 0.0;
+        reference_y[top] = 0.0;
+        reference_y[bottom] = 0.0;
+        reference_z[top] = 0.0;
+        reference_z[bottom] = 0.0;
+      }
+    }
+    auto combined_x = velocity_x;
+    auto combined_y = velocity_y;
+    auto combined_z = velocity_z;
+    flow::channel_advance(combined_x, combined_y, combined_z, nx, ny, period, period,
+                          nu, 0.0, step, 0.0, 0.0);
+    double error = 0.0;
+    double movement = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+      error = std::max(error, std::abs(combined_x[i] - reference_x[i]));
+      error = std::max(error, std::abs(combined_y[i] - reference_y[i]));
+      error = std::max(error, std::abs(combined_z[i] - reference_z[i]));
+      movement = std::max(movement, std::abs(combined_x[i] - viscous_x[i]));
+      movement = std::max(movement, std::abs(combined_y[i] - viscous_y[i]));
+      movement = std::max(movement, std::abs(combined_z[i] - viscous_z[i]));
+    }
+    return std::array<double, 2>{{error, movement}};
+  };
+
+  for (const auto grid : {std::pair<int, int>{8, 1}, std::pair<int, int>{8, 6}}) {
+    const auto got = check(grid.first, grid.second, 16);
+    // Step 0.1 times the projected convective acceleration moves
+    // the interior by about 0.09. A dropped term would stay put.
+    REQUIRE(got[0] < 1e-12);
+    REQUIRE(got[1] > 0.05);
   }
 }

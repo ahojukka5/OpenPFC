@@ -14,8 +14,10 @@
  * Chebyshev ends. No-slip is the Dirichlet value of the velocity.
  * The periodic binary stays periodic. One explicit viscous step
  * uses that acceleration. The convective term is evaluated on
- * the same grid. A parallel profile has a zero product.
- * Turbulent channel statistics are not this balance.
+ * the same grid. A parallel profile has a zero product. One
+ * explicit step adds that acceleration to the viscous step and
+ * restores the walls. Turbulent channel statistics are not
+ * this balance.
  */
 
 #include <algorithm>
@@ -157,6 +159,48 @@ inline void viscous_advance(std::vector<double> &velocity_x,
     velocity_x[i] += step * acceleration.x[i];
     velocity_y[i] += step * acceleration.y[i];
     velocity_z[i] += step * acceleration.z[i];
+  }
+  const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+  const int nline = static_cast<int>(velocity_x.size() / plane);
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto top = channel_index(0, iy, ix, ny, nx);
+      const auto bottom = channel_index(nline - 1, iy, ix, ny, nx);
+      velocity_x[top] = wall_plus;
+      velocity_x[bottom] = wall_minus;
+      velocity_y[top] = 0.0;
+      velocity_y[bottom] = 0.0;
+      velocity_z[top] = 0.0;
+      velocity_z[bottom] = 0.0;
+    }
+  }
+}
+
+/// One explicit step of viscosity plus convection.
+/// Convection is -(u·∇)u on the velocity at the start of the
+/// step, already projected to an impermeable wall. The linear
+/// viscous step is applied to that same velocity. Dirichlet
+/// values are restored again after the convective update.
+inline void channel_advance(std::vector<double> &velocity_x,
+                            std::vector<double> &velocity_y,
+                            std::vector<double> &velocity_z, int nx, int ny,
+                            double period_x, double period_y, double nu,
+                            double force, double step, double wall_plus,
+                            double wall_minus) {
+  if (!(nu >= 0.0)) {
+    throw std::invalid_argument("channel: viscosity must be non-negative");
+  }
+  if (!(step > 0.0)) {
+    throw std::invalid_argument("channel: step must be positive");
+  }
+  const auto convection = convective_acceleration(velocity_x, velocity_y, velocity_z,
+                                                  nx, ny, period_x, period_y);
+  viscous_advance(velocity_x, velocity_y, velocity_z, nx, ny, period_x, period_y, nu,
+                  force, step, wall_plus, wall_minus);
+  for (std::size_t i = 0; i < velocity_x.size(); ++i) {
+    velocity_x[i] += step * convection.x[i];
+    velocity_y[i] += step * convection.y[i];
+    velocity_z[i] += step * convection.z[i];
   }
   const auto plane = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
   const int nline = static_cast<int>(velocity_x.size() / plane);

@@ -373,8 +373,10 @@ These profiles are parallel, so that step leaves the convective
 term out. The term itself is −(u·∇)u on the same grid. It is zero
 on those profiles. The streamfunction (1−z²)² sin(x) matches the
 hand-derived product, and the impermeable projection of that
-product is the acceleration. Turbulent channel statistics are
-not this case.
+product is the acceleration. One explicit step adds that
+acceleration to the viscous step and restores the walls. A
+parallel profile agrees with the viscous step. Turbulent
+channel statistics are not this case.
 
 ## Limits
 
@@ -384,8 +386,9 @@ above. The locked ladders are one rank. A user run may use the
 HeFFTe pencil. The periodic cases use one viscosity on a cube.
 Pipe flow is outside this application. The channel section
 records the steady laminar balance, one explicit viscous
-step, and the convective term on the Chebyshev ends. A 2-D
-double shear is not reimplemented here. The decaying-hit case
+step, the convective term, and one step that adds the two, on
+the Chebyshev ends. A 2-D double shear is not
+reimplemented here. The decaying-hit case
 is one prescribed spectrum, not an ensemble, and it does not
 claim an inertial range. On the locked decaying ladder,
 kinetic energy, enstrophy, and \(\mathrm{Re}_\lambda\) agree between
