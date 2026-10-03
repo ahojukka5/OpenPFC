@@ -86,9 +86,19 @@ int main(int argc, char *argv[]) {
         const double inv_dy2 = inv_dx2;
         const double inv_eps2 = 1.0 / (cfg.epsilon * cfg.epsilon);
         std::vector<double> u_host(nlocal);
-        allen_cahn::fill_initial_condition(&u_host, decomp, rank);
+        if (cfg.two_fronts) {
+          allen_cahn::fill_two_front_initial_condition(&u_host, decomp, rank, cfg.epsilon,
+                                                      cfg.M);
+        } else {
+          allen_cahn::fill_initial_condition(&u_host, decomp, rank);
+        }
         const std::int64_t n_local_initial = allen_cahn::count_cells_above(
             u_host, allen_cahn::RunConfig::kLevelSetThreshold);
+        const bool full_period = (nx == cfg.nx_glob);
+        allen_cahn::SubcellSamples subcell;
+        allen_cahn::FrontSamples fronts;
+        allen_cahn::sample_subcell(MPI_COMM_WORLD, u_host.data(), nx, ny, full_period,
+                                   &subcell, &fronts, 0);
         if (!cfg.png_output_initial.empty()) {
           pfc::io::write_mpi_scalar_field_png_xy(MPI_COMM_WORLD, decomp, rank, u_host,
                                                  cfg.png_output_initial, -1.0, 1.0);
@@ -149,6 +159,12 @@ int main(int argc, char *argv[]) {
                 allen_cahn::global_area_cells(MPI_COMM_WORLD, n_local);
             if (done == step_half) areas.half = n;
             if (done == step_three_quarter) areas.three_quarter = n;
+            u.with_host_view([&](double *data, std::size_t) {
+              allen_cahn::sample_subcell(MPI_COMM_WORLD, data, nx, ny, full_period,
+                                         &subcell, &fronts,
+                                         done == step_half ? 1 : 2);
+            });
+            u.note_device_write();
           }
         }
         MPI_Barrier(MPI_COMM_WORLD);
@@ -182,6 +198,9 @@ int main(int argc, char *argv[]) {
                 u_host, allen_cahn::RunConfig::kLevelSetThreshold));
         const auto kinetics = allen_cahn::analyse_interface_kinetics(areas, cfg, dx);
         allen_cahn::report_interface_kinetics(rank, areas, cfg, kinetics);
+        allen_cahn::sample_subcell(MPI_COMM_WORLD, u_host.data(), nx, ny, full_period,
+                                   &subcell, &fronts, 3);
+        allen_cahn::report_subcell(rank, cfg, subcell, fronts, dx);
 
         // The exit status answers "did the run finish?", not "did the physics
         // agree?". Pass --strict when you want the verdict to gate a script.

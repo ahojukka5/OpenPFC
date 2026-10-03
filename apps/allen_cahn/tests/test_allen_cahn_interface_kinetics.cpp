@@ -375,6 +375,58 @@ TEST_CASE("a sub-grid interface needs a near-critical driving force",
   REQUIRE(k.v_late < 0.75 * k.v_predicted);
 }
 
+TEST_CASE("linear phi=0 crossing is closer than the integer cell count",
+          "[allen_cahn][subcell]") {
+  // Samples at x = 0,1,...,7. phi = 4.3 - x crosses zero at x = 4.3.
+  constexpr int nx = 8;
+  constexpr int ny = 1;
+  std::vector<double> phi(nx);
+  for (int i = 0; i < nx; ++i) {
+    phi[static_cast<std::size_t>(i)] = 4.3 - static_cast<double>(i);
+  }
+  const double area = allen_cahn::subcell_positive_area(phi.data(), nx, ny, false);
+  const auto cells = allen_cahn::count_cells_above(phi, 0.0);
+  REQUIRE_THAT(area, WithinAbs(4.3, 1e-12));
+  REQUIRE(std::abs(area - 4.3) < std::abs(static_cast<double>(cells) - 4.3));
+
+  const auto fronts = allen_cahn::front_positions(phi.data(), nx, ny, false);
+  REQUIRE(fronts.n_fall == 1);
+  REQUIRE_THAT(fronts.fall / fronts.n_fall, WithinAbs(4.3, 1e-12));
+}
+
+TEST_CASE("two-front initial condition matches the heteroclinic samples",
+          "[allen_cahn][fronts]") {
+  auto domain = pfc::domain::create(pfc::GridSize({64, 8, 1}),
+                                    pfc::PhysicalOrigin({0.0, 0.0, 0.0}),
+                                    pfc::GridSpacing({kDx, kDx, kDx}));
+  auto decomp = pfc::decomposition::create(domain, 1);
+  const int nx = 64;
+  const int ny = 8;
+  std::vector<double> u(static_cast<std::size_t>(nx * ny));
+  constexpr double eps = 0.75;
+  constexpr double M = 8.0;
+  allen_cahn::fill_two_front_initial_condition(&u, decomp, 0, eps, M);
+  const double w = eps * std::sqrt(2.0 * M);
+  const double x1 = 0.25 * nx;
+  const double x2 = 0.75 * nx;
+  for (int ix : {0, 16, 32, 48, 63}) {
+    const double x = static_cast<double>(ix);
+    const double expect =
+        std::tanh((x - x1) / w) - std::tanh((x - x2) / w) - 1.0;
+    REQUIRE_THAT(u[static_cast<std::size_t>(ix)], WithinAbs(expect, 1e-12));
+  }
+  const auto fronts = allen_cahn::front_positions(u.data(), nx, ny, true);
+  REQUIRE(fronts.n_rise == ny);
+  REQUIRE(fronts.n_fall == ny);
+  REQUIRE_THAT(fronts.rise / fronts.n_rise, WithinAbs(x1, 0.05));
+  REQUIRE_THAT(fronts.fall / fronts.n_fall, WithinAbs(x2, 0.05));
+  // The slab is not the Gaussian seed: its cell-count radius is not the
+  // Gaussian seed radius.
+  const double seed = allen_cahn::seed_radius_cells(nx, ny);
+  const auto cells = allen_cahn::count_cells_above(u, 0.0);
+  REQUIRE(std::abs(allen_cahn::equivalent_radius(cells, kDx) - seed) > 1.0);
+}
+
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   const int result = Catch::Session().run(argc, argv);

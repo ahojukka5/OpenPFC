@@ -50,14 +50,28 @@ int main(int argc, char *argv[]) {
 
         std::vector<double> u(nlocal);
         std::vector<double> lap(nlocal);
-        allen_cahn::fill_initial_condition(&u, decomp, rank);
+        if (cfg.two_fronts) {
+          allen_cahn::fill_two_front_initial_condition(&u, decomp, rank, cfg.epsilon,
+                                                      cfg.M);
+        } else {
+          allen_cahn::fill_initial_condition(&u, decomp, rank);
+        }
 
         const std::int64_t n_local_initial =
             allen_cahn::count_cells_above(u, allen_cahn::RunConfig::kLevelSetThreshold);
+        const bool full_period = (nx == cfg.nx_glob);
+        allen_cahn::SubcellSamples subcell;
+        allen_cahn::FrontSamples fronts;
+        allen_cahn::sample_subcell(MPI_COMM_WORLD, u.data(), nx, ny, full_period,
+                                   &subcell, &fronts, 0);
 
         if (rank == 0) {
-          std::cout << "IC: Gaussian nucleus (φ→+1 at center, φ→-1 far); sigma ≈ 5.5% of "
-                       "min(nx,ny) — see common.hpp.\n";
+          if (cfg.two_fronts) {
+            std::cout << "IC: periodic two-front heteroclinic — see common.hpp.\n";
+          } else {
+            std::cout << "IC: Gaussian nucleus (φ→+1 at center, φ→-1 far); sigma ≈ 5.5% of "
+                         "min(nx,ny) — see common.hpp.\n";
+          }
         }
 
         {
@@ -113,6 +127,9 @@ int main(int argc, char *argv[]) {
                     u, allen_cahn::RunConfig::kLevelSetThreshold));
             if (done == step_half) areas.half = n;
             if (done == step_three_quarter) areas.three_quarter = n;
+            allen_cahn::sample_subcell(MPI_COMM_WORLD, u.data(), nx, ny, full_period,
+                                       &subcell, &fronts,
+                                       done == step_half ? 1 : 2);
           }
         }
         MPI_Barrier(MPI_COMM_WORLD);
@@ -163,6 +180,9 @@ int main(int argc, char *argv[]) {
                                           allen_cahn::RunConfig::kLevelSetThreshold));
         const auto kinetics = allen_cahn::analyse_interface_kinetics(areas, cfg, dx);
         allen_cahn::report_interface_kinetics(rank, areas, cfg, kinetics);
+        allen_cahn::sample_subcell(MPI_COMM_WORLD, u.data(), nx, ny, full_period,
+                                   &subcell, &fronts, 3);
+        allen_cahn::report_subcell(rank, cfg, subcell, fronts, dx);
 
         // The exit status answers "did the run finish?", not "did the physics
         // agree?". A deliberately short run, or a parameter set outside the

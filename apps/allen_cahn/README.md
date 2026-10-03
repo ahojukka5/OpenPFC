@@ -125,12 +125,13 @@ Executable: `build/apps/allen_cahn/allen_cahn`.
 ## Usage
 
 ```text
-mpirun -n <P> ./allen_cahn [--strict] <nx> <ny> <n_steps> [dt] [M] [epsilon] [driving_force] [png_initial] [png_final]
+mpirun -n <P> ./allen_cahn [--strict] [--fronts] <nx> <ny> <n_steps> [dt] [M] [epsilon] [driving_force] [png_initial] [png_final]
 ```
 
 Defaults if omitted: `nx=ny=256`, `n_steps=5000`, `dt=0.005`, `M=8.0`, `epsilon=0.75`, `driving_force=0.25`.
 The app samples the global visible seed area (cells with `phi > 0`) at `t = 0`, `t/2`, `3t/4` and the end, converts each to an equivalent radius, and reports the interface velocity over the last half of the run against `(3/2) F eps sqrt(2M) - M/R`. The verdict prints as `physics_check=`; the exit status reports whether the *run* finished, so a deliberately short run is not a failed process. Pass `--strict` to have a `FAIL` verdict (never a `SKIPPED` one) set the exit status instead. The optional positive `driving_force` favors the `phi≈+1` seed over the `phi≈-1` matrix. If you pass one PNG path, it writes the final field; if two, the first is the initial snapshot and the second the final (grayscale, rank 0).
 The reported step timing measures the time-stepping loop only, after an MPI barrier and before PNG output or verification; `avg_step_time_s` is based on the slowest rank.
+Beside the integer cell count the app also prints a sub-cell area, from linear `phi = 0` crossings between neighboring samples, and the equivalent radius of that area. Those lines do not enter `physics_check`. `--fronts` replaces the Gaussian seed with two periodic heteroclinic fronts and prints each front's sub-cell position and last-half speed.
 
 Example:
 
