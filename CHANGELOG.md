@@ -16,6 +16,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Taylor–Green accepts `--sample-dt` and `--volume-dt`. The sample
+  interval records kinetic energy, enstrophy, and dissipation along
+  the run. The volume interval writes \(|\omega|\) as one float32
+  cube per sample, including \(t = 0\). The default remains the
+  initial and final rows and writes no cube. Other cases do not
+  take these flags.
 - `incompressible_flow_hip` advances Taylor–Green and decaying HIT
   with the device integrating-factor step. HeFFTe uses rocFFT.
   Diagnostics copy the hats back at a sample. Forced HIT and the

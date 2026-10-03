@@ -23,6 +23,8 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <fstream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -96,6 +98,21 @@ struct State {
   }
   return steps;
 }
+
+/// `stride == 0` records only the final step. A positive stride records
+/// every multiple of that many steps. The stride is required to divide
+/// the run, so the final step is one of those multiples.
+[[nodiscard]] inline bool record_at(long long step, long long steps,
+                                    long long stride) noexcept {
+  if (step < 1 || step > steps) return false;
+  if (stride <= 0) return step == steps;
+  return step % stride == 0;
+}
+
+struct VolumeSample {
+  double mean_square{0.0};
+  long long points{0};
+};
 
 [[nodiscard]] inline State make_state(int n, double nu, double dt, int rank,
                                       int nproc) {
@@ -277,6 +294,148 @@ inline void step(State &state) {
   diag.w_l2 = std::sqrt(sums[2] / ncells);
   diag.max_abs_w = peaks[1];
   return diag;
+}
+
+/// Gather |ω| onto rank 0 and write one x-fastest float32 cube.
+/// Every rank blocks until that file is closed.
+[[nodiscard]] inline VolumeSample write_vorticity_magnitude(State &state,
+                                                            const std::string &path) {
+  auto &fft = state.stack->fft();
+  const auto outbox = fft.get_outbox_bounds();
+  const auto inbox = fft.get_inbox_bounds();
+  const auto nhat = state.u.size();
+  const MPI_Comm comm = state.stack->mpi_comm();
+  int rank = 0;
+  int nproc = 1;
+  MPI_Comm_rank(comm, &rank);
+  MPI_Comm_size(comm, &nproc);
+
+  std::vector<Complex> ox(nhat), oy(nhat), oz(nhat);
+  pfc::field::curl_hat(outbox, state.n, state.spacing, state.u.data(), state.v.data(),
+                       state.w.data(), ox.data(), oy.data(), oz.data(), nhat);
+  std::vector<double> oxr(fft.size_inbox()), oyr(fft.size_inbox()),
+      ozr(fft.size_inbox());
+  fft.backward(ox, oxr);
+  fft.backward(oy, oyr);
+  fft.backward(oz, ozr);
+
+  const long long local_n = inbox.count();
+  std::vector<float> local(static_cast<std::size_t>(local_n));
+  double sum = 0.0;
+  for (int k = inbox.low[2]; k <= inbox.high[2]; ++k) {
+    for (int j = inbox.low[1]; j <= inbox.high[1]; ++j) {
+      for (int i = inbox.low[0]; i <= inbox.high[0]; ++i) {
+        const auto idx = static_cast<std::size_t>(inbox.to_linear({i, j, k}));
+        const double mag =
+            std::sqrt(oxr[idx] * oxr[idx] + oyr[idx] * oyr[idx] + ozr[idx] * ozr[idx]);
+        local[idx] = static_cast<float>(mag);
+        sum += mag * mag;
+      }
+    }
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, comm);
+
+  std::array<int, 6> meta{inbox.low[0],  inbox.low[1],  inbox.low[2],
+                          inbox.high[0], inbox.high[1], inbox.high[2]};
+  std::vector<int> allmeta(static_cast<std::size_t>(nproc) * 6);
+  MPI_Allgather(meta.data(), 6, MPI_INT, allmeta.data(), 6, MPI_INT, comm);
+
+  const long long expected = static_cast<long long>(state.n[0]) *
+                             static_cast<long long>(state.n[1]) *
+                             static_cast<long long>(state.n[2]);
+  std::vector<int> counts(static_cast<std::size_t>(nproc));
+  std::vector<int> displs(static_cast<std::size_t>(nproc));
+  long long total = 0;
+  for (int r = 0; r < nproc; ++r) {
+    const int *box = allmeta.data() + static_cast<std::size_t>(r) * 6;
+    const long long nx = static_cast<long long>(box[3]) - box[0] + 1;
+    const long long ny = static_cast<long long>(box[4]) - box[1] + 1;
+    const long long nz = static_cast<long long>(box[5]) - box[2] + 1;
+    const long long count = nx * ny * nz;
+    counts[static_cast<std::size_t>(r)] = static_cast<int>(count);
+    displs[static_cast<std::size_t>(r)] = static_cast<int>(total);
+    total += count;
+  }
+  const bool layout_ok =
+      expected <= static_cast<long long>(std::numeric_limits<int>::max()) &&
+      total == expected &&
+      counts[static_cast<std::size_t>(rank)] == static_cast<int>(local.size());
+  int layout = layout_ok ? 1 : 0;
+  MPI_Allreduce(MPI_IN_PLACE, &layout, 1, MPI_INT, MPI_MIN, comm);
+  if (layout != 1) {
+    throw std::runtime_error(
+        "incompressible_flow: vorticity pencils do not cover the grid");
+  }
+
+  std::vector<float> gathered(rank == 0 ? static_cast<std::size_t>(expected) : 0);
+  MPI_Gatherv(local.data(), counts[static_cast<std::size_t>(rank)], MPI_FLOAT,
+              rank == 0 ? gathered.data() : nullptr, counts.data(), displs.data(),
+              MPI_FLOAT, 0, comm);
+
+  int wrote = 1;
+  if (rank == 0) {
+    const int n = state.n[0];
+    std::vector<float> cube(static_cast<std::size_t>(expected));
+    std::vector<unsigned char> hits(static_cast<std::size_t>(expected), 0);
+    for (int r = 0; r < nproc; ++r) {
+      const int *box = allmeta.data() + static_cast<std::size_t>(r) * 6;
+      const int low0 = box[0];
+      const int low1 = box[1];
+      const int low2 = box[2];
+      const int lx = box[3] - box[0] + 1;
+      const int ly = box[4] - box[1] + 1;
+      const int lz = box[5] - box[2] + 1;
+      const float *src = gathered.data() + displs[static_cast<std::size_t>(r)];
+      for (int k = 0; k < lz; ++k) {
+        for (int j = 0; j < ly; ++j) {
+          for (int i = 0; i < lx; ++i) {
+            const int gi = low0 + i;
+            const int gj = low1 + j;
+            const int gk = low2 + k;
+            if (gi < 0 || gj < 0 || gk < 0 || gi >= n || gj >= n || gk >= n) {
+              wrote = 0;
+              break;
+            }
+            const std::size_t g =
+                (static_cast<std::size_t>(gk) * static_cast<std::size_t>(n) +
+                 static_cast<std::size_t>(gj)) *
+                    static_cast<std::size_t>(n) +
+                static_cast<std::size_t>(gi);
+            if (hits[g] != 0) wrote = 0;
+            hits[g] = 1;
+            cube[g] = src[(static_cast<std::size_t>(k) * static_cast<std::size_t>(ly) +
+                           static_cast<std::size_t>(j)) *
+                              static_cast<std::size_t>(lx) +
+                          static_cast<std::size_t>(i)];
+          }
+        }
+      }
+    }
+    if (wrote == 1) {
+      for (unsigned char hit : hits) {
+        if (hit == 0) wrote = 0;
+      }
+    }
+    if (wrote == 1) {
+      std::ofstream out(path, std::ios::binary);
+      if (!out) {
+        wrote = 0;
+      } else {
+        out.write(reinterpret_cast<const char *>(cube.data()),
+                  static_cast<std::streamsize>(cube.size() * sizeof(float)));
+        if (!out) wrote = 0;
+      }
+    }
+  }
+  MPI_Bcast(&wrote, 1, MPI_INT, 0, comm);
+  if (wrote != 1) {
+    throw std::runtime_error("incompressible_flow: failed to write " + path);
+  }
+
+  VolumeSample sample;
+  sample.points = expected;
+  sample.mean_square = sum / cell_count(state.n);
+  return sample;
 }
 
 /// Stop reason for one series. `ok` means every requested sample finished.

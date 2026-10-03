@@ -18,6 +18,7 @@
 #include <iomanip>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -42,6 +43,8 @@ struct Options {
   std::optional<double> time;
   std::optional<std::uint64_t> seed;
   std::optional<double> power;
+  std::optional<double> sample_dt;
+  std::optional<double> volume_dt;
   std::string series;
   std::string outdir{"results/incompressible-flow"};
 };
@@ -51,17 +54,19 @@ void usage(std::ostream &os) {
   os << "Usage: incompressible_flow_hip\n"
         "       --case taylor-green|decaying-hit\n"
         "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
-        "       [--outdir DIR]\n"
+        "       [--sample-dt DT] [--volume-dt DT] [--outdir DIR]\n"
         "\n"
         "Periodic 3-D Navier-Stokes on [0, 2pi]^3. The step uses the\n"
         "HIP HeFFTe backend (rocFFT). Diagnostics copy the hats back\n"
-        "at a sample. Forced HIT and the locked series stay on\n"
+        "at a sample. --sample-dt and --volume-dt are Taylor-Green\n"
+        "only. Forced HIT and the locked series stay on\n"
         "incompressible_flow.\n";
 #else
   os << "Usage: incompressible_flow\n"
         "       --case taylor-green|decaying-hit|forced-hit\n"
         "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
-        "       [--power EPS] [--series NAME] [--outdir DIR]\n"
+        "       [--power EPS] [--sample-dt DT] [--volume-dt DT]\n"
+        "       [--series NAME] [--outdir DIR]\n"
         "\n"
         "Periodic 3-D Navier-Stokes on [0, 2pi]^3. N is even and at\n"
         "least 8. time is an integer number of steps. The 2/3 mask\n"
@@ -162,6 +167,18 @@ bool parse(int argc, char **argv, Options &opt) {
       auto value = need("--series");
       if (!value) return false;
       opt.series = std::string(*value);
+    } else if (flag == "--sample-dt") {
+      auto value = need("--sample-dt");
+      if (!value) return false;
+      auto parsed = parse_double(*value);
+      if (!parsed || !(*parsed > 0.0)) return false;
+      opt.sample_dt = *parsed;
+    } else if (flag == "--volume-dt") {
+      auto value = need("--volume-dt");
+      if (!value) return false;
+      auto parsed = parse_double(*value);
+      if (!parsed || !(*parsed > 0.0)) return false;
+      opt.volume_dt = *parsed;
     } else if (flag == "--outdir") {
       auto value = need("--outdir");
       if (!value) return false;
@@ -194,8 +211,13 @@ bool parse(int argc, char **argv, Options &opt) {
     std::cerr << "taylor-green does not take --seed or --series\n";
     return false;
   }
+  if (opt.which != "taylor-green" && (opt.sample_dt || opt.volume_dt)) {
+    std::cerr << opt.which << " does not take --sample-dt or --volume-dt\n";
+    return false;
+  }
   if (!opt.series.empty() &&
-      (opt.n || opt.nu || opt.dt || opt.time || opt.seed || opt.power)) {
+      (opt.n || opt.nu || opt.dt || opt.time || opt.seed || opt.power ||
+       opt.sample_dt || opt.volume_dt)) {
     std::cerr << "the locked series does not take n, nu, dt, time, seed, or power\n";
     return false;
   }
@@ -210,12 +232,56 @@ void write_taylor_row(std::ostream &os, double time, const flow::Diagnostics &di
      << diag.max_abs_w << ',' << diag.cfl << ',' << status << '\n';
 }
 
+long long interval_stride(const std::optional<double> &interval, double dt,
+                          long long steps, const char *flag) {
+  if (!interval) return 0;
+  long long stride = 0;
+  try {
+    stride = flow::steps_for(*interval, dt);
+  } catch (const std::invalid_argument &) {
+    throw std::invalid_argument(std::string("incompressible_flow: ") + flag +
+                                " must be a positive integer number of steps");
+  }
+  if (steps % stride != 0) {
+    throw std::invalid_argument(std::string("incompressible_flow: ") + flag +
+                                " must divide the run");
+  }
+  return stride;
+}
+
+std::string sample_name(long long step) {
+  std::ostringstream os;
+  os << "s" << std::setw(8) << std::setfill('0') << step << ".bin";
+  return os.str();
+}
+
+void write_volume_frame(flow::State &state, const std::string &outdir, long long step,
+                        double time, int rank) {
+  const std::string dir = outdir + "/vorticity";
+  if (rank == 0) std::filesystem::create_directories(dir);
+  MPI_Barrier(MPI_COMM_WORLD);
+  const std::string path = dir + "/" + sample_name(step);
+  const auto sample = flow::write_vorticity_magnitude(state, path);
+  if (rank == 0) {
+    std::ofstream index(dir + "/index.csv", std::ios::app);
+    index << std::scientific << std::setprecision(16) << time << ',' << path << ','
+          << sample.points << '\n';
+    std::cout << "incompressible_flow volume=" << path
+              << " points=" << sample.points << " mean_square=" << std::scientific
+              << std::setprecision(8) << sample.mean_square << std::endl;
+  }
+}
+
 int run_taylor(const Options &opt, int rank, int nproc) {
   const int n = opt.n.value_or(32);
   const double nu = opt.nu.value_or(0.05);
   const double dt = opt.dt.value_or(0.01);
   const double time = opt.time.value_or(0.1);
   const long long steps = flow::steps_for(time, dt);
+  const long long sample_stride =
+      interval_stride(opt.sample_dt, dt, steps, "--sample-dt");
+  const long long volume_stride =
+      interval_stride(opt.volume_dt, dt, steps, "--volume-dt");
   auto state = flow::make_state(n, nu, dt, rank, nproc);
   flow::initialize_taylor_green(state);
   std::ofstream csv;
@@ -224,6 +290,11 @@ int run_taylor(const Options &opt, int rank, int nproc) {
     csv.open(opt.outdir + "/diagnostics.csv");
     csv << "time,ke,enstrophy,dissipation,div_l2,div_linf,modal_div_max,"
            "w_l2,max_abs_w,cfl,status\n";
+    if (volume_stride > 0) {
+      std::filesystem::create_directories(opt.outdir + "/vorticity");
+      std::ofstream index(opt.outdir + "/vorticity/index.csv");
+      index << "time,path,points\n";
+    }
   }
 
   auto report = [&](double sample, const flow::Diagnostics &diag,
@@ -231,21 +302,25 @@ int run_taylor(const Options &opt, int rank, int nproc) {
     if (rank == 0) {
       write_taylor_row(csv, sample, diag, status);
       csv.flush();
-    }
-    if (rank == 0) {
       std::cout << "incompressible_flow sample t=" << std::scientific
                 << std::setprecision(8) << sample << " status=" << status
-                << " ke=" << diag.ke << " w_l2=" << diag.w_l2 << std::endl;
+                << " ke=" << diag.ke << " dissipation=" << diag.dissipation
+                << " cfl=" << diag.cfl << std::endl;
     }
   };
 
+  auto stop_for = [](const flow::Diagnostics &diag) -> std::string {
+    if (!diag.finite) return "nonfinite";
+    if (diag.cfl > flow::cfl_limit) return "cfl";
+    return "ok";
+  };
+
   auto initial = flow::diagnose(state);
-  std::string status = "ok";
-  if (!initial.finite)
-    status = "nonfinite";
-  else if (initial.cfl > flow::cfl_limit)
-    status = "cfl";
+  std::string status = stop_for(initial);
   report(0.0, initial, status);
+  if (status == "ok" && volume_stride > 0) {
+    write_volume_frame(state, opt.outdir, 0, 0.0, rank);
+  }
   if (status != "ok") {
     if (rank == 0) std::cout << "incompressible_flow status=" << status << std::endl;
     return EXIT_FAILURE;
@@ -260,16 +335,20 @@ int run_taylor(const Options &opt, int rank, int nproc) {
 #else
     flow::step(state);
 #endif
-    if (step != steps) continue;
+    const bool sample = flow::record_at(step, steps, sample_stride);
+    const bool volume = volume_stride > 0 && step % volume_stride == 0;
+    if (!sample && !volume) continue;
 #if defined(OPENPFC_FLOW_DEVICE)
     flow::finish_device_session(*device, state);
 #endif
+    const double now = static_cast<double>(step) * dt;
     auto diag = flow::diagnose(state);
-    if (!diag.finite)
-      status = "nonfinite";
-    else if (diag.cfl > flow::cfl_limit)
-      status = "cfl";
-    report(time, diag, status);
+    status = stop_for(diag);
+    report(now, diag, status);
+    if (volume && status == "ok") {
+      write_volume_frame(state, opt.outdir, step, now, rank);
+    }
+    if (status != "ok") break;
   }
   if (rank == 0) std::cout << "incompressible_flow status=" << status << std::endl;
   return status == "ok" ? EXIT_SUCCESS : EXIT_FAILURE;

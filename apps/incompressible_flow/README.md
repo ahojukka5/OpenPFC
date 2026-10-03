@@ -54,10 +54,15 @@ application does not rerun that ladder.
 ```
 
 `--time` must be an integer number of steps. \(N\) is even and at
-least 8. Speed CFL is checked on the initial and final samples of a
-single run. Above 2 the run stops with `status=cfl`. A non-finite
-field leaves `status=nonfinite`. The box length is \(2\pi\) and is not
-a flag. `diagnostics.csv` records those two samples.
+least 8. Speed CFL is checked on every recorded sample. Above 2 the
+run stops with `status=cfl`. A non-finite field leaves
+`status=nonfinite`. The box length is \(2\pi\) and is not a flag.
+`diagnostics.csv` records the initial and final samples.
+`--sample-dt` adds a row at that interval, and the interval must be
+an integer number of steps that divides the run. `--volume-dt`
+writes \(|\omega|\) as one x-fastest float32 cube per interval,
+including \(t = 0\), under `vorticity/`. Both flags belong to
+Taylor–Green. The other cases reject them.
 
 ## Decaying homogeneous isotropic turbulence
 
@@ -345,9 +350,11 @@ step took 360 s.
 `incompressible_flow_hip` advances Taylor–Green and decaying HIT with
 the device integrating-factor step. HeFFTe uses rocFFT. The velocity
 and the Runge–Kutta stages stay on the device. Diagnostics copy the
-hats back at a sample. Forced HIT and the locked series stay on
-`incompressible_flow`. `incompressible_device_parity` compares one
-host step with one device step on the same pencil.
+hats back at a sample. `--sample-dt` copies back at each of those
+samples and leaves the step on the device. `--volume-dt` writes the
+vorticity frames from the same copies. Forced HIT and the locked
+series stay on `incompressible_flow`. `incompressible_device_parity`
+compares one host step with one device step on the same pencil.
 
 ## Channel wall
 
