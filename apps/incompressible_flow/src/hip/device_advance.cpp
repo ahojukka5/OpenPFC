@@ -59,8 +59,15 @@ DeviceSessionPtr start_device_session(State &state, int rank, int nproc) {
   return session;
 }
 
-void step_device_session(DeviceSession &session) {
-  pfc::field::step_device_velocity(session.velocity, session.stack->fft(), true);
+void step_device_session(DeviceSession &session, DeviceProfile *profile) {
+  pfc::field::StepProfile step;
+  pfc::field::step_device_velocity(session.velocity, session.stack->fft(), true,
+                                   profile == nullptr ? nullptr : &step);
+  if (profile == nullptr) return;
+  profile->spectral_s += step.spectral_s;
+  profile->fft_s += step.fft_s;
+  profile->nonlinear_s += step.nonlinear_s;
+  profile->steps += 1;
 }
 
 void finish_device_session(DeviceSession &session, State &state) {

@@ -64,6 +64,17 @@ writes \(|\omega|\) as one x-fastest float32 cube per interval,
 including \(t = 0\), under `vorticity/`. Both flags belong to
 Taylor–Green. The other cases reject them.
 
+The same samples also write `spectrum.csv` (`time`, `shell`,
+`shell_ke`) and `scales.csv` (`time`, `k_max`, `eta`,
+`k_max_eta`). Shell \(s\) holds the modes in \([s-1/2, s+1/2)\).
+\(k_{\max}\) is the largest integer strictly below \(N/3\), and
+\(\eta=(\nu^3/\varepsilon)^{1/4}\). `metadata.txt` records the
+sample trapezoid \(E(T)-E(0)+\int\varepsilon\,\mathrm{d}t\). The
+initial field is not isotropic, so this case does not report a
+Taylor microscale. `--profile` times the step and, on the device,
+synchronizes between the spectral work, the FFTs, and the product.
+Leave it off for a production trajectory.
+
 ## Decaying homogeneous isotropic turbulence
 
 ```bash

@@ -33,8 +33,17 @@ using DeviceSessionPtr = std::unique_ptr<DeviceSession, DeviceSessionDeleter>;
 [[nodiscard]] DeviceSessionPtr start_device_session(State &state, int rank,
                                                     int nproc);
 
+/// Accumulated seconds from profiled steps. A null profile does not sync.
+struct DeviceProfile {
+  double spectral_s{0.0};
+  double fft_s{0.0};
+  double nonlinear_s{0.0};
+  long long steps{0};
+};
+
 /// One integrating-factor step. The hats stay on the device.
-void step_device_session(DeviceSession &session);
+/// A non-null `profile` syncs between the spectral, FFT, and product work.
+void step_device_session(DeviceSession &session, DeviceProfile *profile = nullptr);
 
 /// Copy the hats back into `state` for a host diagnostic sample.
 void finish_device_session(DeviceSession &session, State &state);

@@ -11,6 +11,7 @@
  * are not this executable.
  */
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -45,6 +46,7 @@ struct Options {
   std::optional<double> power;
   std::optional<double> sample_dt;
   std::optional<double> volume_dt;
+  bool profile{false};
   std::string series;
   std::string outdir{"results/incompressible-flow"};
 };
@@ -54,7 +56,7 @@ void usage(std::ostream &os) {
   os << "Usage: incompressible_flow_hip\n"
         "       --case taylor-green|decaying-hit\n"
         "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
-        "       [--sample-dt DT] [--volume-dt DT] [--outdir DIR]\n"
+        "       [--sample-dt DT] [--volume-dt DT] [--profile] [--outdir DIR]\n"
         "\n"
         "Periodic 3-D Navier-Stokes on [0, 2pi]^3. The step uses the\n"
         "HIP HeFFTe backend (rocFFT). Diagnostics copy the hats back\n"
@@ -66,7 +68,7 @@ void usage(std::ostream &os) {
         "       --case taylor-green|decaying-hit|forced-hit\n"
         "       [--n N] [--nu NU] [--dt DT] [--time T] [--seed SEED]\n"
         "       [--power EPS] [--sample-dt DT] [--volume-dt DT]\n"
-        "       [--series NAME] [--outdir DIR]\n"
+        "       [--profile] [--series NAME] [--outdir DIR]\n"
         "\n"
         "Periodic 3-D Navier-Stokes on [0, 2pi]^3. N is even and at\n"
         "least 8. time is an integer number of steps. The 2/3 mask\n"
@@ -173,6 +175,8 @@ bool parse(int argc, char **argv, Options &opt) {
       auto parsed = parse_double(*value);
       if (!parsed || !(*parsed > 0.0)) return false;
       opt.sample_dt = *parsed;
+    } else if (flag == "--profile") {
+      opt.profile = true;
     } else if (flag == "--volume-dt") {
       auto value = need("--volume-dt");
       if (!value) return false;
@@ -213,6 +217,10 @@ bool parse(int argc, char **argv, Options &opt) {
   }
   if (opt.which != "taylor-green" && (opt.sample_dt || opt.volume_dt)) {
     std::cerr << opt.which << " does not take --sample-dt or --volume-dt\n";
+    return false;
+  }
+  if (opt.which != "taylor-green" && opt.profile) {
+    std::cerr << opt.which << " does not take --profile\n";
     return false;
   }
   if (!opt.series.empty() &&
@@ -285,11 +293,17 @@ int run_taylor(const Options &opt, int rank, int nproc) {
   auto state = flow::make_state(n, nu, dt, rank, nproc);
   flow::initialize_taylor_green(state);
   std::ofstream csv;
+  std::ofstream spectrum;
+  std::ofstream scales_csv;
   if (rank == 0) {
     std::filesystem::create_directories(opt.outdir);
     csv.open(opt.outdir + "/diagnostics.csv");
     csv << "time,ke,enstrophy,dissipation,div_l2,div_linf,modal_div_max,"
            "w_l2,max_abs_w,cfl,status\n";
+    spectrum.open(opt.outdir + "/spectrum.csv");
+    spectrum << "time,shell,shell_ke\n";
+    scales_csv.open(opt.outdir + "/scales.csv");
+    scales_csv << "time,k_max,eta,k_max_eta\n";
     if (volume_stride > 0) {
       std::filesystem::create_directories(opt.outdir + "/vorticity");
       std::ofstream index(opt.outdir + "/vorticity/index.csv");
@@ -297,11 +311,42 @@ int run_taylor(const Options &opt, int rank, int nproc) {
     }
   }
 
+  double ke0 = 0.0;
+  double last_ke = 0.0;
+  double integrated_dissipation = 0.0;
+  double previous_time = 0.0;
+  double previous_dissipation = 0.0;
+  bool have_sample = false;
+
   auto report = [&](double sample, const flow::Diagnostics &diag,
                     std::string_view status) {
+    const auto shells = flow::shell_energies(state);
+    const int k_max = flow::retained_k_max(state.n[0]);
+    const double eta =
+        diag.dissipation > 0.0
+            ? std::pow(state.nu * state.nu * state.nu / diag.dissipation, 0.25)
+            : 0.0;
+    if (have_sample) {
+      integrated_dissipation += 0.5 * (previous_dissipation + diag.dissipation) *
+                                (sample - previous_time);
+    } else {
+      ke0 = diag.ke;
+    }
+    last_ke = diag.ke;
+    previous_time = sample;
+    previous_dissipation = diag.dissipation;
+    have_sample = true;
     if (rank == 0) {
       write_taylor_row(csv, sample, diag, status);
       csv.flush();
+      spectrum << std::scientific << std::setprecision(16);
+      for (const auto &shell : shells) {
+        spectrum << sample << ',' << shell.index << ',' << shell.ke << '\n';
+      }
+      spectrum.flush();
+      scales_csv << std::scientific << std::setprecision(16) << sample << ',' << k_max
+                 << ',' << eta << ',' << static_cast<double>(k_max) * eta << '\n';
+      scales_csv.flush();
       std::cout << "incompressible_flow sample t=" << std::scientific
                 << std::setprecision(8) << sample << " status=" << status
                 << " ke=" << diag.ke << " dissipation=" << diag.dissipation
@@ -328,12 +373,21 @@ int run_taylor(const Options &opt, int rank, int nproc) {
 
 #if defined(OPENPFC_FLOW_DEVICE)
   auto device = flow::start_device_session(state, rank, nproc);
+  flow::DeviceProfile profile;
+#else
+  double host_step_s = 0.0;
 #endif
   for (long long step = 1; step <= steps; ++step) {
 #if defined(OPENPFC_FLOW_DEVICE)
-    flow::step_device_session(*device);
+    flow::step_device_session(*device, opt.profile ? &profile : nullptr);
 #else
+    const auto host_began = std::chrono::steady_clock::now();
     flow::step(state);
+    if (opt.profile) {
+      host_step_s += std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                                   host_began)
+                         .count();
+    }
 #endif
     const bool sample = flow::record_at(step, steps, sample_stride);
     const bool volume = volume_stride > 0 && step % volume_stride == 0;
@@ -350,7 +404,40 @@ int run_taylor(const Options &opt, int rank, int nproc) {
     }
     if (status != "ok") break;
   }
-  if (rank == 0) std::cout << "incompressible_flow status=" << status << std::endl;
+  if (rank == 0) {
+    const double budget =
+        have_sample ? (last_ke - ke0) + integrated_dissipation : 0.0;
+    std::ofstream meta(opt.outdir + "/metadata.txt");
+    meta << std::setprecision(16);
+    meta << "case=taylor-green\n"
+#if defined(OPENPFC_FLOW_DEVICE)
+         << "backend=hip-heffte\n"
+#else
+         << "backend=cpu-heffte\n"
+#endif
+         << "n=" << n << "\n"
+         << "nu=" << std::scientific << nu << "\n"
+         << "dt=" << dt << "\n"
+         << "time=" << time << "\n"
+         << "steps=" << steps << "\n"
+         << "k_max=" << flow::retained_k_max(n) << "\n"
+         << "ke0=" << ke0 << "\n"
+         << "ke_final=" << last_ke << "\n"
+         << "integrated_dissipation=" << integrated_dissipation << "\n"
+         << "budget=sample-trapezoid\n"
+         << "budget_residual=" << budget << "\n";
+    if (opt.profile) {
+#if defined(OPENPFC_FLOW_DEVICE)
+      meta << "profile_steps=" << profile.steps << "\n"
+           << "profile_spectral_s=" << profile.spectral_s << "\n"
+           << "profile_fft_s=" << profile.fft_s << "\n"
+           << "profile_nonlinear_s=" << profile.nonlinear_s << "\n";
+#else
+      meta << "profile_host_step_s=" << host_step_s << "\n";
+#endif
+    }
+    std::cout << "incompressible_flow status=" << status << std::endl;
+  }
   return status == "ok" ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
