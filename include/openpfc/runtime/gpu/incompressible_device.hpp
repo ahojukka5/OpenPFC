@@ -11,6 +11,17 @@
  * products in device memory. HeFFTe's device FFT is the only transform.
  * Exponentials are uploaded once, before the first step. Diagnostics copy
  * the hats back at a sample, not inside a stage.
+ *
+ * Runtime owns this header. It names device buffers, so kernel code must
+ * not include it. The declarations are compiled only when
+ * OpenPFC_ENABLE_CUDA_SPECTRAL or OpenPFC_ENABLE_HIP_SPECTRAL is set.
+ * Both the .cu and the .hip unit include one implementation header, and
+ * that header requires __CUDACC__ or __HIPCC__. One spectral backend per
+ * build: the kernels are not split by those macros, and hipcc may define
+ * __CUDACC__ together with __HIPCC__, so enabling both
+ * OpenPFC_ENABLE_CUDA_SPECTRAL and OpenPFC_ENABLE_HIP_SPECTRAL would
+ * define the same device symbols in one link. Explicit instantiations
+ * stay `#if defined(__HIPCC__)` then `#elif defined(__CUDACC__)`.
  */
 
 #if defined(OpenPFC_ENABLE_CUDA_SPECTRAL) || defined(OpenPFC_ENABLE_HIP_SPECTRAL)

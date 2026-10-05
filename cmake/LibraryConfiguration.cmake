@@ -349,10 +349,10 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL
 endif()
 if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
   set_source_files_properties(
-      src/openpfc/kernel/field/incompressible_device_kernels.hip
+      src/openpfc/runtime/gpu/incompressible_device_kernels.hip
       PROPERTIES LANGUAGE HIP)
   add_library(openpfc_incompressible_hip
-      src/openpfc/kernel/field/incompressible_device_kernels.hip)
+      src/openpfc/runtime/gpu/incompressible_device_kernels.hip)
   target_include_directories(openpfc_incompressible_hip
       PUBLIC
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -367,10 +367,10 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
 endif()
 if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE AND OpenPFC_ENABLE_CUDA_SPECTRAL)
   set_source_files_properties(
-      src/openpfc/kernel/field/incompressible_device_kernels.cu
+      src/openpfc/runtime/gpu/incompressible_device_kernels.cu
       PROPERTIES LANGUAGE CUDA)
   add_library(openpfc_incompressible_cuda
-      src/openpfc/kernel/field/incompressible_device_kernels.cu)
+      src/openpfc/runtime/gpu/incompressible_device_kernels.cu)
   target_include_directories(openpfc_incompressible_cuda
       PUBLIC
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

@@ -105,3 +105,21 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
         LIBRARY DESTINATION lib
     )
 endif()
+
+# The device step is not part of openpfc_hip_kernels / openpfc_gpu_kernels.
+# Install the library built from the runtime/gpu translation unit so an
+# installed consumer of the header can link it. One spectral backend per build.
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
+    install(TARGETS openpfc_incompressible_hip
+        EXPORT OpenPFCTargets
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+    )
+endif()
+if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE AND OpenPFC_ENABLE_CUDA_SPECTRAL)
+    install(TARGETS openpfc_incompressible_cuda
+        EXPORT OpenPFCTargets
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+    )
+endif()

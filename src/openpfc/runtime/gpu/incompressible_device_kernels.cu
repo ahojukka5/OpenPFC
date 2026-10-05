@@ -10,4 +10,4 @@
 #error "incompressible_device_kernels.cu requires OpenPFC_ENABLE_CUDA"
 #endif
 
-#include <openpfc/kernel/field/incompressible_device_impl.hpp>
+#include <openpfc/runtime/gpu/incompressible_device_impl.hpp>
