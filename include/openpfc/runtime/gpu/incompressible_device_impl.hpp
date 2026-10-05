@@ -5,9 +5,15 @@
  * @file incompressible_device_impl.hpp
  * @brief Device twin of `ifrk4_velocity` and `rotational_tendency`.
  *
- * Included only from the HIP and CUDA translation units. The formulas
- * match the host step, including the mask before each tendency and the
- * mean-free rotational term.
+ * Included only from the HIP and CUDA translation units, which share this
+ * implementation. Requires the device compiler (__HIPCC__ or __CUDACC__).
+ * One spectral backend per build: the kernels are not inside that split,
+ * and hipcc may define __CUDACC__ as well as __HIPCC__, so
+ * OpenPFC_ENABLE_HIP_SPECTRAL and OpenPFC_ENABLE_CUDA_SPECTRAL must not
+ * both be set. Both backends would otherwise define the same device
+ * symbols in one link. Instantiations use `#if defined(__HIPCC__)` then
+ * `#elif defined(__CUDACC__)`. The formulas match the host step, including
+ * the mask before each tendency and the mean-free rotational term.
  */
 
 #pragma once
@@ -25,7 +31,7 @@
 #include <openpfc/kernel/data/constants.hpp>
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/field/incompressible.hpp>
-#include <openpfc/kernel/field/incompressible_device.hpp>
+#include <openpfc/runtime/gpu/incompressible_device.hpp>
 #include <openpfc/runtime/gpu/gpu_api.hpp>
 
 namespace pfc::field {

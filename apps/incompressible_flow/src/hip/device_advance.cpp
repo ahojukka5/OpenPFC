@@ -22,7 +22,7 @@
 #include <mpi.h>
 
 #include <openpfc/kernel/data/domain.hpp>
-#include <openpfc/kernel/field/incompressible_device.hpp>
+#include <openpfc/runtime/gpu/incompressible_device.hpp>
 #include <openpfc/runtime/gpu/gpu_api.hpp>
 #include <openpfc/runtime/gpu/gpu_spectral_stack.hpp>
 
