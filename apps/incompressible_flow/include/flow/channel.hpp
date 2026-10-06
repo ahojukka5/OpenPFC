@@ -28,6 +28,8 @@
 
 #include <openpfc/kernel/fft/chebyshev.hpp>
 
+#include <flow/wall.hpp>
+
 namespace flow {
 
 enum class LaminarProfile { couette, poiseuille };
@@ -110,15 +112,15 @@ convective_tendency(const std::vector<double> &velocity_x,
 /// Impermeable projection of the convective tendency.
 /// Wall-normal acceleration vanishes at both Chebyshev ends.
 /// No-slip stays Dirichlet data for the caller to restore.
-[[nodiscard]] inline pfc::fft::WallAcceleration
+[[nodiscard]] inline WallAcceleration
 convective_acceleration(const std::vector<double> &velocity_x,
                         const std::vector<double> &velocity_y,
                         const std::vector<double> &velocity_z, int nx, int ny,
                         double period_x, double period_y) {
   const auto tendency = convective_tendency(velocity_x, velocity_y, velocity_z, nx,
                                             ny, period_x, period_y);
-  return pfc::fft::impermeable_acceleration(tendency.x, tendency.y, tendency.z, nx,
-                                            ny, period_x, period_y);
+  return impermeable_acceleration(tendency.x, tendency.y, tendency.z, nx, ny,
+                                  period_x, period_y);
 }
 
 /// One explicit step of the linear viscous balance.
@@ -153,7 +155,7 @@ inline void viscous_advance(std::vector<double> &velocity_x,
   const auto tendency_x = advance_one(velocity_x, force);
   const auto tendency_y = advance_one(velocity_y, 0.0);
   const auto tendency_z = advance_one(velocity_z, 0.0);
-  const auto acceleration = pfc::fft::impermeable_acceleration(
+  const auto acceleration = impermeable_acceleration(
       tendency_x, tendency_y, tendency_z, nx, ny, period_x, period_y);
   for (std::size_t i = 0; i < velocity_x.size(); ++i) {
     velocity_x[i] += step * acceleration.x[i];
@@ -252,10 +254,10 @@ inline void channel_advance(std::vector<double> &velocity_x,
   for (std::size_t i = 0; i < count; ++i) {
     tendency_x[i] = nu * laplacian[i] + force;
   }
-  const auto acceleration = pfc::fft::impermeable_acceleration(
+  const auto acceleration = impermeable_acceleration(
       tendency_x, tendency_y, tendency_z, nx, ny, period, period);
-  const auto kept = pfc::fft::impermeable_acceleration(
-      velocity_x, velocity_y, velocity_z, nx, ny, period, period);
+  const auto kept = impermeable_acceleration(velocity_x, velocity_y, velocity_z, nx,
+                                             ny, period, period);
 
   ChannelBalance report;
   bool first = true;

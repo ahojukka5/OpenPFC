@@ -20,6 +20,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   |k·û| at 1024³ lies on the double-precision floor near 2e-8 for a
   solenoidal field.
 
+### Changed
+
+- The impermeable channel projection lives in `incompressible_flow`.
+  The Chebyshev layer keeps the elliptic solves and the mixed
+  gradient. `WallAcceleration` is no longer part of the installed
+  Chebyshev header.
+
 ### Added
 
 - Taylor–Green accepts `--sample-dt` and `--volume-dt`. The sample
