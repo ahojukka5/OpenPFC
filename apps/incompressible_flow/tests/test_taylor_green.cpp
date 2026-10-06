@@ -23,6 +23,7 @@
 
 #include <openpfc/kernel/data/constants.hpp>
 
+#include <flow/decaying_hit.hpp>
 #include <flow/taylor_green.hpp>
 
 using Catch::Matchers::WithinAbs;
@@ -102,6 +103,37 @@ TEST_CASE("Taylor-Green energy is the same on every pencil", "[flow][taylor][mpi
   REQUIRE(stepped.modal_div_max < 1.0e-8);
   REQUIRE(stepped.ke < flow::kinetic_energy_0 - 1.0e-8);
   REQUIRE(stepped.w_l2 > 1.0e-8);
+}
+
+TEST_CASE("Taylor-Green t=0 energy sits in shell 2", "[flow][taylor]") {
+  if (world_size() != 1) SKIP("one rank owns every Fourier mode");
+  constexpr double nu = 0.05;
+  constexpr double dt = 0.01;
+  constexpr int n = 16;
+  auto state = flow::make_state(n, nu, dt, 0, 1);
+  flow::initialize_taylor_green(state);
+  const auto initial = flow::diagnose(state);
+  const auto shells = flow::shell_energies(state);
+  // The analytic modes sit at |k|=sqrt(3), so shell 2. A real-space
+  // transform leaves roundoff in the rest of the retained band, and on
+  // N=16 that band contains nine nonempty shells.
+  const flow::Shell *shell2 = nullptr;
+  double sum = 0.0;
+  double other = 0.0;
+  for (const auto &shell : shells) {
+    sum += shell.ke;
+    if (shell.index == 2) {
+      shell2 = &shell;
+    } else {
+      other += shell.ke;
+    }
+  }
+  REQUIRE(shell2 != nullptr);
+  REQUIRE_THAT(shell2->ke, WithinAbs(flow::kinetic_energy_0, 1.0e-12));
+  REQUIRE_THAT(sum, WithinAbs(initial.ke, 1.0e-12));
+  REQUIRE(other < 1.0e-12);
+  REQUIRE(flow::retained_k_max(n) == 5);
+  REQUIRE_THAT(initial.dissipation, WithinAbs(nu * flow::enstrophy_0, 1.0e-12));
 }
 
 TEST_CASE("Taylor-Green sample stride records the final step", "[flow][taylor]") {
