@@ -13,19 +13,24 @@
  * spanwise mode sin(π z) cos(2x) at −ν (4 + π²). Those
  * profiles have a zero convective product. The streamfunction
  * (1 − z²)² sin(x) matches a hand-derived product. One step
- * adds that acceleration to the viscous step. Turbulent
- * channel statistics are not here.
+ * adds that acceleration to the viscous step. The projection
+ * itself is checked here: a polynomial normal tendency
+ * cancels, a streamwise mode stays impermeable, and a bad
+ * grid is rejected. Turbulent channel statistics are not here.
  */
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <utility>
 #include <vector>
 
 #include <flow/channel.hpp>
+#include <flow/wall.hpp>
 
 using Catch::Matchers::WithinAbs;
 
@@ -236,7 +241,7 @@ TEST_CASE("A no-slip polynomial has a known convective term", "[channel]") {
     if (degree >= 8) {
       const auto acceleration = flow::convective_acceleration(
           velocity_x, velocity_y, velocity_z, nx, ny, period, period);
-      const auto projected = pfc::fft::impermeable_acceleration(
+      const auto projected = flow::impermeable_acceleration(
           expect_x, expect_y, expect_z, nx, ny, period, period);
       for (std::size_t i = 0; i < count; ++i) {
         projected_error =
@@ -464,4 +469,168 @@ TEST_CASE("One channel step adds the convective acceleration", "[channel]") {
     REQUIRE(got[0] < 1e-12);
     REQUIRE(got[1] > 0.05);
   }
+}
+
+namespace {
+
+template <typename Sample>
+[[nodiscard]] std::vector<double> volume_field(int nx, int ny, int degree,
+                                               double period_x, double period_y,
+                                               Sample sample) {
+  const auto z = pfc::fft::chebyshev_lobatto(degree);
+  std::vector<double> values(static_cast<std::size_t>(nx) *
+                             static_cast<std::size_t>(ny) * z.size());
+  for (int iz = 0; iz <= degree; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      const double y = period_y * static_cast<double>(iy) / static_cast<double>(ny);
+      for (int ix = 0; ix < nx; ++ix) {
+        const double x =
+            period_x * static_cast<double>(ix) / static_cast<double>(nx);
+        values[(static_cast<std::size_t>(iz) * static_cast<std::size_t>(ny) +
+                static_cast<std::size_t>(iy)) *
+                   static_cast<std::size_t>(nx) +
+               static_cast<std::size_t>(ix)] =
+            sample(x, y, z[static_cast<std::size_t>(iz)]);
+      }
+    }
+  }
+  return values;
+}
+
+[[nodiscard]] double max_abs_diff(const std::vector<double> &left,
+                                  const std::vector<double> &right) {
+  double peak = 0.0;
+  for (std::size_t i = 0; i < left.size(); ++i) {
+    peak = std::max(peak, std::abs(left[i] - right[i]));
+  }
+  return peak;
+}
+
+[[nodiscard]] double max_abs(const std::vector<double> &values) {
+  double peak = 0.0;
+  for (double value : values) peak = std::max(peak, std::abs(value));
+  return peak;
+}
+
+[[nodiscard]] double wall_normal(const flow::WallAcceleration &acceleration, int nx,
+                                 int ny, int nline) {
+  double peak = 0.0;
+  for (int iy = 0; iy < ny; ++iy) {
+    for (int ix = 0; ix < nx; ++ix) {
+      const auto top = static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+                       static_cast<std::size_t>(ix);
+      const auto bottom =
+          (static_cast<std::size_t>(nline - 1) * static_cast<std::size_t>(ny) +
+           static_cast<std::size_t>(iy)) *
+              static_cast<std::size_t>(nx) +
+          static_cast<std::size_t>(ix);
+      peak = std::max(peak, std::abs(acceleration.z[top]));
+      peak = std::max(peak, std::abs(acceleration.z[bottom]));
+    }
+  }
+  return peak;
+}
+
+} // namespace
+
+TEST_CASE("Channel wall cancels a polynomial normal tendency", "[channel]") {
+  const double period = 2.0 * std::acos(-1.0);
+  const auto zero = [](double, double, double) { return 0.0; };
+  const std::array grids{std::pair{8, 6}, std::pair{8, 1}, std::pair{1, 6}};
+  for (const int degree : {2, 4, 8, 16}) {
+    for (const auto &grid : grids) {
+      const int nx = grid.first;
+      const int ny = grid.second;
+      const auto quiescent = volume_field(nx, ny, degree, period, period, zero);
+      for (const auto &sample : {std::function<double(double, double, double)>{
+                                     [](double, double, double) { return 1.0; }},
+                                 std::function<double(double, double, double)>{
+                                     [](double, double, double z) { return z; }}}) {
+        const auto normal = volume_field(nx, ny, degree, period, period, sample);
+        const auto got = flow::impermeable_acceleration(quiescent, quiescent, normal,
+                                                        nx, ny, period, period);
+        REQUIRE(max_abs(got.x) < 1e-10);
+        REQUIRE(max_abs(got.y) < 1e-10);
+        REQUIRE(max_abs(got.z) < 1e-10);
+        const auto again = flow::impermeable_acceleration(got.x, got.y, got.z, nx,
+                                                          ny, period, period);
+        REQUIRE(max_abs(again.x) < 1e-10);
+        REQUIRE(max_abs(again.y) < 1e-10);
+        REQUIRE(max_abs(again.z) < 1e-10);
+      }
+
+      if (nx >= 8) {
+        const auto horizontal =
+            volume_field(nx, ny, degree, period, period,
+                         [](double x, double, double) { return std::cos(2.0 * x); });
+        const auto removed = flow::impermeable_acceleration(
+            horizontal, quiescent, quiescent, nx, ny, period, period);
+        REQUIRE(max_abs(removed.x) < 1e-10);
+        REQUIRE(max_abs(removed.y) < 1e-10);
+        REQUIRE(max_abs(removed.z) < 1e-10);
+      }
+    }
+  }
+}
+
+TEST_CASE("Channel wall keeps a streamwise mode impermeable", "[channel]") {
+  const double period = 2.0 * std::acos(-1.0);
+  const auto zero = [](double, double, double) { return 0.0; };
+  const auto sample = [](double x, double, double z) {
+    return z * std::cos(2.0 * x);
+  };
+  for (const auto &grid : {std::pair{8, 6}, std::pair{8, 1}}) {
+    for (const int degree : {2, 8, 16}) {
+      const int nx = grid.first;
+      const int ny = grid.second;
+      const auto tendency_x = volume_field(nx, ny, degree, period, period, sample);
+      const auto quiescent = volume_field(nx, ny, degree, period, period, zero);
+      const auto got = flow::impermeable_acceleration(
+          tendency_x, quiescent, quiescent, nx, ny, period, period);
+      REQUIRE(wall_normal(got, nx, ny, degree + 1) < 1e-9);
+      // Degree 2 puts this divergence into the two tau modes, so the
+      // pressure correction is zero there. A resolved degree sees it.
+      if (degree >= 8) {
+        REQUIRE(max_abs_diff(got.x, tendency_x) > 1e-3);
+        REQUIRE(max_abs(got.z) > 1e-3);
+      }
+      if (degree == 16) {
+        const auto again = flow::impermeable_acceleration(got.x, got.y, got.z, nx,
+                                                          ny, period, period);
+        REQUIRE(max_abs_diff(again.x, got.x) < 1e-8);
+        REQUIRE(max_abs_diff(again.y, got.y) < 1e-8);
+        REQUIRE(max_abs_diff(again.z, got.z) < 1e-8);
+      }
+    }
+  }
+}
+
+TEST_CASE("Channel wall rejects a bad grid", "[channel]") {
+  const std::vector<double> empty;
+  const std::vector<double> plane{0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> slab{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  const std::vector<double> short_field{0.0, 0.0, 0.0, 0.0};
+  REQUIRE_THROWS_AS(
+      flow::impermeable_acceleration(empty, empty, empty, 2, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(flow::impermeable_acceleration(slab, slab, slab, 0, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(flow::impermeable_acceleration(slab, slab, slab, 2, 0, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      flow::impermeable_acceleration(slab, short_field, slab, 2, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(flow::impermeable_acceleration(slab, slab, slab, 3, 2, 1.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(flow::impermeable_acceleration(slab, slab, slab, 2, 2, 0.0, 1.0),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      flow::impermeable_acceleration(slab, slab, slab, 2, 2, 1.0, -1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      flow::impermeable_acceleration(plane, plane, plane, 2, 2, 1.0, 1.0),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      flow::impermeable_acceleration(plane, plane, plane, 2, 2, -2.0, 1.0),
+      std::invalid_argument);
 }

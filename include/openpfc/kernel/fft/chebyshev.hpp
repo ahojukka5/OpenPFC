@@ -32,10 +32,7 @@
  * to k_x² + k_y² and reuses those weights. A zero λ reuses
  * the Robin Poisson solve. Partial derivatives on that rank
  * use the same wavenumbers. The Nyquist sample of a periodic
- * first derivative is zero. A channel wall removes the
- * pressure gradient so the normal acceleration vanishes at
- * the Chebyshev ends. No-slip remains Dirichlet data on the
- * velocity.
+ * first derivative is zero.
  *
  * The FFT plans are created on each call. Do not call these functions
  * concurrently.
@@ -192,24 +189,6 @@ struct PartialDerivatives {
 [[nodiscard]] PartialDerivatives
 fourier_chebyshev_gradient(std::span<const double> values, int nx, int ny,
                            double period_x, double period_y);
-
-struct WallAcceleration {
-  std::vector<double> x;
-  std::vector<double> y;
-  std::vector<double> z;
-};
-
-/// Remove the pressure gradient from a momentum tendency.
-/// The acceleration is divergence-free. Its wall-normal component
-/// vanishes at both Chebyshev ends. The pressure solve is the
-/// Neumann Poisson problem on this grid: dp/dz equals the normal
-/// tendency at each end. No-slip is the Dirichlet data on the
-/// velocity, not a penalty on a periodic mode.
-[[nodiscard]] WallAcceleration
-impermeable_acceleration(std::span<const double> tendency_x,
-                         std::span<const double> tendency_y,
-                         std::span<const double> tendency_z, int nx, int ny,
-                         double period_x, double period_y);
 
 /// Solve u'' = forcing on [-1, 1], with both endpoints prescribed.
 /// `forcing` is sampled on the Lobatto grid from +1 down to -1.

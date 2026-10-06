@@ -15,7 +15,8 @@ endif()
 add_executable(incompressible_flow
   src/main.cpp
   src/hit_series.cpp
-  src/forced_series.cpp)
+  src/forced_series.cpp
+  src/wall.cpp)
 target_include_directories(incompressible_flow PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(incompressible_flow PRIVATE OpenPFC ${_flow_heffte_tgt})
@@ -66,7 +67,8 @@ if(OpenPFC_BUILD_TESTS AND TARGET Catch2::Catch2)
     tests/test_taylor_green.cpp
     tests/test_decaying_hit.cpp
     tests/test_forced_hit.cpp
-    tests/test_channel.cpp)
+    tests/test_channel.cpp
+    src/wall.cpp)
   target_include_directories(test_incompressible_flow PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_incompressible_flow PRIVATE OpenPFC Catch2::Catch2
@@ -106,6 +108,7 @@ if(TARGET openpfc_incompressible_hip OR TARGET openpfc_incompressible_cuda)
       src/main.cpp
       src/hit_series.cpp
       src/forced_series.cpp
+      src/wall.cpp
       src/hip/device_advance.cpp)
     target_include_directories(incompressible_flow_hip PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include)
