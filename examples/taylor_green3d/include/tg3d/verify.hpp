@@ -37,8 +37,9 @@
 #include <openpfc/kernel/data/constants.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
-#include <openpfc/kernel/field/incompressible.hpp>
+#include <openpfc/kernel/field/fourier_vector.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
+#include <openpfc/solvers/incompressible/rotational.hpp>
 
 namespace tg3d {
 
@@ -149,7 +150,7 @@ struct Flow {
   flow.u.assign(nhat, Complex{});
   flow.v.assign(nhat, Complex{});
   flow.w.assign(nhat, Complex{});
-  pfc::field::viscous_exponentials(fft.get_outbox_bounds(), flow.n, flow.spacing, nu,
+  pfc::incompressible::viscous_exponentials(fft.get_outbox_bounds(), flow.n, flow.spacing, nu,
                                    dt, flow.exp_dt, flow.exp_half);
   return flow;
 }
@@ -186,13 +187,13 @@ inline void initialize_taylor_green(Flow &flow) {
 inline void step(Flow &flow) {
   auto &fft = flow.stack->fft();
   const auto outbox = fft.get_outbox_bounds();
-  pfc::field::ifrk4_velocity(
+  pfc::incompressible::ifrk4_velocity(
       outbox, flow.n, flow.spacing, flow.u, flow.v, flow.w, flow.exp_dt,
       flow.exp_half, flow.dt,
       [&](const std::vector<Complex> &u, const std::vector<Complex> &v,
           const std::vector<Complex> &w, std::vector<Complex> &tu,
           std::vector<Complex> &tv, std::vector<Complex> &tw) {
-        pfc::field::rotational_tendency(fft, flow.n, flow.spacing, u, v, w, tu, tv,
+        pfc::incompressible::rotational_tendency(fft, flow.n, flow.spacing, u, v, w, tu, tv,
                                         tw, true);
       },
       true);

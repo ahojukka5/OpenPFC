@@ -30,11 +30,11 @@
 
 #include <openpfc/kernel/data/constants.hpp>
 #include <openpfc/kernel/fft/kspace.hpp>
-#include <openpfc/kernel/field/incompressible.hpp>
+#include <openpfc/solvers/incompressible/rotational.hpp>
 #include <openpfc/runtime/gpu/incompressible_device.hpp>
 #include <openpfc/runtime/gpu/gpu_api.hpp>
 
-namespace pfc::field {
+namespace pfc::incompressible {
 namespace {
 
 struct Z {
@@ -552,4 +552,4 @@ template std::size_t
 device_velocity_bytes<pfc::CUDASpace>(const DeviceVelocity<pfc::CUDASpace> &);
 #endif
 
-} // namespace pfc::field
+} // namespace pfc::incompressible
