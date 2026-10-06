@@ -15,6 +15,10 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+
 #include <mpi.h>
 
 #include <openpfc/kernel/data/constants.hpp>
@@ -98,6 +102,49 @@ TEST_CASE("Taylor-Green energy is the same on every pencil", "[flow][taylor][mpi
   REQUIRE(stepped.modal_div_max < 1.0e-8);
   REQUIRE(stepped.ke < flow::kinetic_energy_0 - 1.0e-8);
   REQUIRE(stepped.w_l2 > 1.0e-8);
+}
+
+TEST_CASE("Taylor-Green sample stride records the final step", "[flow][taylor]") {
+  REQUIRE(flow::record_at(10, 10, 0));
+  REQUIRE_FALSE(flow::record_at(9, 10, 0));
+  REQUIRE(flow::record_at(4, 10, 2));
+  REQUIRE_FALSE(flow::record_at(3, 10, 2));
+  REQUIRE(flow::record_at(10, 10, 2));
+  REQUIRE(flow::steps_for(0.1, 0.001) == 100);
+  REQUIRE_THROWS_AS(flow::steps_for(0.0003, 0.001), std::invalid_argument);
+}
+
+TEST_CASE("Taylor-Green t=0 vorticity cube matches the enstrophy",
+          "[flow][taylor]") {
+  int rank = 0;
+  int nproc = 1;
+  world(rank, nproc);
+  constexpr double nu = 0.05;
+  constexpr double dt = 0.01;
+  constexpr int n = 16;
+  auto state = flow::make_state(n, nu, dt, rank, nproc);
+  flow::initialize_taylor_green(state);
+  const auto path =
+      std::filesystem::temp_directory_path() / "openpfc-tgv-vorticity.bin";
+  if (rank == 0) std::filesystem::remove(path);
+  MPI_Barrier(MPI_COMM_WORLD);
+  const auto sample = flow::write_vorticity_magnitude(state, path.string());
+  REQUIRE(sample.points == static_cast<long long>(n) * n * n);
+  REQUIRE_THAT(sample.mean_square, WithinAbs(flow::enstrophy_0, 1.0e-8));
+  if (rank == 0) {
+    REQUIRE(std::filesystem::file_size(path) ==
+            static_cast<std::uintmax_t>(sample.points) * sizeof(float));
+    std::ifstream in(path, std::ios::binary);
+    std::vector<float> cube(static_cast<std::size_t>(sample.points));
+    in.read(reinterpret_cast<char *>(cube.data()),
+            static_cast<std::streamsize>(cube.size() * sizeof(float)));
+    REQUIRE(in);
+    double sum = 0.0;
+    for (float value : cube) sum += static_cast<double>(value) * value;
+    REQUIRE_THAT(sum / static_cast<double>(sample.points),
+                 WithinAbs(flow::enstrophy_0, 1.0e-6));
+    std::filesystem::remove(path);
+  }
 }
 
 int main(int argc, char *argv[]) {
