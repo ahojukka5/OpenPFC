@@ -11,7 +11,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 - The committed Heat3D N³ tables `heat3d_n3_cost_repeats.csv` and
   `heat3d_n3_cost_summary.csv` left the tree. They are campaign records,
-  not a package regression pin. The recipe note remains
+  not a package regression pin. The benchmark recipe remains
   `docs/hpc/heat3d_n3_cost.md`.
 
 ### Fixed
