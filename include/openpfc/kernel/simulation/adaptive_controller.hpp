@@ -21,23 +21,31 @@
  * `||e||_inf / (atol + rtol * ||y||_inf)` for that field.
  *
  * Memoryless controller (`StepController::memoryless`, the default):
- * `factor = safety_factor * metric^(-1/error_order)`.
+ * \verbatim
+ * factor = safety_factor * metric^(-1/error_order)
+ * \endverbatim
  * `error_order` is the exponent in that local-error model. For an embedded
  * pair it is the order of the difference (3 for Bogacki–Shampine 3(2)).
  *
  * PI controller (`StepController::pi`), used only when this step will be
  * accepted and a previous accepted metric exists:
- * `factor = safety_factor
- *           * metric^(-(pi_k_i + pi_k_p) / error_order)
- *           * previous^(pi_k_p / error_order)`.
+ * \verbatim
+ * factor = safety_factor
+ *          * metric^(-(pi_k_i + pi_k_p) / error_order)
+ *          * previous^(pi_k_p / error_order)
+ * \endverbatim
  * Defaults `(pi_k_i, pi_k_p) = (0.3, 0.4)` are the PI.3.4 gains. When the
- * two metrics are equal this is `safety_factor * metric^(-pi_k_i/error_order)`,
- * a milder integral controller, not the memoryless law. The first acceptance
- * and every rejection use the memoryless law. Gustafsson's PI.3.4 and
- * Söderlind's equation (4.21) (2001, Automatic control and adaptive
- * time-stepping) write an extra `theta^(pi_k_i/error_order)` with `theta =
- * 0.8`. That factor is not applied here. `safety_factor` is the only safety
- * multiplier, and it sits outside the powers, as in the memoryless law.
+ * two metrics are equal the same law reduces to
+ * \verbatim
+ * factor = safety_factor * metric^(-pi_k_i/error_order)
+ * \endverbatim
+ * which is a milder integral controller, not the memoryless law. The first
+ * acceptance and every rejection use the memoryless law. Gustafsson's PI.3.4
+ * and Söderlind's equation (4.21) (2001, Automatic control and adaptive
+ * time-stepping) write an extra factor `theta` to the power
+ * (`pi_k_i` / `error_order`), with `theta = 0.8`. That factor is not applied
+ * here. `safety_factor` is the only safety multiplier, and it sits outside
+ * the powers, as in the memoryless law.
  *
  * `factor` is then clamped to `[shrink_max, growth_max]` and
  * `next_dt = clamp(attempted_dt * factor, min_dt, max_dt)`.
