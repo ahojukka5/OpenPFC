@@ -46,7 +46,7 @@
 #include <openpfc/kernel/fft/dealias.hpp>
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
-#include <openpfc/kernel/field/incompressible.hpp>
+#include <openpfc/kernel/field/fourier_vector.hpp>
 
 #include <flow/taylor_green.hpp>
 

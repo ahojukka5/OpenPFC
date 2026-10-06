@@ -18,7 +18,7 @@ This page collects **honest** expectations: OpenPFC is a serious HPC framework, 
   \(P = I - kk^{\mathsf T}/|k|^2\). The wavevector is the odd multiplier, so
   the mean and the even-grid Nyquist mode stay unchanged. The quadratic term
   is \(P(u\times\omega)\) after a state-level 2/3 truncation
-  (`kernel/field/incompressible.hpp`). That mask is on for this term only.
+  (`solvers/incompressible/rotational.hpp`). That mask is on for this term only.
   A 3/2 padded product is not used.
 - **Nyquist (odd derivatives):** `SpectralGradient` zeros `i k` at the even-grid Nyquist mode. The real-to-complex Nyquist coefficient is real; a nonzero `i k_N` is not uniquely defined.
 - **2-D vorticity NS (issue #21) and incompressible MHD (issue #23):**

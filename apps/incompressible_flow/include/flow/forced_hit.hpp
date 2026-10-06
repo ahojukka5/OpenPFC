@@ -43,7 +43,8 @@
 #include <openpfc/kernel/fft/dealias.hpp>
 #include <openpfc/kernel/fft/kspace.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
-#include <openpfc/kernel/field/incompressible.hpp>
+#include <openpfc/kernel/field/fourier_vector.hpp>
+#include <openpfc/solvers/incompressible/rotational.hpp>
 
 #include <flow/decaying_hit.hpp>
 
@@ -155,13 +156,13 @@ write_band_force(const pfc::fft::Box3i &outbox, std::array<int, 3> n,
 inline void step_forced(State &state, double power) {
   auto &fft = state.stack->fft();
   const auto outbox = fft.get_outbox_bounds();
-  pfc::field::ifrk4_velocity(
+  pfc::incompressible::ifrk4_velocity(
       outbox, state.n, state.spacing, state.u, state.v, state.w, state.exp_dt,
       state.exp_half, state.dt,
       [&](const std::vector<Complex> &u, const std::vector<Complex> &v,
           const std::vector<Complex> &w, std::vector<Complex> &tu,
           std::vector<Complex> &tv, std::vector<Complex> &tw) {
-        pfc::field::rotational_tendency(fft, state.n, state.spacing, u, v, w, tu, tv,
+        pfc::incompressible::rotational_tendency(fft, state.n, state.spacing, u, v, w, tu, tv,
                                         tw, true);
         std::vector<Complex> fu, fv, fw;
         write_band_force(outbox, state.n, state.spacing, u, v, w, fu, fv, fw, power);

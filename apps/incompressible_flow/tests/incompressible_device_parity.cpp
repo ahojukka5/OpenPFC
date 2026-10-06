@@ -108,19 +108,19 @@ void compare_hats(const std::vector<flow::Complex> &host,
                                     pfc::GridSpacing({h, h, h}));
   pfc::sim::stacks::GPUSpectralStack<Space> device(std::move(domain), rank, nproc,
                                                    MPI_COMM_WORLD);
-  pfc::field::DeviceVelocity<Space> vel;
-  pfc::field::prepare_device_velocity(vel, device.fft(), {n, n, n}, {h, h, h}, nu,
+  pfc::incompressible::DeviceVelocity<Space> vel;
+  pfc::incompressible::prepare_device_velocity(vel, device.fft(), {n, n, n}, {h, h, h}, nu,
                                       dt);
-  pfc::field::upload_device_velocity(vel, u0, v0, w0);
+  pfc::incompressible::upload_device_velocity(vel, u0, v0, w0);
   GPU_CHECK(pfc::gpuDeviceSynchronize());
-  pfc::field::step_device_velocity(vel, device.fft(), true);
+  pfc::incompressible::step_device_velocity(vel, device.fft(), true);
   GPU_CHECK(pfc::gpuDeviceSynchronize());
 
   std::vector<flow::Complex> du;
   std::vector<flow::Complex> dv;
   std::vector<flow::Complex> dw;
   const auto copy_begin = Clock::now();
-  pfc::field::download_device_velocity(vel, du, dv, dw);
+  pfc::incompressible::download_device_velocity(vel, du, dv, dw);
   const double copy_s = std::chrono::duration<double>(Clock::now() - copy_begin).count();
 
   double local = 0.0;
@@ -128,7 +128,7 @@ void compare_hats(const std::vector<flow::Complex> &host,
   compare_hats(host.v, dv, local);
   compare_hats(host.w, dw, local);
   const double max_abs = reduce_max(local);
-  const auto bytes = pfc::field::device_velocity_bytes(vel);
+  const auto bytes = pfc::incompressible::device_velocity_bytes(vel);
   unsigned long long bytes_sum = bytes;
   MPI_Allreduce(MPI_IN_PLACE, &bytes_sum, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM,
                 MPI_COMM_WORLD);
@@ -148,13 +148,13 @@ void compare_hats(const std::vector<flow::Complex> &host,
     GPU_CHECK(pfc::gpuDeviceSynchronize());
     const auto begin = Clock::now();
     for (int step = 0; step < kTimed; ++step) {
-      pfc::field::step_device_velocity(vel, device.fft(), true);
+      pfc::incompressible::step_device_velocity(vel, device.fft(), true);
     }
     GPU_CHECK(pfc::gpuDeviceSynchronize());
     const double step_s =
         std::chrono::duration<double>(Clock::now() - begin).count() / kTimed;
-    pfc::field::StepProfile prof;
-    pfc::field::step_device_velocity(vel, device.fft(), true, &prof);
+    pfc::incompressible::StepProfile prof;
+    pfc::incompressible::step_device_velocity(vel, device.fft(), true, &prof);
     if (rank == 0) {
       std::cout << "flow_device_bench case=" << name << " n=" << n
                 << " ranks=" << nproc << " step_s=" << step_s

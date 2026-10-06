@@ -33,8 +33,9 @@
 #include <openpfc/kernel/data/constants.hpp>
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
-#include <openpfc/kernel/field/incompressible.hpp>
+#include <openpfc/kernel/field/fourier_vector.hpp>
 #include <openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp>
+#include <openpfc/solvers/incompressible/rotational.hpp>
 
 namespace flow {
 
@@ -122,7 +123,7 @@ struct State {
   state.u.assign(nhat, Complex{});
   state.v.assign(nhat, Complex{});
   state.w.assign(nhat, Complex{});
-  pfc::field::viscous_exponentials(fft.get_outbox_bounds(), state.n, state.spacing,
+  pfc::incompressible::viscous_exponentials(fft.get_outbox_bounds(), state.n, state.spacing,
                                    nu, dt, state.exp_dt, state.exp_half);
   return state;
 }
@@ -159,13 +160,13 @@ inline void initialize_taylor_green(State &state) {
 inline void step(State &state) {
   auto &fft = state.stack->fft();
   const auto outbox = fft.get_outbox_bounds();
-  pfc::field::ifrk4_velocity(
+  pfc::incompressible::ifrk4_velocity(
       outbox, state.n, state.spacing, state.u, state.v, state.w, state.exp_dt,
       state.exp_half, state.dt,
       [&](const std::vector<Complex> &u, const std::vector<Complex> &v,
           const std::vector<Complex> &w, std::vector<Complex> &tu,
           std::vector<Complex> &tv, std::vector<Complex> &tw) {
-        pfc::field::rotational_tendency(fft, state.n, state.spacing, u, v, w, tu, tv,
+        pfc::incompressible::rotational_tendency(fft, state.n, state.spacing, u, v, w, tu, tv,
                                         tw, true);
       },
       true);

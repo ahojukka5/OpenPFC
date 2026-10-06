@@ -13,7 +13,9 @@
  * the hats back at a sample, not inside a stage.
  *
  * Runtime owns this header. It names device buffers, so kernel code must
- * not include it. The declarations are compiled only when
+ * not include it. The names are `pfc::incompressible`, the same
+ * namespace as the host step. This directory is the device realization.
+ * The declarations are compiled only when
  * OpenPFC_ENABLE_CUDA_SPECTRAL or OpenPFC_ENABLE_HIP_SPECTRAL is set.
  * Both the .cu and the .hip unit include one implementation header, and
  * that header requires __CUDACC__ or __HIPCC__. One spectral backend per
@@ -35,7 +37,7 @@
 #include <openpfc/runtime/gpu/databuffer_gpu.hpp>
 #include <openpfc/runtime/gpu/memory_space_gpu.hpp>
 
-namespace pfc::field {
+namespace pfc::incompressible {
 
 /// Local outbox geometry. Wavenumbers use the global grid.
 struct HatGeom {
@@ -115,6 +117,6 @@ void step_device_velocity(DeviceVelocity<Space> &vel, fft::IDeviceFFT<Space> &ff
 template <class Space>
 [[nodiscard]] std::size_t device_velocity_bytes(const DeviceVelocity<Space> &vel);
 
-} // namespace pfc::field
+} // namespace pfc::incompressible
 
 #endif
