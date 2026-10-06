@@ -114,6 +114,30 @@ if(ALLEN_CAHN_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     set_tests_properties(allen-cahn-interface-kinetics PROPERTIES
       ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
 
+    # Two ranks, with the zero crossing on the x split. The single-rank
+    # kinetics binary above refuses nproc != 1, so this case is its own
+    # executable.
+    add_executable(test_allen_cahn_front_mpi
+      tests/test_allen_cahn_front_mpi.cpp)
+    target_include_directories(test_allen_cahn_front_mpi PRIVATE
+      ${ALLEN_CAHN_INCLUDE_DIR})
+    target_link_libraries(test_allen_cahn_front_mpi PRIVATE
+      OpenPFC Catch2::Catch2 ${_allen_cahn_heffte_tgt})
+    allen_cahn_link_libstdcxx(test_allen_cahn_front_mpi)
+    if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE AND
+       (OpenPFC_MPI_TEST_MAX_WORLD_SIZE EQUAL 0 OR
+        OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER_EQUAL 2))
+      add_test(NAME allen-cahn-front-mpi
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+                ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:test_allen_cahn_front_mpi>
+                ${MPIEXEC_POSTFLAGS})
+      set_tests_properties(allen-cahn-front-mpi PROPERTIES
+        TIMEOUT 60
+        PROCESSORS 2
+        ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
+    endif()
+
     if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
       add_executable(test_allen_cahn_cpu_vs_cuda
         tests/test_allen_cahn_cpu_vs_cuda.cpp
