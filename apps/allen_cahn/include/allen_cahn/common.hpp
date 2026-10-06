@@ -87,6 +87,12 @@ struct RunConfig {
   std::string png_output_initial;
   /** Opt in to letting a failed physics check set the process exit status. */
   bool strict = false;
+  /**
+   * Periodic pair of flat cubic-heteroclinic fronts instead of the Gaussian
+   * seed. The disc `physics_check` is not applied to this geometry. The
+   * cell-count columns still print, and the front position is extra output.
+   */
+  bool two_front = false;
   static constexpr int kHaloWidth = 1;
   /** Superlevel for the seed-area metric: φ > 0 matches the visible seed in PNGs. */
   static constexpr double kLevelSetThreshold = 0.0;
@@ -150,8 +156,13 @@ struct RunConfig {
 inline int extract_flags(int argc, char **argv, RunConfig *c) {
   int out = 0;
   for (int i = 0; i < argc; ++i) {
-    if (std::string(argv[i]) == "--strict") {
+    const std::string arg(argv[i]);
+    if (arg == "--strict") {
       c->strict = true;
+      continue;
+    }
+    if (arg == "--two-front") {
+      c->two_front = true;
       continue;
     }
     argv[out++] = argv[i];
@@ -293,6 +304,215 @@ inline std::int64_t global_area_cells(MPI_Comm comm, std::int64_t n_local) {
 }
 
 /**
+ * @brief Disc radius for a fractional cell area.
+ *
+ * Named apart from `equivalent_radius(std::int64_t, double)` so a call with
+ * an untyped `0` still selects the integer count.
+ */
+[[nodiscard]] inline double equivalent_radius_from_area(double area_cells,
+                                                        double dx) noexcept {
+  if (!(area_cells > 0.0)) {
+    return 0.0;
+  }
+  return std::sqrt(area_cells * dx * dx / 3.14159265358979323846);
+}
+
+/**
+ * @brief Which way a sampled edge crosses `phi = 0`.
+ *
+ * `Rising` is the edge from a non-positive sample to a positive one, which is
+ * the left side of a `phi > 0` slab. `Falling` is the opposite edge.
+ */
+enum class Crossing { Rising, Falling };
+
+/** Linear `phi = 0` position on one periodic row, in sample-index units. */
+struct FrontHit {
+  double position = 0.0;
+  bool found = false;
+};
+
+/**
+ * @brief Shortest signed step from @p x0 to @p x1 on a circle of length @p period.
+ */
+[[nodiscard]] inline double signed_displacement(double x0, double x1,
+                                                double period) noexcept {
+  double d = x1 - x0;
+  const double half = 0.5 * period;
+  if (d > half) {
+    d -= period;
+  }
+  if (d < -half) {
+    d += period;
+  }
+  return d;
+}
+
+/**
+ * @brief First `phi = 0` crossing of @p sense along a periodic 1D row.
+ *
+ * The position is the linear interpolant between the two samples that straddle
+ * zero. It lies strictly closer to the true root than the index of the first
+ * positive sample whenever the root is not on a sample.
+ */
+[[nodiscard]] inline FrontHit periodic_zero_crossing(const double *row, int n,
+                                                     Crossing sense) noexcept {
+  FrontHit hit;
+  for (int i = 0; i < n; ++i) {
+    const int j = (i + 1 == n) ? 0 : i + 1;
+    const double a = row[i];
+    const double b = row[j];
+    const bool rise = a <= 0.0 && b > 0.0;
+    const bool fall = a > 0.0 && b <= 0.0;
+    const bool match = (sense == Crossing::Rising) ? rise : fall;
+    if (!match) {
+      continue;
+    }
+    hit.found = true;
+    hit.position = static_cast<double>(i) + (0.0 - a) / (b - a);
+    return hit;
+  }
+  return hit;
+}
+
+/** Rising and falling planar fronts, averaged over rows. */
+struct PlanarFronts {
+  FrontHit rising;
+  FrontHit falling;
+};
+
+/**
+ * @brief Mean sub-cell position of the first rising and falling fronts.
+ *
+ * Each row is unwrapped against the first row that has that front, so a front
+ * that sits on the periodic seam is not averaged with its image `nx` away.
+ */
+[[nodiscard]] inline PlanarFronts planar_fronts(const double *u, int nx,
+                                                int ny) {
+  PlanarFronts out;
+  double sum_rising = 0.0;
+  double sum_falling = 0.0;
+  int n_rising = 0;
+  int n_falling = 0;
+  double ref_rising = 0.0;
+  double ref_falling = 0.0;
+  const double period = static_cast<double>(nx);
+  for (int iy = 0; iy < ny; ++iy) {
+    const double *row =
+        u + static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx);
+    const FrontHit rising = periodic_zero_crossing(row, nx, Crossing::Rising);
+    const FrontHit falling = periodic_zero_crossing(row, nx, Crossing::Falling);
+    if (rising.found) {
+      const double position =
+          (n_rising == 0) ? rising.position
+                          : ref_rising + signed_displacement(ref_rising,
+                                                             rising.position,
+                                                             period);
+      if (n_rising == 0) {
+        ref_rising = position;
+      }
+      sum_rising += position;
+      ++n_rising;
+    }
+    if (falling.found) {
+      const double position =
+          (n_falling == 0)
+              ? falling.position
+              : ref_falling + signed_displacement(ref_falling, falling.position,
+                                                  period);
+      if (n_falling == 0) {
+        ref_falling = position;
+      }
+      sum_falling += position;
+      ++n_falling;
+    }
+  }
+  auto wrap = [period](double position) {
+    double wrapped = std::fmod(position, period);
+    if (wrapped < 0.0) {
+      wrapped += period;
+    }
+    return wrapped;
+  };
+  if (n_rising > 0) {
+    out.rising.found = true;
+    out.rising.position = wrap(sum_rising / static_cast<double>(n_rising));
+  }
+  if (n_falling > 0) {
+    out.falling.found = true;
+    out.falling.position = wrap(sum_falling / static_cast<double>(n_falling));
+  }
+  return out;
+}
+
+/**
+ * @brief Area of `{phi > 0}` on one triangle of a unit-square split.
+ *
+ * The triangle has area `1/2`. A vertex contributes only when its sample is
+ * strictly positive, matching `count_cells_above`.
+ */
+[[nodiscard]] inline double triangle_positive_area(double p, double q,
+                                                   double r) noexcept {
+  const int n = static_cast<int>(p > 0.0) + static_cast<int>(q > 0.0) +
+                static_cast<int>(r > 0.0);
+  if (n == 0) {
+    return 0.0;
+  }
+  if (n == 3) {
+    return 0.5;
+  }
+  // Area of the corner at `pos` cut off by the zeros on the two adjacent edges.
+  auto corner = [](double pos, double a, double b) noexcept {
+    return 0.5 * (pos / (pos - a)) * (pos / (pos - b));
+  };
+  if (n == 1) {
+    if (p > 0.0) {
+      return corner(p, q, r);
+    }
+    if (q > 0.0) {
+      return corner(q, p, r);
+    }
+    return corner(r, p, q);
+  }
+  if (!(p > 0.0)) {
+    return 0.5 - corner(p, q, r);
+  }
+  if (!(q > 0.0)) {
+    return 0.5 - corner(q, p, r);
+  }
+  return 0.5 - corner(r, p, q);
+}
+
+/**
+ * @brief Cell-units area of the periodic piecewise-linear set `{phi > 0}`.
+ *
+ * Each quad of neighboring samples is split into two triangles. A field that
+ * is positive at every sample has area `nx * ny`, the same number the integer
+ * superlevel count reports. A front that crosses between samples contributes
+ * the interpolated fraction instead of a whole cell.
+ */
+[[nodiscard]] inline double periodic_positive_area(const double *u, int nx,
+                                                   int ny) noexcept {
+  double area = 0.0;
+  for (int iy = 0; iy < ny; ++iy) {
+    const int jy = (iy + 1 == ny) ? 0 : iy + 1;
+    for (int ix = 0; ix < nx; ++ix) {
+      const int jx = (ix + 1 == nx) ? 0 : ix + 1;
+      const auto at = [u, nx](int x, int y) noexcept {
+        return u[static_cast<std::size_t>(x) +
+                 static_cast<std::size_t>(nx) * static_cast<std::size_t>(y)];
+      };
+      const double a = at(ix, iy);
+      const double b = at(jx, iy);
+      const double c = at(ix, jy);
+      const double d = at(jx, jy);
+      area += triangle_positive_area(a, b, c);
+      area += triangle_positive_area(b, d, c);
+    }
+  }
+  return area;
+}
+
+/**
  * @brief Equilibrium interface half-thickness `eps*sqrt(2M)`, in cells.
  *
  * The travelling-wave profile of `phi_t = M phi_xx - (phi^3 - phi)/eps^2` is
@@ -308,6 +528,46 @@ inline std::int64_t global_area_cells(MPI_Comm comm, std::int64_t n_local) {
 [[nodiscard]] inline double interface_width_cells(double M, double epsilon,
                                                   double dx) noexcept {
   return epsilon * std::sqrt(2.0 * M) / dx;
+}
+
+/**
+ * @brief Two flat fronts from the cubic heteroclinic, periodic in x.
+ *
+ * The stationary kink at zero driving force is `tanh(x / (eps sqrt(2M)))`.
+ * A `phi ≈ +1` slab from `L/4` to `3L/4` is that kink minus the kink centred
+ * on the other front. Both gaps are a quarter of the box, so on the shipped
+ * grid the fronts are many interface widths apart and one of them can be
+ * timed before they meet. The profile does not depend on y.
+ */
+inline void fill_two_front_initial_condition(
+    std::vector<double> *u, const pfc::decomposition::Decomposition &decomp,
+    int rank, double M, double epsilon) {
+  const auto &gw = pfc::decomposition::domain(decomp);
+  auto gsz = pfc::domain::get_size(gw);
+  const auto &local = pfc::decomposition::local_box(decomp, rank);
+  auto lo = local.low;
+  auto sz = local.size;
+  const int nx = sz[0];
+  const int ny = sz[1];
+  const int nz = sz[2];
+  const int sxy = nx * ny;
+  const double width = interface_width_cells(M, epsilon, 1.0);
+  const double delta = width > 0.0 ? width : 1.0;
+  const double x_left = 0.25 * static_cast<double>(gsz[0]);
+  const double x_right = 0.75 * static_cast<double>(gsz[0]);
+  for (int iz = 0; iz < nz; ++iz) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int ix = 0; ix < nx; ++ix) {
+        const double x = static_cast<double>(lo[0] + ix);
+        const std::size_t idx =
+            static_cast<std::size_t>(ix) +
+            static_cast<std::size_t>(iy) * static_cast<std::size_t>(nx) +
+            static_cast<std::size_t>(iz) * static_cast<std::size_t>(sxy);
+        (*u)[idx] = std::tanh((x - x_left) / delta) -
+                    std::tanh((x - x_right) / delta) - 1.0;
+      }
+    }
+  }
 }
 
 /**
@@ -400,6 +660,137 @@ struct AreaSamples {
   std::int64_t three_quarter = 0;
   std::int64_t final_ = 0;
 };
+
+/**
+ * @brief Fractional `{phi > 0}` area and, for a flat pair, the two fronts.
+ *
+ * Printed beside the integer cell-count radii. Not an input to
+ * `analyse_interface_kinetics`, so it cannot change `physics_check`.
+ */
+struct SubcellSamples {
+  double area_initial = 0.0;
+  double area_half = 0.0;
+  double area_three_quarter = 0.0;
+  double area_final = 0.0;
+  PlanarFronts fronts_initial{};
+  PlanarFronts fronts_half{};
+  PlanarFronts fronts_three_quarter{};
+  PlanarFronts fronts_final{};
+  /** Set for `--two-front`. The radial seed leaves this false. */
+  bool planar = false;
+};
+
+enum class SampleWhen { Initial, Half, ThreeQuarter, Final };
+
+/**
+ * @brief Assemble the owned slabs into one periodic `nx * ny` field.
+ *
+ * Every rank returns the same array. The diagnostic grids are a few hundred
+ * cells on a side, so the copy is not part of the timestep cost that matters.
+ */
+[[nodiscard]] inline std::vector<double>
+gather_xy_samples(MPI_Comm comm, const pfc::decomposition::Decomposition &decomp,
+                  int rank, const double *local, int nx, int ny) {
+  const auto &box = pfc::decomposition::local_box(decomp, rank);
+  const int gx0 = box.low[0];
+  const int gy0 = box.low[1];
+  const auto gsz = pfc::domain::get_size(pfc::decomposition::domain(decomp));
+  const int nxg = gsz[0];
+  const int nyg = gsz[1];
+
+  int nproc = 1;
+  MPI_Comm_size(comm, &nproc);
+  const std::array<int, 4> meta{gx0, gy0, nx, ny};
+  std::vector<int> all_meta(static_cast<std::size_t>(4 * nproc));
+  MPI_Allgather(meta.data(), 4, MPI_INT, all_meta.data(), 4, MPI_INT, comm);
+
+  std::vector<int> counts(static_cast<std::size_t>(nproc));
+  std::vector<int> displs(static_cast<std::size_t>(nproc));
+  int total = 0;
+  for (int r = 0; r < nproc; ++r) {
+    const int rnx = all_meta[static_cast<std::size_t>(4 * r + 2)];
+    const int rny = all_meta[static_cast<std::size_t>(4 * r + 3)];
+    counts[static_cast<std::size_t>(r)] = rnx * rny;
+    displs[static_cast<std::size_t>(r)] = total;
+    total += rnx * rny;
+  }
+  std::vector<double> packed(static_cast<std::size_t>(total));
+  MPI_Allgatherv(local, nx * ny, MPI_DOUBLE, packed.data(), counts.data(),
+                 displs.data(), MPI_DOUBLE, comm);
+
+  std::vector<double> global(static_cast<std::size_t>(nxg) *
+                             static_cast<std::size_t>(nyg));
+  for (int r = 0; r < nproc; ++r) {
+    const int rgx = all_meta[static_cast<std::size_t>(4 * r)];
+    const int rgy = all_meta[static_cast<std::size_t>(4 * r + 1)];
+    const int rnx = all_meta[static_cast<std::size_t>(4 * r + 2)];
+    const int rny = all_meta[static_cast<std::size_t>(4 * r + 3)];
+    const double *src = packed.data() + displs[static_cast<std::size_t>(r)];
+    for (int iy = 0; iy < rny; ++iy) {
+      for (int ix = 0; ix < rnx; ++ix) {
+        global[static_cast<std::size_t>(rgx + ix) +
+               static_cast<std::size_t>(nxg) * static_cast<std::size_t>(rgy + iy)] =
+            src[static_cast<std::size_t>(ix) +
+                static_cast<std::size_t>(rnx) * static_cast<std::size_t>(iy)];
+      }
+    }
+  }
+  return global;
+}
+
+/** Record one sub-cell sample. Every rank must call this together. */
+inline void sample_subcell(MPI_Comm comm,
+                           const pfc::decomposition::Decomposition &decomp,
+                           int rank, const double *local, int nx, int ny,
+                           SubcellSamples *samples, SampleWhen when) {
+  const std::vector<double> field =
+      gather_xy_samples(comm, decomp, rank, local, nx, ny);
+  const auto gsz = pfc::domain::get_size(pfc::decomposition::domain(decomp));
+  const double area = periodic_positive_area(field.data(), gsz[0], gsz[1]);
+  const PlanarFronts fronts =
+      samples->planar ? planar_fronts(field.data(), gsz[0], gsz[1])
+                      : PlanarFronts{};
+  double *slot = &samples->area_initial;
+  PlanarFronts *dest = &samples->fronts_initial;
+  switch (when) {
+  case SampleWhen::Initial:
+    break;
+  case SampleWhen::Half:
+    slot = &samples->area_half;
+    dest = &samples->fronts_half;
+    break;
+  case SampleWhen::ThreeQuarter:
+    slot = &samples->area_three_quarter;
+    dest = &samples->fronts_three_quarter;
+    break;
+  case SampleWhen::Final:
+    slot = &samples->area_final;
+    dest = &samples->fronts_final;
+    break;
+  }
+  *slot = area;
+  if (samples->planar) {
+    *dest = fronts;
+  }
+}
+
+/**
+ * @brief Speed of the left front into the matrix over the last half of the run.
+ *
+ * Positive when the `phi > 0` slab expands. Zero when either sample is missing.
+ */
+[[nodiscard]] inline double rising_front_speed(const SubcellSamples &samples,
+                                               const RunConfig &cfg) noexcept {
+  const double dt_half = 0.5 * static_cast<double>(cfg.n_steps) * cfg.dt;
+  if (!(dt_half > 0.0) || !samples.fronts_half.rising.found ||
+      !samples.fronts_final.rising.found) {
+    return 0.0;
+  }
+  const double moved = signed_displacement(samples.fronts_half.rising.position,
+                                           samples.fronts_final.rising.position,
+                                           static_cast<double>(cfg.nx_glob));
+  return -moved / dt_half;
+}
 
 enum class CheckVerdict { Pass, Fail, Skipped };
 
@@ -552,63 +943,115 @@ analyse_interface_kinetics(const AreaSamples &a, const RunConfig &cfg, double dx
   return "SKIPPED";
 }
 
+/**
+ * @brief The disc criterion does not describe a flat front pair.
+ *
+ * The cell-count columns are still computed and printed. The verdict is
+ * `SKIPPED`, which does not set the exit status even with `--strict`.
+ */
+inline void skip_disc_check_for_flat_fronts(InterfaceKinetics *k) {
+  k->verdict = CheckVerdict::Skipped;
+  k->reason = "two-front initial condition: the disc criterion is not applied";
+}
+
 /** Rank-0 report of the kinetics block. Silent on every other rank. */
 inline void report_interface_kinetics(int rank, const AreaSamples &a,
                                       const RunConfig &cfg,
-                                      const InterfaceKinetics &k) {
+                                      const InterfaceKinetics &k,
+                                      const SubcellSamples *sub = nullptr,
+                                      double dx = 1.0,
+                                      std::ostream &os = std::cout) {
   if (rank != 0) {
     return;
   }
-  std::cout << "Superlevel area (cells with phi > " << RunConfig::kLevelSetThreshold
-            << "): N0=" << a.initial << ", N_half=" << a.half
-            << ", N_3q=" << a.three_quarter << ", N1=" << a.final_ << "\n";
-  std::cout << "Equivalent radius: R0=" << k.r_initial << ", R_half=" << k.r_half
-            << ", R_3q=" << k.r_three_quarter << ", R1=" << k.r_final << "\n";
-  std::cout << "Interface velocity dR/dt (last half): v_late=" << k.v_late
-            << ", per quarter " << k.v_third_quarter << " / "
-            << k.v_fourth_quarter << " (steady=" << (k.steady ? "yes" : "no")
-            << ")\n";
-  std::cout << "Sharp-interface prediction (3/2) F eps sqrt(2M): v_theory="
-            << k.v_theory << "\n";
-  std::cout << "Critical radius M/v_theory = " << k.r_critical
-            << " (R0=" << k.r_initial << ")";
+  auto with_subcell = [&](double cell_radius, double area_cells) {
+    os << cell_radius;
+    if (sub != nullptr) {
+      os << " (subcell " << equivalent_radius_from_area(area_cells, dx) << ")";
+    }
+  };
+  auto front_position = [&](const FrontHit &hit) {
+    if (hit.found) {
+      os << hit.position;
+    } else {
+      os << "missing";
+    }
+  };
+  os << "Superlevel area (cells with phi > " << RunConfig::kLevelSetThreshold
+     << "): N0=" << a.initial << ", N_half=" << a.half
+     << ", N_3q=" << a.three_quarter << ", N1=" << a.final_ << "\n";
+  os << "Equivalent radius: R0=";
+  with_subcell(k.r_initial, sub == nullptr ? 0.0 : sub->area_initial);
+  os << ", R_half=";
+  with_subcell(k.r_half, sub == nullptr ? 0.0 : sub->area_half);
+  os << ", R_3q=";
+  with_subcell(k.r_three_quarter,
+               sub == nullptr ? 0.0 : sub->area_three_quarter);
+  os << ", R1=";
+  with_subcell(k.r_final, sub == nullptr ? 0.0 : sub->area_final);
+  os << "\n";
+  if (sub != nullptr && sub->planar) {
+    os << "Planar fronts (subcell): x_left=";
+    front_position(sub->fronts_initial.rising);
+    os << ", ";
+    front_position(sub->fronts_half.rising);
+    os << ", ";
+    front_position(sub->fronts_three_quarter.rising);
+    os << ", ";
+    front_position(sub->fronts_final.rising);
+    os << "; x_right=";
+    front_position(sub->fronts_initial.falling);
+    os << ", ";
+    front_position(sub->fronts_half.falling);
+    os << ", ";
+    front_position(sub->fronts_three_quarter.falling);
+    os << ", ";
+    front_position(sub->fronts_final.falling);
+    os << "; v_front=" << rising_front_speed(*sub, cfg)
+       << " (left front into the matrix, last half)\n";
+  }
+  os << "Interface velocity dR/dt (last half): v_late=" << k.v_late
+     << ", per quarter " << k.v_third_quarter << " / " << k.v_fourth_quarter
+     << " (steady=" << (k.steady ? "yes" : "no") << ")\n";
+  os << "Sharp-interface prediction (3/2) F eps sqrt(2M): v_theory="
+     << k.v_theory << "\n";
+  os << "Critical radius M/v_theory = " << k.r_critical
+     << " (R0=" << k.r_initial << ")";
   if (k.r_initial < k.r_critical) {
-    std::cout << "  [WARNING: the seed is subcritical — curvature beats the "
-                 "driving force and it will dissolve]";
+    os << "  [WARNING: the seed is subcritical — curvature beats the "
+          "driving force and it will dissolve]";
   }
-  std::cout << "\n";
-  std::cout << "Curvature-corrected prediction v_theory - M/R: v_predicted="
-            << k.v_predicted << ", accepted band ["
-            << std::min(RunConfig::kVelocityBandLo * k.v_predicted,
-                        RunConfig::kVelocityBandHi * k.v_predicted)
-            << ", "
-            << std::max(RunConfig::kVelocityBandLo * k.v_predicted,
-                        RunConfig::kVelocityBandHi * k.v_predicted)
-            << "]\n";
-  std::cout << "Interface width eps*sqrt(2M) = " << k.interface_width << " cells";
+  os << "\n";
+  os << "Curvature-corrected prediction v_theory - M/R: v_predicted="
+     << k.v_predicted << ", accepted band ["
+     << std::min(RunConfig::kVelocityBandLo * k.v_predicted,
+                 RunConfig::kVelocityBandHi * k.v_predicted)
+     << ", "
+     << std::max(RunConfig::kVelocityBandLo * k.v_predicted,
+                 RunConfig::kVelocityBandHi * k.v_predicted)
+     << "]\n";
+  os << "Interface width eps*sqrt(2M) = " << k.interface_width << " cells";
   if (k.interface_width < RunConfig::kMinInterfaceWidthCells) {
-    std::cout << "  [WARNING: under " << RunConfig::kMinInterfaceWidthCells
-              << " cells — the front is lattice-limited, not "
-                 "continuum-limited, and the speed can be tens of percent off]";
+    os << "  [WARNING: under " << RunConfig::kMinInterfaceWidthCells
+       << " cells — the front is lattice-limited, not "
+          "continuum-limited, and the speed can be tens of percent off]";
   }
-  std::cout << "\n";
+  os << "\n";
   const double f_max = max_bistable_driving_force(cfg.epsilon);
   const double fraction = driving_force_fraction(cfg.epsilon, cfg.driving_force);
-  std::cout << "Bistability limit: driving_force=" << cfg.driving_force << " vs "
-            << "2/(3 sqrt 3)/eps^2 = " << f_max << " (at " << 100.0 * fraction
-            << "% of it)";
+  os << "Bistability limit: driving_force=" << cfg.driving_force << " vs "
+     << "2/(3 sqrt 3)/eps^2 = " << f_max << " (at " << 100.0 * fraction
+     << "% of it)";
   if (cfg.driving_force >= f_max) {
-    std::cout << "  [VIOLATED: phi<0 is not metastable, the whole domain decays "
-                 "and there is no front]";
+    os << "  [VIOLATED: phi<0 is not metastable, the whole domain decays "
+          "and there is no front]";
   } else if (fraction > RunConfig::kMaxDrivingForceFraction) {
-    std::cout << "  [WARNING: over "
-              << 100.0 * RunConfig::kMaxDrivingForceFraction
-              << "% of the ceiling — the matrix well is shallow and the "
-                 "sharp-interface law is no longer asymptotic]";
+    os << "  [WARNING: over " << 100.0 * RunConfig::kMaxDrivingForceFraction
+       << "% of the ceiling — the matrix well is shallow and the "
+          "sharp-interface law is no longer asymptotic]";
   }
-  std::cout << "\n";
-  std::cout << "physics_check=" << to_string(k.verdict) << " (" << k.reason
-            << ")\n";
+  os << "\n";
+  os << "physics_check=" << to_string(k.verdict) << " (" << k.reason << ")\n";
 }
 
 inline void
