@@ -291,7 +291,7 @@ Examples:
 
 ### check_kernel_no_frontend_includes.sh
 
-CI and local guard: fails if any kernel source under `include/openpfc/kernel` or `src/openpfc/kernel` contains `#include` of `openpfc/frontend/...` (see [`docs/architecture.md`](../docs/concepts/architecture.md) — *Include audit*). Requires `rg` (ripgrep); exits 0 if `rg` is missing (for minimal sandboxes).
+CI and local guard: fails if kernel sources under `include/openpfc/kernel` or `src/openpfc/kernel` contain a real `#include` of `openpfc/frontend/...` or `openpfc/runtime/...`, or if runtime includes `openpfc/frontend/...` (see [`docs/architecture.md`](../docs/concepts/architecture.md) — *Include audit*). The pattern is anchored, so a guidance string is not a hit. Uses `rg` when it runs; otherwise `grep -E`. A missing scanner fails the script.
 
 ```bash
 bash scripts/check_kernel_no_frontend_includes.sh
@@ -301,7 +301,8 @@ bash scripts/check_kernel_no_frontend_includes.sh
 
 CI and local guard (M3): fails if `include/` or `src/` contain `cudaMemcpy` /
 `hipMemcpy` outside `runtime/gpu/`. Vendor CUDA/HIP trees must stay thin includes
-or re-exports (FFT until M5). Requires `rg`; exits 0 if `rg` is missing.
+or re-exports (FFT until M5). Uses `rg` when it runs; otherwise `grep`.
+A missing scanner fails the script. `runtime/gpu/` stays the only allowed path.
 
 ```bash
 bash scripts/check_gpu_memcpy_single_source.sh
