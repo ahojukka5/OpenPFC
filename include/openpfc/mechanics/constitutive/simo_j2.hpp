@@ -22,8 +22,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include <openpfc/solvers/finite_strain_fft/history.hpp>
-#include <openpfc/solvers/finite_strain_fft/tensor.hpp>
+#include <openpfc/mechanics/constitutive/history.hpp>
+#include <openpfc/mechanics/tensor.hpp>
 
 namespace pfc::finite_strain {
 

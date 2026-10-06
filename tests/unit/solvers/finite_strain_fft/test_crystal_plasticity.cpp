@@ -13,7 +13,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <openpfc/solvers/finite_strain_fft/crystal_plasticity.hpp>
+#include <openpfc/mechanics/constitutive/crystal_plasticity.hpp>
+
+#include "aluminum_slip.hpp"
 
 #include <cmath>
 

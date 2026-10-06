@@ -21,7 +21,7 @@
 #include <mpi.h>
 
 #include <openpfc/kernel/data/box3i.hpp>
-#include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
+#include <openpfc/mechanics/tensor.hpp>
 
 namespace pfc::finite_strain {
 

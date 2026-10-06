@@ -17,8 +17,8 @@
 #include <openpfc/kernel/mpi/mpi.hpp>
 #include <openpfc/solvers/finite_strain_fft/field_stats.hpp>
 #include <openpfc/solvers/finite_strain_fft/newton.hpp>
-#include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
-#include <openpfc/solvers/finite_strain_fft/simo_j2.hpp>
+#include <openpfc/mechanics/constitutive/saint_venant_kirchhoff.hpp>
+#include <openpfc/mechanics/constitutive/simo_j2.hpp>
 
 #include <cmath>
 #include <complex>

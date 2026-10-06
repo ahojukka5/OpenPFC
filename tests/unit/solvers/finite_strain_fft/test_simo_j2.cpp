@@ -14,7 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <openpfc/solvers/finite_strain_fft/simo_j2.hpp>
+#include <openpfc/mechanics/constitutive/simo_j2.hpp>
 
 #include <cmath>
 #include <cstdint>

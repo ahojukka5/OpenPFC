@@ -47,8 +47,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include <openpfc/solvers/finite_strain_fft/history.hpp>
-#include <openpfc/solvers/finite_strain_fft/tensor.hpp>
+#include <openpfc/mechanics/constitutive/history.hpp>
+#include <openpfc/mechanics/tensor.hpp>
 
 namespace pfc::finite_strain {
 
@@ -89,24 +89,6 @@ struct FccSlipUpdate {
   double tau[12]{};
   double shear_rate[12]{};
 };
-
-/// Aluminum coefficients from the DAMASK 3.0 grid example `material.yaml`.
-[[nodiscard]] inline FccSlipParameters aluminum_slip_parameters() noexcept {
-  FccSlipParameters parameters;
-  parameters.c11 = 106.75e9;
-  parameters.c12 = 60.41e9;
-  parameters.c44 = 28.34e9;
-  parameters.reference_rate = 0.001;
-  parameters.rate_exponent = 20.0;
-  parameters.hardening_exponent = 2.25;
-  parameters.hardening_coefficient = 75.0e6;
-  parameters.initial_resistance = 31.0e6;
-  parameters.saturation_resistance = 63.0e6;
-  parameters.time_step = 1.0;
-  parameters.coplanar = 1.0;
-  parameters.latent = 1.4;
-  return parameters;
-}
 
 [[nodiscard]] inline FccSlipState
 fcc_identity_state(const FccSlipParameters &parameters) {
