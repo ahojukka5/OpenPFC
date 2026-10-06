@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Removed
+
+- The committed Heat3D N³ tables `heat3d_n3_cost_repeats.csv` and
+  `heat3d_n3_cost_summary.csv` left the tree. They are campaign records,
+  not a package regression pin. The recipe note remains
+  `docs/hpc/heat3d_n3_cost.md`.
+
 ### Fixed
 
 - Architecture checks no longer pass when ripgrep is missing or cannot
@@ -429,8 +436,8 @@ The entries below are the development record since 0.2.0.
   (issue [#124](https://github.com/ahojukka5/OpenPFC/issues/124)).
   Spectral, FD-2, FD-8 and FD-12 on one LUMI-G node, 8 GCDs, GPU-aware
   slabs, 30/5/25 `wall_step`, three independent repeats. Harvest:
-  jobs 22209970–72, CSV
-  [`docs/hpc/heat3d_n3_cost_summary.csv`](docs/hpc/heat3d_n3_cost_summary.csv).
+  jobs 22209970–72. The committed summary CSV left this tree as
+  campaign output.
   Does not change production HeFFTe or FD defaults and must not be spliced onto
   the historical `b91d2575` table. Recipe:
   [`docs/hpc/heat3d_n3_cost.md`](docs/hpc/heat3d_n3_cost.md).

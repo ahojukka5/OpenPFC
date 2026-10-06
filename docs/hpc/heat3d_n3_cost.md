@@ -49,8 +49,9 @@ HEAT3D_HIP_BIN=/flash/project_462001519/juaho/build/openpfc-lumi-rocm-n3-cost-59
 ./docs/lumi_slurm/submit_heat3d_n3_cost.sh collect
 ```
 
-`collect` writes `docs/hpc/heat3d_n3_cost_repeats.csv` and
-`docs/hpc/heat3d_n3_cost_summary.csv`.
+`collect` writes `heat3d_n3_cost_repeats.csv` and
+`heat3d_n3_cost_summary.csv` into its output directory. The committed
+copies of those tables are not part of this tree.
 
 ## Admitted harvest (2026-09-21)
 
