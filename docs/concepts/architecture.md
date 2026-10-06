@@ -5,12 +5,22 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Package architecture
 
-OpenPFC is organized into three logical layers: **kernel**, **runtime**, and
-**frontend**. The layer names describe dependency direction and extension
-boundaries; they are more stable than individual headers or helper types.
+OpenPFC is a framework for partial differential equations on structured
+grids, with spectral and finite-difference discretizations. Phase-field
+crystal models are the origin of the project and an important family of
+applications. They are not the architectural boundary.
+
+The code is organized into three logical layers: **kernel**, **runtime**,
+and **frontend**. Those names describe dependency direction and extension
+boundaries. They are not renamed to match the ownership rows below, and
+this page does not add a C++ type for those rows. The layer names are more
+stable than individual headers or helper types.
 
 There is no `core` layer. Responsibilities that older versions grouped under
 that name now live in focused kernel subdirectories.
+
+Who owns a concept is [Semantic ownership](#semantic-ownership), not the
+layer diagram.
 
 ## Dependency direction
 
@@ -45,6 +55,10 @@ flowchart TB
   runtime --> kernel
 ```
 
+Read the diagram as dependency direction. Ownership of a concept is the
+[semantic ownership](#semantic-ownership) table, not a fourth box in the
+figure. The layer names are unchanged.
+
 The rules are:
 
 1. **Kernel does not depend on runtime or frontend.** It defines data types,
@@ -57,6 +71,70 @@ The rules are:
 
 A lightweight program may use kernel and runtime directly without the frontend.
 A full application normally uses all three layers.
+
+## Semantic ownership
+
+OpenPFC owns reusable mathematics, numerics, runtime infrastructure, shared
+services, and reusable physics with independent semantics. Applications own
+problem-specific composition and policy. Research studies own campaign
+evidence and scientific interpretation.
+
+Caller count is evidence of reuse, not the ownership rule. A concept may
+belong in OpenPFC with one consumer when it already has an independent
+mathematical or physical meaning. Several callers do not make an
+application's policy into a framework concept.
+
+| Concern | Owner | What belongs there |
+|---------|-------|--------------------|
+| Mathematical and numerical primitives | OpenPFC | `grad`, `div`, `curl`, Laplacians, projections, FFT, finite-difference, and Chebyshev operators, Poisson and Helmholtz solvers, and integration schemes |
+| Reusable physics | OpenPFC, when the law has independent semantics | A physical law another problem can call without adopting the donor application's cases, materials, or interpretation |
+| Runtime and backend realization | OpenPFC runtime | CPU, CUDA, and HIP realizations. They stay downstream of backend-independent contracts |
+| Services and frontend | OpenPFC | Configuration, result writers, checkpoints, diagnostics, and profiling |
+| Applications | The application | Problem-specific composition and policy: material presets, named benchmark and case setup, forcing policy, and case-specific interpretation |
+| Research-study evidence | The research study | Campaign protocols, campaign outputs, and scientific interpretation. Not package verification |
+
+The table is the stable target. Kernel, runtime, and frontend stay the
+dependency layers in the diagram above. They are not renamed, and this
+page does not add a C++ type for a row.
+
+Fourier vector operators are kernel mathematics: `grad`, `div`, `curl`,
+and the projections built from them. `solvers/` means reusable numerical
+methods, including the finite-strain FFT Newton solver, microelasticity,
+and the incompressible scheme. The rotational Navier–Stokes step is a
+reusable solver. That directory is not a home for constitutive laws and
+not a home for one application's policy. Reusable constitutive laws,
+including STVK, J2, and crystal plasticity, belong in
+`include/openpfc/mechanics/constitutive/`. The channel-wall projection
+is application policy.
+
+The host rotational step and its device twin are `pfc::incompressible`.
+Fourier operators they call, including the Leray projection, curl, and
+the 2/3 mask, stay `pfc::field` in `kernel/field/fourier_vector.hpp`.
+Device buffers live under `runtime/gpu/` because they name device
+memory. The namespace names the method.
+
+`Tensor2`, its algebra, and `von_mises` live in
+`include/openpfc/mechanics/tensor.hpp`. Transactional constitutive
+history lives in `include/openpfc/mechanics/constitutive/history.hpp`.
+The finite-strain FFT solver depends on those primitives and on its
+`LocalConstitutiveLaw` port. A concrete law does not include the Newton
+solver.
+
+The current directory roles are kernel, `solvers/`, runtime, frontend,
+and `apps/`. Kernel holds backend-independent contracts. `solvers/`
+holds reusable numerical methods. Runtime holds CPU, CUDA, and HIP
+realizations, downstream of those contracts. Frontend holds shared
+services. Each application directory holds that application's
+composition and policy. Research studies are not a source tree in this
+package. A checkout can lag this description.
+
+A reusable physical law may live in OpenPFC when its meaning does not
+depend on one case list. Material presets, named benchmarks, forcing
+policy, and case-specific interpretation stay in the application unless
+a separate reusable contract is justified. Research campaigns are not
+package architecture. Software verification of supported behavior,
+including regression fixtures and numerical oracles, stays with the
+package. Scientific interpretation of a study does not.
 
 ## Layer responsibilities
 
@@ -77,7 +155,8 @@ selected compute backend.
 | `kernel/profiling` | metric catalogs, scopes, sessions, and export contracts |
 | `kernel/mpi` | small MPI environment and communicator helpers |
 
-Kernel headers must not include frontend headers. This can be checked with:
+Kernel headers must not include runtime or frontend headers. Frontend
+includes can be checked with:
 
 ```bash
 rg 'openpfc/frontend' include/openpfc/kernel src/openpfc/kernel
@@ -121,10 +200,19 @@ selection are documented in [`io_results.md`](../user_guide/io_results.md).
 
 ### Solvers
 
-`solvers/` is a public family of reusable numerical modules. A module here
-implements a method another application can call without taking on the donor
-application's physics, materials, or case files. Periodic microelasticity
-and an odd-grid finite-strain FFT Newton solver are the current members.
+`solvers/` holds reusable numerical methods, not constitutive laws and
+not one application's policy. A module here implements a method another
+application can call without taking on the donor application's materials
+or case files. The finite-strain FFT Newton solver, periodic
+microelasticity, and the incompressible scheme are that kind of method.
+The rotational Navier–Stokes step is one of those solvers. Its public
+names, including the device step, are `pfc::incompressible`. Reusable
+constitutive laws, including STVK, J2, and crystal plasticity, belong in
+`include/openpfc/mechanics/constitutive/`. `Tensor2` and transactional
+history are mechanics primitives in `include/openpfc/mechanics/tensor.hpp`
+and `include/openpfc/mechanics/constitutive/history.hpp`. The solver
+includes them. A concrete law does not include the Newton loop.
+
 The finite-strain solver takes a local `F -> P` law and a prescribed
 macroscopic deformation gradient. One increment can continue from an
 accepted field. Plastic history, when a law has any, stays inside that
@@ -134,8 +222,9 @@ application's calibration or acceptance thresholds.
 
 ### Applications
 
-`apps/<name>` is one scientific application: physics, material data, cases,
-and its `main`. It links OpenPFC and its own headers. It does not include
+`apps/<name>` is one scientific application. It owns problem-specific
+composition and policy, including material data and cases, and its `main`.
+It links OpenPFC and its own headers. It does not include
 another application's tree, and there is no shared `apps/common` target.
 `scripts/check_app_self_containment.sh` fails the build when that boundary
 is crossed.
@@ -193,6 +282,10 @@ communication, and runnable examples.
 
 ## Ownership and extension boundaries
 
+[Semantic ownership](#semantic-ownership) decides the owner. This section
+says which directory that owner uses, and which objects own `Time`
+and fields. It does not rename layers.
+
 OpenPFC favors data-centric types and free functions for queries and operations.
 Inheritance is reserved for stable out-of-tree extension seams such as
 `Model`, `FieldModifier`, and `ResultsWriter`.
@@ -210,10 +303,13 @@ Use these rules when adding functionality:
 - put CUDA/HIP/CPU realization details in runtime;
 - put configuration, user interaction, and concrete application I/O in
   frontend;
-- put a reusable numerical method that is not one application's physics in
-  `solvers/`;
-- keep application physics, materials, and cases in that application's
-  directory;
+- put a reusable numerical method, not a constitutive law and not one
+  application's policy, in `solvers/`;
+- put a reusable constitutive law, including STVK, J2, and crystal
+  plasticity, in `include/openpfc/mechanics/constitutive/`;
+- keep problem-specific composition and policy, including material
+  presets, forcing, a channel-wall projection, and cases, in that
+  application's directory;
 - keep virtual interfaces narrow and delegate implementation to testable free
   functions;
 - avoid introducing a generic catch-all directory such as `core`, `common`, or
