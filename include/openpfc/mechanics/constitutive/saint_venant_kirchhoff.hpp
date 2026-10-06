@@ -23,7 +23,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include <openpfc/solvers/finite_strain_fft/tensor.hpp>
+#include <openpfc/mechanics/tensor.hpp>
 
 namespace pfc::finite_strain {
 
@@ -127,15 +127,5 @@ private:
   IsotropicModuli soft_;
   IsotropicModuli hard_;
 };
-
-/// Von Mises equivalent of a symmetric stress, `sqrt(3/2) ||dev σ||_F`.
-[[nodiscard]] inline double von_mises(const Tensor2 &stress) noexcept {
-  const double mean = trace(stress) / 3.0;
-  Tensor2 deviator = stress;
-  deviator(0, 0) -= mean;
-  deviator(1, 1) -= mean;
-  deviator(2, 2) -= mean;
-  return std::sqrt(1.5 * frobenius_dot(deviator, deviator));
-}
 
 } // namespace pfc::finite_strain

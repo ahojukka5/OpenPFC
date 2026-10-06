@@ -9,7 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <openpfc/solvers/finite_strain_fft/saint_venant_kirchhoff.hpp>
+#include <openpfc/mechanics/constitutive/saint_venant_kirchhoff.hpp>
 
 #include <cmath>
 #include <cstdint>

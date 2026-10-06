@@ -8,7 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <openpfc/solvers/finite_strain_fft/history.hpp>
+#include <openpfc/mechanics/constitutive/history.hpp>
 
 #include <cstdint>
 #include <stdexcept>

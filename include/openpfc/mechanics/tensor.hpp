@@ -3,7 +3,11 @@
 
 /**
  * @file tensor.hpp
- * @brief Second-order tensor storage for the finite-strain FFT solver.
+ * @brief Second-order tensor storage for finite-strain mechanics.
+ *
+ * `Tensor2` and its algebra, including `von_mises`, are mechanics
+ * primitives. Constitutive laws and the finite-strain FFT solver both
+ * use them. The solver does not own the type.
  *
  * Components use the reference-configuration convention `c[i][j]`, with `i`
  * the row and `j` the column, matching `F_ij = dx_i / dX_j`.
@@ -111,6 +115,16 @@ struct Tensor2 {
 
 [[nodiscard]] inline double frobenius_norm(const Tensor2 &a) noexcept {
   return std::sqrt(frobenius_dot(a, a));
+}
+
+/// Von Mises equivalent of a symmetric stress, `sqrt(3/2) ||dev σ||_F`.
+[[nodiscard]] inline double von_mises(const Tensor2 &stress) noexcept {
+  const double mean = trace(stress) / 3.0;
+  Tensor2 deviator = stress;
+  deviator(0, 0) -= mean;
+  deviator(1, 1) -= mean;
+  deviator(2, 2) -= mean;
+  return std::sqrt(1.5 * frobenius_dot(deviator, deviator));
 }
 
 } // namespace pfc::finite_strain

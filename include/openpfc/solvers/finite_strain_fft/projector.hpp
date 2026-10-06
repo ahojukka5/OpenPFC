@@ -28,7 +28,7 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/fft/fft_interface.hpp>
 #include <openpfc/kernel/fft/kspace_iterator.hpp>
-#include <openpfc/solvers/finite_strain_fft/tensor.hpp>
+#include <openpfc/mechanics/tensor.hpp>
 
 namespace pfc::finite_strain {
 

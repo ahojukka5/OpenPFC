@@ -15,7 +15,7 @@
 #include <concepts>
 #include <cstddef>
 
-#include <openpfc/solvers/finite_strain_fft/tensor.hpp>
+#include <openpfc/mechanics/tensor.hpp>
 
 namespace pfc::finite_strain {
 
