@@ -21,10 +21,11 @@
  *   \Bigr)
  * \f]
  *
- * is taken with \(W(h)=h^2(1-h)^2\). By default \(g\) is RMS-normalised
- * so \(\Delta t\) is the RMS change in \(h\), and \(|\Delta h|\) is capped
- * per cell; job 21949415 collapsed the volume because the raw gradient
- * RMS was \(\sim 4\). This is Takezawa-style PF-TO, not
+ * is taken with \(W(h)=h^2(1-h)^2\). When normalisation is on, the
+ * elastic term is scaled by \(\min(1, 1/\mathrm{RMS})\): a large
+ * residual is brought to unit RMS, and a smaller residual is not
+ * amplified. \(|\Delta h|\) is capped per cell. This is Takezawa-style
+ * PF-TO, not
  * Cahn–Hilliard (volume is a penalty, not a conserved mass) and not an
  * external MMA. Cahn–Hilliard is reserved for the process-constrained
  * family in Stage 6.
@@ -66,8 +67,8 @@ struct InverseSpec {
   double mobility{1.0};
   double dt{0.1};
   bool clip{true};
-  /// RMS-normalise the *elastic* gradient only so `dt` sets that step
-  /// size. Volume and the double well are then added in physical units;
+  /// Shrink a large elastic gradient to unit RMS. A smaller residual is
+  /// not amplified. Volume and the double well stay in physical units;
   /// otherwise λ_r W' is crushed whenever ||g_el|| is large.
   bool normalize_grad{true};
   /// Hard cap on |Δh| per cell after the normalised step.
@@ -103,6 +104,15 @@ struct InverseStepReport {
   Voigt6 C{};
   bool elasticity_converged{false};
 };
+
+/// Scale of the elastic term. A residual above unit RMS is reduced to
+/// unit RMS. A smaller residual is left alone. Normalisation off, or a
+/// vanishing residual, keeps the scale at 1.
+[[nodiscard]] inline double elastic_gradient_scale(double el_rms,
+                                                   bool normalize) noexcept {
+  if (!normalize || el_rms <= 1.0e-30) return 1.0;
+  return std::min(1.0, 1.0 / el_rms);
+}
 
 /// \(W(h)=h^2(1-h)^2\).
 [[nodiscard]] inline double double_well(double h) noexcept {
@@ -253,7 +263,7 @@ public:
     // RMS-normalising the *total* g crushed λ_r W'(h) to a few percent of
     // each step. Volume and the double well keep physical units.
     const double el_scale =
-        (spec.normalize_grad && el_rms > 1.0e-30) ? (1.0 / el_rms) : 1.0;
+        elastic_gradient_scale(el_rms, spec.normalize_grad);
     double local_g2 = 0.0;
     for (std::size_t i = 0; i < m_n_local; ++i) {
       const double g_el = el_scale * gp[i];

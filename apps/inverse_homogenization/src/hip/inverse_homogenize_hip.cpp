@@ -114,6 +114,7 @@ struct Config {
   std::string csv{};
   std::string run_id{"inverse2d"};
   int normalize{1};
+  int no_tensor{0};
   double max_delta{0.05};
   int project_volume{1};
   double simp{1.0};
@@ -144,6 +145,7 @@ void usage(std::ostream &os, const char *exe) {
      << "  --C-target-file=PATH 6x6 Voigt text\n"
      << "  --init rotating-squares|noise|uniform|spinodal|yang-a3\n"
      << "  --load-bin=PATH Fortran float64 brick --csv --dump-dir\n"
+     << "  --no-tensor=1                 W=0; skip the six elasticity solves\n"
      << "  --checkpoint-dir --restart  continue the same frozen problem\n"
      << "  --stop-after=N              checkpoint running state and exit\n"
      << "  --continuation-steps --max-steps|--steps --conv-window\n"
@@ -242,6 +244,8 @@ bool parse_args(int argc, char **argv, Config &cfg) {
       cfg.run_id = std::string(val);
     else if (key == "normalize")
       ok = parse_int(val, cfg.normalize);
+    else if (key == "no-tensor")
+      ok = parse_int(val, cfg.no_tensor);
     else if (key == "max-delta")
       ok = parse_double(val, cfg.max_delta) && cfg.max_delta >= 0.0;
     else if (key == "project-volume")
@@ -359,28 +363,37 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   out.volume_accepted = vf0;
   out.J_volume = spec.lambda_volume * dv * dv;
 
-  const RealField *h_el = &h;
-  if (spec.simp_p != 1.0) {
-    double *pp = penalized.data();
-    const double *hd = h.data();
-    for (std::size_t i = 0; i < n_local; ++i)
-      pp[i] = pfc::apps::inverse::simp_density(hd[i], spec.simp_p);
-    penalized.note_host_write();
-    h_el = &penalized;
-  }
-  const auto r = hom.compute(*h_el);
-  out.elasticity_converged = r.all_converged();
-  out.J_tensor = pfc::apps::tensor_mismatch(r.stiffness, spec.C_target, spec.W);
-  out.C = r.stiffness.symmetrized();
-  out.C11 = out.C(0, 0);
-  out.C12 = out.C(0, 1);
-  out.C_fro = out.C.frobenius_norm();
-  hom.objective_sensitivity(*h_el, spec.C_target, spec.W, dJdh);
-  if (spec.simp_p != 1.0) {
-    double *dj = dJdh.data();
-    const double *hd = h.data();
-    for (std::size_t i = 0; i < n_local; ++i)
-      dj[i] *= pfc::apps::inverse::simp_chain(hd[i], spec.simp_p);
+  const bool tensor_on = spec.W.max_abs() > 0.0;
+  if (tensor_on) {
+    const RealField *h_el = &h;
+    if (spec.simp_p != 1.0) {
+      double *pp = penalized.data();
+      const double *hd = h.data();
+      for (std::size_t i = 0; i < n_local; ++i)
+        pp[i] = pfc::apps::inverse::simp_density(hd[i], spec.simp_p);
+      penalized.note_host_write();
+      h_el = &penalized;
+    }
+    const auto r = hom.compute(*h_el);
+    out.elasticity_converged = r.all_converged();
+    out.J_tensor = pfc::apps::tensor_mismatch(r.stiffness, spec.C_target, spec.W);
+    out.C = r.stiffness.symmetrized();
+    out.C11 = out.C(0, 0);
+    out.C12 = out.C(0, 1);
+    out.C_fro = out.C.frobenius_norm();
+    hom.objective_sensitivity(*h_el, spec.C_target, spec.W, dJdh);
+    if (spec.simp_p != 1.0) {
+      double *dj = dJdh.data();
+      const double *hd = h.data();
+      for (std::size_t i = 0; i < n_local; ++i)
+        dj[i] *= pfc::apps::inverse::simp_chain(hd[i], spec.simp_p);
+      dJdh.note_host_write();
+    }
+  } else {
+    // Same as the CPU step: W=0 cannot change J, so skip the six solves.
+    out.elasticity_converged = true;
+    out.J_tensor = 0.0;
+    std::fill(dJdh.vec().begin(), dJdh.vec().end(), 0.0);
     dJdh.note_host_write();
   }
   if (spec.lambda_reg != 0.0)
@@ -412,7 +425,7 @@ ac_step(pfc::apps::PeriodicHomogenizerHIP &hom, const pfc::Domain &domain, FFT &
   out.grey_fraction = glo[2] / n_global;
   out.perimeter = std::sqrt(std::max(0.0, glo[3] / n_global));
   const double el_scale =
-      (spec.normalize_grad && el_rms > 1.0e-30) ? (1.0 / el_rms) : 1.0;
+      pfc::apps::inverse::elastic_gradient_scale(el_rms, spec.normalize_grad);
   double local_g2 = 0.0;
   for (std::size_t i = 0; i < n_local; ++i) {
     const double g_el = el_scale * gp[i];
@@ -523,7 +536,9 @@ int run(int argc, char **argv, int rank, int nproc) {
   spec.max_abs_delta = cfg.max_delta;
   spec.project_volume = cfg.project_volume != 0;
   spec.simp_p = cfg.simp;
-  if (cfg.w12 != 1.0 || cfg.target == "auxetic") {
+  if (cfg.no_tensor != 0) {
+    spec.W = pfc::apps::Voigt6{};
+  } else if (cfg.w12 != 1.0 || cfg.target == "auxetic") {
     const double w = (cfg.target == "auxetic" && cfg.w12 == 1.0) ? 4.0 : cfg.w12;
     spec.W(0, 1) = spec.W(1, 0) = w;
     spec.W(0, 2) = spec.W(2, 0) = w;
