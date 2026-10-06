@@ -11,9 +11,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 </div>
 
-OpenPFC is an MPI-parallel C++ framework for phase-field crystal and related
-spectral phase-field models on structured grids. The framework can be used in
-two ways:
+OpenPFC is an MPI-parallel C++ framework for partial differential equations
+on structured grids. Spectral and finite-difference discretizations share
+MPI domain decomposition; spectral transforms use HeFFTe. Phase-field
+crystal models are the origin of the project and one application family,
+not the architectural boundary. The framework can be used in two ways:
 
 - run one of the config-driven applications under `apps/`; or
 - link the installed `OpenPFC::openpfc` library from another CMake project.

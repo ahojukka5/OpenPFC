@@ -15,11 +15,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ![OpenPFC simulation result](docs/img/simulation.png)
 
-OpenPFC is an open-source C++20 framework for high-performance phase-field
-crystal and related spectral phase-field simulations on structured grids. It
-combines MPI domain decomposition with HeFFTe-based distributed FFTs and can be
-used either as a library or through the configuration-driven applications
-shipped under `apps/`.
+OpenPFC is an open-source C++20 framework for high-performance partial
+differential equations on structured grids. Spectral and finite-difference
+discretizations share MPI domain decomposition; spectral transforms use
+HeFFTe. Use it as a library or through the applications under `apps/`.
+
+Phase-field crystal (PFC) models are the origin of the project and remain an
+important application family, including solidification, defect evolution,
+elastic-plastic response, epitaxial growth, and related phase transformations
+at atomic resolution on diffusive time scales. That origin is not the
+architectural boundary. Other structured-grid PDE problems use the same
+mathematics, runtime, and services.
 
 **0.3 is a source-level break from 0.2.** Installed applications link
 `OpenPFC::openpfc` only. ABI compatibility is not claimed. The 0.3.0
@@ -27,11 +33,6 @@ changelog highlights are the application-facing summary.
 
 **0.2 is a breaking release.** The 0.1 `Model` / `Simulator` / `App` / `World`
 path is gone. See [Migrating from 0.1 to 0.2](docs/MIGRATION_0.1_to_0.2.md).
-
-OpenPFC is intended for research workflows that need atomic-resolution
-microstructure information on diffusive time scales, including solidification,
-defect evolution, elastic-plastic response, epitaxial growth, phase
-transformations, and related coupled phenomena.
 
 ## Start here
 
@@ -132,7 +133,8 @@ with the HeFFTe and MPI versions; see
 
 ## Citation
 
-If OpenPFC contributes to published work, cite:
+If OpenPFC contributes to published work, cite the paper below. Its title
+names the original application family; the bibliographic title is unchanged.
 
 > T. Pinomaa, J. Aho, J. Suviranta, P. Jreidini, N. Provatas, and
 > A. Laukkanen, “OpenPFC: an open-source framework for high performance 3D

@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## Project briefing (read this first)
 
-**OpenPFC** is an **open-source software framework** (C++20, **AGPL-3.0-or-later**) for **large-scale, three-dimensional phase field crystal (PFC) simulations** in **materials science and engineering**. It is developed in a **research** context (e.g. association with **VTT Technical Research Centre of Finland Ltd** and collaborators) and is meant for **serious computational materials work**, not consumer apps or games. The project’s visuals should feel like **peer-reviewed science**, **HPC engineering**, and **crystalline physics**—not fantasy, not stock “tech” clichés unrelated to solids.
+**OpenPFC** is an **open-source software framework** (C++20, **AGPL-3.0-or-later**) for **high-performance partial differential equations on structured grids**. Phase-field crystal models are the origin of the project and one application family, not the framework boundary. It is developed in a **research** context (e.g. association with **VTT Technical Research Centre of Finland Ltd** and collaborators) and is meant for **serious computational materials work**, not consumer apps or games. The project’s visuals should feel like **peer-reviewed science**, **HPC engineering**, and **crystalline physics**—not fantasy, not stock “tech” clichés unrelated to solids.
 
 ### What phase field crystal (PFC) means (for imagery)
 
