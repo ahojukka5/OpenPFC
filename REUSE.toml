@@ -36,39 +36,7 @@ SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
 path = [
-    "apps/inverse_homogenization/evidence/2026-09-18-auxetic64-476.json",
-    "apps/inverse_homogenization/evidence/2026-09-18-auxetic64-476-history.csv",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes.json",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes-32.png",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle31-rotating-cubes-64.png",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle33-rotating-squares-extrusion.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-inverse2d-threshold.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-inverse2d-volmatch.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-forward.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-oracle-ev002.txt",
-    "apps/inverse_homogenization/evidence/2026-09-19-inverse3d-ab-protocol.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-inverse3d-ab.json",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_init_xy.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_final_xy.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_thresh_xy.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/B_init_xy.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/B_final_xy.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/B_thresh_xy.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_thresh_iso.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/B_thresh_iso.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_affine_end.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_J.png",
-    "apps/inverse_homogenization/evidence/stills/inverse3d/A_grey.png",
-    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-contrast-protocol.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-yang-a3-contrast.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-finite-strain-forward-55.json",
-    "apps/inverse_homogenization/evidence/2026-09-19-finite-strain-inverse-484.json",
     "apps/inverse_homogenization/docs/yang-a3-geometry.md",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle33-rotating-squares-extrusion.png",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d.json",
-    "apps/inverse_homogenization/evidence/2026-09-18-oracle36-reentrant-3d-64.png",
 ]
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
@@ -99,27 +67,3 @@ path = [
 SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
-[[annotations]]
-path = ["apps/inverse_homogenization/evidence/checkpoint-qualified/**"]
-SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
-SPDX-License-Identifier = "AGPL-3.0-or-later"
-
-[[annotations]]
-path = ["apps/inverse_homogenization/evidence/converged-resolution/**"]
-SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
-SPDX-License-Identifier = "AGPL-3.0-or-later"
-
-[[annotations]]
-path = ["apps/inverse_homogenization/evidence/historical300/**"]
-SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
-SPDX-License-Identifier = "AGPL-3.0-or-later"
-
-[[annotations]]
-path = ["apps/inverse_homogenization/evidence/certified-trajectory/**"]
-SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
-SPDX-License-Identifier = "AGPL-3.0-or-later"
-
-[[annotations]]
-path = ["apps/inverse_homogenization/evidence/frozen256-timestep/**"]
-SPDX-FileCopyrightText = "2026 VTT Technical Research Centre of Finland Ltd"
-SPDX-License-Identifier = "AGPL-3.0-or-later"
