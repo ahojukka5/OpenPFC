@@ -111,7 +111,7 @@ PNG cadence matches the MPI driver. **`KOBAYASHI_VERIFY`** reports **`nthreads=`
 
 Unit test: **`test_kobayashi_fd_openmp`** (Catch2) checks **1 vs 4 threads** field equality on a small grid.
 
-Slurm thread scaling (partition **`gen05_epyc`**): [`slurm/kobayashi_openmp_scaling_gen05_epyc.sbatch`](slurm/kobayashi_openmp_scaling_gen05_epyc.sbatch) plus **`summarize_openmp_scaling.py`** / **`plot_strong_scaling.py`** on the resulting **`summary.tsv`** (first column **`nthreads`**).
+OpenMP thread equality is the unit test `test_kobayashi_fd_openmp` (1 against 4 threads on a small grid). Partition batch scripts are not part of this application.
 
 ### Verification / timing lines (stdout)
 
@@ -123,8 +123,6 @@ Environment toggles:
 - **`OPENPFC_KOBAYASHI_QUIET=1`** — suppress per-`nprint` progress lines.
 - **`OPENPFC_KOBAYASHI_PERF=1`** — after the timestep loop, rank 0 prints **`KOBAYASHI_PERF_LOOP`** (CPU `MPI_Wtime` around halo driver calls, **`kobayashi_stage_a_cuda`**, **`kobayashi_stage_b_cuda`**, PNG saves inside the loop, and **unaccounted** wall vs **`wall_loop_max_s`**). With **`nproc > 1`**, also sets **`OPENPFC_CUDA_PROFILE_HALO=1`** unless already set, then prints **`OPENPFC_CUDA_PROFILE_HALO_SUMMARY`** (MPI_MAX across ranks of halo internals: pre-stream sync, MPI, post CUDA sync, packed D2H / wait / H2D if used). Override buckets only with **`OPENPFC_CUDA_PROFILE_HALO=0`** in the environment if you want the loop breakdown without halo detail.
 
-Slurm strong-scaling driver (partition **`gen05_epyc`**) and log summariser: [`slurm/README.md`](slurm/README.md).
-
 ## Usage (`kobayashi_fd_cuda`)
 
 Same CLI as **`kobayashi_fd_manual`** (`Nx Ny n_steps dt dx [output_dir]`). Requires CUDA runtime per rank.
@@ -134,11 +132,9 @@ mpirun -np 1 ./kobayashi_fd_cuda 512 512 5000 1e-4 0.03 results/kobayashi_cuda
 mpirun -np 2 ./kobayashi_fd_cuda 512 512 5000 1e-4 0.03 results/kobayashi_cuda_2gpu
 ```
 
-NVIDIA H100 Slurm workflow (rebuild + 1 vs 2 GPU scaling, partition **`nvidia_h100`**): [`slurm/kobayashi_rebuild_openpfc_cuda_h100.sbatch`](slurm/kobayashi_rebuild_openpfc_cuda_h100.sbatch), [`slurm/kobayashi_cuda_scaling_h100.sbatch`](slurm/kobayashi_cuda_scaling_h100.sbatch). Override **`CMAKE_CUDA_ARCHITECTURES`** if your queue uses a different GPU (default **`90`** = H100). The rebuild script always uses **`${OPENPFC_REPO}/builds/kobayashi-cuda-h100`** unless you set **`KOBAYASHI_CUDA_OPENPFC_BUILD_DIR`** (so a leftover **`OPENPFC_BUILD_DIR`** from HIP does not clobber the CUDA tree).
+**H100 scaling / halo regression notes** (GPU-aware MPI vs packed faces, nsys interpretation): [`docs/scalability_cuda_h100.md`](docs/scalability_cuda_h100.md). **Measured A/B (8192×4096, job 1236819):** [`docs/cuda_halo_lessons_h100.md`](docs/cuda_halo_lessons_h100.md). Override **`CMAKE_CUDA_ARCHITECTURES`** when the GPU is not compute capability 90.
 
-**H100 scaling / halo regression notes** (GPU-aware MPI vs packed faces, nsys interpretation): [`docs/scalability_cuda_h100.md`](docs/scalability_cuda_h100.md). **Measured A/B (8192×4096, job 1236819):** [`docs/cuda_halo_lessons_h100.md`](docs/cuda_halo_lessons_h100.md).
-
-**Performance (CUDA):** Halos use **`HaloExchange<CUDASpace>`** (pack-to-contiguous + device-pointer MPI when GPU-aware, otherwise packed faces). Two field groups per step (state then aux) unless **`KOBAYASHI_HALO_EXTENDED=1`**. PNG paths still stage \(\phi\) on the host. The **`nvidia_h100`** Slurm rebuild script (**`kobayashi_rebuild_openpfc_cuda_h100.sbatch`**) defaults to **`OpenPFC_MPI_CUDA_AWARE=ON`**; set **`KOBAYASHI_REBUILD_CUDA_MPI_AWARE=0`** there to force a packed-only build. Thread blocks: **`OPENPFC_KOBAYASHI_CUDA_BLOCK`** (default **32×32**); see **`INSTALL.md`** for MPI stack notes.
+**Performance (CUDA):** Halos use **`HaloExchange<CUDASpace>`** (pack-to-contiguous + device-pointer MPI when GPU-aware, otherwise packed faces). Two field groups per step (state then aux) unless **`KOBAYASHI_HALO_EXTENDED=1`**. PNG paths still stage \(\phi\) on the host. GPU-aware MPI is **`OpenPFC_MPI_CUDA_AWARE`** (see [`INSTALL.md`](../../INSTALL.md)). Thread blocks: **`OPENPFC_KOBAYASHI_CUDA_BLOCK`** (default **32×32**).
 
 ## Usage (`kobayashi_fd_hip`)
 
@@ -152,9 +148,7 @@ mpirun -np 1 ./kobayashi_fd_hip 512 512 5000 1e-4 0.03 results/kobayashi_hip
 mpirun -np 2 ./kobayashi_fd_hip 512 512 5000 1e-4 0.03 results/kobayashi_hip_2gpu
 ```
 
-AMDGPU Slurm workflow (rebuild + 1 vs 2 GPU scaling): [`slurm/kobayashi_rebuild_openpfc_amdgpu.sbatch`](slurm/kobayashi_rebuild_openpfc_amdgpu.sbatch), [`slurm/kobayashi_hip_scaling_amdgpu.sbatch`](slurm/kobayashi_hip_scaling_amdgpu.sbatch).
-
-**Note:** GPU reductions may differ slightly from CPU/MPI-only builds; compare **`KOBAYASHI_VERIFY_HEX`** against **`kobayashi_fd_manual`** only when validating the same floating-point path.
+**Note:** GPU reductions may differ slightly from CPU/MPI-only builds; compare **`KOBAYASHI_VERIFY_HEX`** against **`kobayashi_fd_manual`** only when validating the same floating-point path. Partition batch scripts are not part of this application.
 
 CTest **`kobayashi-cuda-hex-smoke`** (and **`kobayashi-cuda-hex-2rank`** when MPI suites are on) pins the CUDA 32²/4-step HEX from Tohtori H100. `sum_phi` / `sumsq_phi` / `sumsq_T` match the CPU OpenMP pin; `sum_T` is 1 ULP (`tests/baselines/BASELINES.md`).
 

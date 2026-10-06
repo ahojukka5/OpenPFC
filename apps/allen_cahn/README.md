@@ -75,8 +75,7 @@ The app prints `R*` next to `R0` and warns when the seed is subcritical.
 ### Two limits worth knowing before changing the parameters
 
 These are **coupled**, which is the single most useful thing to know
-before touching `epsilon`, `M` or `driving_force`. Measurements:
-[`out/report/data/allen_cahn_resolution_margin.csv`](../../out/report/data/allen_cahn_resolution_margin.csv).
+before touching `epsilon`, `M` or `driving_force`.
 
 * **The interface has to span at least a couple of cells.** The equilibrium
   half-width is `eps*sqrt(2M)`, in cells because `dx = 1` is hard-coded, so

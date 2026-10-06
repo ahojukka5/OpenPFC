@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Documentation links point at files that are in this tree. The examples
+  catalog lists `24_adaptive_etd`. The qualified Vlasov dispersion table
+  is campaign output and is not part of this application.
 - Periodic incompressible diagnostics report the modal divergence of
   û/N³. The stored hat includes the unnormalized factor N³, so raw
   |k·û| at 1024³ lies on the double-precision floor near 2e-8 for a
