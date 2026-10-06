@@ -29,6 +29,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `allen_cahn` prints a sub-cell equivalent radius beside each cell-count
+  radius. `--two-front` starts from a periodic pair of cubic heteroclinic
+  fronts and prints their positions and one front's speed. Those numbers
+  do not enter `physics_check`. The flat-front run skips the disc criterion.
 - Taylor–Green accepts `--sample-dt` and `--volume-dt`. The sample
   interval records kinetic energy, enstrophy, and dissipation along
   the run. The volume interval writes \(|\omega|\) as one float32
