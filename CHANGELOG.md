@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Architecture checks no longer pass when ripgrep is missing or cannot
+  run. The kernel, app-boundary, and GPU memcpy scripts fall back to
+  grep and still report file:line hits. `runtime/gpu/` stays allowed.
 - Documentation links point at files that are in this tree. The examples
   catalog lists `24_adaptive_etd`. The qualified Vlasov dispersion table
   is campaign output and is not part of this application.
