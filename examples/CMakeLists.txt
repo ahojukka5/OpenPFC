@@ -155,3 +155,7 @@ add_subdirectory(ns2d_vorticity)
 
 # Issue #229 verification driver under examples/, not an apps/ executable.
 add_subdirectory(taylor_green3d)
+
+if(NOT TARGET coupled_fields_example)
+  add_subdirectory(coupled_fields)
+endif()
