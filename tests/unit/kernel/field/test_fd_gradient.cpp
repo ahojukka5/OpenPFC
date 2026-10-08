@@ -21,9 +21,8 @@
  *  4. Constructor throws when a model declares `g.xx` and asks for an
  *     order with no D2 table (22).
  *
- * The `xy / xz / yz` rejection is a `static_assert` so it is verified by
- * the compile success of every other case (any leakage would be caught
- * by a different cell in the matrix).
+ * Mixed xy/xz/yz derivatives and their runtime Full-halo contract are
+ * verified separately in test_fd_gradient_mixed.cpp.
  */
 
 #include <array>
@@ -33,13 +32,13 @@
 #include <vector>
 
 #include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/decomposition/decomposition.hpp>
 #include <openpfc/kernel/field/fd_gradient.hpp>
-#include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 
-using pfc::Field;
 using Catch::Approx;
+using pfc::Field;
 
 namespace {
 
@@ -165,7 +164,8 @@ TEST_CASE("FDGradient ctor throws when halo_width is below stencil half_width",
   // Test with padded Field (via direct FDGradient constructor)
   {
     auto u = make_padded_field(N, hw);
-    REQUIRE_THROWS_AS((pfc::gradient::FDGradient<OnlyXX>(u, order)), std::invalid_argument);
+    REQUIRE_THROWS_AS((pfc::gradient::FDGradient<OnlyXX>(u, order)),
+                      std::invalid_argument);
   }
 }
 
@@ -211,7 +211,8 @@ TEST_CASE("pfc::gradient::FDGradient binds to a padded Field and matches the "
   pfc::gradient::prepare(grad);
 
   // Free `evaluate` over a centre-cell Int3.
-  const pfc::Int3 c{u.local_size()[0] / 2, u.local_size()[1] / 2, u.local_size()[2] / 2};
+  const pfc::Int3 c{u.local_size()[0] / 2, u.local_size()[1] / 2,
+                    u.local_size()[2] / 2};
   const auto g_free = pfc::gradient::evaluate(grad, c);
   REQUIRE(g_free.x == Approx(-3.0));
 
@@ -287,7 +288,8 @@ TEST_CASE("FDGradient padded Field constructor accepts callback",
   REQUIRE(callback_invoked == 1);
 
   // Verify gradient computation still works
-  const pfc::Int3 c{u.local_size()[0] / 2, u.local_size()[1] / 2, u.local_size()[2] / 2};
+  const pfc::Int3 c{u.local_size()[0] / 2, u.local_size()[1] / 2,
+                    u.local_size()[2] / 2};
   const auto g = pfc::gradient::evaluate(grad, c);
   REQUIRE(g.x == Approx(-3.0));
 }
@@ -370,14 +372,13 @@ TEST_CASE("test_fd_gradient_box3i_domain",
           "[kernel][field][fd_gradient][box3i_domain]") {
   using namespace pfc;
   Box3i region = Box3i::from_bounds({0, 0, 0}, {7, 7, 7});
-  auto domain = domain::create(GridSize({8, 8, 8}),
-                              PhysicalOrigin({0.0, 0.0, 0.0}),
-                              GridSpacing({2.0, 3.0, 4.0}));
+  auto domain = domain::create(GridSize({8, 8, 8}), PhysicalOrigin({0.0, 0.0, 0.0}),
+                               GridSpacing({2.0, 3.0, 4.0}));
   auto decomp = decomposition::create(domain, 1);
   (void)decomp;
 
   auto evaluator = pfc::gradient::make_fd_gradient<OnlyX>(region, domain);
-  
+
   REQUIRE(evaluator != nullptr);
   REQUIRE(evaluator->imin() == 1);
   REQUIRE(evaluator->imax() == 7);
@@ -391,15 +392,16 @@ TEST_CASE("test_fd_gradient_box3i_domain_spacing",
           "[kernel][field][fd_gradient][box3i_domain]") {
   using namespace pfc;
   Box3i region = Box3i::from_bounds({0, 0, 0}, {11, 11, 11});
-  auto domain = domain::create(GridSize({12, 12, 12}),
-                              PhysicalOrigin({0.0, 0.0, 0.0}),
-                              GridSpacing({1.0, 1.0, 1.0}));
+  auto domain =
+      domain::create(GridSize({12, 12, 12}), PhysicalOrigin({0.0, 0.0, 0.0}),
+                     GridSpacing({1.0, 1.0, 1.0}));
   auto decomp = decomposition::create(domain, 1);
   (void)decomp;
   std::array<double, 3> custom_spacing{1.5, 2.0, 2.5};
-  
-  auto evaluator = pfc::gradient::make_fd_gradient<OnlyXX>(region, domain, custom_spacing);
-  
+
+  auto evaluator =
+      pfc::gradient::make_fd_gradient<OnlyXX>(region, domain, custom_spacing);
+
   REQUIRE(evaluator != nullptr);
   REQUIRE(evaluator->imin() == 1);
   REQUIRE(evaluator->imax() == 11);
