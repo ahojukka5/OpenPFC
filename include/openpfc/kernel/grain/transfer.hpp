@@ -3,6 +3,7 @@
 #pragma once
 
 #include <openpfc/kernel/data/host_device.hpp>
+#include <openpfc/kernel/grain/diagnostics.hpp>
 #include <openpfc/kernel/grain/topology.hpp>
 
 #include <cmath>
@@ -72,17 +73,25 @@ inline TransferStatus transfer_layout(const Grid2D &grid, Slot slots,
   return TransferStatus::Success;
 }
 
-OPENPFC_INLINE_HD std::size_t find_assignment(const Assignment *assignments,
-                                              std::size_t count, Id id) {
+template <bool Observe = false>
+OPENPFC_INLINE_HD std::size_t
+find_assignment(const Assignment *assignments, std::size_t count, Id id,
+                diagnostics::Accesses *counts = nullptr) {
   std::size_t first = 0, last = count;
   while (first < last) {
     const auto middle = first + (last - first) / 2;
-    if (assignments[middle].id < id)
+    if (diagnostics::load<Observe>(assignments, middle, counts,
+                                   diagnostics::Field::Assignments)
+            .id < id)
       first = middle + 1;
     else
       last = middle;
   }
-  return first < count && assignments[first].id == id ? first : count;
+  return first < count && diagnostics::load<Observe>(assignments, first, counts,
+                                                     diagnostics::Field::Assignments)
+                                  .id == id
+             ? first
+             : count;
 }
 
 inline PreparedTransfer prepare_transfer(Slot slots, std::span<const Grain> grains,
@@ -135,34 +144,65 @@ OPENPFC_INLINE_HD TransferStatus worst(TransferStatus first, TransferStatus seco
 
 /// One thread owns all slots at a cell. Proposals always read original buffers.
 /// Returns a deterministic failure priority shared by host and device paths.
+template <bool Observe = false>
 OPENPFC_INLINE_HD TransferStatus stage_cell(
     std::size_t cell, std::size_t cells, Slot slots, const double *values,
     const Id *labels, const Assignment *assignments, std::size_t assignment_count,
-    double background_value, double *staged_values, Id *staged_labels) {
+    double background_value, double *staged_values, Id *staged_labels,
+    diagnostics::Accesses *counts = nullptr) {
   auto status = TransferStatus::Success;
   for (Slot slot = 0; slot < slots; ++slot) {
     const auto i = cells * slot + cell;
-    staged_values[i] = values[i];
-    staged_labels[i] = labels[i];
+    diagnostics::store<Observe>(
+        staged_values, i,
+        diagnostics::load<Observe>(values, i, counts, diagnostics::Field::Values),
+        counts, diagnostics::Field::StagedValues);
+    diagnostics::store<Observe>(
+        staged_labels, i,
+        diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels),
+        counts, diagnostics::Field::StagedLabels);
     // Comparisons reject NaN and both infinities without vendor math intrinsics.
-    if (!(values[i] >= background_value &&
-          values[i] <= std::numeric_limits<double>::max()) ||
-        ((labels[i] == background) != (values[i] == background_value)))
+    if (!(diagnostics::load<Observe>(
+              values, i, counts, diagnostics::Field::Values) >= background_value &&
+          diagnostics::load<Observe>(values, i, counts,
+                                     diagnostics::Field::Values) <=
+              std::numeric_limits<double>::max()) ||
+        ((diagnostics::load<Observe>(labels, i, counts,
+                                     diagnostics::Field::Labels) == background) !=
+         (diagnostics::load<Observe>(
+              values, i, counts, diagnostics::Field::Values) == background_value)))
       status = worst(status, TransferStatus::InvalidSupport);
-    if (labels[i] == background) continue;
-    const auto assignment =
-        find_assignment(assignments, assignment_count, labels[i]);
-    if (assignment == assignment_count || assignments[assignment].source != slot) {
+    if (diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels) ==
+        background)
+      continue;
+    const auto assignment = find_assignment<Observe>(
+        assignments, assignment_count,
+        diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels),
+        counts);
+    if (assignment == assignment_count ||
+        diagnostics::load<Observe>(assignments, assignment, counts,
+                                   diagnostics::Field::Assignments)
+                .source != slot) {
       status = worst(status, TransferStatus::InvalidSupport);
       continue;
     }
     // Two original grains must never publish to the same slot at this cell.
     for (Slot other = 0; other < slot; ++other) {
-      const auto label = labels[cells * other + cell];
+      const auto label = diagnostics::load<Observe>(
+          labels, cells * other + cell, counts, diagnostics::Field::Labels);
       if (label == background) continue;
-      const auto neighbor = find_assignment(assignments, assignment_count, label);
-      if (neighbor != assignment_count && assignments[neighbor].source == other &&
-          assignments[neighbor].destination == assignments[assignment].destination)
+      const auto neighbor =
+          find_assignment<Observe>(assignments, assignment_count, label, counts);
+      if (neighbor != assignment_count &&
+          diagnostics::load<Observe>(assignments, neighbor, counts,
+                                     diagnostics::Field::Assignments)
+                  .source == other &&
+          diagnostics::load<Observe>(assignments, neighbor, counts,
+                                     diagnostics::Field::Assignments)
+                  .destination ==
+              diagnostics::load<Observe>(assignments, assignment, counts,
+                                         diagnostics::Field::Assignments)
+                  .destination)
         status = worst(status, TransferStatus::OccupiedDestination);
     }
   }
@@ -170,22 +210,44 @@ OPENPFC_INLINE_HD TransferStatus stage_cell(
   // Clear all vacating sources first; then populate from immutable originals.
   for (Slot slot = 0; slot < slots; ++slot) {
     const auto i = cells * slot + cell;
-    if (labels[i] == background) continue;
-    const auto assignment =
-        find_assignment(assignments, assignment_count, labels[i]);
-    if (assignments[assignment].destination == slot) continue;
-    staged_values[i] = background_value;
-    staged_labels[i] = background;
+    if (diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels) ==
+        background)
+      continue;
+    const auto assignment = find_assignment<Observe>(
+        assignments, assignment_count,
+        diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels),
+        counts);
+    if (diagnostics::load<Observe>(assignments, assignment, counts,
+                                   diagnostics::Field::Assignments)
+            .destination == slot)
+      continue;
+    diagnostics::store<Observe>(staged_values, i, background_value, counts,
+                                diagnostics::Field::StagedValues);
+    diagnostics::store<Observe>(staged_labels, i, background, counts,
+                                diagnostics::Field::StagedLabels);
   }
   for (Slot slot = 0; slot < slots; ++slot) {
     const auto i = cells * slot + cell;
-    if (labels[i] == background) continue;
-    const auto assignment =
-        find_assignment(assignments, assignment_count, labels[i]);
-    const auto destination = assignments[assignment].destination;
+    if (diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels) ==
+        background)
+      continue;
+    const auto assignment = find_assignment<Observe>(
+        assignments, assignment_count,
+        diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels),
+        counts);
+    const auto destination =
+        diagnostics::load<Observe>(assignments, assignment, counts,
+                                   diagnostics::Field::Assignments)
+            .destination;
     if (destination == slot) continue;
-    staged_values[cells * destination + cell] = values[i];
-    staged_labels[cells * destination + cell] = labels[i];
+    diagnostics::store<Observe>(
+        staged_values, cells * destination + cell,
+        diagnostics::load<Observe>(values, i, counts, diagnostics::Field::Values),
+        counts, diagnostics::Field::StagedValues);
+    diagnostics::store<Observe>(
+        staged_labels, cells * destination + cell,
+        diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels),
+        counts, diagnostics::Field::StagedLabels);
   }
   return status;
 }
@@ -211,10 +273,11 @@ OPENPFC_INLINE_HD TransferStatus stage_cell(
  * No graph, tracker, halo, MPI, or snapshot epoch is modified. Publication is
  * caller-owned and must replace values, labels, and grain slots together.
  */
+template <bool Observe>
 inline TransferResult<>
-transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
-         std::span<const Id> labels, std::span<const Grain> grains,
-         std::span<const Transfer> moves, double background_value = 0.0) {
+transfer_impl(const Grid2D &grid, Slot slots, std::span<const double> values,
+              std::span<const Id> labels, std::span<const Grain> grains,
+              std::span<const Transfer> moves, double background_value = 0.0) {
   const auto layout = detail::transfer_layout(grid, slots, values.size(),
                                               labels.size(), background_value);
   if (layout != TransferStatus::Success) return {layout, {}, {}, {}};
@@ -222,21 +285,35 @@ transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
   if (prepared.status != TransferStatus::Success)
     return {prepared.status, {}, {}, {}};
   const auto cells = cell_count(grid);
+  auto *counts = diagnostics::host_accesses();
   TransferResult<> result;
   result.values.resize(values.size());
   result.labels.resize(labels.size());
   std::vector<unsigned> present(prepared.assignments.size(), 0);
+  if constexpr (Observe) {
+    diagnostics::scan(counts, diagnostics::Phase::Transfer, slots);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+      diagnostics::write(counts, diagnostics::Field::StagedValues, sizeof(double));
+      diagnostics::write(counts, diagnostics::Field::StagedLabels, sizeof(Id));
+    }
+  }
   for (std::size_t cell = 0; cell < cells; ++cell) {
     result.status = detail::worst(
         result.status,
-        detail::stage_cell(cell, cells, slots, values.data(), labels.data(),
-                           prepared.assignments.data(), present.size(),
-                           background_value, result.values.data(),
-                           result.labels.data()));
+        detail::stage_cell<Observe>(cell, cells, slots, values.data(), labels.data(),
+                                    prepared.assignments.data(), present.size(),
+                                    background_value, result.values.data(),
+                                    result.labels.data(), counts));
     for (Slot slot = 0; slot < slots; ++slot) {
-      const auto index = detail::find_assignment(
-          prepared.assignments.data(), present.size(), labels[cells * slot + cell]);
-      if (index != present.size()) present[index] = 1;
+      const auto index = detail::find_assignment<Observe>(
+          prepared.assignments.data(), present.size(),
+          diagnostics::load<Observe>(labels.data(), cells * slot + cell, counts,
+                                     diagnostics::Field::Labels),
+          counts);
+      if (index != present.size()) {
+        diagnostics::store<Observe>(present.data(), index, 1u, counts,
+                                    diagnostics::Field::Counts);
+      }
     }
   }
   if (std::find(present.begin(), present.end(), 0) != present.end())
@@ -244,6 +321,24 @@ transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
   if (result.status != TransferStatus::Success) return {result.status, {}, {}, {}};
   result.grains = std::move(prepared.grains);
   return result;
+}
+
+inline TransferResult<>
+transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
+         std::span<const Id> labels, std::span<const Grain> grains,
+         std::span<const Transfer> moves, double background_value = 0.0) {
+  if (diagnostics::current) {
+    try {
+      diagnostics::current->covered();
+      return transfer_impl<true>(grid, slots, values, labels, grains, moves,
+                                 background_value);
+    } catch (...) {
+      diagnostics::current->fail();
+      throw;
+    }
+  }
+  return transfer_impl<false>(grid, slots, values, labels, grains, moves,
+                              background_value);
 }
 
 } // namespace pfc::grain

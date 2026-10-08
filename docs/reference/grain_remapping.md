@@ -162,3 +162,6 @@ See [identity/topology](../concepts/grain_topology.md),
 [propagation/contacts](../concepts/grain_tracking.md),
 [coloring](../development/grain_coloring.md), and
 [strict transfer](grain_transfer.md) for constituent contracts.
+
+Optional [invocation diagnostics](grain_diagnostics.md) expose scoped allocation,
+copy and declared source-operation accounting without changing publication.
