@@ -1,0 +1,38 @@
+{
+  "cse_temporaries": 1,
+  "expressions": [
+    "a*u_xy + source_rate*t*(x + y + z) + v_value",
+    "b*(u_xx + u_yy + u_zz) + c*v_xz + d*u_yz + source_rate*t*(x + y + z)"
+  ],
+  "fields": {
+    "u": [
+      "xx",
+      "xy",
+      "yy",
+      "yz",
+      "zz"
+    ],
+    "v": [
+      "value",
+      "xz"
+    ]
+  },
+  "header_sha256": "48587e4e897e2ae08d5ad8af005e8a82dfb70b7467f1a189bb9d7666da719bd6",
+  "operations_after_cse": 15,
+  "operations_before_cse": 19,
+  "optional_source": "source_rate*t*(x+y+z), added to both equations; default zero",
+  "parameters": [
+    "a",
+    "b",
+    "c",
+    "d"
+  ],
+  "position": [
+    "x",
+    "y",
+    "z"
+  ],
+  "schema": 1,
+  "sympy": "1.14.0",
+  "time": true
+}
