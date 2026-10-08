@@ -46,6 +46,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   owning field transfers. It reports explicit deferred/unsafe/failure
   states and invocation diagnostics; a small Allen–Cahn-style consumer
   exercises approaching grains and periodic contacts without a new app.
+- Grain remapping diagnostics can be supplied through caller-owned observation
+  scopes, separating allocation requests, typed source accesses, explicit
+  copies, and device-event phase intervals without changing remapping results.
+- The verified grain tracking, transfer, and remapping paths extend to structured
+  3D volumes with explicit Six/26 connectivity and independently periodic axes.
+  Existing 2D overloads and identity/publication semantics are unchanged.
+- GPU sparse gather preserves `float` and `std::uint64_t` selections in
+  addition to `double`, with checked launch geometry and bounds validation.
+  Scatter remains double-only.
 - `allen_cahn` prints a sub-cell equivalent radius beside each cell-count
   radius. `--two-front` starts from a periodic pair of cubic heteroclinic
   fronts and prints their positions and one front's speed. Those numbers
