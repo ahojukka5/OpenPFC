@@ -5,9 +5,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Optional grain invocation diagnostics
 
-`pfc::grain::Diagnostics` supplies caller-owned allocation observation through
-`diagnostics::Scope(&observation)`. `Scope(nullptr)` and `PauseObservation`
-disable and then restore the prior thread-local scope.
+`pfc::grain::Diagnostics` supplies caller-owned optional observation through
+`diagnostics::Scope(&observation)`. Nested tracking and transfer inherit the
+current observation. `Scope(nullptr)` and `PauseObservation` disable and then
+restore the prior thread-local scope.
 
 The observation must outlive the scope and the synchronous operation. Owning
 allocation tokens retain a shared ledger independently of that observation;
@@ -26,7 +27,8 @@ allocation before freeing the old, including their overlap. A failed request
 is not an allocation. A runtime free failure leaves its payload live and
 sets that ledger's `complete=false`, retained across interval resets.
 
-Device coverage includes `DataBuffer` allocations. To include persistent
+Device coverage includes `DataBuffer` and the producer's nested private
+buffers, including observation counter storage. To include persistent
 proposal/previously accepted buffers, begin observation before creating them
 and keep the ledger through publication and old-state release. Buffers made
 outside observation do not acquire tokens retroactively.
@@ -51,3 +53,69 @@ other explicitly excluded bookkeeping; that choice is part of the consumer
 contract. Peaks/counts aggregate instrumentation allocation payload too;
 there is no separate instrumentation allocation peak.
 
+## Copies and source operations
+
+`copies.calls[direction][field]` and `copies.bytes[direction][field]` record
+successful explicit transport calls. GPU buffer upload/download accepts an
+optional `Field` tag (default `Other`). The constituent operations tag nested
+registry, assignment, count, flag, contact, label-publication and diagnostic
+counter transfer. Zero-length copies have no call. Capacity rejection does
+not invent a contact/publication transfer. This metric is distinct from
+selected moved-grain payload and from ordinary element assignments.
+
+`accesses` reports executed source-defined typed array reads/writes and
+logical byte totals. It covers values, labels, staged arrays, occupancy and
+the device producer's registry, assignment, matrix, count, flag and contact
+arrays. Each explicit typed `load<T>` or `store<T>` contributes `sizeof(T)`;
+an assignment-record load contributes the whole `sizeof(Assignment)`, even
+when its consumer reads only `.id`. Atomic production updates contribute a
+logical read and write. Branches and early exits determine actual counts.
+CPU vector zero initialization of field staging contributes its exact
+initialized-element writes. Counter atomics themselves are excluded from
+production source accesses and counter transport is tagged `Instrumentation`.
+
+This is **not** compiler loads/stores, cache transactions or HBM traffic.
+Opaque host STL/queue/graph/coloring/alignment element operations and host
+registry preparation are outside source-access coverage, although their
+successful C++ allocations are covered by the provider. Host metadata
+container copies/conversions are not transport calls. No full host memory
+traffic claim is available. `source_accesses_complete` means the declared
+array scope was observed; `observation_failed` makes failure sticky across
+nested observers until `reset_interval()`.
+
+`full_plane_scans[phase]` counts completed outer domain traversals, each
+covering all cells of the reported number of slots. It does not multiply
+by stencil neighbors, internal slot loops or reads per cell. Propagation
+counts initialization and completed GPU sweeps; CPU counts seed admission
+and final completeness traversal. Adjacency counts
+one domain traversal (CPU vertex admission/GPU contacts), and transfer counts
+one cell-domain staging traversal. CPU STL zero initialization contributes
+writes but is not another algorithm-domain traversal. Reached incomplete
+passes still contribute their executed element accesses, never a completed
+scan count.
+
+## Event intervals and disabled mode
+
+`events[phase]` exposes executed interval count, failed interval count,
+availability and accumulated seconds. CPU calls leave device events
+unavailable. GPU events delimit Propagation, Adjacency and Transfer in the actual
+operation stream. Nested
+synchronizations, copies, allocation/host gaps between event records are
+included. These intervals are not pure active-kernel time and exclude
+external publication and old-state release.
+
+Unreached phases are unavailable, rather than measured zeros. Any failed
+interval keeps that phase unavailable, even after later valid intervals.
+Counter readback or event failure marks observation incomplete; fatal runtime
+errors may throw while preserving original const inputs where hardware remains
+usable. Diagnostics do not recover a poisoned device.
+
+The observer-disabled GPU realization selects compile-time kernels with no
+counter aggregate, counter atomics, counter buffers or events. Generic buffer
+and consumer allocation-provider observation checks still exist in an
+installed provider realization. Compare disabled and enabled numerical
+outputs/status/snapshots before using separate diagnostic replay. Do not use
+enabled replay elapsed intervals as disabled-operation timings or subtract
+observation overhead. External lifecycle timing must bracket synchronized
+remapping, publication and release itself; internal statistics are not that
+external lifecycle.

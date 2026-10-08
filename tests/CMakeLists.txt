@@ -13,7 +13,8 @@ target_sources(openpfc-tests PRIVATE
 
 # Isolated consumer owns the complete new/delete provider for this executable.
 add_executable(test_grain_diagnostics
-  unit/kernel/grain/test_grain_diagnostics.cpp)
+  unit/kernel/grain/test_grain_diagnostics.cpp
+  unit/kernel/grain/test_grain_accesses.cpp)
 target_include_directories(test_grain_diagnostics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_grain_diagnostics PRIVATE OpenPFC Catch2::Catch2WithMain)
 add_test(NAME GrainDiagnostics COMMAND test_grain_diagnostics)
