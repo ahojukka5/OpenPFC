@@ -10,6 +10,7 @@ target_sources(openpfc-tests PRIVATE
   scenarios/parallel_scaling/test_halo_exchange_driver.cpp
   scenarios/parallel_scaling/test_full_padded_device_halo.cpp
   scenarios/parallel_scaling/test_full_padded_device_halo_hip.cpp
+  scenarios/parallel_scaling/test_full_halo_fd6.cpp
   scenarios/parallel_scaling/test_padded_device_halo_self_wrap.cpp
   scenarios/parallel_scaling/test_comm_halo_exchange.cpp
   scenarios/parallel_scaling/test_comm_halo_exchange_modes.cpp
@@ -121,4 +122,19 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     scenarios/parallel_scaling/test_padded_device_halo_self_wrap_hip.hip
   )
   target_link_libraries(openpfc-tests PRIVATE hip::host)
+endif()
+
+if(OpenPFC_RUN_MPI_SUITES)
+  foreach(_ranks 1 2 4 8)
+    if(OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER 0 AND
+       _ranks GREATER OpenPFC_MPI_TEST_MAX_WORLD_SIZE)
+      continue()
+    endif()
+    add_test(NAME full_halo_fd6_${_ranks}ranks
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${_ranks}
+        ${MPIEXEC_PREFLAGS} $<TARGET_FILE:openpfc-tests> "[full_halo_fd6]"
+        ${MPIEXEC_POSTFLAGS})
+    set_tests_properties(full_halo_fd6_${_ranks}ranks PROPERTIES
+      TIMEOUT 120 RUN_SERIAL TRUE PROCESSORS ${_ranks})
+  endforeach()
 endif()
