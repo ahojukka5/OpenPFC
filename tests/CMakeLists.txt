@@ -32,6 +32,7 @@ target_include_directories(openpfc-tests PRIVATE ${CMAKE_SOURCE_DIR}/examples)
 add_subdirectory(unit)
 add_subdirectory(integration)
 add_subdirectory(regression)
+add_subdirectory(symbolic_rhs)
 
 # Benchmarks are optional (can be slow). Time-integration bench needs HeFFTe.
 if(OpenPFC_BUILD_BENCHMARKS AND OpenPFC_ENABLE_HEFFTE)
