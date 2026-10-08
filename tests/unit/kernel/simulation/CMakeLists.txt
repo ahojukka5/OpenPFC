@@ -42,3 +42,7 @@ target_include_directories(openpfc-tests PRIVATE
 
 add_subdirectory(steppers)
 add_subdirectory(stacks)
+
+# Exercise the teaching entry point even when the example catalogue is disabled.
+add_subdirectory(${CMAKE_SOURCE_DIR}/examples/coupled_fields
+                 ${CMAKE_CURRENT_BINARY_DIR}/coupled_fields)
