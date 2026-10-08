@@ -39,7 +39,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - A transactional 2D grain remapping entry point composes identity
   propagation, complete contact graphs, bounded host coloring, and strict
   owning field transfers. It reports explicit deferred/unsafe/failure
-  states and invocation diagnostics.
+  states and invocation diagnostics; a small Allen–Cahn-style consumer
+  exercises approaching grains and periodic contacts without a new app.
 - `allen_cahn` prints a sub-cell equivalent radius beside each cell-count
   radius. `--two-front` starts from a periodic pair of cubic heteroclinic
   fronts and prints their positions and one front's speed. Those numbers

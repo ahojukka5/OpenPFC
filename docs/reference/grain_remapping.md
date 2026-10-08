@@ -48,7 +48,8 @@ Reassign slots before an evolution step can mix distinct same-slot grain
 amplitudes. Label propagation after mixing cannot reconstruct those
 amplitudes. Choose a conservative contact buffer for the caller's stencil,
 time step, and interval between checks. The default radius-three buffer is
-not a universal guarantee for arbitrary PDEs or time steps.
+appropriate for the example's one-cell-per-step nearest-neighbor support
+growth; it is not a universal guarantee for arbitrary PDEs or time steps.
 Four connectivity uses Manhattan contacts; Eight uses Chebyshev contacts.
 The propagation stencil has radius one, independent of the contact radius.
 
@@ -114,11 +115,23 @@ The CPU contact implementation deliberately uses the independent quadratic
 coordinate-pair oracle for small grids. This API does not claim scalable
 host detection or optimal recoloring.
 
-## Static validation
+## Small consumer and validation
 
-The integration suite checks complete current graphs, deterministic no-ops,
-retirement, wide UIDs, unequal support weights, preserved proper components,
-K5 infeasibility, search limits, unsafe cadence, and overflow.
+[The example](../../examples/grain_remapping.cpp) uses library primitives
+without configuration or an additional application. It stages a short
+two-dimensional explicit Allen–Cahn-style reaction/diffusion step, remaps
+before evolution using a conservative buffer, then checks/stages the new
+observation before publishing the proposed step. Both an interior approach
+and a periodic-seam approach reassign slots before support coalescence.
+The example is a teaching/correctness consumer, not a validated grain-growth
+model or timing driver.
+
+The integration suite advances separate one-field-per-grain references
+with the same update and checks every positive UID sample and integrated
+amplitude at each accepted step, including tiny nonzero tails. Static
+controls cover complete current graphs, deterministic no-ops, retirement,
+wide UIDs, unequal support weights, preserved proper components, K5
+infeasibility, search limits, unsafe cadence, and overflow.
 
 A downstream CPU consumer can use the installed public target:
 
@@ -128,7 +141,8 @@ add_executable(my_grains grain_remapping.cpp)
 target_link_libraries(my_grains PRIVATE OpenPFC::openpfc)
 ```
 
-Build/test through `scripts/build.sh`.
+Build/test through `scripts/build.sh`; the `GrainRemappingExample` entry
+executes the public entry point.
 
 See [identity/topology](../concepts/grain_topology.md),
 [propagation/contacts](../concepts/grain_tracking.md),

@@ -31,6 +31,11 @@ target_sources(openpfc-tests PRIVATE
   scenarios/time_integration/test_field_accessor_concept.cpp
 )
 
+# Small downstream-style consumer, with no HeFFTe/frontend dependency.
+add_executable(grain_remapping_example ${CMAKE_SOURCE_DIR}/examples/grain_remapping.cpp)
+target_link_libraries(grain_remapping_example PRIVATE OpenPFC)
+add_test(NAME GrainRemappingExample COMMAND grain_remapping_example)
+
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
     test_ui_validation.cpp

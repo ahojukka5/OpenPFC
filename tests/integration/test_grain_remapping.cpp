@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "grain_remapping.hpp"
 #include "grain_remapping_cases.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstring>
@@ -229,4 +230,45 @@ TEST_CASE("2D remapping validates registry seeds full support and retirement",
   empty(result);
   immutable(fixture, before, seeds);
   REQUIRE(result.statistics.total_seconds >= result.statistics.detection_seconds);
+}
+
+TEST_CASE(
+    "buffered remapping preserves per-UID Allen-Cahn-style collision evolution",
+    "[grain][remapping][evolution]") {
+  for (bool seam : {false, true}) {
+    for (bool one : {false, true}) {
+      auto state = grain_example::initial(seam, one);
+      const auto cells = cell_count(state.grid);
+      std::vector<double> reference(cells * state.grains.size(), 0);
+      for (std::size_t i = 0; i < state.labels.size(); ++i)
+        if (state.labels[i]) {
+          const auto index = state.labels[i] == 11 ? 0 : 1;
+          reference[index * cells + i % cells] = state.values[i];
+        }
+      for (int step = 0; step < 6; ++step) {
+        reference = grain_example::advance_values(
+            state.grid, static_cast<Slot>(state.grains.size()), reference);
+        REQUIRE(grain_example::advance(state) == remapping::Status::Success);
+        for (std::size_t g = 0; g < state.grains.size(); ++g) {
+          double expected_area = 0, actual_area = 0;
+          for (std::size_t cell = 0; cell < cells; ++cell) {
+            const auto expected = reference[g * cells + cell];
+            const auto index = state.grains[g].slot * cells + cell;
+            if (expected > 0) {
+              REQUIRE(state.labels[index] == state.grains[g].id);
+              REQUIRE(std::abs(state.values[index] - expected) <= 1.e-13);
+              actual_area += state.values[index];
+            } else
+              REQUIRE(state.labels[index] != state.grains[g].id);
+            expected_area += expected;
+          }
+          REQUIRE(std::abs(actual_area - expected_area) <= 1.e-12);
+        }
+      }
+      if (!one)
+        REQUIRE(state.grains[0].slot != state.grains[1].slot);
+      else
+        REQUIRE(state.grains[0].slot == 0);
+    }
+  }
 }
