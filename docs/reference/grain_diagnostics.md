@@ -5,10 +5,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Optional grain invocation diagnostics
 
-`pfc::grain::Diagnostics` supplies caller-owned optional observation through
-`diagnostics::Scope(&observation)`. Nested tracking and transfer inherit the
-current observation. `Scope(nullptr)` and `PauseObservation` disable and then
-restore the prior thread-local scope.
+`remapping::Options::diagnostics` optionally points at caller-owned
+`pfc::grain::Diagnostics`. All remapping policies use the same observation
+path, including no-op plans and expected failures. Null explicitly disables
+an enclosing observation for that invocation. Nested tracking and transfer
+inherit the current observation; standalone calls can use
+`diagnostics::Scope(&observation)`. `Scope(nullptr)` and `PauseObservation`
+disable and then restore the prior thread-local scope.
 
 The observation must outlive the scope and the synchronous operation. Owning
 allocation tokens retain a shared ledger independently of that observation;
@@ -57,7 +60,7 @@ there is no separate instrumentation allocation peak.
 
 `copies.calls[direction][field]` and `copies.bytes[direction][field]` record
 successful explicit transport calls. GPU buffer upload/download accepts an
-optional `Field` tag (default `Other`). The constituent operations tag nested
+optional `Field` tag (default `Other`). The remapper tags every nested
 registry, assignment, count, flag, contact, label-publication and diagnostic
 counter transfer. Zero-length copies have no call. Capacity rejection does
 not invent a contact/publication transfer. This metric is distinct from
@@ -87,10 +90,12 @@ nested observers until `reset_interval()`.
 covering all cells of the reported number of slots. It does not multiply
 by stencil neighbors, internal slot loops or reads per cell. Propagation
 counts initialization and completed GPU sweeps; CPU counts seed admission
-and final completeness traversal. Adjacency counts
+and final completeness traversal. CPU horizon initialization is Inspection;
+CPU support-count traversal is another Inspection traversal. Adjacency counts
 one domain traversal (CPU vertex admission/GPU contacts), and transfer counts
 one cell-domain staging traversal. CPU STL zero initialization contributes
-writes but is not another algorithm-domain traversal. Reached incomplete
+writes but is not another algorithm-domain traversal. The CPU unsafe check
+can return early and contributes no full-plane traversal. Reached incomplete
 passes still contribute their executed element accesses, never a completed
 scan count.
 
@@ -98,8 +103,10 @@ scan count.
 
 `events[phase]` exposes executed interval count, failed interval count,
 availability and accumulated seconds. CPU calls leave device events
-unavailable. GPU events delimit Propagation, Adjacency and Transfer in the actual
-operation stream. Nested
+unavailable. GPU events delimit Preflight, Propagation, Inspection, Adjacency,
+Decision and Transfer in the actual operation stream. Adjacency has producer
+and subsequent compact graph-download intervals; these do not overlap.
+Decision measures elapsed stream time across the host decision gap. Nested
 synchronizations, copies, allocation/host gaps between event records are
 included. These intervals are not pure active-kernel time and exclude
 external publication and old-state release.

@@ -19,8 +19,11 @@ namespace pfc::grain::remapping {
 inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
                       std::span<const Id> seeds, std::span<const Grain> grains,
                       const Options &options = {}) {
+  diagnostics::Scope scope(options.diagnostics);
+  if (options.diagnostics) options.diagnostics->covered();
   const auto operation_start = detail::Clock::now();
-  const auto operation = [&] {
+  const auto operation = [&]<bool Observe> {
+    auto *counters = diagnostics::host_accesses();
     Result<> result;
     const auto start = detail::Clock::now();
     auto stage_start = start;
@@ -45,18 +48,38 @@ inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
     stage = &result.statistics.detection_seconds;
     const auto cells = cell_count(grid);
     std::vector<std::uint8_t> occupied(values.size());
+    if constexpr (Observe) {
+      diagnostics::scan(counters, diagnostics::Phase::Preflight, slots);
+      for (std::size_t i = 0; i < values.size(); ++i)
+        diagnostics::write(counters, diagnostics::Field::Occupancy,
+                           sizeof(std::uint8_t));
+    }
     auto bad = Status::Success;
     for (std::size_t i = 0; i < values.size(); ++i) {
-      if (!std::isfinite(values[i]) || values[i] < 0) {
+      if (!std::isfinite(diagnostics::load<Observe>(values.data(), i, counters,
+                                                    diagnostics::Field::Values)) ||
+          diagnostics::load<Observe>(values.data(), i, counters,
+                                     diagnostics::Field::Values) < 0) {
         bad = static_cast<Status>(
             std::max(static_cast<unsigned>(bad),
                      static_cast<unsigned>(Status::InvalidInput)));
         continue;
       }
-      occupied[i] = values[i] > 0;
-      if (!occupied[i] || !seeds[i]) continue;
-      const auto j = pfc::grain::detail::find_assignment(
-          prepared.assignments.data(), prepared.assignments.size(), seeds[i]);
+      diagnostics::store<Observe>(
+          occupied.data(), i,
+          diagnostics::load<Observe>(values.data(), i, counters,
+                                     diagnostics::Field::Values) > 0,
+          counters, diagnostics::Field::Occupancy);
+      if (!diagnostics::load<Observe>(occupied.data(), i, counters,
+                                      diagnostics::Field::Occupancy) ||
+          !diagnostics::load<Observe>(seeds.data(), i, counters,
+                                      diagnostics::Field::Labels))
+        continue;
+      const auto j = pfc::grain::detail::find_assignment<Observe>(
+          prepared.assignments.data(), prepared.assignments.size(),
+          diagnostics::load<Observe>(seeds.data(), i, counters,
+                                     diagnostics::Field::Labels),
+          counters);
       if (j == prepared.assignments.size())
         bad = Status::UnknownIdentity;
       else if (prepared.assignments[j].source != i / cells)
@@ -71,16 +94,21 @@ inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
     }
     auto propagated = tracking::reference::propagate(grid, slots, occupied, seeds);
     const auto horizon =
-        detail::horizon(grid, slots, occupied, seeds, propagated.complete);
+        detail::horizon<Observe>(grid, slots, occupied, seeds, propagated.complete);
     result.statistics.propagation_sweeps = std::min(horizon, options.max_sweeps);
     if (horizon > options.max_sweeps) return finish(Status::IterationLimit);
     if (!propagated.complete) return finish(Status::Unseeded);
-    if (detail::unsafe(grid, propagated.labels))
+    if (detail::unsafe<Observe>(grid, propagated.labels))
       return finish(Status::UnsafeCadence);
     const auto ids = detail::identities(prepared.assignments);
     std::vector<std::uint64_t> counts(ids.size(), 0);
-    for (auto id : propagated.labels)
+    if constexpr (Observe)
+      diagnostics::scan(counters, diagnostics::Phase::Inspection, slots);
+    for (std::size_t i = 0; i < propagated.labels.size(); ++i) {
+      const auto id = diagnostics::load<Observe>(
+          propagated.labels.data(), i, counters, diagnostics::Field::Labels);
       if (id) ++counts[std::lower_bound(ids.begin(), ids.end(), id) - ids.begin()];
+    }
     if (std::find(counts.begin(), counts.end(), 0) != counts.end()) {
       result.transfer_status = TransferStatus::MissingSupport;
       return finish(Status::MissingSupport);
@@ -128,7 +156,15 @@ inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
         occupied.size() + propagated.labels.size() * sizeof(Id);
     return finish(Status::Success);
   };
-  auto completed = operation(); // Includes destruction of all private scratch.
+  auto completed = [&] {
+    try {
+      return options.diagnostics ? operation.template operator()<true>()
+                                 : operation.template operator()<false>();
+    } catch (...) {
+      if (options.diagnostics) options.diagnostics->fail();
+      throw;
+    }
+  }(); // Includes destruction of all private scratch.
   completed.statistics.total_seconds = detail::seconds(operation_start);
   return completed;
 }
