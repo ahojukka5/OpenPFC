@@ -15,9 +15,9 @@
  * in `fd_stencils.hpp`). It is **templated on the grads aggregate `G`**
  * (whatever the model defines) and uses the per-member detection
  * concepts in `grad_concepts.hpp` to fill only the slots `G` declares.
- * Slots that this backend cannot provide (today: mixed second
- * derivatives `xy / xz / yz`, which require **corner-filled halos**)
- * trigger a compile-time error rather than silently producing zeros.
+ * Mixed second derivatives use the separable D1 tensor product and require
+ * explicitly declared `HaloConnectivity::Full`. The caller refreshes all
+ * needed ghosts before evaluation; the field itself does not track validity.
  *
  * **Backend capability** (matches the table in
  * `docs/extending_openpfc/per_point_grads.md`):
@@ -27,7 +27,7 @@
  * | `value`      | yes (direct read of the centre cell)                            |
  * | `x, y, z`    | yes — D1 orders 2..14 (see `EvenCentralD1<Order>`)              |
  * | `xx, yy, zz` | yes — D2 orders 2..20 (see `EvenCentralD2<Order>`)              |
- * | `xy, xz, yz` | **rejected** at compile time (mixed seconds need corner halos)  |
+ * | `xy, xz, yz` | yes — D1 tensor product orders 2..14, Full halos required      |
  *
  * Construction is normally done through the Field-binding constructor
  *
@@ -50,7 +50,8 @@
  *     });
  *
  * `prepare()` is a no-op for FD: the application is responsible for any
- * halo exchange before iterating. Face halos are unused in the interior
+ * halo exchange before iterating (Full for mixed derivatives). Ghosts are unused
+ * in the interior
  * `[hw, n-hw)` because, with `halo_width >= order/2`, all stencil
  * neighbours stay in the local core. Construction **fail-closes** when
  * `halo_width` is strictly less than the stencil half-width required by
@@ -73,11 +74,11 @@
  * @see fd_apply.hpp for the per-axis apply primitives
  * @see fd_stencils.hpp for the underlying stencil tables
  * @see comm_halo_exchange.hpp for the host 26-direction exchanger
- *      (`HaloConnectivity::Full`; corners proven; `xy/xz/yz` member
- *      enablement is a follow-up)
+ *      (`HaloConnectivity::Full` supplies mixed-derivative ghosts)
  * @see runtime/gpu/full_padded_device_halo_gpu.hpp for the device twin
  */
 
+#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <stdexcept>
@@ -86,6 +87,7 @@
 
 #include <openpfc/kernel/data/grid_field.hpp>
 #include <openpfc/kernel/data/types.hpp>
+#include <openpfc/kernel/decomposition/comm_halo_exchange.hpp>
 #include <openpfc/kernel/field/fd_apply.hpp>
 #include <openpfc/kernel/field/fd_stencils.hpp>
 #include <openpfc/kernel/field/grad_concepts.hpp>
@@ -101,9 +103,8 @@ namespace pfc::gradient {
  *
  * @tparam G Model-owned per-point grads aggregate. The constructor and
  *           `operator()` consult `pfc::field::has_*<G>` to decide which
- *           members of `G` to populate. A `G` that asks for mixed second
- *           derivatives (`xy / xz / yz`) is rejected at compile time
- *           (see the `static_assert` below).
+ *           members of `G` to populate. Mixed second derivatives require
+ *           explicit Full connectivity; face-only callers remain unchanged.
  */
 template <class G> class FDGradient {
 public:
@@ -130,6 +131,10 @@ public:
    *                             derivative `G` declares: D2 orders 2..20 are
    *                             supported; D1 orders 2..14 are supported.
    *                             Defaults to 2 (the cheapest 7-point Laplacian).
+   * @param connectivity          Explicit ghost-connectivity contract. Mixed
+   *                             derivatives require Full. The caller guarantees
+   *                             actual edge/corner fills, including physical
+   *                             boundary conditions, before each evaluation.
    * @param halo_prepare_callback Optional function invoked by prepare() to
    *                             trigger halo exchange before each stage in
    *                             multi-stage methods.
@@ -139,16 +144,19 @@ public:
    *         `halo_width` is strictly less than the required stencil
    *         half-width for those members.
    */
-  FDGradient(const double *core, int nx, int ny, int nz, double dx, double dy,
-             double dz, int halo_width, int order = 2,
-             std::function<void()> halo_prepare_callback = {})
+  FDGradient(
+      const double *core, int nx, int ny, int nz, double dx, double dy, double dz,
+      int halo_width, int order = 2,
+      std::function<void()> halo_prepare_callback = {},
+      pfc::comm::HaloConnectivity connectivity = pfc::comm::HaloConnectivity::Faces)
       : FDGradient(core, nx, ny, nz, /*sy=*/static_cast<std::ptrdiff_t>(nx),
                    /*sxy=*/static_cast<std::ptrdiff_t>(nx) *
                        static_cast<std::ptrdiff_t>(ny),
                    dx, dy, dz, /*imin=*/halo_width, /*imax=*/nx - halo_width,
                    /*jmin=*/halo_width, /*jmax=*/ny - halo_width,
-                   /*kmin=*/halo_width, /*kmax=*/nz - halo_width, halo_width, order,
-                   std::move(halo_prepare_callback)) {}
+                   /*kmin=*/nz == 1 ? 0 : halo_width,
+                   /*kmax=*/nz == 1 ? 1 : nz - halo_width, halo_width, order,
+                   std::move(halo_prepare_callback), connectivity) {}
 
   /**
    * @brief Bind the evaluator to a padded `pfc::data::Field<double>`
@@ -157,8 +165,9 @@ public:
    * Pre-offsets the stored core pointer to the field's **owned** `(0, 0, 0)`
    * cell so that `grad(i, j, k)` (and `pfc::gradient::evaluate(grad, idx)`)
    * indexes by **owned coordinates** `i, j, k ∈ [0, nx_owned)`. Every owned
-   * cell is stencil-safe because the halo ring is filled by the matching
-   * `pfc::comm::HaloExchange` (Faces) before the sweep starts. The
+   * cell is stencil-safe when the halo ring is filled by the matching
+   * `pfc::comm::HaloExchange` before the sweep starts (Full for mixed
+   * derivatives). The
    * strides used by the stencil reads are still the **padded** strides
    * `(1, nx_pad, nx_pad·ny_pad)` so reads at the boundary reach into the
    * halo correctly.
@@ -166,8 +175,10 @@ public:
    * @throws std::invalid_argument if `u.storage_halo() <= 0` (use
    *         `pfc::field::create(Field)` for the unpadded face-halo layout).
    */
-  explicit FDGradient(const pfc::data::Field<double> &u, int order = 2,
-                      std::function<void()> halo_prepare_callback = {})
+  explicit FDGradient(
+      const pfc::data::Field<double> &u, int order = 2,
+      std::function<void()> halo_prepare_callback = {},
+      pfc::comm::HaloConnectivity connectivity = pfc::comm::HaloConnectivity::Faces)
       : FDGradient(field_owned_origin_(require_padded_field_(u)), u.local_size()[0],
                    u.local_size()[1], u.local_size()[2],
                    /*sy=*/static_cast<std::ptrdiff_t>(u.padded_extent(0)),
@@ -177,7 +188,7 @@ public:
                    /*imin=*/0, /*imax=*/u.local_size()[0],
                    /*jmin=*/0, /*jmax=*/u.local_size()[1],
                    /*kmin=*/0, /*kmax=*/u.local_size()[2], u.storage_halo(), order,
-                   std::move(halo_prepare_callback)) {}
+                   std::move(halo_prepare_callback), connectivity) {}
 
   /**
    * @brief Prepare for gradient evaluation.
@@ -271,6 +282,22 @@ public:
                                                /*sy=*/m_sy, m_sxy);
     }
 
+    if constexpr (pfc::field::has_xy<G>) {
+      g.xy = m_sx1 * m_sy1 *
+             pfc::field::fd::apply_d1_d1_along<0, 1>(m_d1_stencil, m_core, c, 1,
+                                                     m_sy, m_sxy);
+    }
+    if constexpr (pfc::field::has_xz<G>) {
+      g.xz = m_sx1 * m_sz1 *
+             pfc::field::fd::apply_d1_d1_along<0, 2>(m_d1_stencil, m_core, c, 1,
+                                                     m_sy, m_sxy);
+    }
+    if constexpr (pfc::field::has_yz<G>) {
+      g.yz = m_sy1 * m_sz1 *
+             pfc::field::fd::apply_d1_d1_along<1, 2>(m_d1_stencil, m_core, c, 1,
+                                                     m_sy, m_sxy);
+    }
+
     return g;
   }
 
@@ -303,21 +330,31 @@ private:
   FDGradient(const double *core, int nx, int ny, int nz, std::ptrdiff_t sy,
              std::ptrdiff_t sxy, double dx, double dy, double dz, int imin, int imax,
              int jmin, int jmax, int kmin, int kmax, int halo_width, int order,
-             std::function<void()> halo_prepare_callback)
+             std::function<void()> halo_prepare_callback,
+             pfc::comm::HaloConnectivity connectivity)
       : m_core(core), m_nx(nx), m_ny(ny), m_nz(nz), m_sy(sy), m_sxy(sxy),
         m_imin(imin), m_imax(imax), m_jmin(jmin), m_jmax(jmax), m_kmin(kmin),
         m_kmax(kmax), m_hw(halo_width),
         m_halo_prepare_callback(std::move(halo_prepare_callback)) {
-    static_assert(!pfc::field::has_xy<G> && !pfc::field::has_xz<G> &&
-                      !pfc::field::has_yz<G>,
-                  "FDGradient: mixed second derivatives (xy/xz/yz) need "
-                  "corner-filled halos. Host 26-fill exists via "
-                  "`pfc::comm::HaloExchange` Full, but "
-                  "FDGradient still rejects has_xy/has_xz/has_yz until a "
-                  "follow-up enables those members after Catch2 proves "
-                  "corners. Use `SpectralGradient<G>` or the GPU path "
-                  "with `pfc::comm::HaloExchange<CUDASpace>` Full for now.");
-
+    if constexpr (pfc::field::has_xy<G> || pfc::field::has_xz<G> ||
+                  pfc::field::has_yz<G>) {
+      if (connectivity != pfc::comm::HaloConnectivity::Full) {
+        throw std::invalid_argument(
+            "FDGradient: mixed derivatives require explicitly declared Full "
+            "connectivity and corner-filled halos before every evaluation");
+      }
+      if constexpr (pfc::field::has_xz<G> || pfc::field::has_yz<G>) {
+        if (nz == 1) {
+          throw std::invalid_argument(
+              "FDGradient: xz/yz derivatives are unsupported on an nz=1 slab");
+        }
+      }
+    }
+    if (!(std::isfinite(dx) && dx > 0.0 && std::isfinite(dy) && dy > 0.0 &&
+          std::isfinite(dz) && dz > 0.0)) {
+      throw std::invalid_argument(
+          "FDGradient: spacings must be finite and positive");
+    }
     const double inv_dx = 1.0 / dx;
     const double inv_dy = 1.0 / dy;
     const double inv_dz = 1.0 / dz;
@@ -347,7 +384,8 @@ private:
     }
 
     if constexpr (pfc::field::has_x<G> || pfc::field::has_y<G> ||
-                  pfc::field::has_z<G>) {
+                  pfc::field::has_z<G> || pfc::field::has_xy<G> ||
+                  pfc::field::has_xz<G> || pfc::field::has_yz<G>) {
       pfc::field::fd::EvenCentralD1View st1{};
       if (!pfc::field::fd::lookup_even_central_d1(order, &st1)) {
         throw std::invalid_argument("FDGradient: order " + std::to_string(order) +
@@ -369,6 +407,21 @@ private:
           "FDGradient: halo_width " + std::to_string(halo_width) +
           " < required half_width " + std::to_string(required_half_width) +
           " for order " + std::to_string(order));
+    }
+    if constexpr (pfc::field::has_xy<G> || pfc::field::has_xz<G> ||
+                  pfc::field::has_yz<G>) {
+      const bool short_x = (pfc::field::has_xy<G> || pfc::field::has_xz<G>) &&
+                           nx < required_half_width;
+      const bool short_y = (pfc::field::has_xy<G> || pfc::field::has_yz<G>) &&
+                           ny < required_half_width;
+      const bool short_z = (pfc::field::has_xz<G> || pfc::field::has_yz<G>) &&
+                           nz < required_half_width;
+      if (short_x || short_y || short_z || imin >= imax || jmin >= jmax ||
+          kmin >= kmax) {
+        throw std::invalid_argument(
+            "FDGradient: mixed-derivative domain cannot host the stencil "
+            "or has an empty evaluation interior");
+      }
     }
   }
 
@@ -479,6 +532,8 @@ template <class G> using FDGradient = pfc::gradient::FDGradient<G>;
  * @tparam G     Model-owned grads aggregate (see `grad_concepts.hpp`).
  * @param u      Local field bound to the FD subdomain (must outlive the
  *               returned evaluator; the evaluator reads `u.data()`).
+ * @param connectivity Explicit corner-filled ghost contract; mixed derivatives
+ *                     require Full (defaults to Faces).
  * @param order  Even spatial order of the central stencil. Must be
  *               tabulated for every derivative `G` declares: D2 orders
  *               2..20 are supported; D1 orders 2..14 are supported.
@@ -495,17 +550,18 @@ template <class G> using FDGradient = pfc::gradient::FDGradient<G>;
  *         half-width.
  */
 template <class G>
-[[nodiscard]] inline FDGradient<G> create(const pfc::data::Field<double> &u,
-                                          int order = 2) {
+[[nodiscard]] inline FDGradient<G> create(
+    const pfc::data::Field<double> &u, int order = 2,
+    pfc::comm::HaloConnectivity connectivity = pfc::comm::HaloConnectivity::Faces) {
   // Unpadded Field (storage_halo==0): tightly packed core + iteration halo.
   // Padded Field (storage_halo>0): owned origin + padded strides.
   if (u.storage_halo() == 0) {
     const auto sz = u.local_size();
     const auto sp = u.spacing();
     return FDGradient<G>(u.data(), sz[0], sz[1], sz[2], sp[0], sp[1], sp[2],
-                         u.halo_width(), order);
+                         u.halo_width(), order, {}, connectivity);
   }
-  return FDGradient<G>(u, order);
+  return FDGradient<G>(u, order, {}, connectivity);
 }
 
 } // namespace pfc::field
