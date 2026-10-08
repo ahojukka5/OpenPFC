@@ -12,3 +12,8 @@ if((OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE) OR
    (OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE))
     add_subdirectory(gpu)
 endif()
+
+# Independent, host-only graph recoloring reference and exhaustive tiny oracles.
+target_sources(openpfc-tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_grain_coloring.cpp
+)
