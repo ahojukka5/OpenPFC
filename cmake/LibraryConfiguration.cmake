@@ -293,7 +293,8 @@ endif()
 # Both vendors compile padded_halo_faces into the kernel lib (not per executable).
 if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
     openpfc_add_gpu_kernel_library(openpfc_gpu_kernels cu CUDA::cudart
-        src/openpfc/runtime/gpu/padded_halo_faces.cu)
+        src/openpfc/runtime/gpu/padded_halo_faces.cu
+        src/openpfc/runtime/gpu/grain_tracking.cu)
     # Pin CUDA language standard: project C++20 would otherwise map to "CUDA20" on
     # some CMake versions that do not know the matching nvcc flags (e.g. CMake 3.22).
     # Device-link the static archive. Without this, nvcc relocatable objects
@@ -311,7 +312,8 @@ endif()
 
 if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     openpfc_add_gpu_kernel_library(openpfc_hip_kernels hip hip::host
-        src/openpfc/runtime/gpu/padded_halo_faces.hip)
+        src/openpfc/runtime/gpu/padded_halo_faces.hip
+        src/openpfc/runtime/gpu/grain_tracking.hip)
     set_target_properties(openpfc_hip_kernels PROPERTIES
         HIP_STANDARD 20
         HIP_STANDARD_REQUIRED ON
