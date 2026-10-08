@@ -8,7 +8,8 @@ find_package(Catch2 REQUIRED)
 # Create test executable with just the runner initially
 add_executable(openpfc-tests runtests.cpp)
 target_sources(openpfc-tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit/kernel/grain/test_grain_topology.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/kernel/grain/test_grain_topology.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/test_grain_tracking_reference.cpp)
 
 # Add tests/ directory to include path so fixtures/ can be found
 target_include_directories(openpfc-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
