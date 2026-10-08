@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Transactional 2D grain remapping
+# Transactional grain remapping
 
 `pfc::grain::remapping::remap` composes identity propagation, complete
 contact construction, a deterministic host coloring decision, and strict
@@ -21,7 +21,8 @@ The implementation uses the same host decision for both paths.
 
 ## Input and publication contract
 
-The layout is `slot*(nx*ny)+x+nx*y`, with no halos or decomposition. Values
+The 2D layout is `slot*(nx*ny)+x+nx*y`, with no halos or decomposition.
+The [3D overloads](grain_3d.md) use `slot*(nx*ny*nz)+x+nx*(y+ny*z)`. Values
 must be finite and nonnegative with exact zero background; occupancy is
 exactly `q>0`. Every surviving nonzero seed on occupied support must belong
 to an active sorted registry grain in its recorded source slot. Old seeds

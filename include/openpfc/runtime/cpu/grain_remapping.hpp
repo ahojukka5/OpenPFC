@@ -16,9 +16,11 @@ namespace pfc::grain::remapping {
  * This CPU path uses independent small-grid tracking/contact reference APIs;
  * it is not a scalable contact detector. Publish owning results together.
  */
-inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
-                      std::span<const Id> seeds, std::span<const Grain> grains,
-                      const Options &options = {}) {
+template <class Grid>
+inline Result<> remap_dispatch(Grid grid, Slot slots, std::span<const double> values,
+                               std::span<const Id> seeds,
+                               std::span<const Grain> grains,
+                               const Options &options = {}) {
   diagnostics::Scope scope(options.diagnostics);
   if (options.diagnostics) options.diagnostics->covered();
   const auto operation_start = detail::Clock::now();
@@ -167,5 +169,17 @@ inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
   }(); // Includes destruction of all private scratch.
   completed.statistics.total_seconds = detail::seconds(operation_start);
   return completed;
+}
+inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
+                      std::span<const Id> seeds, std::span<const Grain> grains,
+                      const Options &options = {}) {
+  return remap_dispatch(grid, slots, values, seeds, grains, options);
+}
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline Result<> remap(Grid grid, Slot slots, std::span<const double> values,
+                      std::span<const Id> seeds, std::span<const Grain> grains,
+                      const Options &options = {}) {
+  return remap_dispatch(grid, slots, values, seeds, grains, options);
 }
 } // namespace pfc::grain::remapping

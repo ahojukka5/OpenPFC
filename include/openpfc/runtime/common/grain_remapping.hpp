@@ -89,20 +89,14 @@ inline double seconds(Clock::time_point start) {
   return std::chrono::duration<double>(Clock::now() - start).count();
 }
 
-OPENPFC_INLINE_HD bool neighbor(Grid2D grid, std::size_t cell, int dx, int dy,
+template <class Grid>
+OPENPFC_INLINE_HD bool neighbor(Grid grid, std::size_t cell, int dx, int dy, int dz,
                                 std::size_t &result) {
-  auto x = static_cast<long long>(cell % grid.nx) + dx;
-  auto y = static_cast<long long>(cell / grid.nx) + dy;
-  const auto nx = static_cast<long long>(grid.nx),
-             ny = static_cast<long long>(grid.ny);
-  if (grid.periodic_x) x = (x % nx + nx) % nx;
-  if (grid.periodic_y) y = (y % ny + ny) % ny;
-  if (x < 0 || y < 0 || x >= nx || y >= ny) return false;
-  result = static_cast<std::size_t>(x) + grid.nx * static_cast<std::size_t>(y);
-  return true;
+  return pfc::grain::detail::offset(grid, cell, dx, dy, dz, result);
 }
 
-inline bool layout(Grid2D grid, Slot slots, std::size_t values, std::size_t labels,
+template <class Grid>
+inline bool layout(Grid grid, Slot slots, std::size_t values, std::size_t labels,
                    const Options &options) {
   return slots != 0 && slots != unassigned &&
          values <= std::numeric_limits<std::size_t>::max() / 64 &&
@@ -110,8 +104,9 @@ inline bool layout(Grid2D grid, Slot slots, std::size_t values, std::size_t labe
              TransferStatus::Success &&
          grid.nx <= static_cast<std::size_t>(std::numeric_limits<int>::max()) &&
          grid.ny <= static_cast<std::size_t>(std::numeric_limits<int>::max()) &&
-         (grid.connectivity == Connectivity::Four ||
-          grid.connectivity == Connectivity::Eight) &&
+         pfc::grain::detail::depth(grid) <=
+             static_cast<std::size_t>(std::numeric_limits<int>::max()) &&
+         pfc::grain::detail::connectivity_valid(grid) &&
          options.contact_radius >= 1 &&
          options.contact_radius <
              static_cast<std::size_t>(std::numeric_limits<int>::max()) &&
@@ -133,8 +128,8 @@ identities(std::span<const pfc::grain::detail::Assignment> assignments) {
 
 // Independent distance BFS gives the exact synchronous propagation horizon;
 // the ownership values themselves come from the prerequisite priority-queue oracle.
-template <bool Observe = false>
-inline std::size_t horizon(Grid2D grid, Slot slots,
+template <bool Observe = false, class Grid>
+inline std::size_t horizon(Grid grid, Slot slots,
                            std::span<const std::uint8_t> occupied,
                            std::span<const Id> seeds, bool complete) {
   auto *counts = diagnostics::host_accesses();
@@ -157,46 +152,53 @@ inline std::size_t horizon(Grid2D grid, Slot slots,
     auto i = queue.front();
     queue.pop();
     maximum = std::max(maximum, distance[i]);
-    for (int dy = -1; dy <= 1; ++dy)
-      for (int dx = -1; dx <= 1; ++dx) {
-        if ((!dx && !dy) || (grid.connectivity == Connectivity::Four && dx && dy))
-          continue;
-        std::size_t cell;
-        if (!neighbor(grid, i % cells, dx, dy, cell)) continue;
-        const auto j = (i / cells) * cells + cell;
-        if (diagnostics::load<Observe>(occupied.data(), j, counts,
-                                       diagnostics::Field::Occupancy) &&
-            distance[j] == absent) {
-          distance[j] = distance[i] + 1;
-          queue.push(j);
+    const int zr = pfc::grain::detail::depth_radius(grid, 1);
+    for (int dz = -zr; dz <= zr; ++dz)
+      for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+          if ((!dx && !dy && !dz) ||
+              !pfc::grain::detail::stencil(grid, dx, dy, dz, 1))
+            continue;
+          std::size_t cell;
+          if (!neighbor(grid, i % cells, dx, dy, dz, cell)) continue;
+          const auto j = (i / cells) * cells + cell;
+          if (diagnostics::load<Observe>(occupied.data(), j, counts,
+                                         diagnostics::Field::Occupancy) &&
+              distance[j] == absent) {
+            distance[j] = distance[i] + 1;
+            queue.push(j);
+          }
         }
-      }
   }
   (void)slots;
   return complete ? std::max<std::size_t>(1, maximum) : maximum + 1;
 }
 
-template <bool Observe = false>
-inline bool unsafe(Grid2D grid, std::span<const Id> labels) {
+template <bool Observe = false, class Grid>
+inline bool unsafe(Grid grid, std::span<const Id> labels) {
   auto *counts = diagnostics::host_accesses();
   const auto cells = cell_count(grid);
   for (std::size_t i = 0; i < labels.size(); ++i) {
     if (!diagnostics::load<Observe>(labels.data(), i, counts,
                                     diagnostics::Field::Labels))
       continue;
-    for (int dy = -1; dy <= 1; ++dy)
-      for (int dx = -1; dx <= 1; ++dx) {
-        if ((!dx && !dy) || (grid.connectivity == Connectivity::Four && dx && dy))
-          continue;
-        std::size_t cell;
-        if (!neighbor(grid, i % cells, dx, dy, cell)) continue;
-        const auto other =
-            diagnostics::load<Observe>(labels.data(), (i / cells) * cells + cell,
-                                       counts, diagnostics::Field::Labels);
-        if (other && other != diagnostics::load<Observe>(labels.data(), i, counts,
-                                                         diagnostics::Field::Labels))
-          return true;
-      }
+    const int zr = pfc::grain::detail::depth_radius(grid, 1);
+    for (int dz = -zr; dz <= zr; ++dz)
+      for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+          if ((!dx && !dy && !dz) ||
+              !pfc::grain::detail::stencil(grid, dx, dy, dz, 1))
+            continue;
+          std::size_t cell;
+          if (!neighbor(grid, i % cells, dx, dy, dz, cell)) continue;
+          const auto other =
+              diagnostics::load<Observe>(labels.data(), (i / cells) * cells + cell,
+                                         counts, diagnostics::Field::Labels);
+          if (other &&
+              other != diagnostics::load<Observe>(labels.data(), i, counts,
+                                                  diagnostics::Field::Labels))
+            return true;
+        }
   }
   return false;
 }

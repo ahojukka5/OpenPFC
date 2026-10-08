@@ -38,6 +38,33 @@ PropagationResult propagate(backend::CUDATag, Grid2D grid, Slot slots,
 AdjacencyResult adjacency(backend::CUDATag, Grid2D grid, Slot slots,
                           std::span<const Id> labels, std::span<const Id> identities,
                           std::span<Contact> output, std::size_t contact_radius = 1);
+namespace detail {
+PropagationResult propagate(backend::CUDATag, Grid3D grid, Slot slots,
+                            std::span<const std::uint8_t> occupancy,
+                            std::span<const Id> seeds, std::span<Id> output,
+                            std::size_t max_sweeps);
+AdjacencyResult adjacency(backend::CUDATag, Grid3D grid, Slot slots,
+                          std::span<const Id> labels, std::span<const Id> identities,
+                          std::span<Contact> output, std::size_t contact_radius = 1);
+} // namespace detail
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline PropagationResult propagate(backend::CUDATag tag, Grid grid, Slot slots,
+                                   std::span<const std::uint8_t> occupancy,
+                                   std::span<const Id> seeds, std::span<Id> output,
+                                   std::size_t max_sweeps) {
+  return detail::propagate(tag, grid, slots, occupancy, seeds, output, max_sweeps);
+}
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline AdjacencyResult
+adjacency(backend::CUDATag tag, Grid grid, Slot slots, std::span<const Id> labels,
+          std::span<const Id> identities, std::span<Contact> output,
+          std::size_t contact_radius = 1) {
+  return detail::adjacency(tag, grid, slots, labels, identities, output,
+                           contact_radius);
+}
+
 #endif
 #if defined(OpenPFC_ENABLE_HIP)
 PropagationResult propagate(backend::HIPTag, Grid2D grid, Slot slots,
@@ -47,14 +74,41 @@ PropagationResult propagate(backend::HIPTag, Grid2D grid, Slot slots,
 AdjacencyResult adjacency(backend::HIPTag, Grid2D grid, Slot slots,
                           std::span<const Id> labels, std::span<const Id> identities,
                           std::span<Contact> output, std::size_t contact_radius = 1);
+namespace detail {
+PropagationResult propagate(backend::HIPTag, Grid3D grid, Slot slots,
+                            std::span<const std::uint8_t> occupancy,
+                            std::span<const Id> seeds, std::span<Id> output,
+                            std::size_t max_sweeps);
+AdjacencyResult adjacency(backend::HIPTag, Grid3D grid, Slot slots,
+                          std::span<const Id> labels, std::span<const Id> identities,
+                          std::span<Contact> output, std::size_t contact_radius = 1);
+} // namespace detail
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline PropagationResult propagate(backend::HIPTag tag, Grid grid, Slot slots,
+                                   std::span<const std::uint8_t> occupancy,
+                                   std::span<const Id> seeds, std::span<Id> output,
+                                   std::size_t max_sweeps) {
+  return detail::propagate(tag, grid, slots, occupancy, seeds, output, max_sweeps);
+}
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline AdjacencyResult
+adjacency(backend::HIPTag tag, Grid grid, Slot slots, std::span<const Id> labels,
+          std::span<const Id> identities, std::span<Contact> output,
+          std::size_t contact_radius = 1) {
+  return detail::adjacency(tag, grid, slots, labels, identities, output,
+                           contact_radius);
+}
+
 #endif
 /// Adjacency checks same-cell cross-plane overlaps and all stencil neighbors
-/// across all slots; contact_radius is explicit (Four Manhattan / Eight Chebyshev).
-/// Identities is a sorted unique nonzero HOST registry. Output is a canonical DEVICE
-/// contact list; active is compact HOST metadata. edge_count reports required
-/// capacity, including on CapacityOverflow. Unknown labels and insufficient edge
-/// capacity leave output unchanged. Internal dense registry matrix costs O(registry
-/// size squared) storage; size overflow is rejected, and allocation/runtime failures
-/// throw.
+/// across all slots; contact_radius is explicit (Four/Six Manhattan /
+/// Eight/TwentySix Chebyshev). Identities is a sorted unique nonzero HOST registry.
+/// Output is a canonical DEVICE contact list; active is compact HOST metadata.
+/// edge_count reports required capacity, including on CapacityOverflow. Unknown
+/// labels and insufficient edge capacity leave output unchanged. Internal dense
+/// registry matrix costs O(registry size squared) storage; size overflow is
+/// rejected, and allocation/runtime failures throw.
 
 } // namespace pfc::grain::tracking

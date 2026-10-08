@@ -12,8 +12,9 @@ three returned members together only when status is `TransferStatus::Success`.
 A failure returns its explicit status and empty staged arrays and registry.
 Allocation failure also leaves the originals intact.
 
-The primitive uses local 2D slot-major arrays: index
-`slot*(nx*ny) + x + nx*y`. It does not update topology, observation epochs,
+The primitive uses local slot-major arrays: 2D index
+`slot*(nx*ny) + x + nx*y`, or 3D index
+`slot*(nx*ny*nz) + x + nx*(y + ny*z)` with an explicit `Grid3D`. It does not update topology, observation epochs,
 halos, or distributed state. A `Transfer` holds the grain `id`, original
 `source` slot, and `destination` slot. Slots are zero-based and independent
 of persistent identity. Each grain must occur once in the sorted registry;

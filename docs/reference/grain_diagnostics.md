@@ -126,3 +126,7 @@ enabled replay elapsed intervals as disabled-operation timings or subtract
 observation overhead. External lifecycle timing must bracket synchronized
 remapping, publication and release itself; internal statistics are not that
 external lifecycle.
+
+For `Grid3D`, a completed `full_plane_scans` traversal covers one entire
+slot volume, not one z slice. All other observation and coverage semantics
+are unchanged; see [local 3D remapping](grain_3d.md).
