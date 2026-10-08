@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+# SPDX-License-Identifier: AGPL-3.0-or-later
+if(TARGET coupled_fields_example)
+  return()
+endif()
+add_executable(coupled_fields_example main.cpp)
+target_link_libraries(coupled_fields_example PRIVATE OpenPFC)
+if(OpenPFC_BUILD_TESTS)
+  add_test(NAME CoupledFieldsExample COMMAND coupled_fields_example)
+  if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
+    add_executable(test_coupled_fields_hip hip.hip)
+    target_link_libraries(test_coupled_fields_hip PRIVATE OpenPFC openpfc_hip_kernels hip::host)
+    set_target_properties(test_coupled_fields_hip PROPERTIES HIP_STANDARD 20 HIP_STANDARD_REQUIRED ON)
+    add_test(NAME HIP_CoupledFields COMMAND test_coupled_fields_hip)
+  endif()
+endif()
