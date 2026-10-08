@@ -11,55 +11,94 @@
 
 namespace pfc::grain::remapping {
 namespace detail {
-__global__ inline void preflight(std::size_t cells, Slot slots, const double *values,
-                                 const Id *seeds,
-                                 const pfc::grain::detail::Assignment *assignments,
-                                 std::size_t grains, std::uint8_t *occupied,
-                                 unsigned *error) {
+template <bool Observe>
+__device__ void error_max(unsigned *error, Status status,
+                          diagnostics::Accesses *counts) {
+  if constexpr (Observe) {
+    diagnostics::read(counts, diagnostics::Field::Flags, sizeof(unsigned));
+    diagnostics::write(counts, diagnostics::Field::Flags, sizeof(unsigned));
+  }
+  atomicMax(error, static_cast<unsigned>(status));
+}
+template <bool Observe>
+__global__ void
+preflight(std::size_t cells, Slot slots, const double *values, const Id *seeds,
+          const pfc::grain::detail::Assignment *assignments, std::size_t grains,
+          std::uint8_t *occupied, unsigned *error, diagnostics::Accesses *totals) {
+  std::conditional_t<Observe, diagnostics::Accesses, diagnostics::NoAccesses>
+      local{};
+  diagnostics::Accesses *counts = nullptr;
+  if constexpr (Observe) counts = &local;
   for (auto i = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < cells * slots; i += static_cast<std::size_t>(gridDim.x) * blockDim.x) {
-    const auto q = values[i];
-    occupied[i] = q > 0;
+    const auto q =
+        diagnostics::load<Observe>(values, i, counts, diagnostics::Field::Values);
+    diagnostics::store<Observe>(occupied, i, std::uint8_t(q > 0), counts,
+                                diagnostics::Field::Occupancy);
     if (!(q >= 0 && q <= std::numeric_limits<double>::max())) {
-      atomicMax(error, static_cast<unsigned>(Status::InvalidInput));
+      error_max<Observe>(error, Status::InvalidInput, counts);
       continue;
     }
-    if (!occupied[i] || !seeds[i]) continue;
-    const auto j =
-        pfc::grain::detail::find_assignment(assignments, grains, seeds[i]);
+    if (!diagnostics::load<Observe>(occupied, i, counts,
+                                    diagnostics::Field::Occupancy) ||
+        !diagnostics::load<Observe>(seeds, i, counts, diagnostics::Field::Labels))
+      continue;
+    const auto j = pfc::grain::detail::find_assignment<Observe>(
+        assignments, grains,
+        diagnostics::load<Observe>(seeds, i, counts, diagnostics::Field::Labels),
+        counts);
     if (j == grains)
-      atomicMax(error, static_cast<unsigned>(Status::UnknownIdentity));
-    else if (assignments[j].source != i / cells)
-      atomicMax(error, static_cast<unsigned>(Status::InvalidInput));
+      error_max<Observe>(error, Status::UnknownIdentity, counts);
+    else if (diagnostics::load<Observe>(assignments, j, counts,
+                                        diagnostics::Field::Assignments)
+                 .source != i / cells)
+      error_max<Observe>(error, Status::InvalidInput, counts);
   }
+  if constexpr (Observe) diagnostics::merge(totals, local);
 }
-
-__global__ inline void inspect(Grid2D grid, Slot slots, const Id *labels,
-                               const pfc::grain::detail::Assignment *assignments,
-                               std::size_t grains, unsigned long long *counts,
-                               unsigned *error) {
+template <bool Observe>
+__global__ void inspect(Grid2D grid, Slot slots, const Id *labels,
+                        const pfc::grain::detail::Assignment *assignments,
+                        std::size_t grains, unsigned long long *support,
+                        unsigned *error, diagnostics::Accesses *totals) {
+  std::conditional_t<Observe, diagnostics::Accesses, diagnostics::NoAccesses>
+      local{};
+  diagnostics::Accesses *counts = nullptr;
+  if constexpr (Observe) counts = &local;
   const auto cells = grid.nx * grid.ny;
   for (auto i = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < cells * slots; i += static_cast<std::size_t>(gridDim.x) * blockDim.x) {
-    if (!labels[i]) continue;
-    const auto index =
-        pfc::grain::detail::find_assignment(assignments, grains, labels[i]);
+    if (!diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels))
+      continue;
+    const auto index = pfc::grain::detail::find_assignment<Observe>(
+        assignments, grains,
+        diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels),
+        counts);
     if (index == grains) {
-      atomicMax(error, static_cast<unsigned>(Status::UnknownIdentity));
+      error_max<Observe>(error, Status::UnknownIdentity, counts);
       continue;
     }
-    atomicAdd(counts + index, 1ULL);
+    if constexpr (Observe) {
+      diagnostics::read(counts, diagnostics::Field::Counts,
+                        sizeof(unsigned long long));
+      diagnostics::write(counts, diagnostics::Field::Counts,
+                         sizeof(unsigned long long));
+    }
+    atomicAdd(support + index, 1ULL);
     for (int dy = -1; dy <= 1; ++dy)
       for (int dx = -1; dx <= 1; ++dx) {
         if ((!dx && !dy) || (grid.connectivity == Connectivity::Four && dx && dy))
           continue;
         std::size_t cell;
         if (!neighbor(grid, i % cells, dx, dy, cell)) continue;
-        const auto other = labels[(i / cells) * cells + cell];
-        if (other && other != labels[i])
-          atomicMax(error, static_cast<unsigned>(Status::UnsafeCadence));
+        const auto other = diagnostics::load<Observe>(
+            labels, (i / cells) * cells + cell, counts, diagnostics::Field::Labels);
+        if (other && other != diagnostics::load<Observe>(labels, i, counts,
+                                                         diagnostics::Field::Labels))
+          error_max<Observe>(error, Status::UnsafeCadence, counts);
       }
   }
+  if constexpr (Observe) diagnostics::merge(totals, local);
 }
 } // namespace detail
 
@@ -74,8 +113,10 @@ Result<pfc::core::DataBuffer<Backend, double>, pfc::core::DataBuffer<Backend, Id
 remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &values,
       const pfc::core::DataBuffer<Backend, Id> &seeds, std::span<const Grain> grains,
       const Options &options = {}, pfc::gpuStream_t stream = nullptr) {
+  diagnostics::Scope scope(options.diagnostics);
+  if (options.diagnostics) options.diagnostics->covered();
   const auto operation_start = detail::Clock::now();
-  const auto operation = [&] {
+  const auto operation = [&]<bool Observe> {
     using Values = pfc::core::DataBuffer<Backend, double>;
     using Labels = pfc::core::DataBuffer<Backend, Id>;
     Result<Values, Labels> result;
@@ -103,21 +144,28 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
     stage_start = detection;
     stage = &result.statistics.detection_seconds;
     const auto cells = cell_count(grid), n = values.size();
+    diagnostics::Observation<Backend> observation;
+    diagnostics::Interval preflight_interval(diagnostics::Phase::Preflight);
     pfc::core::DataBuffer<Backend, pfc::grain::detail::Assignment> assignments(
         prepared.assignments.size());
-    assignments.copy_from_host(prepared.assignments);
+    assignments.copy_from_host(prepared.assignments,
+                               diagnostics::Field::Assignments);
     pfc::core::DataBuffer<Backend, std::uint8_t> occupied(n);
     Labels propagated(n);
     pfc::core::DataBuffer<Backend, unsigned> error(1);
-    error.copy_from_host(std::vector<unsigned>{0});
+    error.copy_from_host(std::vector<unsigned>{0}, diagnostics::Field::Flags);
     const auto blocks =
         static_cast<unsigned>(std::min<std::size_t>((n - 1) / 256 + 1, 65535));
-    GPU_LAUNCH_KERNEL(detail::preflight, blocks, 256,
+    GPU_LAUNCH_KERNEL(detail::preflight<Observe>, blocks, 256,
                       (cells, slots, values.data(), seeds.data(), assignments.data(),
-                       assignments.size(), occupied.data(), error.data()),
+                       assignments.size(), occupied.data(), error.data(),
+                       observation.data()),
                       0);
     GPU_CHECK(pfc::gpuDeviceSynchronize());
-    auto bad = static_cast<Status>(error.to_host().front());
+    auto bad = static_cast<Status>(error.to_host(diagnostics::Field::Flags).front());
+    diagnostics::scan(diagnostics::host_accesses(), diagnostics::Phase::Preflight,
+                      slots);
+    preflight_interval.finish();
     if (bad != Status::Success) {
       if (bad == Status::InvalidInput)
         result.transfer_status = TransferStatus::InvalidSupport;
@@ -132,18 +180,23 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
       return finish(ownership.status == tracking::Status::Unseeded
                         ? Status::Unseeded
                         : Status::IterationLimit);
+    diagnostics::Interval inspection_interval(diagnostics::Phase::Inspection);
     pfc::core::DataBuffer<Backend, unsigned long long> device_counts(
         assignments.size());
     device_counts.copy_from_host(
-        std::vector<unsigned long long>(assignments.size(), 0));
-    GPU_LAUNCH_KERNEL(detail::inspect, blocks, 256,
+        std::vector<unsigned long long>(assignments.size(), 0),
+        diagnostics::Field::Counts);
+    GPU_LAUNCH_KERNEL(detail::inspect<Observe>, blocks, 256,
                       (grid, slots, propagated.data(), assignments.data(),
-                       assignments.size(), device_counts.data(), error.data()),
+                       assignments.size(), device_counts.data(), error.data(),
+                       observation.data()),
                       0);
     GPU_CHECK(pfc::gpuDeviceSynchronize());
-    bad = static_cast<Status>(error.to_host().front());
+    bad = static_cast<Status>(error.to_host(diagnostics::Field::Flags).front());
+    diagnostics::scan(diagnostics::host_accesses(), diagnostics::Phase::Inspection,
+                      slots);
     if (bad != Status::Success) return finish(bad);
-    const auto counted = device_counts.to_host();
+    const auto counted = device_counts.to_host(diagnostics::Field::Counts);
     if (std::find(counted.begin(), counted.end(), 0) != counted.end()) {
       result.transfer_status = TransferStatus::MissingSupport;
       return finish(Status::MissingSupport);
@@ -152,6 +205,7 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
     const std::vector<double> weights(counted.begin(), counted.end());
     const auto ids = detail::identities(prepared.assignments);
     result.statistics.detection_seconds = detail::seconds(detection);
+    inspection_interval.finish();
     const auto adjacency = detail::Clock::now();
     stage_start = adjacency;
     stage = &result.statistics.adjacency_seconds;
@@ -167,23 +221,31 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
                         ? Status::CapacityOverflow
                         : Status::UnknownIdentity);
     }
+    diagnostics::Interval graph_publication_interval(diagnostics::Phase::Adjacency);
     std::vector<Contact> contacts(topology.edge_count);
-    if (!contacts.empty())
+    if (!contacts.empty()) {
       GPU_CHECK(pfc::gpuMemcpy(contacts.data(), device_edges.data(),
                                contacts.size() * sizeof(Contact),
                                pfc::gpuMemcpyDeviceToHost));
+      diagnostics::copy(diagnostics::Direction::DeviceToHost,
+                        diagnostics::Field::Contacts,
+                        contacts.size() * sizeof(Contact));
+    }
     auto graph = make_contact_graph(std::move(topology.active), std::move(contacts));
     if (graph.vertices != ids) return finish(Status::MissingSupport);
     result.statistics.graph_device_to_host_bytes =
         topology.edge_count * sizeof(Contact);
     result.statistics.adjacency_seconds = detail::seconds(adjacency);
+    graph_publication_interval.finish();
     const auto solving = detail::Clock::now();
+    diagnostics::Interval decision_interval(diagnostics::Phase::Decision);
     stage_start = solving;
     stage = &result.statistics.decision_seconds;
     auto decision = detail::decide(graph, grains, slots, weights, options);
     result.statistics.attempts = decision.attempts;
     result.statistics.conflict = decision.conflict;
     result.statistics.decision_seconds = detail::seconds(solving);
+    decision_interval.finish();
     if (decision.status != Status::Success) return finish(decision.status);
     detail::payload(result.statistics, ids, counts, decision.moves);
     const auto moving = detail::Clock::now();
@@ -213,7 +275,15 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
     result.statistics.synchronization_seconds += detail::seconds(completed);
     return finish(Status::Success);
   };
-  auto completed = operation(); // Includes destruction of all private scratch.
+  auto completed = [&] {
+    try {
+      return options.diagnostics ? operation.template operator()<true>()
+                                 : operation.template operator()<false>();
+    } catch (...) {
+      if (options.diagnostics) options.diagnostics->fail();
+      throw;
+    }
+  }(); // Includes destruction of all private scratch.
   completed.statistics.total_seconds = detail::seconds(operation_start);
   return completed;
 }

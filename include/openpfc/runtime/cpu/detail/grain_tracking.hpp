@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 #include <functional>
+#include <openpfc/kernel/grain/diagnostics.hpp>
 #include <openpfc/kernel/grain/topology.hpp>
 #include <queue>
 #include <tuple>
@@ -29,27 +30,47 @@ inline std::size_t checked_size(Grid2D grid, Slot slots) {
 
 // Independent shortest-path oracle: a priority queue ordered by distance and Id,
 // using signed coordinates, not the GPU ping-pong sweeps or device wrap helper.
-inline PropagationResult propagate(Grid2D grid, Slot slots,
-                                   std::span<const std::uint8_t> occupied,
-                                   std::span<const Id> seeds) {
+template <bool Observe>
+inline PropagationResult propagate_impl(Grid2D grid, Slot slots,
+                                        std::span<const std::uint8_t> occupied,
+                                        std::span<const Id> seeds) {
   const auto n = detail::checked_size(grid, slots);
   if (occupied.size() != n || seeds.size() != n)
     throw std::invalid_argument("reference ownership storage mismatch");
   const auto cells = grid.nx * grid.ny;
+  auto *counts = diagnostics::host_accesses();
+  if constexpr (Observe) {
+    diagnostics::scan(counts, diagnostics::Phase::Propagation, slots);
+    for (std::size_t i = 0; i < n; ++i)
+      diagnostics::write(counts, diagnostics::Field::StagedLabels, sizeof(Id));
+  }
   std::vector<Id> output(n, 0);
   std::vector<std::size_t> distance(n, std::numeric_limits<std::size_t>::max());
   using Node = std::tuple<std::size_t, Id, std::size_t>;
   std::priority_queue<Node, std::vector<Node>, std::greater<Node>> queue;
   for (std::size_t i = 0; i < n; ++i)
-    if (occupied[i] && seeds[i]) {
-      output[i] = seeds[i];
+    if (diagnostics::load<Observe>(occupied.data(), i, counts,
+                                   diagnostics::Field::Occupancy) &&
+        diagnostics::load<Observe>(seeds.data(), i, counts,
+                                   diagnostics::Field::Labels)) {
+      diagnostics::store<Observe>(
+          output.data(), i,
+          diagnostics::load<Observe>(seeds.data(), i, counts,
+                                     diagnostics::Field::Labels),
+          counts, diagnostics::Field::StagedLabels);
       distance[i] = 0;
-      queue.emplace(0, seeds[i], i);
+      queue.emplace(0,
+                    diagnostics::load<Observe>(seeds.data(), i, counts,
+                                               diagnostics::Field::Labels),
+                    i);
     }
   while (!queue.empty()) {
     const auto [length, id, i] = queue.top();
     queue.pop();
-    if (length != distance[i] || id != output[i]) continue;
+    if (length != distance[i] ||
+        id != diagnostics::load<Observe>(output.data(), i, counts,
+                                         diagnostics::Field::StagedLabels))
+      continue;
     const auto plane = (i / cells) * cells;
     const auto x = static_cast<long long>((i % cells) % grid.nx),
                y = static_cast<long long>((i % cells) / grid.nx);
@@ -70,39 +91,69 @@ inline PropagationResult propagate(Grid2D grid, Slot slots,
           continue;
         const auto j = plane + static_cast<std::size_t>(xx) +
                        grid.nx * static_cast<std::size_t>(yy);
-        if (!occupied[j] || (seeds[j] != 0 && occupied[j])) continue;
+        if (!diagnostics::load<Observe>(occupied.data(), j, counts,
+                                        diagnostics::Field::Occupancy) ||
+            (diagnostics::load<Observe>(seeds.data(), j, counts,
+                                        diagnostics::Field::Labels) != 0 &&
+             diagnostics::load<Observe>(occupied.data(), j, counts,
+                                        diagnostics::Field::Occupancy)))
+          continue;
         if (length + 1 < distance[j] ||
-            (length + 1 == distance[j] && id < output[j])) {
+            (length + 1 == distance[j] &&
+             id < diagnostics::load<Observe>(output.data(), j, counts,
+                                             diagnostics::Field::StagedLabels))) {
           distance[j] = length + 1;
-          output[j] = id;
+          diagnostics::store<Observe>(output.data(), j, id, counts,
+                                      diagnostics::Field::StagedLabels);
           queue.emplace(length + 1, id, j);
         }
       }
   }
   bool complete = true;
+  if constexpr (Observe)
+    diagnostics::scan(counts, diagnostics::Phase::Propagation, slots);
   for (std::size_t i = 0; i < n; ++i)
-    if (occupied[i] && output[i] == background) complete = false;
+    if (diagnostics::load<Observe>(occupied.data(), i, counts,
+                                   diagnostics::Field::Occupancy) &&
+        diagnostics::load<Observe>(output.data(), i, counts,
+                                   diagnostics::Field::StagedLabels) == background)
+      complete = false;
   return {complete, std::move(output)};
 }
 
 // Brute-force coordinate-pair/slot-pair contact oracle independent of GPU
 // registry matrix extraction. Includes same-cell cross-plane contact.
-inline ContactGraph contact_graph(Grid2D grid, Slot slots,
-                                  std::span<const Id> labels,
-                                  std::size_t radius = 1) {
+template <bool Observe>
+inline ContactGraph contact_graph_impl(Grid2D grid, Slot slots,
+                                       std::span<const Id> labels,
+                                       std::size_t radius = 1) {
   const auto n = detail::checked_size(grid, slots);
   if (labels.size() != n)
     throw std::invalid_argument("reference contact storage mismatch");
   if (radius >= static_cast<std::size_t>(std::numeric_limits<int>::max()))
     throw std::invalid_argument("reference contact radius exceeds coordinate limit");
+  auto *counts = diagnostics::host_accesses();
+  if constexpr (Observe)
+    diagnostics::scan(counts, diagnostics::Phase::Adjacency, slots);
   std::vector<Id> vertices;
   std::vector<Contact> edges;
   const auto cells = grid.nx * grid.ny;
-  for (auto id : labels)
+  for (std::size_t i = 0; i < n; ++i) {
+    auto id = diagnostics::load<Observe>(labels.data(), i, counts,
+                                         diagnostics::Field::Labels);
     if (id) vertices.push_back(id);
+  }
   for (std::size_t a = 0; a < labels.size(); ++a)
     for (std::size_t b = a + 1; b < labels.size(); ++b) {
-      if (!labels[a] || !labels[b] || labels[a] == labels[b]) continue;
+      if (!diagnostics::load<Observe>(labels.data(), a, counts,
+                                      diagnostics::Field::Labels) ||
+          !diagnostics::load<Observe>(labels.data(), b, counts,
+                                      diagnostics::Field::Labels) ||
+          diagnostics::load<Observe>(labels.data(), a, counts,
+                                     diagnostics::Field::Labels) ==
+              diagnostics::load<Observe>(labels.data(), b, counts,
+                                         diagnostics::Field::Labels))
+        continue;
       const auto ax = (a % cells) % grid.nx, ay = (a % cells) / grid.nx;
       const auto bx = (b % cells) % grid.nx, by = (b % cells) / grid.nx;
       auto dx = ax > bx ? ax - bx : bx - ax, dy = ay > by ? ay - by : by - ay;
@@ -110,9 +161,41 @@ inline ContactGraph contact_graph(Grid2D grid, Slot slots,
       if (grid.periodic_y) dy = std::min(dy, grid.ny - dy);
       if ((grid.connectivity == Connectivity::Four && dx + dy <= radius) ||
           (grid.connectivity == Connectivity::Eight && dx <= radius && dy <= radius))
-        edges.push_back({labels[a], labels[b]});
+        edges.push_back({diagnostics::load<Observe>(labels.data(), a, counts,
+                                                    diagnostics::Field::Labels),
+                         diagnostics::load<Observe>(labels.data(), b, counts,
+                                                    diagnostics::Field::Labels)});
     }
   return make_contact_graph(vertices, edges);
+}
+
+inline PropagationResult propagate(Grid2D grid, Slot slots,
+                                   std::span<const std::uint8_t> occupied,
+                                   std::span<const Id> seeds) {
+  if (diagnostics::current) {
+    try {
+      diagnostics::current->covered();
+      return propagate_impl<true>(grid, slots, occupied, seeds);
+    } catch (...) {
+      diagnostics::current->fail();
+      throw;
+    }
+  }
+  return propagate_impl<false>(grid, slots, occupied, seeds);
+}
+inline ContactGraph contact_graph(Grid2D grid, Slot slots,
+                                  std::span<const Id> labels,
+                                  std::size_t radius = 1) {
+  if (diagnostics::current) {
+    try {
+      diagnostics::current->covered();
+      return contact_graph_impl<true>(grid, slots, labels, radius);
+    } catch (...) {
+      diagnostics::current->fail();
+      throw;
+    }
+  }
+  return contact_graph_impl<false>(grid, slots, labels, radius);
 }
 
 } // namespace pfc::grain::tracking::reference

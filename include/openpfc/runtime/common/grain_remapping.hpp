@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <openpfc/kernel/grain/diagnostics.hpp>
 #include <openpfc/kernel/grain/transfer.hpp>
 #include <openpfc/runtime/cpu/detail/grain_coloring.hpp>
 
@@ -33,6 +34,8 @@ enum class Method {
 };
 
 struct Options {
+  Diagnostics *diagnostics =
+      nullptr; ///< Null explicitly disables nested observation.
   bool check_now = true;
   std::uint64_t epoch = 0; ///< Caller observation epoch, not numerical time.
   std::size_t contact_radius = 3;
@@ -130,15 +133,22 @@ identities(std::span<const pfc::grain::detail::Assignment> assignments) {
 
 // Independent distance BFS gives the exact synchronous propagation horizon;
 // the ownership values themselves come from the prerequisite priority-queue oracle.
+template <bool Observe = false>
 inline std::size_t horizon(Grid2D grid, Slot slots,
                            std::span<const std::uint8_t> occupied,
                            std::span<const Id> seeds, bool complete) {
+  auto *counts = diagnostics::host_accesses();
+  if constexpr (Observe)
+    diagnostics::scan(counts, diagnostics::Phase::Inspection, slots);
   const auto cells = cell_count(grid),
              absent = std::numeric_limits<std::size_t>::max();
   std::vector<std::size_t> distance(occupied.size(), absent);
   std::queue<std::size_t> queue;
   for (std::size_t i = 0; i < occupied.size(); ++i)
-    if (occupied[i] && seeds[i]) {
+    if (diagnostics::load<Observe>(occupied.data(), i, counts,
+                                   diagnostics::Field::Occupancy) &&
+        diagnostics::load<Observe>(seeds.data(), i, counts,
+                                   diagnostics::Field::Labels)) {
       distance[i] = 0;
       queue.push(i);
     }
@@ -154,7 +164,9 @@ inline std::size_t horizon(Grid2D grid, Slot slots,
         std::size_t cell;
         if (!neighbor(grid, i % cells, dx, dy, cell)) continue;
         const auto j = (i / cells) * cells + cell;
-        if (occupied[j] && distance[j] == absent) {
+        if (diagnostics::load<Observe>(occupied.data(), j, counts,
+                                       diagnostics::Field::Occupancy) &&
+            distance[j] == absent) {
           distance[j] = distance[i] + 1;
           queue.push(j);
         }
@@ -164,18 +176,26 @@ inline std::size_t horizon(Grid2D grid, Slot slots,
   return complete ? std::max<std::size_t>(1, maximum) : maximum + 1;
 }
 
+template <bool Observe = false>
 inline bool unsafe(Grid2D grid, std::span<const Id> labels) {
+  auto *counts = diagnostics::host_accesses();
   const auto cells = cell_count(grid);
   for (std::size_t i = 0; i < labels.size(); ++i) {
-    if (!labels[i]) continue;
+    if (!diagnostics::load<Observe>(labels.data(), i, counts,
+                                    diagnostics::Field::Labels))
+      continue;
     for (int dy = -1; dy <= 1; ++dy)
       for (int dx = -1; dx <= 1; ++dx) {
         if ((!dx && !dy) || (grid.connectivity == Connectivity::Four && dx && dy))
           continue;
         std::size_t cell;
         if (!neighbor(grid, i % cells, dx, dy, cell)) continue;
-        const auto other = labels[(i / cells) * cells + cell];
-        if (other && other != labels[i]) return true;
+        const auto other =
+            diagnostics::load<Observe>(labels.data(), (i / cells) * cells + cell,
+                                       counts, diagnostics::Field::Labels);
+        if (other && other != diagnostics::load<Observe>(labels.data(), i, counts,
+                                                         diagnostics::Field::Labels))
+          return true;
       }
   }
   return false;

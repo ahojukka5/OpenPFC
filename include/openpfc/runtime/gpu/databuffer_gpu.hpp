@@ -22,6 +22,9 @@
 #if defined(OpenPFC_ENABLE_CUDA) || defined(OpenPFC_ENABLE_HIP)
 
 #include <cstddef>
+#include <limits>
+#include <openpfc/kernel/grain/diagnostics.hpp>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -83,6 +86,7 @@ template <typename T, typename Alloc> struct GPUDataBuffer {
 private:
   T *m_device_ptr = nullptr;
   std::size_t m_size = 0;
+  std::optional<pfc::grain::diagnostics::AllocationToken> m_allocation;
 
   static void throw_on_error(typename Alloc::error_t err, const char *op) {
     [[maybe_unused]] const auto cleared = Alloc::get_last_error();
@@ -92,12 +96,16 @@ private:
 
 public:
   explicit GPUDataBuffer(std::size_t size) : m_size(size) {
+    if (size > std::numeric_limits<std::size_t>::max() / sizeof(T))
+      throw std::overflow_error("allocation payload size overflow");
     if (size > 0) {
-      auto err = Alloc::malloc(reinterpret_cast<void **>(&m_device_ptr),
-                               size * sizeof(T));
+      auto err =
+          Alloc::malloc(reinterpret_cast<void **>(&m_device_ptr), size * sizeof(T));
       if (err != Alloc::success) {
         throw_on_error(err, "allocation failed");
       }
+      m_allocation.emplace(pfc::grain::diagnostics::successful_allocation(
+          pfc::grain::diagnostics::Space::Device, size * sizeof(T)));
     }
   }
 
@@ -105,7 +113,13 @@ public:
 
   ~GPUDataBuffer() {
     if (m_device_ptr != nullptr) {
-      [[maybe_unused]] const auto freed = Alloc::free(m_device_ptr);
+      const auto freed = Alloc::free(m_device_ptr);
+      if (m_allocation) {
+        if (freed == Alloc::success)
+          m_allocation->release();
+        else
+          m_allocation->failed_release();
+      }
     }
   }
 
@@ -113,7 +127,8 @@ public:
   GPUDataBuffer &operator=(const GPUDataBuffer &) = delete;
 
   GPUDataBuffer(GPUDataBuffer &&other) noexcept
-      : m_device_ptr(other.m_device_ptr), m_size(other.m_size) {
+      : m_device_ptr(other.m_device_ptr), m_size(other.m_size),
+        m_allocation(std::move(other.m_allocation)) {
     other.m_device_ptr = nullptr;
     other.m_size = 0;
   }
@@ -121,8 +136,16 @@ public:
   GPUDataBuffer &operator=(GPUDataBuffer &&other) noexcept {
     if (this != &other) {
       if (m_device_ptr != nullptr) {
-        [[maybe_unused]] const auto freed = Alloc::free(m_device_ptr);
+        const auto freed = Alloc::free(m_device_ptr);
+        if (m_allocation) {
+          if (freed == Alloc::success)
+            m_allocation->release();
+          else
+            m_allocation->failed_release();
+        }
       }
+      m_allocation.reset();
+      if (other.m_allocation) m_allocation.emplace(std::move(*other.m_allocation));
       m_device_ptr = other.m_device_ptr;
       m_size = other.m_size;
       other.m_device_ptr = nullptr;
@@ -136,11 +159,15 @@ public:
   std::size_t size() const { return m_size; }
   bool empty() const { return m_size == 0; }
 
-  void copy_from_host(const std::vector<T> &src) {
-    copy_from_host(src.data(), src.size());
+  void copy_from_host(
+      const std::vector<T> &src,
+      pfc::grain::diagnostics::Field field = pfc::grain::diagnostics::Field::Other) {
+    copy_from_host(src.data(), src.size(), field);
   }
 
-  void copy_from_host(const T *ptr, std::size_t n) {
+  void copy_from_host(
+      const T *ptr, std::size_t n,
+      pfc::grain::diagnostics::Field field = pfc::grain::diagnostics::Field::Other) {
     if (n != m_size) {
       throw std::runtime_error("Size mismatch in copy_from_host: expected " +
                                std::to_string(m_size) + ", got " +
@@ -151,14 +178,20 @@ public:
       if (err != Alloc::success) {
         throw_on_error(err, "copy failed");
       }
+      pfc::grain::diagnostics::copy(pfc::grain::diagnostics::Direction::HostToDevice,
+                                    field, m_size * sizeof(T));
     }
   }
 
-  void copy_from_host(std::span<const T> src) {
-    copy_from_host(src.data(), src.size());
+  void copy_from_host(
+      std::span<const T> src,
+      pfc::grain::diagnostics::Field field = pfc::grain::diagnostics::Field::Other) {
+    copy_from_host(src.data(), src.size(), field);
   }
 
-  void copy_to_host(T *ptr, std::size_t n) const {
+  void copy_to_host(T *ptr, std::size_t n,
+                    pfc::grain::diagnostics::Field field =
+                        pfc::grain::diagnostics::Field::Other) const {
     if (n != m_size) {
       throw std::runtime_error("Size mismatch in copy_to_host: expected " +
                                std::to_string(m_size) + ", got " +
@@ -169,25 +202,37 @@ public:
       if (err != Alloc::success) {
         throw_on_error(err, "copy failed");
       }
+      pfc::grain::diagnostics::copy(pfc::grain::diagnostics::Direction::DeviceToHost,
+                                    field, m_size * sizeof(T));
     }
   }
 
-  std::vector<T> to_host() const {
+  std::vector<T> to_host(pfc::grain::diagnostics::Field field =
+                             pfc::grain::diagnostics::Field::Other) const {
     std::vector<T> result(m_size);
     if (m_size > 0) {
-      auto err =
-          Alloc::memcpy_d2h(result.data(), m_device_ptr, m_size * sizeof(T));
+      auto err = Alloc::memcpy_d2h(result.data(), m_device_ptr, m_size * sizeof(T));
       if (err != Alloc::success) {
         throw_on_error(err, "copy failed");
       }
+      pfc::grain::diagnostics::copy(pfc::grain::diagnostics::Direction::DeviceToHost,
+                                    field, m_size * sizeof(T));
     }
     return result;
   }
 
   void resize(std::size_t new_size) {
+    if (new_size > std::numeric_limits<std::size_t>::max() / sizeof(T))
+      throw std::overflow_error("allocation payload size overflow");
     if (new_size == 0) {
       if (m_device_ptr != nullptr) {
-        [[maybe_unused]] const auto freed = Alloc::free(m_device_ptr);
+        const auto freed = Alloc::free(m_device_ptr);
+        if (m_allocation) {
+          if (freed == Alloc::success)
+            m_allocation->release();
+          else
+            m_allocation->failed_release();
+        }
         m_device_ptr = nullptr;
       }
       m_size = 0;
@@ -195,15 +240,25 @@ public:
     }
 
     T *new_ptr = nullptr;
-    auto err = Alloc::malloc(reinterpret_cast<void **>(&new_ptr),
-                             new_size * sizeof(T));
+    auto err =
+        Alloc::malloc(reinterpret_cast<void **>(&new_ptr), new_size * sizeof(T));
     if (err != Alloc::success) {
       throw_on_error(err, "allocation failed");
     }
 
+    auto allocation = pfc::grain::diagnostics::successful_allocation(
+        pfc::grain::diagnostics::Space::Device, new_size * sizeof(T));
     if (m_device_ptr != nullptr) {
-      [[maybe_unused]] const auto freed = Alloc::free(m_device_ptr);
+      const auto freed = Alloc::free(m_device_ptr);
+      if (m_allocation) {
+        if (freed == Alloc::success)
+          m_allocation->release();
+        else
+          m_allocation->failed_release();
+      }
     }
+    m_allocation.reset();
+    m_allocation.emplace(std::move(allocation));
     m_device_ptr = new_ptr;
     m_size = new_size;
   }
@@ -223,8 +278,7 @@ struct DataBuffer<backend::CUDATag, T>
 
 #if defined(OpenPFC_ENABLE_HIP)
 template <typename T>
-struct DataBuffer<backend::HIPTag, T>
-    : detail::GPUDataBuffer<T, detail::HIPAlloc> {
+struct DataBuffer<backend::HIPTag, T> : detail::GPUDataBuffer<T, detail::HIPAlloc> {
   using detail::GPUDataBuffer<T, detail::HIPAlloc>::GPUDataBuffer;
 };
 #endif
