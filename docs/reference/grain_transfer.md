@@ -55,3 +55,19 @@ if (staged.status == TransferStatus::Success) {
   // No changes to values, labels, or grain slots precede this decision.
 }
 ```
+
+Include `<openpfc/runtime/gpu/grain_transfer.hpp>` in a CUDA or HIP translation
+unit to use the same overload with `DataBuffer<Backend, double>` values and
+`DataBuffer<Backend, Id>` labels. The returned `TransferResult<Values, Labels>`
+owns staging buffers of those types. A per-cell device kernel validates support
+and final destinations, then copies and clears from original buffers. Only one
+status word and one presence flag per active grain are copied back to the host;
+fields and identity labels remain on the device. An optional stream orders the
+transaction after caller writes; the operation completes before returning.
+Runtime or allocation exceptions preserve the original buffers.
+
+Staging requires one full values buffer and one full labels buffer, plus a
+registry-sized assignment buffer, presence flags, and one status word. The
+reference validation examines pairs of occupied slots at each cell; this is a
+correctness primitive with no performance claim. It does not infer support
+ownership, produce remapping instructions, or repair the contact graph.
