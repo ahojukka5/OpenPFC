@@ -63,7 +63,9 @@ owns staging buffers of those types. A per-cell device kernel validates support
 and final destinations, then copies and clears from original buffers. Only one
 status word and one presence flag per active grain are copied back to the host;
 fields and identity labels remain on the device. An optional stream orders the
-transaction after caller writes; the operation completes before returning.
+transaction after caller writes; nondefault streams explicitly wait for
+default-stream metadata uploads before staging. The default-stream path adds
+no extra stream synchronization. The operation completes before returning.
 Runtime or allocation exceptions preserve the original buffers.
 
 Staging requires one full values buffer and one full labels buffer, plus a

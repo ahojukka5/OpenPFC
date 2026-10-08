@@ -17,14 +17,23 @@ using Backend = pfc::backend::CUDATag;
 namespace {
 using namespace transfer_test;
 
-void check_parity(const Case &fixture) {
+__global__ void produce_transfer_value(double *values, double value) {
+  if (blockIdx.x == 0 && threadIdx.x == 0) values[0] = value;
+}
+
+void check_parity(const Case &fixture, bool asynchronous_producer = false) {
   const auto expected = run(fixture);
   pfc::core::DataBuffer<Backend, double> values(fixture.values.size());
   pfc::core::DataBuffer<Backend, Id> labels(fixture.labels.size());
-  values.copy_from_host(fixture.values);
+  auto uploaded = fixture.values;
+  if (asynchronous_producer) uploaded[0] = fixture.background_value;
+  values.copy_from_host(uploaded);
   labels.copy_from_host(fixture.labels);
   pfc::gpuStream_t stream;
-  GPU_CHECK(pfc::gpuStreamCreate(&stream));
+  GPU_CHECK(pfc::gpuStreamCreateWithFlags(&stream, pfc::gpuStreamNonBlocking));
+  if (asynchronous_producer)
+    GPU_LAUNCH_KERNEL(produce_transfer_value, 1, 1,
+                      (values.data(), fixture.values[0]), stream);
   const auto result = pfc::grain::transfer(fixture.grid, fixture.slots, values,
                                            labels, fixture.grains, fixture.moves,
                                            fixture.background_value, stream);
@@ -98,4 +107,13 @@ TEST_CASE("device grain transfer rejects the same unsafe batches as CPU",
   SECTION("invalid registry") { fixture.grains.front().slot = 3; }
   REQUIRE(run(fixture).status != TransferStatus::Success);
   check_parity(fixture);
+}
+
+TEST_CASE("nonblocking transfer orders caller production and default metadata",
+          "[grain][transfer][stream]") {
+  check_parity(shared_destination(), true);
+  auto rejected = shared_destination();
+  put(rejected, 1, 0, 22, .5);
+  REQUIRE(run(rejected).status == TransferStatus::OccupiedDestination);
+  check_parity(rejected, true);
 }
