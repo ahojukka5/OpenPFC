@@ -12,7 +12,12 @@ labels, and a current `Snapshot` to publish together; every expected
 failure returns empty owning state and leaves the original inputs intact.
 
 Include `<openpfc/runtime/cpu/grain_remapping.hpp>` for the small-grid CPU
-reference path.
+reference path. CUDA/HIP consumers include
+`<openpfc/runtime/gpu/grain_remapping.hpp>` in a translation unit compiled
+by the device compiler, and pass `DataBuffer<Backend, double>` values and
+`DataBuffer<Backend, Id>` seeds. Fields and labels stay device-resident;
+compact counts, graph edges, status, and registry metadata reach the host.
+The implementation uses the same host decision for both paths.
 
 ## Input and publication contract
 
@@ -84,7 +89,7 @@ production baseline. `max_sweeps` separately bounds identity propagation;
 cap. `CapacityOverflow` reports the required edge count and never publishes
 a truncated graph. Registry/layout errors, unknown positive seeds,
 missing support, and transfer rejection are explicit. Mixed malformed
-positive data use deterministic preflight precedence:
+positive data use the same preflight precedence on host and device:
 `UnknownIdentity` outranks `InvalidInput`. `transfer_status` carries a
 registry/support/transaction diagnostic where that layer was involved;
 the primary remapping status always determines success.
@@ -112,8 +117,10 @@ allocations; it is a lower bound, not an allocator high-water measurement.
 Graph device-to-host bytes count the compact edge copy alone.
 
 The CPU contact implementation deliberately uses the independent quadratic
-coordinate-pair oracle for small grids. This API does not claim scalable
-host detection or optimal recoloring.
+coordinate-pair oracle for small grids. Device adjacency currently has a
+quadratic registry matrix and serial canonical pack. These limitations
+are explicit; this API does not claim scalable host detection, optimal
+recoloring, or GPU-resident coloring.
 
 ## Small consumer and validation
 
@@ -131,7 +138,10 @@ with the same update and checks every positive UID sample and integrated
 amplitude at each accepted step, including tiny nonzero tails. Static
 controls cover complete current graphs, deterministic no-ops, retirement,
 wide UIDs, unequal support weights, preserved proper components, K5
-infeasibility, search limits, unsafe cadence, and overflow.
+infeasibility, search limits, unsafe cadence, and overflow. Device tests
+compare each realization and failure diagnostic against the host path and
+include a real producer on a nonblocking caller stream. They require an
+actual device; no host-only skip counts as device parity.
 
 A downstream CPU consumer can use the installed public target:
 
@@ -141,8 +151,12 @@ add_executable(my_grains grain_remapping.cpp)
 target_link_libraries(my_grains PRIVATE OpenPFC::openpfc)
 ```
 
-Build/test through `scripts/build.sh`; the `GrainRemappingExample` entry
-executes the public entry point.
+CUDA/HIP consumers additionally link the exported
+`OpenPFC::openpfc_gpu_kernels` / `OpenPFC::openpfc_hip_kernels` target and
+compile their translation unit with that backend's C++20 device compiler.
+Build/test through `scripts/build.sh` with the backend enabled; the
+`GrainRemappingExample` and backend `CUDA_GrainRemapping` /
+`HIP_GrainRemapping` entries execute the public entry points.
 
 See [identity/topology](../concepts/grain_topology.md),
 [propagation/contacts](../concepts/grain_tracking.md),
