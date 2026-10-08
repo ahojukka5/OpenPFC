@@ -33,7 +33,22 @@
  *
  * Factory functions mirror the `euler.hpp` pattern, binding models and
  * evaluators to the canonical `for_each_interior` driver. They capture
- * `eval` and `model` by reference (must outlive the stepper).
+ * `eval` and `model` by reference (must outlive the stepper). Field factories
+ * also borrow mutable Fields, all of which must outlive the stepper. Their
+ * evaluator must already be bound to these same fields and layouts.
+ *
+ * Stage preparation publishes values into the existing field allocations so
+ * bound halo callbacks, FD views and spectral FFT sources all observe the
+ * current stage. Each RHS performs three full-buffer copies per field:
+ * accepted-to-backup, stage-to-field, and backup-to-accepted. Backups and stage
+ * buffers are allocated once at construction. Field storage must not resize
+ * or change address; preparation callbacks must obey the same constraint.
+ * These borrowed factories are non-reentrant. Accepted values, including
+ * padding, are restored after normal evaluation or preparation exceptions.
+ * Pointwise physics must not throw: exceptions escaping the canonical OpenMP
+ * loop may terminate execution instead of propagating to the stage transaction.
+ * Derivative caches then describe the last evaluated stage: direct evaluator
+ * use after a step requires prepare() again for the accepted state.
  *
  * @see openpfc/kernel/simulation/for_each_interior.hpp for the canonical
  *      point-wise driver loop
@@ -43,8 +58,10 @@
  *      stepper pattern
  */
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -88,9 +105,9 @@ public:
    */
   ExplicitRKStepper(double dt, std::size_t local_size,
                     ButcherTableau<double> tableau, Rhs rhs)
-      : m_dt(dt), m_du(local_size, Scalar{}), m_u_temp(local_size, Scalar{}),
-        m_candidate(local_size, Scalar{}), m_tableau(std::move(tableau)),
-        m_rhs(std::move(rhs)) {
+      : m_dt(dt), m_local_size(local_size), m_du(local_size, Scalar{}),
+        m_u_temp(local_size, Scalar{}), m_candidate(local_size, Scalar{}),
+        m_tableau(std::move(tableau)), m_rhs(std::move(rhs)) {
     const unsigned int s = m_tableau.stage_count();
     m_k.resize(s);
     for (unsigned int i = 0; i < s; ++i) {
@@ -108,6 +125,10 @@ public:
   [[nodiscard]] Attempt attempt(double t, const std::vector<Scalar> &u) {
     const unsigned int s = m_tableau.stage_count();
     const std::size_t n = u.size();
+    if (n != m_local_size || m_du.size() != m_local_size ||
+        m_u_temp.size() != m_local_size) {
+      throw std::invalid_argument("ExplicitRKStepper: input size changed");
+    }
 
     for (unsigned int i = 0; i < s; ++i) {
       m_u_temp = u;
@@ -123,6 +144,10 @@ public:
 
       const double stage_time = t + m_tableau.c(i) * m_dt;
       m_rhs(stage_time, m_u_temp, m_du);
+      if (m_du.size() != n || m_u_temp.size() != n) {
+        throw std::invalid_argument(
+            "ExplicitRKStepper: RHS stage/output size changed");
+      }
       m_k[i] = m_du;
     }
 
@@ -155,13 +180,13 @@ public:
   }
 
   /** Advance host field state by one explicit RK step. */
-  template <pfc::field::HostFieldState<Scalar> F>
-  double step(double t, F &u) {
+  template <pfc::field::HostFieldState<Scalar> F> double step(double t, F &u) {
     return step(t, u.vec());
   }
 
 private:
   double m_dt{0.0};
+  std::size_t m_local_size;
   std::vector<Scalar> m_du;
   std::vector<Scalar> m_u_temp;
   std::vector<Scalar> m_candidate;
@@ -197,9 +222,11 @@ public:
    */
   MultiExplicitRKStepper(double dt, std::array<std::size_t, N> local_sizes,
                          ButcherTableau<double> tableau, Rhs rhs)
-      : m_dt(dt), m_tableau(std::move(tableau)), m_rhs(std::move(rhs)) {
+      : m_dt(dt), m_local_sizes(local_sizes), m_tableau(std::move(tableau)),
+        m_rhs(std::move(rhs)) {
     for (std::size_t i = 0; i < N; ++i) {
       m_du[i].assign(local_sizes[i], Scalar{});
+      m_u_temp[i].assign(local_sizes[i], Scalar{});
       const unsigned int s = m_tableau.stage_count();
       m_k[i].resize(s);
       for (unsigned int j = 0; j < s; ++j) {
@@ -224,6 +251,7 @@ public:
 
     const unsigned int s = m_tableau.stage_count();
     auto u_pack = std::tie(u_buffers...);
+    validate_sizes(u_pack, std::index_sequence_for<U...>{});
 
     // Compute stages for each field
     for (unsigned int i = 0; i < s; ++i) {
@@ -259,12 +287,13 @@ private:
   template <class... U, std::size_t... I>
   auto make_u_temp_tuples(std::tuple<std::vector<U> &...> &u_pack,
                           std::index_sequence<I...>, unsigned int stage_idx) {
-    return std::make_tuple(make_u_temp_one<I>(std::get<I>(u_pack), stage_idx)...);
+    return std::tie(make_u_temp_one<I>(std::get<I>(u_pack), stage_idx)...);
   }
 
   template <std::size_t FieldIdx, class U>
-  std::vector<Scalar> make_u_temp_one(std::vector<U> &u, unsigned int stage_idx) {
-    std::vector<Scalar> u_temp(u.begin(), u.end());
+  std::vector<Scalar> &make_u_temp_one(std::vector<U> &u, unsigned int stage_idx) {
+    auto &u_temp = m_u_temp[FieldIdx];
+    std::copy(u.begin(), u.end(), u_temp.begin());
 
     // Add contributions from previous stages: u_temp += dt * sum_j(a_ij * k_j)
     for (unsigned int j = 0; j < stage_idx; ++j) {
@@ -288,7 +317,22 @@ private:
   template <class DuPack, std::size_t... I>
   void copy_du_to_k(DuPack &du_pack, std::index_sequence<I...>,
                     unsigned int stage_idx) {
+    if ((((std::get<I>(du_pack).size() != m_local_sizes[I]) ||
+          (m_u_temp[I].size() != m_local_sizes[I])) ||
+         ...)) {
+      throw std::invalid_argument("MultiExplicitRKStepper: RHS output size changed");
+    }
     ((m_k[I][stage_idx] = std::get<I>(du_pack)), ...);
+  }
+
+  template <class UPack, std::size_t... I>
+  void validate_sizes(const UPack &u_pack, std::index_sequence<I...>) const {
+    if ((((std::get<I>(u_pack).size() != m_local_sizes[I]) ||
+          (m_du[I].size() != m_local_sizes[I]) ||
+          (m_u_temp[I].size() != m_local_sizes[I])) ||
+         ...)) {
+      throw std::invalid_argument("MultiExplicitRKStepper: input size changed");
+    }
   }
 
   template <class UPack, std::size_t... I>
@@ -311,7 +355,9 @@ private:
   }
 
   double m_dt{0.0};
+  std::array<std::size_t, N> m_local_sizes;
   std::array<std::vector<Scalar>, N> m_du;
+  std::array<std::vector<Scalar>, N> m_u_temp;
   std::array<std::vector<std::vector<Scalar>>, N> m_k; // scratch per field per stage
   ButcherTableau<double> m_tableau;
   Rhs m_rhs;
@@ -330,12 +376,108 @@ private:
 // captured lambda below.
 // -----------------------------------------------------------------------------
 
+namespace detail {
+
+// Keep evaluator views and already-bound halo callbacks valid by preserving
+// the Field allocations. All fields contain stage values during preparation
+// and evaluation; accepted contents are restored on normal or exceptional exit.
+template <std::size_t N> class FieldStageTransaction {
+public:
+  using Buffers = std::array<std::vector<double> *, N>;
+  using Sources = std::array<const std::vector<double> *, N>;
+  explicit FieldStageTransaction(Buffers fields) : m_fields(fields) {
+    for (std::size_t i = 0; i < N; ++i) {
+      for (std::size_t j = 0; j < i; ++j) {
+        if (fields[i] == fields[j]) {
+          throw std::invalid_argument(
+              "RK stage binding: duplicate field references");
+        }
+      }
+      m_sizes[i] = fields[i]->size();
+      m_addresses[i] = fields[i]->data();
+      m_backup[i].resize(m_sizes[i]);
+    }
+  }
+
+  void validate() const {
+    for (std::size_t i = 0; i < N; ++i) {
+      if (m_fields[i]->size() != m_sizes[i] ||
+          m_fields[i]->data() != m_addresses[i]) {
+        throw std::invalid_argument("RK stage binding: bound field storage changed; "
+                                    "recreate evaluator and stepper");
+      }
+    }
+  }
+
+  template <class Fn> void evaluate(const Sources &stage, Fn &&fn) {
+    // Validate every buffer before touching any bound accepted storage.
+    validate();
+    for (std::size_t i = 0; i < N; ++i) {
+      if (stage[i]->size() != m_sizes[i]) {
+        throw std::invalid_argument("RK stage binding: field storage size changed");
+      }
+    }
+    for (std::size_t i = 0; i < N; ++i)
+      std::copy(m_fields[i]->begin(), m_fields[i]->end(), m_backup[i].begin());
+    struct Restore {
+      FieldStageTransaction &binding;
+      ~Restore() { binding.restore(); }
+    } restore{*this};
+    for (std::size_t i = 0; i < N; ++i)
+      std::copy(stage[i]->begin(), stage[i]->end(), m_fields[i]->begin());
+    std::forward<Fn>(fn)();
+    validate();
+  }
+
+private:
+  void restore() noexcept {
+    for (std::size_t i = 0; i < N; ++i) {
+      if (m_fields[i]->size() != m_sizes[i] ||
+          m_fields[i]->data() != m_addresses[i]) {
+        // A malformed preparation callback broke the fixed-storage contract.
+        // Restore accepted contents without an out-of-range copy/allocation;
+        // validate() fails on subsequent use until the caller rebuilds bindings.
+        m_fields[i]->swap(m_backup[i]);
+      } else {
+        std::copy(m_backup[i].begin(), m_backup[i].end(), m_fields[i]->begin());
+      }
+    }
+  }
+  Buffers m_fields;
+  std::array<std::vector<double>, N> m_backup;
+  std::array<std::size_t, N> m_sizes;
+  std::array<double *, N> m_addresses;
+};
+
+// Validate preparation before any stencil reads. This is only a checked
+// forwarding adapter for the existing per-point evaluator/prepare protocol.
+template <class Eval, class Binding> struct CheckedStageEvaluator {
+  Eval &eval;
+  Binding &binding;
+  void prepare() {
+    eval.prepare();
+    binding.validate();
+  }
+  auto operator()(int i, int j, int k) const { return eval(i, j, k); }
+  auto idx(int i, int j, int k) const { return eval.idx(i, j, k); }
+  int imin() const { return eval.imin(); }
+  int imax() const { return eval.imax(); }
+  int jmin() const { return eval.jmin(); }
+  int jmax() const { return eval.jmax(); }
+  int kmin() const { return eval.kmin(); }
+  int kmax() const { return eval.kmax(); }
+};
+} // namespace detail
+
 /**
  * @brief Build an `ExplicitRKStepper` for the canonical point-wise RHS, given
  *        the local buffer size explicitly.
  *
  * Prefer the `Field` overload when you have one — it derives
- * `local_size` from `u.size()`.
+ * `local_size` from `u.size()`. This raw-size overload requires an explicit
+ * `eval.bind_stage(std::vector<double>&)` operation before prepare(). It may
+ * leave eval bound to stepper-owned scratch; rebind before independent use or
+ * destruction of the stepper. Evaluators without this contract fail explicitly.
  *
  * @param eval Per-point gradient evaluator. Captured by reference; must outlive
  *            the returned stepper.
@@ -350,9 +492,18 @@ template <class Eval, class Model>
 [[nodiscard]] auto create(Eval &eval, const Model &model, double dt,
                           std::size_t local_size,
                           const ButcherTableau<double> &tableau) {
-  auto rhs = [&eval, &model](double t, const std::vector<double> & /*u*/,
+  if constexpr (!requires(std::vector<double> &stage) { eval.bind_stage(stage); }) {
+    throw std::invalid_argument(
+        "RK create(eval,...): evaluator must explicitly bind_stage(vector); "
+        "use create(field,eval,...) for existing bound field evaluators");
+  }
+  auto rhs = [&eval, &model](double t, std::vector<double> &u,
                              std::vector<double> &du) {
-    pfc::sim::for_each_interior(model, eval, du.data(), t);
+    if constexpr (requires { eval.bind_stage(u); }) {
+      eval.bind_stage(u);
+      std::fill(du.begin(), du.end(), 0.0);
+      pfc::sim::for_each_interior(model, eval, du.data(), t);
+    }
   };
   return ExplicitRKStepper<decltype(rhs)>(dt, local_size, tableau, std::move(rhs));
 }
@@ -365,19 +516,29 @@ template <class Eval, class Model>
  * pattern used elsewhere in OpenPFC.
  *
  * @param u Local field whose `size()` defines the internal `du` buffer
- *          (and which the application owns). Not stored by the stepper.
+ *          (and which the application owns). Borrowed by the stepper; its
+ *          fixed storage and the evaluator/model must outlive the stepper.
  * @param eval Per-point gradient evaluator. Captured by reference.
  * @param model Physics model. Captured by reference.
  * @param dt Time-step size.
  * @param tableau Butcher tableau defining the RK method coefficients.
  */
-template <class T, class Eval, class Model>
-[[nodiscard]] auto create(const pfc::data::Field<T> &u, Eval &eval,
+template <class Eval, class Model>
+[[nodiscard]] auto create(pfc::data::Field<double> &u, Eval &eval,
                           const Model &model, double dt,
                           const ButcherTableau<double> &tableau) {
-  return create(eval, model, dt, u.size(), tableau);
+  auto rhs = [&eval, &model, offset = u.idx(0, 0, 0),
+              binding = detail::FieldStageTransaction<1>({&u.vec()})](
+                 double t, const std::vector<double> &stage,
+                 std::vector<double> &du) mutable {
+    std::fill(du.begin(), du.end(), 0.0);
+    binding.evaluate({&stage}, [&] {
+      detail::CheckedStageEvaluator checked{eval, binding};
+      pfc::sim::for_each_interior(model, checked, du.data() + offset, t);
+    });
+  };
+  return ExplicitRKStepper<decltype(rhs)>(dt, u.size(), tableau, std::move(rhs));
 }
-
 
 /**
  * @brief Multi-field overload: build a `MultiExplicitRKStepper` from a tuple of
@@ -390,34 +551,59 @@ template <class T, class Eval, class Model>
  * the elements into the per-field `du` buffers in order.
  *
  * @param fields Tuple of `Field` references whose `size()` defines
- *               each per-field internal `du` buffer. The fields themselves
- *               are not stored by the stepper.
+ *               each per-field internal `du` buffer. These mutable fields
+ *               are borrowed and must outlive the stepper with fixed storage.
+ *               Aliased fields and differing layouts are rejected.
  * @param eval Composite per-point evaluator. Captured by reference.
  * @param model Multi-field physics model. Captured by reference.
  * @param dt Time-step size.
  * @param tableau Butcher tableau defining the RK method coefficients.
  */
 template <class... Ts, class Eval, class Model>
-[[nodiscard]] auto create(std::tuple<pfc::data::Field<Ts> &...> fields,
-                          Eval &eval, const Model &model, double dt,
+[[nodiscard]] auto create(std::tuple<pfc::data::Field<Ts> &...> fields, Eval &eval,
+                          const Model &model, double dt,
                           const ButcherTableau<double> &tableau) {
   constexpr std::size_t N = sizeof...(Ts);
+  static_assert(N >= 1, "RK multi-field factory needs at least one field");
+  static_assert((std::is_same_v<Ts, double> && ...),
+                "RK pointwise field factory requires real double fields");
   std::array<std::size_t, N> sizes{};
+  std::array<std::size_t, N> offsets{};
+  typename detail::FieldStageTransaction<N>::Buffers buffers{};
+  const auto &first = std::get<0>(fields);
   std::apply(
       [&](auto &...f) {
         std::size_t i = 0;
-        ((sizes[i++] = f.size()), ...);
+        auto bind = [&](auto &field) {
+          if (field.domain() != first.domain() ||
+              field.box().low != first.box().low ||
+              field.local_size() != first.local_size() ||
+              field.storage_halo() != first.storage_halo()) {
+            throw std::invalid_argument("RK multi-field factory: layouts differ");
+          }
+          sizes[i] = field.size();
+          offsets[i] = field.idx(0, 0, 0);
+          buffers[i++] = &field.vec();
+        };
+        (bind(f), ...);
       },
       fields);
 
-  auto rhs = [&eval, &model](double t, auto & /*u_tuple*/, auto &du_tuple) {
-    auto du_ptrs = std::apply(
-        [](auto &...vs) { return std::make_tuple(vs.data()...); }, du_tuple);
-    pfc::sim::for_each_interior(model, eval, du_ptrs, t);
+  auto rhs = [&eval, &model, offsets,
+              binding = detail::FieldStageTransaction<N>(buffers)](
+                 double t, auto &u_tuple, auto &du_tuple) mutable {
+    std::apply([](auto &...du) { (std::fill(du.begin(), du.end(), 0.0), ...); },
+               du_tuple);
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+      auto du_ptrs = std::make_tuple(std::get<I>(du_tuple).data() + offsets[I]...);
+      binding.evaluate({&std::get<I>(u_tuple)...}, [&] {
+        detail::CheckedStageEvaluator checked{eval, binding};
+        pfc::sim::for_each_interior(model, checked, du_ptrs, t);
+      });
+    }(std::make_index_sequence<N>{});
   };
   return MultiExplicitRKStepper<decltype(rhs), N>(dt, sizes, tableau,
                                                   std::move(rhs));
 }
-
 
 } // namespace pfc::sim::steppers
