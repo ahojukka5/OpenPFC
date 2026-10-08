@@ -77,6 +77,9 @@ transfer(const Grid2D &grid, Slot slots,
       result;
   result.values = pfc::core::DataBuffer<Backend, double>(values.size());
   result.labels = pfc::core::DataBuffer<Backend, Id>(labels.size());
+  // Pageable default-stream uploads need completion before a nonblocking
+  // caller stream can consume their device metadata.
+  if (stream != nullptr) GPU_CHECK(pfc::gpuStreamSynchronize(nullptr));
   const unsigned blocks =
       static_cast<unsigned>(std::min<std::size_t>((cells - 1) / 256 + 1, 65535));
   GPU_LAUNCH_KERNEL(detail::stage_transfer, blocks, 256,
