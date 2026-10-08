@@ -3,6 +3,7 @@
 
 target_sources(openpfc-tests
   PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_rk_stage_binding.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_butcher_tableau.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_embedded_rk.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_etd1.cpp
@@ -39,3 +40,11 @@ add_test(NAME test_step_protocol
          COMMAND $<TARGET_FILE:openpfc-tests> "[step_protocol]")
 set_tests_properties(test_step_protocol PROPERTIES
   ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
+
+add_test(NAME test_rk_stage_binding
+         COMMAND $<TARGET_FILE:openpfc-tests> "[rk_stage_binding]")
+# Isolate the existing complete global allocation provider from other suites.
+add_executable(test_rk_stage_allocations test_rk_stage_allocations.cpp)
+target_include_directories(test_rk_stage_allocations PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(test_rk_stage_allocations PRIVATE OpenPFC Catch2::Catch2WithMain)
+add_test(NAME test_rk_stage_allocations COMMAND test_rk_stage_allocations)
