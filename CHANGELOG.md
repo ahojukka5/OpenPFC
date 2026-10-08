@@ -36,6 +36,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- Kernel-level `pfc::grain` identity and topology contract with persistent grain
+  IDs, recyclable order-parameter slots, canonical contact graphs, topology
+  deltas, and a deterministic local 2D four/eight-neighbor contact oracle.
+  Tracking, field movement and 3D/MPI behavior are not implemented by this
+  contract.
 - A transactional 2D grain remapping entry point composes identity
   propagation, complete contact graphs, bounded host coloring, and strict
   owning field transfers. It reports explicit deferred/unsafe/failure
