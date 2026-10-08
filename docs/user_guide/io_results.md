@@ -59,3 +59,34 @@ Requirements in settings: `saveat > 0`, `fields` array with `name` and `data`.
 - [`tutorials/end_to_end_visualization.md`](../tutorials/end_to_end_visualization.md) — run once, inspect binary or PNG output  
 - [`tutorials/vtk_paraview_workflow.md`](../tutorials/vtk_paraview_workflow.md) — `11_write_results` / `12_cahn_hilliard` + ParaView  
 - [`learning_paths.md`](../learning_paths.md) — documentation tracks by role  
+
+## Compact selections from resident arrays
+
+`pfc::core::gather` in
+[`sparse_vector_ops_gpu.hpp`](../../include/openpfc/runtime/gpu/sparse_vector_ops_gpu.hpp)
+selects GPU-resident `double`, `float`, or `std::uint64_t` values into a
+`SparseVector`. This preserves full-width identity values without converting
+through floating point. An application can reuse a fixed index list for a
+slice or a downsampled selection and download just its selected values:
+
+```cpp
+using Backend = pfc::backend::HIPTag;
+pfc::core::SparseVector<Backend, std::uint64_t> selected(indices);
+pfc::core::gather(selected, resident_ids.data(), resident_ids.size());
+auto compact_ids = selected.data().to_host();
+```
+
+Indices are sorted by the constructor, with duplicate entries retained. The
+matching selected values use that sorted order. The gather downloads the
+index list for bounds validation, leaves its output unchanged on an
+out-of-bounds index, and completes its device work before returning. Inputs
+must be ready on the default stream; synchronize a producer on a nondefault
+stream before calling gather. Source and selection storage must be disjoint.
+An empty selection accepts a null source. A nonempty null source is rejected.
+The CPU gather shares the successful selection and error-message contract;
+its existing bounds-check loop can partially write before an error.
+
+This operation does not compute front locations, aggregate fields, or
+identity-dependent reductions: those are consumer policy. Scatter remains
+`double` only, and the grain remapping overloads still require `double`
+values. Typed selections do not establish a Float32 remapping capability.
