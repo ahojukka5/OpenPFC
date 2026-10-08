@@ -56,13 +56,17 @@ struct PreparedTransfer {
   std::vector<Grain> grains;
 };
 
-inline TransferStatus transfer_layout(const Grid2D &grid, Slot slots,
+template <class Grid>
+inline TransferStatus transfer_layout(const Grid &grid, Slot slots,
                                       std::size_t values, std::size_t labels,
                                       double background_value) {
-  if (!std::isfinite(background_value) || grid.nx == 0 || grid.ny == 0 ||
-      grid.nx > std::numeric_limits<std::size_t>::max() / grid.ny)
+  if (!std::isfinite(background_value)) return TransferStatus::InvalidLayout;
+  std::size_t cells;
+  try {
+    cells = cell_count(grid);
+  } catch (const std::exception &) {
     return TransferStatus::InvalidLayout;
-  const auto cells = grid.nx * grid.ny;
+  }
   if (slots > std::numeric_limits<std::size_t>::max() / cells)
     return TransferStatus::InvalidLayout;
   const auto count = cells * slots;
@@ -273,9 +277,9 @@ OPENPFC_INLINE_HD TransferStatus stage_cell(
  * No graph, tracker, halo, MPI, or snapshot epoch is modified. Publication is
  * caller-owned and must replace values, labels, and grain slots together.
  */
-template <bool Observe>
+template <bool Observe, class Grid>
 inline TransferResult<>
-transfer_impl(const Grid2D &grid, Slot slots, std::span<const double> values,
+transfer_impl(const Grid &grid, Slot slots, std::span<const double> values,
               std::span<const Id> labels, std::span<const Grain> grains,
               std::span<const Transfer> moves, double background_value = 0.0) {
   const auto layout = detail::transfer_layout(grid, slots, values.size(),
@@ -323,10 +327,11 @@ transfer_impl(const Grid2D &grid, Slot slots, std::span<const double> values,
   return result;
 }
 
+template <class Grid>
 inline TransferResult<>
-transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
-         std::span<const Id> labels, std::span<const Grain> grains,
-         std::span<const Transfer> moves, double background_value = 0.0) {
+transfer_dispatch(const Grid &grid, Slot slots, std::span<const double> values,
+                  std::span<const Id> labels, std::span<const Grain> grains,
+                  std::span<const Transfer> moves, double background_value = 0.0) {
   if (diagnostics::current) {
     try {
       diagnostics::current->covered();
@@ -339,6 +344,23 @@ transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
   }
   return transfer_impl<false>(grid, slots, values, labels, grains, moves,
                               background_value);
+}
+
+inline TransferResult<>
+transfer(const Grid2D &grid, Slot slots, std::span<const double> values,
+         std::span<const Id> labels, std::span<const Grain> grains,
+         std::span<const Transfer> moves, double background_value = 0.0) {
+  return transfer_dispatch(grid, slots, values, labels, grains, moves,
+                           background_value);
+}
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline TransferResult<>
+transfer(const Grid &grid, Slot slots, std::span<const double> values,
+         std::span<const Id> labels, std::span<const Grain> grains,
+         std::span<const Transfer> moves, double background_value = 0.0) {
+  return transfer_dispatch(grid, slots, values, labels, grains, moves,
+                           background_value);
 }
 
 } // namespace pfc::grain

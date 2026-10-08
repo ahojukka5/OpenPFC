@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <openpfc/kernel/data/host_device.hpp>
+
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -180,7 +183,7 @@ inline TopologyChange diff_topology(const ContactGraph &before,
 }
 
 /// Explicit single-label cell-neighbor stencil.
-enum class Connectivity { Four, Eight };
+enum class Connectivity { Four, Eight, Six, TwentySix };
 
 /// Local single-domain 2D grid; x is contiguous: index = x + nx*y.
 /// No ghost cells, decomposition, physical metric, or implicit z dimension.
@@ -192,12 +195,82 @@ struct Grid2D {
   Connectivity connectivity = Connectivity::Four;
 };
 
+/// Local 3D grid; x is contiguous: index = x + nx*(y + ny*z).
+/// Six uses face neighbors; TwentySix includes faces, edges and corners.
+struct Grid3D {
+  std::size_t nx = 0;
+  std::size_t ny = 0;
+  std::size_t nz = 0;
+  bool periodic_x = false;
+  bool periodic_y = false;
+  bool periodic_z = false;
+  Connectivity connectivity = Connectivity::Six;
+};
+
+namespace detail {
+OPENPFC_INLINE_HD std::size_t depth(Grid2D) { return 1; }
+OPENPFC_INLINE_HD std::size_t depth(Grid3D grid) { return grid.nz; }
+OPENPFC_INLINE_HD bool periodic_depth(Grid2D) { return false; }
+OPENPFC_INLINE_HD bool periodic_depth(Grid3D grid) { return grid.periodic_z; }
+OPENPFC_INLINE_HD int depth_radius(Grid2D, int) { return 0; }
+OPENPFC_INLINE_HD int depth_radius(Grid3D, int radius) { return radius; }
+OPENPFC_INLINE_HD bool connectivity_valid(Grid2D grid) {
+  return grid.connectivity == Connectivity::Four ||
+         grid.connectivity == Connectivity::Eight;
+}
+OPENPFC_INLINE_HD bool connectivity_valid(Grid3D grid) {
+  return grid.connectivity == Connectivity::Six ||
+         grid.connectivity == Connectivity::TwentySix;
+}
+template <class Grid> OPENPFC_INLINE_HD bool axial(Grid grid) {
+  return grid.connectivity == Connectivity::Four ||
+         grid.connectivity == Connectivity::Six;
+}
+template <class Grid>
+OPENPFC_INLINE_HD bool stencil(Grid grid, int dx, int dy, int dz, int radius) {
+  const auto distance = static_cast<long long>(dx < 0 ? -dx : dx) +
+                        static_cast<long long>(dy < 0 ? -dy : dy) +
+                        static_cast<long long>(dz < 0 ? -dz : dz);
+  return !axial(grid) || distance <= radius;
+}
+/// Checked by public entry points before use; coordinates use wide signed math.
+template <class Grid>
+OPENPFC_INLINE_HD bool offset(Grid grid, std::size_t cell, int dx, int dy, int dz,
+                              std::size_t &result) {
+  const auto nx = static_cast<long long>(grid.nx),
+             ny = static_cast<long long>(grid.ny),
+             nz = static_cast<long long>(depth(grid));
+  auto x = static_cast<long long>(cell % grid.nx) + dx;
+  auto y = static_cast<long long>((cell / grid.nx) % grid.ny) + dy;
+  auto z = static_cast<long long>(cell / (grid.nx * grid.ny)) + dz;
+  if (grid.periodic_x) x = (x % nx + nx) % nx;
+  if (grid.periodic_y) y = (y % ny + ny) % ny;
+  if (periodic_depth(grid)) z = (z % nz + nz) % nz;
+  if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) return false;
+  result = static_cast<std::size_t>(x) +
+           grid.nx *
+               (static_cast<std::size_t>(y) + grid.ny * static_cast<std::size_t>(z));
+  return true;
+}
+} // namespace detail
+
 inline std::size_t cell_count(const Grid2D &grid) {
   if (grid.nx == 0 || grid.ny == 0)
     throw std::invalid_argument("grain grid dimensions must be positive");
   if (grid.nx > std::numeric_limits<std::size_t>::max() / grid.ny)
     throw std::overflow_error("grain grid size overflow");
   return grid.nx * grid.ny;
+}
+
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline std::size_t cell_count(const Grid &grid) {
+  if (grid.nz == 0)
+    throw std::invalid_argument("grain grid dimensions must be positive");
+  const auto plane = cell_count(Grid2D{grid.nx, grid.ny});
+  if (plane > std::numeric_limits<std::size_t>::max() / grid.nz)
+    throw std::overflow_error("grain grid size overflow");
+  return plane * grid.nz;
 }
 
 /// Deterministic four- or eight-neighbor oracle for already identified grains.
@@ -241,6 +314,38 @@ inline ContactGraph contact_graph(const Grid2D &grid, std::span<const Id> labels
         }
       }
     }
+  return make_contact_graph(std::move(vertices), std::move(edges));
+}
+
+/// Single-label 3D contact oracle at radius one. Cross-plane overlap requires
+/// the tracking producer; this raster represents one identity per cell only.
+template <class Grid>
+  requires std::same_as<Grid, Grid3D>
+inline ContactGraph contact_graph(const Grid &grid, std::span<const Id> labels) {
+  if (!detail::connectivity_valid(grid))
+    throw std::invalid_argument("unknown grain connectivity");
+  const auto cells = cell_count(grid);
+  if (labels.size() != cells)
+    throw std::invalid_argument("grain label count does not match grid");
+  if (grid.nx > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+      grid.ny > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+      grid.nz > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw std::invalid_argument("grain axis exceeds signed coordinate limit");
+  std::vector<Id> vertices;
+  std::vector<Contact> edges;
+  for (std::size_t i = 0; i < cells; ++i) {
+    if (!labels[i]) continue;
+    vertices.push_back(labels[i]);
+    for (int dz = -1; dz <= 1; ++dz)
+      for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+          if ((!dx && !dy && !dz) || !detail::stencil(grid, dx, dy, dz, 1)) continue;
+          std::size_t other;
+          if (detail::offset(grid, i, dx, dy, dz, other) && labels[other] &&
+              labels[other] != labels[i])
+            edges.push_back({labels[i], labels[other]});
+        }
+  }
   return make_contact_graph(std::move(vertices), std::move(edges));
 }
 

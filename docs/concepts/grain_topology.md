@@ -77,3 +77,14 @@ backend representations must report exhaustion explicitly and preserve every
 admitted contact. Public records are intentionally simple values, so callers
 validate them at API boundaries rather than assuming unchecked mutations preserve
 invariants.
+
+## Local volumes
+
+`Grid3D{nx, ny, nz, periodic_x, periodic_y, periodic_z, connectivity}` uses
+x-contiguous volume indexing. `Connectivity::Six` admits face neighbors;
+`Connectivity::TwentySix` also admits edge and corner neighbors. Each
+periodic axis is explicit, including wrapped edges and corners. The
+single-label contact oracle reports unique canonical contacts at radius
+one. Multi-slot ownership/contact producers inspect cross-slot overlap and
+an explicit Manhattan (Six) or Chebyshev (TwentySix) radius. Existing
+`Grid2D` calls and Four/Eight meaning are retained.

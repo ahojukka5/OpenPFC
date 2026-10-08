@@ -56,8 +56,8 @@ preflight(std::size_t cells, Slot slots, const double *values, const Id *seeds,
   }
   if constexpr (Observe) diagnostics::merge(totals, local);
 }
-template <bool Observe>
-__global__ void inspect(Grid2D grid, Slot slots, const Id *labels,
+template <bool Observe, class Grid>
+__global__ void inspect(Grid grid, Slot slots, const Id *labels,
                         const pfc::grain::detail::Assignment *assignments,
                         std::size_t grains, unsigned long long *support,
                         unsigned *error, diagnostics::Accesses *totals) {
@@ -65,7 +65,7 @@ __global__ void inspect(Grid2D grid, Slot slots, const Id *labels,
       local{};
   diagnostics::Accesses *counts = nullptr;
   if constexpr (Observe) counts = &local;
-  const auto cells = grid.nx * grid.ny;
+  const auto cells = grid.nx * grid.ny * pfc::grain::detail::depth(grid);
   for (auto i = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        i < cells * slots; i += static_cast<std::size_t>(gridDim.x) * blockDim.x) {
     if (!diagnostics::load<Observe>(labels, i, counts, diagnostics::Field::Labels))
@@ -85,18 +85,22 @@ __global__ void inspect(Grid2D grid, Slot slots, const Id *labels,
                          sizeof(unsigned long long));
     }
     atomicAdd(support + index, 1ULL);
-    for (int dy = -1; dy <= 1; ++dy)
-      for (int dx = -1; dx <= 1; ++dx) {
-        if ((!dx && !dy) || (grid.connectivity == Connectivity::Four && dx && dy))
-          continue;
-        std::size_t cell;
-        if (!neighbor(grid, i % cells, dx, dy, cell)) continue;
-        const auto other = diagnostics::load<Observe>(
-            labels, (i / cells) * cells + cell, counts, diagnostics::Field::Labels);
-        if (other && other != diagnostics::load<Observe>(labels, i, counts,
-                                                         diagnostics::Field::Labels))
-          error_max<Observe>(error, Status::UnsafeCadence, counts);
-      }
+    const int zr = pfc::grain::detail::depth_radius(grid, 1);
+    for (int dz = -zr; dz <= zr; ++dz)
+      for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+          if ((!dx && !dy && !dz) ||
+              !pfc::grain::detail::stencil(grid, dx, dy, dz, 1))
+            continue;
+          std::size_t cell;
+          if (!neighbor(grid, i % cells, dx, dy, dz, cell)) continue;
+          const auto other =
+              diagnostics::load<Observe>(labels, (i / cells) * cells + cell, counts,
+                                         diagnostics::Field::Labels);
+          if (other && other != diagnostics::load<Observe>(
+                                    labels, i, counts, diagnostics::Field::Labels))
+            error_max<Observe>(error, Status::UnsafeCadence, counts);
+        }
   }
   if constexpr (Observe) diagnostics::merge(totals, local);
 }
@@ -108,11 +112,13 @@ __global__ void inspect(Grid2D grid, Slot slots, const Id *labels,
  * Fatal allocation/runtime exceptions preserve const originals where hardware
  * remains usable; this is not recovery from a poisoned device/runtime.
  */
-template <typename Backend>
+template <typename Backend, class Grid>
 Result<pfc::core::DataBuffer<Backend, double>, pfc::core::DataBuffer<Backend, Id>>
-remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &values,
-      const pfc::core::DataBuffer<Backend, Id> &seeds, std::span<const Grain> grains,
-      const Options &options = {}, pfc::gpuStream_t stream = nullptr) {
+remap_dispatch(Grid grid, Slot slots,
+               const pfc::core::DataBuffer<Backend, double> &values,
+               const pfc::core::DataBuffer<Backend, Id> &seeds,
+               std::span<const Grain> grains, const Options &options = {},
+               pfc::gpuStream_t stream = nullptr) {
   diagnostics::Scope scope(options.diagnostics);
   if (options.diagnostics) options.diagnostics->covered();
   const auto operation_start = detail::Clock::now();
@@ -186,7 +192,7 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
     device_counts.copy_from_host(
         std::vector<unsigned long long>(assignments.size(), 0),
         diagnostics::Field::Counts);
-    GPU_LAUNCH_KERNEL(detail::inspect<Observe>, blocks, 256,
+    GPU_LAUNCH_KERNEL((detail::inspect<Observe, Grid>), blocks, 256,
                       (grid, slots, propagated.data(), assignments.data(),
                        assignments.size(), device_counts.data(), error.data(),
                        observation.data()),
@@ -286,6 +292,21 @@ remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &val
   }(); // Includes destruction of all private scratch.
   completed.statistics.total_seconds = detail::seconds(operation_start);
   return completed;
+}
+template <typename Backend>
+Result<pfc::core::DataBuffer<Backend, double>, pfc::core::DataBuffer<Backend, Id>>
+remap(Grid2D grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &values,
+      const pfc::core::DataBuffer<Backend, Id> &seeds, std::span<const Grain> grains,
+      const Options &options = {}, pfc::gpuStream_t stream = nullptr) {
+  return remap_dispatch(grid, slots, values, seeds, grains, options, stream);
+}
+template <typename Backend, class Grid>
+  requires std::same_as<Grid, Grid3D>
+Result<pfc::core::DataBuffer<Backend, double>, pfc::core::DataBuffer<Backend, Id>>
+remap(Grid grid, Slot slots, const pfc::core::DataBuffer<Backend, double> &values,
+      const pfc::core::DataBuffer<Backend, Id> &seeds, std::span<const Grain> grains,
+      const Options &options = {}, pfc::gpuStream_t stream = nullptr) {
+  return remap_dispatch(grid, slots, values, seeds, grains, options, stream);
 }
 } // namespace pfc::grain::remapping
 #endif

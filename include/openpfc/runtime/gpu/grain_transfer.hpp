@@ -64,10 +64,10 @@ stage_transfer(std::size_t cells, Slot slots, const double *values, const Id *la
 /// device inputs are never mutated; caller publishes successful owning buffers
 /// and grain registry together. Only status and O(grains) flags return to host.
 /// Runtime/allocation exceptions also leave original inputs intact.
-template <bool Observe, typename Backend>
+template <bool Observe, typename Backend, class Grid>
 TransferResult<pfc::core::DataBuffer<Backend, double>,
                pfc::core::DataBuffer<Backend, Id>>
-transfer_impl(const Grid2D &grid, Slot slots,
+transfer_impl(const Grid &grid, Slot slots,
               const pfc::core::DataBuffer<Backend, double> &values,
               const pfc::core::DataBuffer<Backend, Id> &labels,
               std::span<const Grain> grains, std::span<const Transfer> moves,
@@ -126,14 +126,14 @@ transfer_impl(const Grid2D &grid, Slot slots,
   return result;
 }
 
-template <typename Backend>
+template <typename Backend, class Grid>
 TransferResult<pfc::core::DataBuffer<Backend, double>,
                pfc::core::DataBuffer<Backend, Id>>
-transfer(const Grid2D &grid, Slot slots,
-         const pfc::core::DataBuffer<Backend, double> &values,
-         const pfc::core::DataBuffer<Backend, Id> &labels,
-         std::span<const Grain> grains, std::span<const Transfer> moves,
-         double background_value = 0.0, pfc::gpuStream_t stream = nullptr) {
+transfer_dispatch(const Grid &grid, Slot slots,
+                  const pfc::core::DataBuffer<Backend, double> &values,
+                  const pfc::core::DataBuffer<Backend, Id> &labels,
+                  std::span<const Grain> grains, std::span<const Transfer> moves,
+                  double background_value = 0.0, pfc::gpuStream_t stream = nullptr) {
   if (diagnostics::current) {
     try {
       diagnostics::current->covered();
@@ -146,6 +146,30 @@ transfer(const Grid2D &grid, Slot slots,
   }
   return transfer_impl<false>(grid, slots, values, labels, grains, moves,
                               background_value, stream);
+}
+
+template <typename Backend>
+TransferResult<pfc::core::DataBuffer<Backend, double>,
+               pfc::core::DataBuffer<Backend, Id>>
+transfer(const Grid2D &grid, Slot slots,
+         const pfc::core::DataBuffer<Backend, double> &values,
+         const pfc::core::DataBuffer<Backend, Id> &labels,
+         std::span<const Grain> grains, std::span<const Transfer> moves,
+         double background_value = 0.0, pfc::gpuStream_t stream = nullptr) {
+  return transfer_dispatch(grid, slots, values, labels, grains, moves,
+                           background_value, stream);
+}
+template <typename Backend, class Grid>
+  requires std::same_as<Grid, Grid3D>
+TransferResult<pfc::core::DataBuffer<Backend, double>,
+               pfc::core::DataBuffer<Backend, Id>>
+transfer(const Grid &grid, Slot slots,
+         const pfc::core::DataBuffer<Backend, double> &values,
+         const pfc::core::DataBuffer<Backend, Id> &labels,
+         std::span<const Grain> grains, std::span<const Transfer> moves,
+         double background_value = 0.0, pfc::gpuStream_t stream = nullptr) {
+  return transfer_dispatch(grid, slots, values, labels, grains, moves,
+                           background_value, stream);
 }
 
 } // namespace pfc::grain

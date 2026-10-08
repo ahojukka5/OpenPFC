@@ -27,6 +27,7 @@ first when you are learning a workflow.
 | [Binary field file layout](binary_field_io_spec.md) | Raw field storage contract |
 | [Grain field transfer](grain_transfer.md) | Strict support, cycle safety, and atomic staging |
 | [Grain diagnostics](grain_diagnostics.md) | Scoped requested allocations, copies, source accesses and events |
+| [Local 3D grain remapping](grain_3d.md) | Six/26 connectivity, periodic volumes and transaction limits |
 | [2D grain remapping](grain_remapping.md) | Composed identity, coloring, transfer, and cadence contracts |
 | [Profiling operator playbooks](operator_playbooks.md) | Symptom-oriented operational checks |
 | [Example run output](example_run_output.md) | Typical log structure and success indicators |
