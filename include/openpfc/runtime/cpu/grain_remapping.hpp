@@ -1,0 +1,135 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#pragma once
+
+#include <openpfc/runtime/common/grain_remapping.hpp>
+#include <openpfc/runtime/cpu/detail/grain_tracking.hpp>
+
+namespace pfc::grain::remapping {
+
+/** Stage a complete 2D observation and remap, leaving all inputs untouched.
+ * q is finite/nonnegative with exact zero background. Seeds may cover only
+ * part of each active component; surviving seeds must match its recorded slot.
+ * Same-slot touching UID components are conservatively UnsafeCadence even
+ * with complete labels: this operation cannot certify that prior evolution
+ * did not mix amplitudes. Use buffered contacts before evolution.
+ * This CPU path uses independent small-grid tracking/contact reference APIs;
+ * it is not a scalable contact detector. Publish owning results together.
+ */
+inline Result<> remap(Grid2D grid, Slot slots, std::span<const double> values,
+                      std::span<const Id> seeds, std::span<const Grain> grains,
+                      const Options &options = {}) {
+  const auto operation_start = detail::Clock::now();
+  const auto operation = [&] {
+    Result<> result;
+    const auto start = detail::Clock::now();
+    auto stage_start = start;
+    double *stage = nullptr;
+    const auto finish = [&](Status status) {
+      if (stage) *stage = detail::seconds(stage_start);
+      result.status = status;
+      result.statistics.total_seconds = detail::seconds(start);
+      return std::move(result);
+    };
+    if (!options.check_now) return finish(Status::Deferred);
+    if (!detail::layout(grid, slots, values.size(), seeds.size(), options) ||
+        (values.size() && (!values.data() || !seeds.data())))
+      return finish(Status::InvalidInput);
+    auto prepared = pfc::grain::detail::prepare_transfer(slots, grains, {});
+    if (prepared.status != TransferStatus::Success) {
+      result.transfer_status = prepared.status;
+      return finish(Status::InvalidInput);
+    }
+    const auto detection = detail::Clock::now();
+    stage_start = detection;
+    stage = &result.statistics.detection_seconds;
+    const auto cells = cell_count(grid);
+    std::vector<std::uint8_t> occupied(values.size());
+    auto bad = Status::Success;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+      if (!std::isfinite(values[i]) || values[i] < 0) {
+        bad = static_cast<Status>(
+            std::max(static_cast<unsigned>(bad),
+                     static_cast<unsigned>(Status::InvalidInput)));
+        continue;
+      }
+      occupied[i] = values[i] > 0;
+      if (!occupied[i] || !seeds[i]) continue;
+      const auto j = pfc::grain::detail::find_assignment(
+          prepared.assignments.data(), prepared.assignments.size(), seeds[i]);
+      if (j == prepared.assignments.size())
+        bad = Status::UnknownIdentity;
+      else if (prepared.assignments[j].source != i / cells)
+        bad = static_cast<Status>(
+            std::max(static_cast<unsigned>(bad),
+                     static_cast<unsigned>(Status::InvalidInput)));
+    }
+    if (bad != Status::Success) {
+      if (bad == Status::InvalidInput)
+        result.transfer_status = TransferStatus::InvalidSupport;
+      return finish(bad);
+    }
+    auto propagated = tracking::reference::propagate(grid, slots, occupied, seeds);
+    const auto horizon =
+        detail::horizon(grid, slots, occupied, seeds, propagated.complete);
+    result.statistics.propagation_sweeps = std::min(horizon, options.max_sweeps);
+    if (horizon > options.max_sweeps) return finish(Status::IterationLimit);
+    if (!propagated.complete) return finish(Status::Unseeded);
+    if (detail::unsafe(grid, propagated.labels))
+      return finish(Status::UnsafeCadence);
+    const auto ids = detail::identities(prepared.assignments);
+    std::vector<std::uint64_t> counts(ids.size(), 0);
+    for (auto id : propagated.labels)
+      if (id) ++counts[std::lower_bound(ids.begin(), ids.end(), id) - ids.begin()];
+    if (std::find(counts.begin(), counts.end(), 0) != counts.end()) {
+      result.transfer_status = TransferStatus::MissingSupport;
+      return finish(Status::MissingSupport);
+    }
+    result.statistics.detection_seconds = detail::seconds(detection);
+    const std::vector<double> weights(counts.begin(), counts.end());
+    const auto adjacency = detail::Clock::now();
+    stage_start = adjacency;
+    stage = &result.statistics.adjacency_seconds;
+    auto graph = tracking::reference::contact_graph(grid, slots, propagated.labels,
+                                                    options.contact_radius);
+    result.statistics.edges = graph.edges.size();
+    result.statistics.adjacency_seconds = detail::seconds(adjacency);
+    if (graph.edges.size() > options.contact_capacity)
+      return finish(Status::CapacityOverflow);
+    const auto solving = detail::Clock::now();
+    stage_start = solving;
+    stage = &result.statistics.decision_seconds;
+    auto decision = detail::decide(graph, grains, slots, weights, options);
+    result.statistics.attempts = decision.attempts;
+    result.statistics.conflict = decision.conflict;
+    result.statistics.decision_seconds = detail::seconds(solving);
+    if (decision.status != Status::Success) return finish(decision.status);
+    detail::payload(result.statistics, ids, counts, decision.moves);
+    const auto moving = detail::Clock::now();
+    stage_start = moving;
+    stage = &result.statistics.transfer_seconds;
+    result.statistics.staged_storage_bytes =
+        values.size() * (sizeof(double) + sizeof(Id));
+    auto transaction = pfc::grain::transfer(grid, slots, values, propagated.labels,
+                                            grains, decision.moves);
+    result.transfer_status = transaction.status;
+    result.statistics.transfer_seconds = detail::seconds(moving);
+    stage = nullptr;
+    if (transaction.status != TransferStatus::Success)
+      return finish(Status::TransferFailure);
+    result.values = std::move(transaction.values);
+    result.labels = std::move(transaction.labels);
+    result.snapshot = {options.epoch, std::move(transaction.grains),
+                       std::move(graph)};
+    pfc::grain::validate(result.snapshot, slots);
+    result.statistics.published_storage_bytes =
+        result.values.size() * sizeof(double) + result.labels.size() * sizeof(Id);
+    result.statistics.wrapper_storage_bytes =
+        occupied.size() + propagated.labels.size() * sizeof(Id);
+    return finish(Status::Success);
+  };
+  auto completed = operation(); // Includes destruction of all private scratch.
+  completed.statistics.total_seconds = detail::seconds(operation_start);
+  return completed;
+}
+} // namespace pfc::grain::remapping
