@@ -315,3 +315,27 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     target_compile_definitions(test_etd1_apply_hip PRIVATE OPENPFC_TEST_ETD1_APPLY_HIP)
     add_test(NAME HIP_ETD1Apply COMMAND test_etd1_apply_hip)
 endif()
+
+# Grain tracking parity uses the ordinary runtime library, without spectral FFTs.
+foreach(_grain_backend IN ITEMS cuda hip)
+  if(_grain_backend STREQUAL "cuda" AND OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
+    set(_grain_runtime openpfc_gpu_kernels CUDA::cudart)
+    set(_grain_definition OPENPFC_TEST_TRACKING_CUDA)
+  elseif(_grain_backend STREQUAL "hip" AND OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
+    set(_grain_runtime openpfc_hip_kernels hip::host)
+    set(_grain_definition OPENPFC_TEST_TRACKING_HIP)
+  else()
+    continue()
+  endif()
+  add_executable(test_grain_tracking_${_grain_backend} test_grain_tracking.cpp)
+  target_include_directories(test_grain_tracking_${_grain_backend} PRIVATE
+      ${CMAKE_SOURCE_DIR}/include)
+  target_link_libraries(test_grain_tracking_${_grain_backend} PRIVATE
+      Catch2::Catch2 ${_grain_runtime})
+  target_compile_definitions(test_grain_tracking_${_grain_backend} PRIVATE
+      ${_grain_definition})
+  target_compile_features(test_grain_tracking_${_grain_backend} PRIVATE cxx_std_20)
+  add_test(NAME GrainTracking_${_grain_backend} COMMAND test_grain_tracking_${_grain_backend})
+  set_tests_properties(GrainTracking_${_grain_backend} PROPERTIES
+      TIMEOUT 120 SKIP_RETURN_CODE 4)
+endforeach()
