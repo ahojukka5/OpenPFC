@@ -12,7 +12,9 @@
 #include <utility>
 #include <vector>
 
-/** @file Internal deterministic reference coloring, with no field ownership. */
+/** @file grain_coloring.hpp
+ *  @brief Internal deterministic reference coloring without field ownership.
+ */
 namespace pfc::grain::reference {
 using Color = std::size_t;
 inline constexpr Color uncolored = std::numeric_limits<Color>::max();
