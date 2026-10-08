@@ -90,11 +90,11 @@ for (int step = 0; step < n_steps; ++step) {
 
 ## Backend capability matrix
 
-Different backends can fulfill different subsets of the catalog. Asking for a member a backend cannot supply is a **compile-time error** (`static_assert`), not a silent zero.
+Different backends can fulfill different subsets of the catalog. Unsupported stencil orders and halo configurations fail at construction with an explicit diagnostic; no requested member silently becomes zero.
 
 | Backend | `value` | `x/y/z` | `xx/yy/zz` | `xy/xz/yz` |
 |---------|---------|---------|------------|------------|
-| `pfc::gradient::FDGradient<G>` | yes | yes — D1 orders 2..14 | yes — D2 orders 2..20 | not yet (host 26-fill via `pfc::comm::HaloExchange` Full; member enablement is a follow-up — see also `pfc::comm::HaloExchange<CUDASpace>` Full) |
+| `pfc::gradient::FDGradient<G>` | yes | yes — D1 orders 2..14 | yes — D2 orders 2..20 | yes — D1⊗D1 orders 2..14, explicitly declared Full halos |
 | `pfc::cuda::FDGradientDevice<G>` / `pfc::hip::FDGradientDevice<G>` | yes | yes — D1 orders 2..14 | yes — D2 orders 2..20 | yes — D1⊗D1 when paired with [`HaloExchange`](../../include/openpfc/runtime/gpu/comm_halo_exchange_gpu.hpp) Full (vendor headers are thin includes) |
 | `pfc::field::SpectralGradient<G>` | yes | yes (via `i k_i`) | yes (via `-k_i^2`) | yes (via `-k_i k_j`) |
 
@@ -102,7 +102,19 @@ Different backends can fulfill different subsets of the catalog. Asking for a me
 
 When new requirements show up:
 - **FD higher-order first derivatives**: extend `EvenCentralD1<Order>` in [`fd_stencils.hpp`](../../include/openpfc/kernel/field/fd_stencils.hpp) — the closed form `c_k = (-1)^{k+1} (M!)^2 / (k (M-k)! (M+k)!)` produces the rational coefficients; build the integer table with their lowest common denominator and add the matching `lookup_even_central_d1` case.
-- **FD mixed seconds (`xy/xz/yz`)**: device evaluators (`pfc::cuda::FDGradientDevice` / `pfc::hip::FDGradientDevice` in [`fd_gradient_device_gpu.hpp`](../../include/openpfc/runtime/gpu/fd_gradient_device_gpu.hpp)) already populate them via separable D1⊗D1 when the padded buffer has corner-filled ghosts ([`HaloExchange`](../../include/openpfc/runtime/gpu/comm_halo_exchange_gpu.hpp) Full). Host plumbing for the matching CPU path is [`pfc::comm::HaloExchange`](../../include/openpfc/kernel/decomposition/comm_halo_exchange.hpp) Full (3-pass widening, 26-direction); host `FDGradient<G>` still compile-rejects mixed seconds until that follow-up lands. Until then, `SpectralGradient<G>` is the right CPU path for models that need cross terms.
+- **FD mixed seconds (`xy/xz/yz`)**: host and device evaluators use separable
+  D1⊗D1 with the existing first-derivative tables. The host factory requires
+  an explicit connectivity argument: `pfc::field::create<MyGrads>(u, 6,
+  pfc::comm::HaloConnectivity::Full)`. For per-stage exchange use
+  `pfc::gradient::FDGradient<MyGrads>(u, 6, [&] { halo.exchange(); },
+  pfc::comm::HaloConnectivity::Full)`. This argument declares a caller
+  obligation: fill all needed edge/corner ghosts, including physical boundary
+  conditions, before evaluation. `Field` cannot prove their freshness.
+  Face-only construction with mixed members throws; FD6 needs width 3.
+  An `nz=1` slab may request `xy` with Full2D exchange; requesting `xz` or
+  `yz` throws. The xy stencil never reads another z plane. The existing
+  pure-axis face-halo consumers retain their construction and exchange path.
+
 
 ## Custom stencils — Sobel, CNN-style filters, anisotropic FD
 

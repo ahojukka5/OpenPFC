@@ -37,9 +37,8 @@
  *    fall out as a single triple loop. Today only `Mi in {0, 2}` is
  *    accepted; enabling `Mi = 1` is straightforward (the D1 tables are
  *    available; the tensor primitive needs a small `static_assert`
- *    relaxation), but FD `xy / xz / yz` still requires corner-filled
- *    halos on the field side, so the high-level evaluator
- *    (`FDGradient<G>`) is gated on `HaloPattern::Full`.
+ *    relaxation). The runtime `apply_d1_d1_along` below supplies the
+ *    mixed xy/xz/yz path used by `FDGradient<G>` with explicit Full halos.
  *
  * `Axis` is `0` for x, `1` for y, `2` for z, and chooses which of `sx`,
  * `sy`, `sz` is used as the per-step linear-index stride.
@@ -54,8 +53,7 @@
  * products additionally need **corner-filled** halos --
  * `pfc::comm::HaloExchange` Full on the host and
  * `pfc::comm::HaloExchange<CUDASpace>` Full on the GPU. Enabling the
- * mixed-second evaluator path (`Mi = 1` / `FDGradient` `xy/xz/yz`)
- * remains a follow-up after corners are proven.
+ * runtime mixed-second evaluator path uses `apply_d1_d1_along`.
  *
  * @see fd_stencils.hpp for the stencil tables consumed here
  * @see fd_gradient.hpp for the per-point evaluator that uses these
@@ -232,6 +230,33 @@ inline T apply_d1_along(const EvenCentralD1View &st, const T *core, std::ptrdiff
 }
 
 /**
+ * @brief Unscaled separable mixed second derivative on two distinct axes.
+ *
+ * Uses the existing runtime D1 table on each axis. Divide the result by
+ * `st.denom * st.denom * h_a * h_b`. Caller must provide corner-filled
+ * halos of at least `st.half_width` on both axes.
+ */
+template <int AxisA, int AxisB, class T>
+inline T apply_d1_d1_along(const EvenCentralD1View &st, const T *core,
+                           std::ptrdiff_t c, std::ptrdiff_t sx, std::ptrdiff_t sy,
+                           std::ptrdiff_t sz) noexcept {
+  static_assert(AxisA != AxisB, "Mixed derivative axes must differ");
+  const auto sa = detail::pick_stride<AxisA>(sx, sy, sz);
+  const auto sb = detail::pick_stride<AxisB>(sx, sy, sz);
+  T acc{};
+  for (int a = 1; a <= st.half_width; ++a) {
+    const auto da = static_cast<std::ptrdiff_t>(a) * sa;
+    for (int b = 1; b <= st.half_width; ++b) {
+      const auto db = static_cast<std::ptrdiff_t>(b) * sb;
+      const T weight = static_cast<T>(st.coeffs[a]) * static_cast<T>(st.coeffs[b]);
+      acc += weight * (core[c + da + db] - core[c + da - db] - core[c - da + db] +
+                       core[c - da - db]);
+    }
+  }
+  return acc;
+}
+
+/**
  * @brief Identity (Mi = 0) stencil: contributes one cell at offset 0.
  *
  * Used as the per-axis stencil placeholder in `apply_tensor_d` for axes
@@ -282,11 +307,8 @@ struct IdentityStencil1d {
  *      mixed-second cases (>= 2 non-zero `Mi`), this requires
  *      **corner-filled** halos — `pfc::comm::HaloExchange` Full
  *      on the host and `pfc::comm::HaloExchange<CUDASpace>` Full on the GPU.
- *      Enabling the mixed-second evaluator path (`Mi = 1` /
- *      `FDGradient` `xy/xz/yz`) remains a follow-up after corners are
- *      proven. Until that wiring lands, `FDGradient<G>` keeps its
- *      `static_assert` against `xy/xz/yz` members even though this
- *      primitive is ready.
+ *      The runtime `FDGradient<G>` xy/xz/yz path uses
+ *      `apply_d1_d1_along`, not this D2-only compile-time tensor primitive.
  */
 template <int Mx, int My, int Mz, class StencilX = IdentityStencil1d,
           class StencilY = IdentityStencil1d, class StencilZ = IdentityStencil1d,
