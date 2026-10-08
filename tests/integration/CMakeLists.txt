@@ -139,3 +139,5 @@ if(OpenPFC_RUN_MPI_SUITES)
       TIMEOUT 120 RUN_SERIAL TRUE PROCESSORS ${_ranks})
   endforeach()
 endif()
+
+add_subdirectory(rk_coupled)
