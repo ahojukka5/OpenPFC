@@ -1,0 +1,3 @@
+# Generation-time dependencies only; C++ consumers do not need Python.
+sympy==1.14.0
+mpmath==1.3.0
