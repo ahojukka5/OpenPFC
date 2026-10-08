@@ -23,7 +23,9 @@
 
 #if defined(OpenPFC_ENABLE_CUDA) || defined(OpenPFC_ENABLE_HIP)
 
+#include <concepts>
 #include <cstddef>
+#include <cstdint>
 
 #include <openpfc/kernel/decomposition/sparse_vector_ops.hpp>
 #include <openpfc/runtime/gpu/sparse_vector_gpu.hpp>
@@ -43,12 +45,16 @@ namespace pfc::core {
  */
 void gather_cuda_impl(size_t n, const size_t *indices, double *data,
                       const double *source, size_t source_size);
+void gather_cuda_impl(size_t n, const size_t *indices, float *data,
+                      const float *source, size_t source_size);
+void gather_cuda_impl(size_t n, const size_t *indices, std::uint64_t *data,
+                      const std::uint64_t *source, size_t source_size);
 void scatter_cuda_impl(size_t n, const size_t *indices, const double *data,
                        double *dest, size_t dest_size);
 
 /**
  * @brief Gather for SparseVector<CUDATag, double> (CUDA device).
- * @note Fail-closed OOB parity with CPU `pfc::core::gather`.
+ * @note OOB messages match CPU; GPU validates before any write.
  */
 inline void gather(SparseVector<backend::CUDATag, double> &sparse_vector,
                    const double *source, size_t source_size) {
@@ -59,9 +65,27 @@ inline void gather(SparseVector<backend::CUDATag, double> &sparse_vector,
                    sparse_vector.data().data(), source, source_size);
 }
 
+/** Compact typed selection, preserving binary32 values and full-width identities.
+ * The input and index buffers must be ready for default-stream consumption;
+ * callers synchronize any producer on a nondefault stream before this call.
+ * Returns only after gathering completes. OOB indices leave output unchanged.
+ * A nonempty selection requires nonnull source and disjoint source/output
+ * storage. Empty selections do not dereference source. Indices are downloaded
+ * for validation (O(selection size)); the dense source stays device-resident.
+ * Scatter remains double-only. This does not add a Float32 remapping API.
+ */
+template <typename T>
+  requires(std::same_as<T, float> || std::same_as<T, std::uint64_t>)
+inline void gather(SparseVector<backend::CUDATag, T> &sparse_vector, const T *source,
+                   size_t source_size) {
+  if (sparse_vector.empty()) return;
+  gather_cuda_impl(sparse_vector.size(), sparse_vector.indices().data(),
+                   sparse_vector.data().data(), source, source_size);
+}
+
 /**
  * @brief Scatter for SparseVector<CUDATag, double> (CUDA device).
- * @note Fail-closed OOB parity with CPU `pfc::core::scatter`.
+ * @note OOB messages match CPU; GPU validates before any write.
  */
 inline void scatter(const SparseVector<backend::CUDATag, double> &sparse_vector,
                     double *dest, size_t dest_size) {
@@ -86,12 +110,16 @@ inline void scatter(const SparseVector<backend::CUDATag, double> &sparse_vector,
  */
 void gather_hip_impl(size_t n, const size_t *indices, double *data,
                      const double *source, size_t source_size);
+void gather_hip_impl(size_t n, const size_t *indices, float *data,
+                     const float *source, size_t source_size);
+void gather_hip_impl(size_t n, const size_t *indices, std::uint64_t *data,
+                     const std::uint64_t *source, size_t source_size);
 void scatter_hip_impl(size_t n, const size_t *indices, const double *data,
                       double *dest, size_t dest_size);
 
 /**
  * @brief Gather for SparseVector<HIPTag, double> (HIP device).
- * @note Fail-closed OOB parity with CPU `pfc::core::gather`.
+ * @note OOB messages match CPU; GPU validates before any write.
  */
 inline void gather(SparseVector<backend::HIPTag, double> &sparse_vector,
                    const double *source, size_t source_size) {
@@ -102,9 +130,27 @@ inline void gather(SparseVector<backend::HIPTag, double> &sparse_vector,
                   sparse_vector.data().data(), source, source_size);
 }
 
+/** Compact typed selection, preserving binary32 values and full-width identities.
+ * The input and index buffers must be ready for default-stream consumption;
+ * callers synchronize any producer on a nondefault stream before this call.
+ * Returns only after gathering completes. OOB indices leave output unchanged.
+ * A nonempty selection requires nonnull source and disjoint source/output
+ * storage. Empty selections do not dereference source. Indices are downloaded
+ * for validation (O(selection size)); the dense source stays device-resident.
+ * Scatter remains double-only. This does not add a Float32 remapping API.
+ */
+template <typename T>
+  requires(std::same_as<T, float> || std::same_as<T, std::uint64_t>)
+inline void gather(SparseVector<backend::HIPTag, T> &sparse_vector, const T *source,
+                   size_t source_size) {
+  if (sparse_vector.empty()) return;
+  gather_hip_impl(sparse_vector.size(), sparse_vector.indices().data(),
+                  sparse_vector.data().data(), source, source_size);
+}
+
 /**
  * @brief Scatter for SparseVector<HIPTag, double> (HIP device).
- * @note Fail-closed OOB parity with CPU `pfc::core::scatter`.
+ * @note OOB messages match CPU; GPU validates before any write.
  */
 inline void scatter(const SparseVector<backend::HIPTag, double> &sparse_vector,
                     double *dest, size_t dest_size) {

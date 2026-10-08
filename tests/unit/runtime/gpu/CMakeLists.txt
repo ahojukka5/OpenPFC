@@ -260,7 +260,10 @@ endif()
 # SparseVector tests - build based on available backends
 if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
     add_executable(test_sparsevector_cuda
-        ${CMAKE_SOURCE_DIR}/tests/unit/operators/test_sparsevector_cuda.cpp)
+        ${CMAKE_SOURCE_DIR}/tests/unit/operators/test_sparsevector_cuda.cpp
+        ${CMAKE_SOURCE_DIR}/tests/unit/operators/test_sparsevector_typed.cpp)
+    target_compile_definitions(test_sparsevector_cuda PRIVATE
+        OPENPFC_TEST_TYPED_GATHER_CUDA)
     target_include_directories(test_sparsevector_cuda PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/unit/operators
         ${CMAKE_SOURCE_DIR}/include
@@ -289,7 +292,10 @@ endif()
 
 if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     add_executable(test_sparsevector_hip
-        ${CMAKE_SOURCE_DIR}/tests/unit/operators/test_sparsevector_hip.cpp)
+        ${CMAKE_SOURCE_DIR}/tests/unit/operators/test_sparsevector_hip.cpp
+        ${CMAKE_SOURCE_DIR}/tests/unit/operators/test_sparsevector_typed.cpp)
+    target_compile_definitions(test_sparsevector_hip PRIVATE
+        OPENPFC_TEST_TYPED_GATHER_HIP)
     target_include_directories(test_sparsevector_hip PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/unit/operators
         ${CMAKE_SOURCE_DIR}/include

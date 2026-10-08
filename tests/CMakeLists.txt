@@ -8,6 +8,7 @@ find_package(Catch2 REQUIRED)
 # Create test executable with just the runner initially
 add_executable(openpfc-tests runtests.cpp)
 target_sources(openpfc-tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/operators/test_sparsevector_typed.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/kernel/grain/test_grain_topology.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/test_grain_tracking_reference.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/test_grain_3d_tracking.cpp

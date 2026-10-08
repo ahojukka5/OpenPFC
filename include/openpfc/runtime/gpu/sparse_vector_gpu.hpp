@@ -25,6 +25,7 @@
 #if defined(OpenPFC_ENABLE_CUDA) || defined(OpenPFC_ENABLE_HIP)
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include <openpfc/kernel/decomposition/sparse_vector.hpp>
@@ -54,8 +55,8 @@ struct CUDAH2D {
 struct HIPH2D {
   using tag = backend::HIPTag;
   static void memcpy_h2d(void *dst, const void *src, std::size_t bytes) {
-    pfc::hip::detail::hip_check(
-        hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice), "HIP copy failed");
+    pfc::hip::detail::hip_check(hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice),
+                                "HIP copy failed");
   }
 };
 #endif
@@ -84,6 +85,13 @@ inline void copy_data_to_device_impl<backend::CUDATag, double>(
 }
 
 template <>
+inline void copy_data_to_device_impl<backend::CUDATag, std::uint64_t>(
+    DataBuffer<backend::CUDATag, std::uint64_t> &buf, size_t n,
+    const std::vector<std::uint64_t> &host_data) {
+  gpu_copy_h2d<CUDAH2D>(buf.data(), host_data.data(), n, sizeof(std::uint64_t));
+}
+
+template <>
 inline void copy_data_to_device_impl<backend::CUDATag, float>(
     DataBuffer<backend::CUDATag, float> &buf, size_t n,
     const std::vector<float> &host_data) {
@@ -104,6 +112,13 @@ inline void copy_data_to_device_impl<backend::HIPTag, double>(
     DataBuffer<backend::HIPTag, double> &buf, size_t n,
     const std::vector<double> &host_data) {
   gpu_copy_h2d<HIPH2D>(buf.data(), host_data.data(), n, sizeof(double));
+}
+
+template <>
+inline void copy_data_to_device_impl<backend::HIPTag, std::uint64_t>(
+    DataBuffer<backend::HIPTag, std::uint64_t> &buf, size_t n,
+    const std::vector<std::uint64_t> &host_data) {
+  gpu_copy_h2d<HIPH2D>(buf.data(), host_data.data(), n, sizeof(std::uint64_t));
 }
 
 template <>

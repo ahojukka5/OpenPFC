@@ -14,11 +14,13 @@
  */
 
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <openpfc/runtime/gpu/gpu_api.hpp>
+#include <openpfc/runtime/common/selection_geometry.hpp>
 
 #ifdef OpenPFC_ENABLE_GPU_AUTOTUNING
 #include "openpfc/runtime/common/gpu_autotune.hpp"
@@ -32,8 +34,9 @@ constexpr const char *kGpuKind = "CUDA";
 constexpr const char *kGpuKind = "HIP";
 #endif
 
-__global__ void gather_kernel(size_t n, const size_t *indices, double *data,
-                              const double *source) {
+template <typename T>
+__global__ void gather_kernel(size_t n, const size_t *indices, T *data,
+                              const T *source) {
   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) {
     size_t idx = indices[i];
@@ -79,15 +82,18 @@ int gather_scatter_threads(size_t n, const char *kernel_name) {
 #endif
 }
 
-void launch_gather(size_t n, const size_t *indices, double *data,
-                   const double *source, size_t source_size) {
+template <typename T>
+void launch_gather(size_t n, const size_t *indices, T *data,
+                   const T *source, size_t source_size) {
   if (n == 0) {
     return;
   }
-  check_indices_host(n, indices, source_size, "gather: index out of bounds");
+  if (source == nullptr) {
+    throw std::invalid_argument("gather: source is null");
+  }
   const int threads_per_block = gather_scatter_threads(n, "gather");
-  const int blocks =
-      (static_cast<int>(n) + threads_per_block - 1) / threads_per_block;
+  const int blocks = detail::selection_blocks(n, threads_per_block);
+  check_indices_host(n, indices, source_size, "gather: index out of bounds");
   gather_kernel<<<blocks, threads_per_block>>>(n, indices, data, source);
   ::pfc::gpuError_t err = ::pfc::gpuGetLastError();
   if (err != ::pfc::gpuSuccess) {
@@ -133,6 +139,16 @@ void gather_cuda_impl(size_t n, const size_t *indices, double *data,
   launch_gather(n, indices, data, source, source_size);
 }
 
+void gather_cuda_impl(size_t n, const size_t *indices, float *data,
+                         const float *source, size_t source_size) {
+  launch_gather(n, indices, data, source, source_size);
+}
+
+void gather_cuda_impl(size_t n, const size_t *indices, std::uint64_t *data,
+                         const std::uint64_t *source, size_t source_size) {
+  launch_gather(n, indices, data, source, source_size);
+}
+
 void scatter_cuda_impl(size_t n, const size_t *indices, const double *data,
                        double *dest, size_t dest_size) {
   launch_scatter(n, indices, data, dest, dest_size);
@@ -142,6 +158,16 @@ void scatter_cuda_impl(size_t n, const size_t *indices, const double *data,
 #if defined(OpenPFC_ENABLE_HIP) && defined(OPENPFC_GPU_API_HIP)
 void gather_hip_impl(size_t n, const size_t *indices, double *data,
                      const double *source, size_t source_size) {
+  launch_gather(n, indices, data, source, source_size);
+}
+
+void gather_hip_impl(size_t n, const size_t *indices, float *data,
+                         const float *source, size_t source_size) {
+  launch_gather(n, indices, data, source, source_size);
+}
+
+void gather_hip_impl(size_t n, const size_t *indices, std::uint64_t *data,
+                         const std::uint64_t *source, size_t source_size) {
   launch_gather(n, indices, data, source, source_size);
 }
 
