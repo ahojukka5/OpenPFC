@@ -4,6 +4,7 @@
 # Kernel field operations unit tests
 target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_composite_gradient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_central_derivatives.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fd_apply.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_sbp_diffusion.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_reaction_flux.cpp
