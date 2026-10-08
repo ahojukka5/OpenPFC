@@ -3,6 +3,7 @@
 
 # Integration tests
 target_sources(openpfc-tests PRIVATE
+  test_grain_remapping.cpp
   test_multifield_stepper.cpp
   scenarios/parallel_scaling/test_global_coverage.cpp
   scenarios/parallel_scaling/test_halo_patterns.cpp
@@ -29,6 +30,7 @@ target_sources(openpfc-tests PRIVATE
   scenarios/time_integration/test_rk3_convergence.cpp
   scenarios/time_integration/test_field_accessor_concept.cpp
 )
+
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
     test_ui_validation.cpp
