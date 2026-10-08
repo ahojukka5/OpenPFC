@@ -36,12 +36,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
-- Kernel-level `pfc::grain` identity and topology contract with persistent grain
-  IDs, recyclable order-parameter slots, canonical contact graphs, topology
-  deltas, and a deterministic local 2D four/eight-neighbor contact oracle.
-  Tracking, field movement and 3D/MPI behavior are not implemented by this
-  contract.
-
+- A transactional 2D grain remapping entry point composes identity
+  propagation, complete contact graphs, bounded host coloring, and strict
+  owning field transfers. It reports explicit deferred/unsafe/failure
+  states and invocation diagnostics; a small Allen–Cahn-style consumer
+  exercises approaching grains and periodic contacts without a new app.
 - `allen_cahn` prints a sub-cell equivalent radius beside each cell-count
   radius. `--two-front` starts from a periodic pair of cubic heteroclinic
   fronts and prints their positions and one front's speed. Those numbers

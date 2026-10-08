@@ -3,6 +3,7 @@
 
 # Integration tests
 target_sources(openpfc-tests PRIVATE
+  test_grain_remapping.cpp
   test_multifield_stepper.cpp
   scenarios/parallel_scaling/test_global_coverage.cpp
   scenarios/parallel_scaling/test_halo_patterns.cpp
@@ -29,6 +30,29 @@ target_sources(openpfc-tests PRIVATE
   scenarios/time_integration/test_rk3_convergence.cpp
   scenarios/time_integration/test_field_accessor_concept.cpp
 )
+
+# Small downstream-style consumer, with no HeFFTe/frontend dependency.
+add_executable(grain_remapping_example ${CMAKE_SOURCE_DIR}/examples/grain_remapping.cpp)
+target_link_libraries(grain_remapping_example PRIVATE OpenPFC)
+add_test(NAME GrainRemappingExample COMMAND grain_remapping_example)
+
+if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
+  add_executable(test_grain_remapping_cuda grain_remapping.cu)
+  target_include_directories(test_grain_remapping_cuda PRIVATE ${CMAKE_SOURCE_DIR}/examples)
+  target_link_libraries(test_grain_remapping_cuda PRIVATE OpenPFC Catch2::Catch2WithMain
+    openpfc_gpu_kernels CUDA::cudart)
+  set_target_properties(test_grain_remapping_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
+  add_test(NAME CUDA_GrainRemapping COMMAND test_grain_remapping_cuda)
+endif()
+
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
+  add_executable(test_grain_remapping_hip grain_remapping.hip)
+  target_include_directories(test_grain_remapping_hip PRIVATE ${CMAKE_SOURCE_DIR}/examples)
+  target_link_libraries(test_grain_remapping_hip PRIVATE OpenPFC Catch2::Catch2WithMain
+    openpfc_hip_kernels hip::host)
+  set_target_properties(test_grain_remapping_hip PROPERTIES HIP_STANDARD 20 HIP_STANDARD_REQUIRED ON)
+  add_test(NAME HIP_GrainRemapping COMMAND test_grain_remapping_hip)
+endif()
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
     test_ui_validation.cpp
