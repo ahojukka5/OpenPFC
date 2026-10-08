@@ -6,4 +6,5 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_mpi_timer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpu_affinity.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_launch_rank.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_grain_transfer.cpp
 )
