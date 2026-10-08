@@ -156,10 +156,8 @@ public:
       m_active[i] = m_dirs.contains(dirs_canon[i]);
     }
 
-    m_face_types =
-        halo::create_padded_face_types_6(nx, ny, nz, m_halo_width,
-                                         exchange::detail::get_mpi_type<T>(),
-                                         m_active);
+    m_face_types = halo::create_padded_face_types_6(
+        nx, ny, nz, m_halo_width, exchange::detail::get_mpi_type<T>(), m_active);
 
     // Compute neighbors from decomposition
     for (std::size_t i = 0; i < 6; ++i) {
@@ -466,6 +464,10 @@ public:
     for (int a = 0; a < 3; ++a) {
       m_axis_active[a] =
           m_dirs.contains(kAxisDirs[a][0]) || m_dirs.contains(kAxisDirs[a][1]);
+      if (m_axis_active[a] && m_subdomain_box.size[a] < hw) {
+        throw std::invalid_argument(
+            "HostFullHalo: active owned axis is smaller than halo_width");
+      }
       m_axis_widen[a] = false;
       if (a > 0) {
         for (const auto &d : m_dirs.dirs) {
@@ -605,6 +607,7 @@ private:
   void build_types_() {
     const MPI_Datatype elem = exchange::detail::get_mpi_type<T>();
     for (int a = 0; a < 3; ++a) {
+      if (!m_axis_active[a]) continue;
       for (int f = 0; f < 2; ++f) {
         const auto &s = m_slabs[a][f].first;
         const auto &r = m_slabs[a][f].second;
