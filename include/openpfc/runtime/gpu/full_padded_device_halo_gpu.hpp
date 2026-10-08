@@ -13,8 +13,8 @@
  * `HaloConnectivity::Full`. This header owns `pfc::gpu::DeviceFullHalo`
  * (templated on CUDA/HIP ops). Vendor headers are thin includes.
  *
- * Full 26-fill uses three widening axis passes unless `*_FORCE_PACKED_HALO=1`
- * (that env falls back to 6-face-only DeviceFacesHalo). Without GPU-aware
+ * Full 26-fill always uses three widening axis passes. `*_FORCE_PACKED_HALO=1`
+ * forces packed host staging, preserving edges and corners. Without GPU-aware
  * MPI, real-neighbor axes host-stage: pack on device, D2H, MPI on host, H2D,
  * unpack. Self-only axes still pack on device with no MPI.
  *
@@ -151,6 +151,10 @@ public:
     for (int a = 0; a < 3; ++a) {
       m_axis_active[a] =
           m_dirs.contains(kAxisDirs[a][0]) || m_dirs.contains(kAxisDirs[a][1]);
+      if (m_axis_active[a] && local_size[a] < hw) {
+        throw std::invalid_argument(
+            "DeviceFullHalo: active owned axis is smaller than halo_width");
+      }
       m_axis_widen[a] = false;
       if (a > 0) {
         for (const auto &d : m_dirs.dirs) {
@@ -198,7 +202,6 @@ public:
     const bool use_subarray = pfc::gpu::detail::getenv_truthy(Ops::use_subarray_env);
     m_use_gpu_aware = !force_packed && Ops::mpi_aware();
     m_use_contiguous = m_use_gpu_aware && !use_subarray;
-    m_use_full_widening = !force_packed;
 
     bool any_real_neighbor_axis = false;
     for (int a = 0; a < 3; ++a) {
@@ -208,7 +211,7 @@ public:
       }
     }
 
-    if (m_use_full_widening) {
+    {
       const bool any_self_axis = (m_axis_is_self[0] && m_axis_active[0]) ||
                                  (m_axis_is_self[1] && m_axis_active[1]) ||
                                  (m_axis_is_self[2] && m_axis_active[2]);
@@ -239,13 +242,6 @@ public:
                              Ops::malloc_host_recv);
           }
         }
-      }
-    } else {
-      m_per_field_packed.reserve(m_n_fields);
-      for (std::size_t f = 0; f < m_n_fields; ++f) {
-        const int per_field_tag = m_base_tag + static_cast<int>(f) * 6;
-        m_per_field_packed.push_back(std::make_unique<DeviceFacesHalo<Ops>>(
-            decomp, m_rank, m_halo_width, m_comm, m_dirs, per_field_tag));
       }
     }
   }
@@ -298,8 +294,8 @@ public:
    * @param stream Stream the caller used to populate `fields`. Fully
    *               synchronised before MPI starts.
    *
-   * @note `*_FORCE_PACKED_HALO=1` falls back to a per-field 6-face exchange
-   *       that **does not** fill corners or edges. Without GPU-aware MPI the
+   * @note `*_FORCE_PACKED_HALO=1` selects packed host staging while preserving
+   *       the requested Full connectivity. Without GPU-aware MPI the
    *       26-fill still runs; real-neighbor axes host-stage packed slabs.
    */
   void exchange(double *const *fields, stream_t stream) {
@@ -314,21 +310,15 @@ public:
     }
 
     const double t0 = MPI_Wtime();
-    if (m_use_full_widening) {
-      t_mark = MPI_Wtime();
-      for (int a = 0; a < 3; ++a) {
-        if (!m_axis_active[a]) {
-          continue;
-        }
-        run_pass_(a, fields, stream);
+    t_mark = MPI_Wtime();
+    for (int a = 0; a < 3; ++a) {
+      if (!m_axis_active[a]) {
+        continue;
       }
-      if (perf) {
-        H.gpu_aware_mpi += MPI_Wtime() - t_mark;
-      }
-    } else {
-      for (std::size_t f = 0; f < m_n_fields; ++f) {
-        m_per_field_packed[f]->exchange_halos_device(fields[f], 0, stream);
-      }
+      run_pass_(a, fields, stream);
+    }
+    if (perf) {
+      H.gpu_aware_mpi += MPI_Wtime() - t_mark;
     }
     pfc::profiling::record_time(pfc::profiling::kProfilingRegionCommunication,
                                 MPI_Wtime() - t0);
@@ -390,6 +380,7 @@ private:
     (void)hw;
     const MPI_Datatype elem = pfc::exchange::detail::get_mpi_type<double>();
     for (int a = 0; a < 3; ++a) {
+      if (!m_axis_active[a]) continue;
       for (int f = 0; f < 2; ++f) {
         const auto &s = m_slabs[a][f].first;
         const auto &r = m_slabs[a][f].second;
@@ -532,6 +523,12 @@ private:
     for (std::size_t fld = 0; fld < m_n_fields; ++fld) {
       for (int f = 0; f < 2; ++f) {
         const auto &recv = m_slabs[axis][f].second;
+        // MPI_PROC_NULL receives leave pools untouched. Physical-boundary
+        // ghost values belong to the caller and must not be overwritten.
+        if (m_neighbors[axis][f] == MPI_PROC_NULL) {
+          ++idx;
+          continue;
+        }
         const std::size_t n = static_cast<std::size_t>(recv.sx) *
                               static_cast<std::size_t>(recv.sy) *
                               static_cast<std::size_t>(recv.sz);
@@ -604,6 +601,10 @@ private:
     for (std::size_t fld = 0; fld < m_n_fields; ++fld) {
       for (int f = 0; f < 2; ++f) {
         const auto &recv = m_slabs[axis][f].second;
+        if (m_neighbors[axis][f] == MPI_PROC_NULL) {
+          ++idx;
+          continue;
+        }
         Ops::unpack_face(fields[fld], m_d_recv_pool[idx], recv.ox, recv.oy, recv.oz,
                          recv.sx, recv.sy, recv.sz, m_nxp, m_nyp, m_nzp, stream);
         ++idx;
@@ -634,15 +635,12 @@ private:
 
   bool m_use_gpu_aware = false;
   bool m_use_contiguous = false;
-  bool m_use_full_widening = false;
 
   double *m_d_scratch = nullptr;
   std::vector<double *> m_d_send_pool;
   std::vector<double *> m_d_recv_pool;
   std::vector<double *> m_h_send_pool;
   std::vector<double *> m_h_recv_pool;
-
-  std::vector<std::unique_ptr<DeviceFacesHalo<Ops>>> m_per_field_packed;
 };
 
 } // namespace pfc::gpu

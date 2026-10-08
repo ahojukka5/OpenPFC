@@ -120,6 +120,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
     scenarios/gpu_validation/test_composite_gradient_pod_size_hip.hip
     scenarios/gpu_validation/test_multi_field_device.hip
     scenarios/parallel_scaling/test_padded_device_halo_self_wrap_hip.hip
+    scenarios/parallel_scaling/test_full_halo_fd6.hip
   )
   target_link_libraries(openpfc-tests PRIVATE hip::host)
 endif()
