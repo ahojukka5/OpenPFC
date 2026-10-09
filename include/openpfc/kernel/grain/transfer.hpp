@@ -168,9 +168,8 @@ OPENPFC_INLINE_HD TransferStatus stage_cell(
     // Comparisons reject NaN and both infinities without vendor math intrinsics.
     if (!(diagnostics::load<Observe>(
               values, i, counts, diagnostics::Field::Values) >= background_value &&
-          diagnostics::load<Observe>(values, i, counts,
-                                     diagnostics::Field::Values) <=
-              std::numeric_limits<double>::max()) ||
+          diagnostics::load<Observe>(
+              values, i, counts, diagnostics::Field::Values) <= largest_finite) ||
         ((diagnostics::load<Observe>(labels, i, counts,
                                      diagnostics::Field::Labels) == background) !=
          (diagnostics::load<Observe>(
@@ -227,7 +226,7 @@ OPENPFC_INLINE_HD TransferStatus stage_cell(
       continue;
     diagnostics::store<Observe>(staged_values, i, background_value, counts,
                                 diagnostics::Field::StagedValues);
-    diagnostics::store<Observe>(staged_labels, i, background, counts,
+    diagnostics::store<Observe>(staged_labels, i, Id{background}, counts,
                                 diagnostics::Field::StagedLabels);
   }
   for (Slot slot = 0; slot < slots; ++slot) {
