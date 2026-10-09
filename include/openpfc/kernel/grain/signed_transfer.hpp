@@ -21,8 +21,7 @@ OPENPFC_INLINE_HD TransferStatus stage_signed_cell(
     auto i = cells * s + cell;
     auto uid = labels[i];
     double value = values[i];
-    if (!(value >= -std::numeric_limits<double>::max() &&
-          value <= std::numeric_limits<double>::max()) ||
+    if (!(value >= -largest_finite && value <= largest_finite) ||
         (!uid && value != background_value)) {
       status = worst(status, TransferStatus::InvalidSupport);
       continue;

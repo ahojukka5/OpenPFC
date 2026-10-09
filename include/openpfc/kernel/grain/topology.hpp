@@ -23,6 +23,9 @@ using Id = std::uint64_t;
 using Slot = std::uint32_t;
 inline constexpr Id background = 0;
 inline constexpr Slot unassigned = std::numeric_limits<Slot>::max();
+/// Largest finite double, usable in CUDA device code where the host-only
+/// constexpr std::numeric_limits<double>::max() is not.
+inline constexpr double largest_finite = std::numeric_limits<double>::max();
 
 /// Applications retain this counter across observations/checkpoints.
 struct IdentitySequence {

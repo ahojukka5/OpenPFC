@@ -35,7 +35,7 @@ preflight(std::size_t cells, Slot slots, const double *values, const Id *seeds,
         diagnostics::load<Observe>(values, i, counts, diagnostics::Field::Values);
     diagnostics::store<Observe>(occupied, i, std::uint8_t(q > 0), counts,
                                 diagnostics::Field::Occupancy);
-    if (!(q >= 0 && q <= std::numeric_limits<double>::max())) {
+    if (!(q >= 0 && q <= pfc::grain::largest_finite)) {
       error_max<Observe>(error, Status::InvalidInput, counts);
       continue;
     }
