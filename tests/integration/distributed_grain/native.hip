@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "fixture.hpp"
 #include <iostream>
+#include <openpfc/runtime/common/distributed_bounds.hpp>
 #include <openpfc/runtime/cpu/detail/grain_tracking.hpp>
 #include <openpfc/runtime/gpu/distributed_grain.hpp>
+#include <openpfc/runtime/gpu/support_bounds.hpp>
 int main(int argc, char **argv) {
   MPI_Init(&argc, &argv);
   int rank = 0, ranks = 0;
@@ -62,6 +64,38 @@ int main(int argc, char **argv) {
               "values");
       require(values.to_host() == f.values && labels.to_host() == f.labels,
               "device originals untouched before commit");
+      auto bounds = dg::observe_bounds(f.part, f.slots, labels, f.grains, stream);
+      auto cpu_bounds = dg::observe_bounds(f.part, f.slots, f.labels, f.grains);
+      require(bounds.bounds.size() == cpu_bounds.bounds.size(),
+              "native bound UID support count parity");
+      for (std::size_t a = 0; a < bounds.bounds.size(); ++a) {
+        auto x = bounds.bounds[a], y = cpu_bounds.bounds[a];
+        require(x.uid == y.uid && x.slot == y.slot && x.samples == y.samples &&
+                    x.lower == y.lower && x.upper == y.upper,
+                "native complete support bounds equal independent CPU scans");
+      }
+      auto bound_plan = dg::prepare_bounds(
+          [&] {
+            return dg::observe_bounds(f.part, f.slots, labels, f.grains, stream);
+          },
+          f.grains, f.slots, options, MPI_COMM_WORLD);
+      require(bound_plan.status == dg::Status::Success,
+              "actual HIP globally combined bounds plan");
+      for (auto e : oracle.edges)
+        require(std::binary_search(bound_plan.snapshot.graph.edges.begin(),
+                                   bound_plan.snapshot.graph.edges.end(), e),
+                "device bound graph is exact-contact superset");
+      auto bound_transaction = dg::stage(bound_plan, MPI_COMM_WORLD, apply);
+      require(bound_transaction.status == dg::Status::Success &&
+                  bound_transaction.transaction,
+              "actual HIP bound driven collective signed transfer");
+      auto bound_cpu =
+          transfer_signed(f.part.local(), f.slots, f.values, f.labels,
+                          bound_plan.local_grains, bound_plan.local_moves);
+      require(bound_transaction.transaction->values.to_host() == bound_cpu.values &&
+                  bound_transaction.transaction->labels.to_host() ==
+                      bound_cpu.labels,
+              "native bound remap exact signed-amplitude UID parity");
       auto failure = dg::stage(plan, MPI_COMM_WORLD, [&](auto grains, auto moves) {
         auto staged = apply(grains, moves);
         if (rank == 0) staged.status = TransferStatus::InvalidSupport;
