@@ -153,3 +153,4 @@ endif()
 add_subdirectory(rk_coupled)
 
 add_subdirectory(distributed_grain)
+add_subdirectory(label_contacts)
