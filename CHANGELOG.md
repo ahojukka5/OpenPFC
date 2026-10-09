@@ -7,6 +7,33 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+Source-level additions and one removal since 0.3.0. ABI compatibility is
+not claimed. C++20 remains the language baseline. OpenPFC is still
+pre-1.0.
+
+**Highlights**
+
+- `pfc::grain`: persistent grain identity, contact topology, and a
+  transactional grain remapping path with owning field transfers, in 2D
+  and in structured 3D, with caller-owned diagnostics.
+- One-rank Chebyshev and Fourier × Chebyshev solves (Dirichlet, Neumann,
+  Robin Poisson and Helmholtz) and the laminar channel steps of
+  `incompressible_flow`, which also runs Taylor–Green and decaying HIT.
+- Adaptive stepping: `ETD1StepDoubling`, the PI.3.4 step controller,
+  and a changed error normalization (`AdaptiveControlConfig` 1.1.0).
+- Halo exchange across a non-periodic face works under Open MPI
+  (`MPI_PROC_NULL` for a missing neighbor). Under 0.3.0, Open MPI
+  aborted with `MPI_ERR_RANK`.
+- CUDA builds compile the grain tracking, transfer, and remapping code.
+- `WallAcceleration` is no longer part of the installed Chebyshev
+  header.
+
+Applications that need these APIs should require
+`find_package(OpenPFC 0.4 CONFIG REQUIRED)`. The entries below are the
+development record since 0.3.0.
+
 ### Removed
 
 - The committed Heat3D N³ tables `heat3d_n3_cost_repeats.csv` and
