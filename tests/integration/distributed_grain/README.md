@@ -49,3 +49,21 @@ Run canonical `scripts/build.sh --machine=lumi --cpu --no-heffte --mpi-tests`
 first, then the HIP configuration. Direct and 1/2/4/8-rank CTest entries are
 registered. No physical-model, timing, CUDA or production-size claim follows
 from these small correctness controls.
+
+The explicit `observe_bounds` / `prepare_bounds` path instead reduces complete
+known-UID support to seven integers per grain on the device. It combines
+local bounds globally before forming buffered contacts, including periodic
+minimum distances. Its graph is a conservative superset, verified against the
+independent exact contact oracle; disconnected islands may add false contacts
+and force a larger palette or rejection. Same-slot bound distance at most one
+rejects conservatively as unsafe. Bounds do not invent births or repair mixed
+support. Use a pre-stage buffer covering both UID influence horizons, such as
+at least six for radius-three FD6 expansion, and include every actual operator
+that expands phase support. This O(grains)-metadata alternative avoids dense
+shell extraction and radius-stencil graph scans. It changes contact semantics
+explicitly and provides no production-size timing or fit claim.
+
+Unknown coloring policies and non-null diagnostics requests reject explicitly;
+this coordinator does not implement the local remapper's diagnostic counters.
+The common options' local `max_sweeps` is not a limit on component union or
+support-box reduction; those producers are non-iterative collective operations.
