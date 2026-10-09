@@ -151,3 +151,5 @@ if(OpenPFC_RUN_MPI_SUITES)
 endif()
 
 add_subdirectory(rk_coupled)
+
+add_subdirectory(distributed_grain)
