@@ -26,11 +26,23 @@ __device__ inline void merge(Accesses *total, const Accesses &local) {
 /// Private counter storage is itself an observed allocation/copy. Counter
 /// updates are excluded from declared logical production accesses.
 template <class Backend> class Observation {
+  using Counters = pfc::core::DataBuffer<Backend, Accesses>;
   Diagnostics *owner_ = current;
-  pfc::core::DataBuffer<Backend, Accesses> counters_{owner_ ? 1u : 0u};
+  Counters counters_ = allocate(owner_);
+
+  // nvcc 13.1 cicc aborts on a function-try-block in this constructor, so a
+  // failed counter allocation is recorded here instead.
+  static Counters allocate(Diagnostics *owner) {
+    try {
+      return Counters{owner ? 1u : 0u};
+    } catch (...) {
+      if (owner) owner->fail();
+      throw;
+    }
+  }
 
 public:
-  Observation() try {
+  Observation() {
     if (owner_) {
       const Accesses zero{};
       try {
@@ -40,9 +52,6 @@ public:
         throw;
       }
     }
-  } catch (...) {
-    if (current) current->fail();
-    throw;
   }
   Accesses *data() { return counters_.data(); }
   ~Observation() {
