@@ -173,8 +173,8 @@ public:
         }
       }
       for (int f = 0; f < 2; ++f) {
-        m_neighbors[a][f] =
-            pfc::decomposition::get_neighbor_rank(decomp, m_rank, kAxisDirs[a][f]);
+        m_neighbors[a][f] = pfc::exchange::mpi_peer(
+            pfc::decomposition::get_neighbor_rank(decomp, m_rank, kAxisDirs[a][f]));
       }
       m_axis_is_self[a] = (m_neighbors[a][0] == m_rank);
     }

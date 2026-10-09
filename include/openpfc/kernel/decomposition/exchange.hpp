@@ -98,6 +98,16 @@ inline void sendrecv_face(void *buf, MPI_Datatype send_type, MPI_Datatype recv_t
 }
 
 /**
+ * @brief MPI peer for a neighbor rank; a negative rank means no neighbor
+ *
+ * `decomposition::get_neighbor_rank` returns -1 across a non-periodic face.
+ * Only Cray MPICH defines `MPI_PROC_NULL` as -1, so pass this to MPI instead.
+ */
+inline int mpi_peer(int neighbor_rank) noexcept {
+  return neighbor_rank < 0 ? MPI_PROC_NULL : neighbor_rank;
+}
+
+/**
  * @brief Zero-copy non-blocking send face (post Isend)
  */
 inline void isend_face(void *buf, MPI_Datatype send_type, int send_to_rank,
