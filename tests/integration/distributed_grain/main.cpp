@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <openpfc/kernel/grain/signed_transfer.hpp>
+#include <openpfc/runtime/common/distributed_bounds.hpp>
 #include <openpfc/runtime/common/distributed_grain.hpp>
 #include <openpfc/runtime/cpu/detail/grain_tracking.hpp>
 
@@ -67,6 +68,51 @@ int main(int argc, char **argv) {
                       staged.transaction->values[j] == f.values[i],
                   "UID/signed amplitude survives slot change exactly");
         }
+      auto bound_plan = dg::prepare_bounds(
+          [&] { return dg::observe_bounds(f.part, f.slots, f.labels, f.grains); },
+          f.grains, f.slots, options, MPI_COMM_WORLD);
+      require(bound_plan.status == dg::Status::Success,
+              "conservative global support bounds plan");
+      require(bound_plan.snapshot.graph.vertices == oracle.vertices,
+              "bound graph preserves all globally present UID vertices");
+      for (auto edge : oracle.edges)
+        require(std::binary_search(bound_plan.snapshot.graph.edges.begin(),
+                                   bound_plan.snapshot.graph.edges.end(), edge),
+                "bound graph contains every exact contact across "
+                "periodic/decomposition boundaries");
+      if (connectivity == Connectivity::TwentySix)
+        require(bound_plan.snapshot.graph.edges.size() > oracle.edges.size(),
+                "disconnected periodic islands admit documented conservative false "
+                "contacts");
+      auto bound_transfer =
+          dg::stage(bound_plan, MPI_COMM_WORLD, [&](auto grains, auto moves) {
+            return transfer_signed(f.part.local(), f.slots, f.values, f.labels,
+                                   grains, moves);
+          });
+      require(bound_transfer.status == dg::Status::Success,
+              "conservative bounds signed transfer");
+      for (std::size_t cell = 0; cell < cells; ++cell)
+        for (Slot slot = 0; slot < f.slots; ++slot) {
+          auto at = cells * slot + cell;
+          if (!f.labels[at]) continue;
+          auto g = std::lower_bound(bound_plan.snapshot.grains.begin(),
+                                    bound_plan.snapshot.grains.end(), f.labels[at],
+                                    [](Grain g, Id id) { return g.id < id; });
+          auto destination = cells * g->slot + cell;
+          require(bound_transfer.transaction->labels[destination] == f.labels[at] &&
+                      bound_transfer.transaction->values[destination] ==
+                          f.values[at],
+                  "UID/amplitude exact under bound-driven slot changes");
+        }
+      auto wrong_bound = dg::prepare_bounds(
+          [&] {
+            auto b = dg::observe_bounds(f.part, f.slots, f.labels, f.grains);
+            if (!b.bounds.empty()) b.bounds.front().uid = 999;
+            return b;
+          },
+          f.grains, f.slots, options, MPI_COMM_WORLD);
+      require(wrong_bound.status == dg::Status::UnknownIdentity,
+              "bounds do not silently allocate unknown UIDs");
       // A single rank's failure rejects every staged result, including peers.
       auto failed = dg::stage(plan, MPI_COMM_WORLD, [&](auto grains, auto moves) {
         auto transaction = apply(grains, moves);
@@ -163,6 +209,13 @@ int main(int argc, char **argv) {
       require(dg::prepare(producer, f.grains, f.slots, unsupported, MPI_COMM_WORLD)
                       .status == dg::Status::InvalidInput,
               "unsupported coloring policy fails explicitly");
+      require(dg::prepare_bounds(
+                  [&] {
+                    return dg::observe_bounds(f.part, f.slots, f.labels, f.grains);
+                  },
+                  f.grains, f.slots, unsupported, MPI_COMM_WORLD)
+                      .status == dg::Status::InvalidInput,
+              "unsupported bounds policy fails explicitly");
       auto bad_registry = f.grains;
       if (rank == 0) bad_registry[0].slot = 2;
       auto bad =
