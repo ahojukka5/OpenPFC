@@ -161,8 +161,8 @@ public:
 
     // Compute neighbors from decomposition
     for (std::size_t i = 0; i < 6; ++i) {
-      m_neighbors.push_back(
-          decomposition::get_neighbor_rank(decomp, m_rank, dirs_canon[i]));
+      m_neighbors.push_back(exchange::mpi_peer(
+          decomposition::get_neighbor_rank(decomp, m_rank, dirs_canon[i])));
     }
     m_requests.resize(2 * 6);
   }
@@ -487,8 +487,8 @@ public:
       }
       // Compute neighbors from decomposition
       for (int f = 0; f < 2; ++f) {
-        m_neighbors[a][f] =
-            decomposition::get_neighbor_rank(decomp, m_rank, kAxisDirs[a][f]);
+        m_neighbors[a][f] = exchange::mpi_peer(
+            decomposition::get_neighbor_rank(decomp, m_rank, kAxisDirs[a][f]));
       }
       m_axis_is_self[a] = (m_neighbors[a][0] == m_rank);
     }
@@ -789,7 +789,8 @@ public:
     for (std::size_t i = 0; i < 6; ++i) {
       const Int3 &dir = kFaceDirs[i];
       m_active[i] = m_dirs.contains(dir);
-      m_neighbors[i] = decomposition::get_neighbor_rank(decomp, rank, dir);
+      m_neighbors[i] =
+          exchange::mpi_peer(decomposition::get_neighbor_rank(decomp, rank, dir));
     }
 
     std::size_t n_active = 0;

@@ -510,8 +510,8 @@ public:
     m_neighbors.clear();
     for (std::size_t i = 0; i < 6; ++i) {
       m_active[i] = m_dirs.contains(dirs_canon[i]);
-      m_neighbors.push_back(
-          decomposition::get_neighbor_rank(decomp, m_rank, dirs_canon[i]));
+      m_neighbors.push_back(pfc::exchange::mpi_peer(
+          decomposition::get_neighbor_rank(decomp, m_rank, dirs_canon[i])));
     }
 
     // Resolve the active slots *before* building the MPI types, and hand the

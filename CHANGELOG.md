@@ -22,6 +22,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - CUDA builds compile the grain transfer and remapping tests. Device code
   no longer calls the host-only `std::numeric_limits<double>::max()` or binds
   `grain::background` to a reference.
+- Halo exchanges across a non-periodic face work under Open MPI. A missing
+  neighbor reached MPI as rank -1, which only Cray MPICH treats as
+  `MPI_PROC_NULL`; Open MPI aborted with `MPI_ERR_RANK`.
 - Architecture checks no longer pass when ripgrep is missing or cannot
   run. The kernel, app-boundary, and GPU memcpy scripts fall back to
   grep and still report file:line hits. `runtime/gpu/` stays allowed.
