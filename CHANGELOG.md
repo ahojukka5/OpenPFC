@@ -16,6 +16,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- CUDA builds compile `grain_tracking.cu` again. nvcc 13.1 aborted without
+  a diagnostic on the function-try-block in the grain diagnostics
+  `Observation` constructor.
 - Architecture checks no longer pass when ripgrep is missing or cannot
   run. The kernel, app-boundary, and GPU memcpy scripts fall back to
   grep and still report file:line hits. `runtime/gpu/` stays allowed.
