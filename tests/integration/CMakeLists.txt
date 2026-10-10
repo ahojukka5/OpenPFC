@@ -84,6 +84,14 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
   set_target_properties(test_grain_remapping_hip PROPERTIES HIP_STANDARD 20 HIP_STANDARD_REQUIRED ON)
   add_test(NAME HIP_GrainRemapping COMMAND test_grain_remapping_hip)
 endif()
+# Includes the HeFFTe backend from a .hip TU, so the HIP compiler (Clang)
+# compiles FFT_Impl; regression for issue #373.
+if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE AND OpenPFC_ENABLE_HIP_SPECTRAL)
+  add_executable(test_fft_device_interface_hip fft_device_interface.hip)
+  target_link_libraries(test_fft_device_interface_hip PRIVATE OpenPFC hip::host)
+  set_target_properties(test_fft_device_interface_hip PROPERTIES HIP_STANDARD 20 HIP_STANDARD_REQUIRED ON)
+  add_test(NAME HIP_FFTDeviceInterface COMMAND test_fft_device_interface_hip)
+endif()
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
     test_ui_validation.cpp
