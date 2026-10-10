@@ -9,6 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Configure with CMake 4 using nlohmann-json 3.11.3 without a
+  policy-minimum override; preserve the existing 0.4 package version.
+
 - Clang and ROCm HIP can compile the host/device HeFFTe FFT interfaces.
   Virtual `forward`/`backward` overriders no longer carry invalid C++20
   requires-clauses; host and HIP interface dispatch has regression tests.
