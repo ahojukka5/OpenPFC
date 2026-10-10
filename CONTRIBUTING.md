@@ -213,7 +213,8 @@ follows the message rules.
 
 Pull requests run a **short** set under [`.github/workflows/`](.github/workflows):
 **`ci.yml`** code-quality, gcc-13 Debug+Release `ctest` (including 2-rank MPI),
-and packaging smoke; **`docs.yml`** when docs/headers/README change. Coverage
+a clang-18 compile check, and packaging smoke; **`docs.yml`** when
+docs/headers/README change. Coverage
 and CUDA/HIP compile-only run on `master` pushes (coverage also weekly).
 Clang-tidy is weekly plus `workflow_dispatch`, not a PR gate. AddressSanitizer
 is `workflow_dispatch` only. Doc-only edits still trigger the Documentation
