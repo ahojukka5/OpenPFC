@@ -51,8 +51,7 @@ namespace detail {
  * @throws std::invalid_argument when `actual != expected`
  */
 inline void require_equal_size(std::size_t actual, std::size_t expected,
-                               const char *context,
-                               const char *expected_label) {
+                               const char *context, const char *expected_label) {
   if (actual != expected) [[unlikely]] {
     throw std::invalid_argument(std::string(context) + std::to_string(actual) +
                                 " != " + expected_label + "() " +
@@ -122,12 +121,12 @@ struct FFTWorkspaceStorage<BackendTag> {
   [[nodiscard]] std::size_t allocated_bytes() const noexcept {
     std::size_t n = 0;
     if (m_gpu_wrk_double) {
-      n += m_gpu_wrk_double->size() *
-           sizeof(typename gpu_workspace_type::value_type);
+      n +=
+          m_gpu_wrk_double->size() * sizeof(typename gpu_workspace_type::value_type);
     }
     if (m_gpu_wrk_float) {
-      n += m_gpu_wrk_float->size() *
-           sizeof(typename gpu_workspace_float::value_type);
+      n +=
+          m_gpu_wrk_float->size() * sizeof(typename gpu_workspace_float::value_type);
     }
     return n;
   }
@@ -164,8 +163,7 @@ struct device_fft_buffers<
  * Workspace buffers are owned by `detail::FFTWorkspaceStorage<BackendTag>` so
  * unused twin host/device allocations are not constructed.
  */
-template <typename BackendTag = heffte::backend::fftw,
-          typename Interface = IHostFFT>
+template <typename BackendTag = heffte::backend::fftw, typename Interface = IHostFFT>
 struct FFT_Impl : Interface {
 
   using fft_type = heffte::fft3d_r2c<BackendTag>;
@@ -223,8 +221,7 @@ struct FFT_Impl : Interface {
    */
   RealVector m_in_scratch_real;
 
-  FFT_Impl(fft_type fft)
-      : m_fft(std::move(fft)), m_ws(m_fft.size_workspace()) {}
+  FFT_Impl(fft_type fft) : m_fft(std::move(fft)), m_ws(m_fft.size_workspace()) {}
 
   /**
    * @brief Forward transform via `DataBuffer` (GPU backends, any RealType).
@@ -257,12 +254,11 @@ struct FFT_Impl : Interface {
   void forward(const RealVector &in, ComplexVector &out)
     requires std::is_base_of_v<IHostFFT, Interface>
   {
-    detail::require_equal_size(
-        in.size(), size_inbox(),
-        "FFT_Impl::forward: real buffer size ", "size_inbox");
-    detail::require_equal_size(
-        out.size(), size_outbox(),
-        "FFT_Impl::forward: complex buffer size ", "size_outbox");
+    detail::require_equal_size(in.size(), size_inbox(),
+                               "FFT_Impl::forward: real buffer size ", "size_inbox");
+    detail::require_equal_size(out.size(), size_outbox(),
+                               "FFT_Impl::forward: complex buffer size ",
+                               "size_outbox");
     m_in_scratch_real.resize(in.size());
     m_fft_time -= MPI_Wtime();
     std::copy(in.begin(), in.end(), m_in_scratch_real.begin());
@@ -300,12 +296,12 @@ struct FFT_Impl : Interface {
   void backward(const ComplexVector &in, RealVector &out)
     requires std::is_base_of_v<IHostFFT, Interface>
   {
-    detail::require_equal_size(
-        in.size(), size_outbox(),
-        "FFT_Impl::backward: complex buffer size ", "size_outbox");
-    detail::require_equal_size(
-        out.size(), size_inbox(),
-        "FFT_Impl::backward: real buffer size ", "size_inbox");
+    detail::require_equal_size(in.size(), size_outbox(),
+                               "FFT_Impl::backward: complex buffer size ",
+                               "size_outbox");
+    detail::require_equal_size(out.size(), size_inbox(),
+                               "FFT_Impl::backward: real buffer size ",
+                               "size_inbox");
     m_fft_time -= MPI_Wtime();
     m_fft.backward(in.data(), out.data(), m_ws.data_wrk(), heffte::scale::full);
     m_fft_time += MPI_Wtime();
@@ -337,14 +333,13 @@ struct FFT_Impl : Interface {
 
 private:
   template <typename RealBackendTag, typename ComplexBackendTag, typename RealType>
-  void forward_device_(
-      const core::DataBuffer<RealBackendTag, RealType> &in,
-      core::DataBuffer<ComplexBackendTag, std::complex<RealType>> &out) {
+  void
+  forward_device_(const core::DataBuffer<RealBackendTag, RealType> &in,
+                  core::DataBuffer<ComplexBackendTag, std::complex<RealType>> &out) {
     static_assert(std::is_same_v<RealBackendTag, ComplexBackendTag>,
                   "Input and output must use the same backend");
     detail::require_equal_size(in.size(), size_inbox(),
-                               "FFT_Impl::forward: real buffer size ",
-                               "size_inbox");
+                               "FFT_Impl::forward: real buffer size ", "size_inbox");
     detail::require_equal_size(out.size(), size_outbox(),
                                "FFT_Impl::forward: complex buffer size ",
                                "size_outbox");
