@@ -24,6 +24,8 @@
 #include <memory>
 #include <type_traits>
 
+int run_spectral_state_consumer(); // spectral_state.cpp
+
 int main() {
   static_assert(std::is_trivially_copyable_v<pfc::sim::AsStored>);
   static_assert(static_cast<int>(pfc::solvers::MicroelasticityScheme::EyreMilton) !=
@@ -95,7 +97,8 @@ int main() {
   const bool fields_ok = density(0, 0, 0) == 1.0 && solute(0, 0, 0) == 2.0;
   const bool domain_ok = size[0] == 8 && size[1] == 8 && size[2] == 8;
   const bool cadence_ok = life_saves == 2 && accepted_steps == 4;
-  if (fields_ok && domain_ok && cadence_ok) {
+  const bool spectral_ok = run_spectral_state_consumer() == 0;
+  if (fields_ok && domain_ok && cadence_ok && spectral_ok) {
     std::printf("OpenPFC consumer OK: domain %dx%dx%d\n", size[0], size[1], size[2]);
   }
   int mpi_done = 0;
@@ -103,5 +106,5 @@ int main() {
   if (mpi_ready == 0 && mpi_done == 0) {
     MPI_Finalize();
   }
-  return (fields_ok && domain_ok && cadence_ok) ? 0 : 1;
+  return (fields_ok && domain_ok && cadence_ok && spectral_ok) ? 0 : 1;
 }
