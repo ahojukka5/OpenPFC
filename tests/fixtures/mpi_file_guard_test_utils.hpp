@@ -13,11 +13,18 @@
 #include <string>
 #include <system_error>
 
+#if defined(__APPLE__)
+#include <fcntl.h>
+#include <sys/param.h>
+#include <unistd.h>
+#endif
+
 namespace pfc::test {
 
 /**
  * @brief Check whether this process currently holds an open file descriptor
- * pointing at `path`, by scanning /proc/self/fd symlinks.
+ * pointing at `path`, by scanning /proc/self/fd symlinks (Linux) or asking
+ * each descriptor for its path with fcntl(F_GETPATH) (macOS).
  *
  * Used to detect MPI_File handle leaks for a *specific* file. A raw open-fd
  * *count* is not reliable here: OpenMPI's own internal machinery (BTL
@@ -26,7 +33,6 @@ namespace pfc::test {
  * including ones that fail -- so the total fd count can shift by +/-1 for
  * reasons unconnected to the file under test. Checking whether a descriptor
  * resolves to this exact (canonicalized) path sidesteps that noise.
- * Linux-only, matching this project's HPC target environment.
  */
 inline bool is_path_open(const std::string &path) {
   std::error_code ec;
@@ -34,6 +40,16 @@ inline bool is_path_open(const std::string &path) {
   if (ec) {
     return false;
   }
+#if defined(__APPLE__)
+  char buf[MAXPATHLEN];
+  const int max_fd = getdtablesize();
+  for (int fd = 0; fd < max_fd; ++fd) {
+    if (fcntl(fd, F_GETPATH, buf) != -1 && std::filesystem::path(buf) == canonical) {
+      return true;
+    }
+  }
+  return false;
+#else
   for (const auto &entry :
        std::filesystem::directory_iterator("/proc/self/fd", ec)) {
     if (ec) {
@@ -47,6 +63,7 @@ inline bool is_path_open(const std::string &path) {
     }
   }
   return false;
+#endif
 }
 
 } // namespace pfc::test
