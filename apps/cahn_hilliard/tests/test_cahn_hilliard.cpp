@@ -554,9 +554,12 @@ TEST_CASE("Redlich-Kister with L1 = 0 is exactly the regular solution",
   for (int i = 1; i < 100; ++i) {
     const double c = i / 100.0;
     const double u = c;
-    REQUIRE_THAT(regular.f_bulk(c), WithinRel(omega * u * (1 - u) + u * std::log(u) +
-                                                  (1 - u) * std::log(1 - u),
-                                              1e-13));
+    // The terms cancel to ~1e-4 of their size near the spinodal, and the two
+    // sides group them differently, so bound the round-off by the term size.
+    const double mixing = omega * u * (1 - u);
+    const double entropy = u * std::log(u) + (1 - u) * std::log(1 - u);
+    const double scale = std::abs(mixing) + std::abs(entropy);
+    REQUIRE_THAT(regular.f_bulk(c), WithinAbs(mixing + entropy, 1e-13 * scale));
     REQUIRE_THAT(regular.f_prime(c),
                  WithinRel(omega * (1 - 2 * u) + std::log(u / (1 - u)), 1e-13));
     REQUIRE_THAT(regular.f_double_prime(c),
