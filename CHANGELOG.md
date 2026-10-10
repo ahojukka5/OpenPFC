@@ -9,6 +9,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Fixed
 
+- Clang and ROCm HIP can compile the host/device HeFFTe FFT interfaces.
+  Virtual `forward`/`backward` overriders no longer carry invalid C++20
+  requires-clauses; host and HIP interface dispatch has regression tests.
+
 - Installed `openpfc/kernel/simulation/simulation_state.hpp` is usable. It
   includes `simulation_state.ipp`, which the install rule (`*.hpp` only) did
   not ship, so any installed consumer of `SimulationState` (and therefore of
