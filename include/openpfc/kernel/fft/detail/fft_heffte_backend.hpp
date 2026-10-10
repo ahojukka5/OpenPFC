@@ -239,13 +239,16 @@ struct FFT_Impl : Interface {
   }
 
   /// `IDeviceFFT` double-buffer override (non-template wins over the template).
-  /// Constraint is discarded on `IHostFFT`; `override` is omitted because
-  /// Cray GNU rejects `override` plus a trailing `requires` on a
-  /// non-template member.
+  /// On `IHostFFT` the buffer types are placeholders, so this overload is not
+  /// an override there and its body is never instantiated. C++20
+  /// [class.virtual] forbids a trailing requires-clause on a virtual function,
+  /// so the interface check is a `static_assert` in the body instead. `override`
+  /// is omitted because Cray GNU rejects `override` on this non-template member
+  /// with a requires-clause, and it is not needed for `IHostFFT`.
   void forward(const typename detail::device_fft_buffers<Interface>::RealBuffer &in,
-               typename detail::device_fft_buffers<Interface>::ComplexBuffer &out)
-    requires detail::device_fft_buffers<Interface>::value
-  {
+               typename detail::device_fft_buffers<Interface>::ComplexBuffer &out) {
+    static_assert(detail::device_fft_buffers<Interface>::value,
+                  "FFT_Impl::forward: device buffers need an IDeviceFFT interface");
     forward_device_(in, out);
   }
 
@@ -254,9 +257,9 @@ struct FFT_Impl : Interface {
    * @throws std::invalid_argument if `in.size() != size_inbox()` or
    *         `out.size() != size_outbox()`
    */
-  void forward(const RealVector &in, ComplexVector &out)
-    requires std::is_base_of_v<IHostFFT, Interface>
-  {
+  void forward(const RealVector &in, ComplexVector &out) {
+    static_assert(std::is_base_of_v<IHostFFT, Interface>,
+                  "FFT_Impl::forward: host vectors need an IHostFFT interface");
     detail::require_equal_size(
         in.size(), size_inbox(),
         "FFT_Impl::forward: real buffer size ", "size_inbox");
@@ -283,12 +286,12 @@ struct FFT_Impl : Interface {
     backward_device_(in, out);
   }
 
-  /// `IDeviceFFT` double-buffer override.
+  /// `IDeviceFFT` double-buffer override. Interface check as in `forward`.
   void
   backward(const typename detail::device_fft_buffers<Interface>::ComplexBuffer &in,
-           typename detail::device_fft_buffers<Interface>::RealBuffer &out)
-    requires detail::device_fft_buffers<Interface>::value
-  {
+           typename detail::device_fft_buffers<Interface>::RealBuffer &out) {
+    static_assert(detail::device_fft_buffers<Interface>::value,
+                  "FFT_Impl::backward: device buffers need an IDeviceFFT interface");
     backward_device_(in, out);
   }
 
@@ -297,9 +300,9 @@ struct FFT_Impl : Interface {
    * @throws std::invalid_argument if `in.size() != size_outbox()` or
    *         `out.size() != size_inbox()`
    */
-  void backward(const ComplexVector &in, RealVector &out)
-    requires std::is_base_of_v<IHostFFT, Interface>
-  {
+  void backward(const ComplexVector &in, RealVector &out) {
+    static_assert(std::is_base_of_v<IHostFFT, Interface>,
+                  "FFT_Impl::backward: host vectors need an IHostFFT interface");
     detail::require_equal_size(
         in.size(), size_outbox(),
         "FFT_Impl::backward: complex buffer size ", "size_outbox");
