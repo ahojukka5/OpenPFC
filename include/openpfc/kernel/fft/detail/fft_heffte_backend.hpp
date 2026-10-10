@@ -133,8 +133,8 @@ struct FFTWorkspaceStorage<BackendTag> {
 };
 
 /**
- * @brief Detect `IDeviceFFT` buffer aliases so `FFT_Impl` can declare the
- *        override without naming a missing nested type on `IHostFFT`.
+ * @brief Detect `IDeviceFFT` buffer aliases; selects the device
+ *        `FFTInterfaceTransforms` without naming a nested type `IHostFFT` lacks.
  */
 template <typename I, typename = void> struct device_fft_buffers {
   struct unused_real;
@@ -152,6 +152,60 @@ struct device_fft_buffers<
   static constexpr bool value = true;
 };
 
+/**
+ * @brief The virtual `forward` / `backward` overriders of `FFT_Impl`, one
+ *        specialization per interface family.
+ *
+ * C++20 [class.virtual] forbids a trailing requires-clause on a virtual
+ * function, so `FFT_Impl` cannot declare the host and the device overriders
+ * side by side and constrain away the pair that does not apply: Clang rejects
+ * that, GCC accepts it. Each specialization derives from its `Interface` and
+ * declares only the overriders that interface has, unconstrained, and
+ * forwards them to the implementation in `Derived` (CRTP). An `Interface`
+ * that is neither host nor device has no definition.
+ */
+template <typename Derived, typename Interface,
+          bool IsHost = std::is_base_of_v<IHostFFT, Interface>,
+          bool IsDevice = device_fft_buffers<Interface>::value>
+struct FFTInterfaceTransforms;
+
+/// `IHostFFT`: `std::vector` overriders.
+template <typename Derived, typename Interface>
+struct FFTInterfaceTransforms<Derived, Interface, true, false> : Interface {
+  /**
+   * @brief Forward transform via host vectors.
+   * @throws std::invalid_argument if `in.size() != size_inbox()` or
+   *         `out.size() != size_outbox()`
+   */
+  void forward(const RealVector &in, ComplexVector &out) override {
+    static_cast<Derived &>(*this).forward_host_(in, out);
+  }
+
+  /**
+   * @brief Backward transform via host vectors.
+   * @throws std::invalid_argument if `in.size() != size_outbox()` or
+   *         `out.size() != size_inbox()`
+   */
+  void backward(const ComplexVector &in, RealVector &out) override {
+    static_cast<Derived &>(*this).backward_host_(in, out);
+  }
+};
+
+/// `IDeviceFFT`: double-precision `DataBuffer` overriders. Being non-templates,
+/// they win over `FFT_Impl`'s `DataBuffer` templates for the same arguments.
+template <typename Derived, typename Interface>
+struct FFTInterfaceTransforms<Derived, Interface, false, true> : Interface {
+  void forward(const typename Interface::RealBuffer &in,
+               typename Interface::ComplexBuffer &out) override {
+    static_cast<Derived &>(*this).forward_device_(in, out);
+  }
+
+  void backward(const typename Interface::ComplexBuffer &in,
+                typename Interface::RealBuffer &out) override {
+    static_cast<Derived &>(*this).backward_device_(in, out);
+  }
+};
+
 } // namespace detail
 
 /**
@@ -164,7 +218,14 @@ struct device_fft_buffers<
  * unused twin host/device allocations are not constructed.
  */
 template <typename BackendTag = heffte::backend::fftw, typename Interface = IHostFFT>
-struct FFT_Impl : Interface {
+struct FFT_Impl
+    : detail::FFTInterfaceTransforms<FFT_Impl<BackendTag, Interface>, Interface> {
+
+  /// The interface's virtual overriders (host vectors or device buffers).
+  using detail::FFTInterfaceTransforms<FFT_Impl<BackendTag, Interface>,
+                                       Interface>::forward;
+  using detail::FFTInterfaceTransforms<FFT_Impl<BackendTag, Interface>,
+                                       Interface>::backward;
 
   using fft_type = heffte::fft3d_r2c<BackendTag>;
   const fft_type m_fft;
@@ -235,37 +296,6 @@ struct FFT_Impl : Interface {
     forward_device_(in, out);
   }
 
-  /// `IDeviceFFT` double-buffer override (non-template wins over the template).
-  /// Constraint is discarded on `IHostFFT`; `override` is omitted because
-  /// Cray GNU rejects `override` plus a trailing `requires` on a
-  /// non-template member.
-  void forward(const typename detail::device_fft_buffers<Interface>::RealBuffer &in,
-               typename detail::device_fft_buffers<Interface>::ComplexBuffer &out)
-    requires detail::device_fft_buffers<Interface>::value
-  {
-    forward_device_(in, out);
-  }
-
-  /**
-   * @brief Forward transform via host vectors (FFTW / `IHostFFT` only).
-   * @throws std::invalid_argument if `in.size() != size_inbox()` or
-   *         `out.size() != size_outbox()`
-   */
-  void forward(const RealVector &in, ComplexVector &out)
-    requires std::is_base_of_v<IHostFFT, Interface>
-  {
-    detail::require_equal_size(in.size(), size_inbox(),
-                               "FFT_Impl::forward: real buffer size ", "size_inbox");
-    detail::require_equal_size(out.size(), size_outbox(),
-                               "FFT_Impl::forward: complex buffer size ",
-                               "size_outbox");
-    m_in_scratch_real.resize(in.size());
-    m_fft_time -= MPI_Wtime();
-    std::copy(in.begin(), in.end(), m_in_scratch_real.begin());
-    m_fft.forward(m_in_scratch_real.data(), out.data(), m_ws.data_wrk());
-    m_fft_time += MPI_Wtime();
-  }
-
   /**
    * @brief Backward transform via `DataBuffer` (GPU backends, any RealType).
    * @throws std::invalid_argument if `in.size() != size_outbox()` or
@@ -277,34 +307,6 @@ struct FFT_Impl : Interface {
   backward(const core::DataBuffer<ComplexBackendTag, std::complex<RealType>> &in,
            core::DataBuffer<RealBackendTag, RealType> &out) {
     backward_device_(in, out);
-  }
-
-  /// `IDeviceFFT` double-buffer override.
-  void
-  backward(const typename detail::device_fft_buffers<Interface>::ComplexBuffer &in,
-           typename detail::device_fft_buffers<Interface>::RealBuffer &out)
-    requires detail::device_fft_buffers<Interface>::value
-  {
-    backward_device_(in, out);
-  }
-
-  /**
-   * @brief Backward transform via host vectors (FFTW / `IHostFFT` only).
-   * @throws std::invalid_argument if `in.size() != size_outbox()` or
-   *         `out.size() != size_inbox()`
-   */
-  void backward(const ComplexVector &in, RealVector &out)
-    requires std::is_base_of_v<IHostFFT, Interface>
-  {
-    detail::require_equal_size(in.size(), size_outbox(),
-                               "FFT_Impl::backward: complex buffer size ",
-                               "size_outbox");
-    detail::require_equal_size(out.size(), size_inbox(),
-                               "FFT_Impl::backward: real buffer size ",
-                               "size_inbox");
-    m_fft_time -= MPI_Wtime();
-    m_fft.backward(in.data(), out.data(), m_ws.data_wrk(), heffte::scale::full);
-    m_fft_time += MPI_Wtime();
   }
 
   void reset_fft_time() override { m_fft_time = 0.0; }
@@ -332,6 +334,40 @@ struct FFT_Impl : Interface {
   }
 
 private:
+  template <typename, typename, bool, bool>
+  friend struct detail::FFTInterfaceTransforms;
+
+  // Not virtual, so the constraint is allowed; it keeps an explicit
+  // instantiation of a device `FFT_Impl` from instantiating the host path.
+  void forward_host_(const RealVector &in, ComplexVector &out)
+    requires std::is_base_of_v<IHostFFT, Interface>
+  {
+    detail::require_equal_size(in.size(), size_inbox(),
+                               "FFT_Impl::forward: real buffer size ", "size_inbox");
+    detail::require_equal_size(out.size(), size_outbox(),
+                               "FFT_Impl::forward: complex buffer size ",
+                               "size_outbox");
+    m_in_scratch_real.resize(in.size());
+    m_fft_time -= MPI_Wtime();
+    std::copy(in.begin(), in.end(), m_in_scratch_real.begin());
+    m_fft.forward(m_in_scratch_real.data(), out.data(), m_ws.data_wrk());
+    m_fft_time += MPI_Wtime();
+  }
+
+  void backward_host_(const ComplexVector &in, RealVector &out)
+    requires std::is_base_of_v<IHostFFT, Interface>
+  {
+    detail::require_equal_size(in.size(), size_outbox(),
+                               "FFT_Impl::backward: complex buffer size ",
+                               "size_outbox");
+    detail::require_equal_size(out.size(), size_inbox(),
+                               "FFT_Impl::backward: real buffer size ",
+                               "size_inbox");
+    m_fft_time -= MPI_Wtime();
+    m_fft.backward(in.data(), out.data(), m_ws.data_wrk(), heffte::scale::full);
+    m_fft_time += MPI_Wtime();
+  }
+
   template <typename RealBackendTag, typename ComplexBackendTag, typename RealType>
   void
   forward_device_(const core::DataBuffer<RealBackendTag, RealType> &in,
