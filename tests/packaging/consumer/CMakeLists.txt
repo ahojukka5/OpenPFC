@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.21)
 # requests the C component); an MPI-based consumer must enable C as well as CXX.
 project(openpfc_consumer LANGUAGES C CXX)
 
-find_package(OpenPFC REQUIRED)
+find_package(OpenPFC 0.4 CONFIG REQUIRED)
 
-add_executable(consumer main.cpp)
+add_executable(consumer main.cpp spectral_state.cpp)
 target_link_libraries(consumer PRIVATE OpenPFC::openpfc)

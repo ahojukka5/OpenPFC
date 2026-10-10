@@ -278,6 +278,13 @@ jobs:
             echo "::error::device sources leaked into installed include tree"; exit 1
           fi
 
+      - name: Fail if public .ipp implementation files are missing from the install
+        run: |
+          ipp="$HOME/openpfc-prefix/include/openpfc/kernel/simulation/simulation_state.ipp"
+          if [[ ! -f "$ipp" ]]; then
+            echo "::error::$ipp is missing; simulation_state.hpp includes it"; exit 1
+          fi
+
       - name: Build + run downstream consumer via find_package
         env: { CC: gcc-13, CXX: g++-13 }
         run: |
