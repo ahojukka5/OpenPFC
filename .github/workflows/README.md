@@ -15,7 +15,7 @@ Runs on: Push to master/main/develop, PRs to master/main
 
 Purpose: Primary continuous integration pipeline ensuring code quality and functionality.
 
-Jobs: `code-quality` → `build-and-test` + `packaging-smoke`. If Code Quality fails, the build matrix is skipped.
+Jobs: `code-quality` → `build-and-test` + `clang-compile` + `packaging-smoke`. If Code Quality fails, the build matrix is skipped.
 
 1. Code Quality
  - clang-format 20 (advisory)
@@ -27,13 +27,17 @@ Jobs: `code-quality` → `build-and-test` + `packaging-smoke`. If Code Quality f
  - Pushes to master/develop: also gcc-11 Debug
  - Caches HeFFTe; full `ctest` including 2-rank MPI (`OpenPFC_MPI_TEST_MAX_WORLD_SIZE=2`)
 
-3. Packaging smoke (`find_package` consumer)
+3. Clang compile check (`clang-compile`)
+ - clang-18 builds the library and the test TU that instantiates the host `FFT_Impl`
+ - Compile only; guards headers against rules only Clang enforces (issue #373)
 
-4. CUDA/HIP compile-only: **push to master/develop only** (not PRs), `continue-on-error`
+4. Packaging smoke (`find_package` consumer)
 
-5. CI Status
+5. CUDA/HIP compile-only: **push to master/develop only** (not PRs), `continue-on-error`
+
+6. CI Status
  - Required for merging
- - Aggregates Code Quality, build-and-test, and packaging-smoke
+ - Aggregates Code Quality, build-and-test, clang-compile, and packaging-smoke
 
 Typical Duration: ~10–15 minutes on a PR (with HeFFTe cache)
 

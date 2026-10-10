@@ -227,6 +227,55 @@ jobs:
           path: build/Testing/Temporary/LastTest.log
 
   # ============================================================================
+  # Clang compile check (issue #373). Clang enforces rules GCC lets through,
+  # such as no requires-clause on a virtual function. Build the library and the
+  # test that instantiates the host FFT_Impl with Clang; compile only, because
+  # the full Clang build of the suite has separate blockers (#375).
+  # ============================================================================
+  clang-compile:
+    name: Clang compile check (library + FFT backend)
+    needs: [code-quality]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Install dependencies (Ubuntu)
+        run: |
+          bash scripts/ci/apt_update.sh
+          sudo apt-get install -y clang-18 libomp-18-dev gcc-13 g++-13 cmake ninja-build \
+            libopenmpi-dev openmpi-bin libfftw3-dev libfftw3-mpi-dev nlohmann-json3-dev
+
+      - name: Cache HeFFTe
+        id: cache-heffte
+        uses: actions/cache@v5
+        with:
+          path: ~/opt/heffte/2.4.1-cpu
+          key: heffte-2.4.1-cpu-ubuntu-24.04-gcc-13-Release
+
+      - name: Build and Install HeFFTe
+        if: steps.cache-heffte.outputs.cache-hit != 'true'
+        env: { CC: gcc-13, CXX: g++-13 }
+        run: scripts/install-heffte-ci.sh Release /tmp/heffte-build-openpfc-ci
+
+      - name: Configure OpenPFC with Clang
+        env: { CC: clang-18, CXX: clang++-18 }
+        run: |
+          cmake -S . -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=$HOME/opt/heffte/2.4.1-cpu \
+            -DOpenPFC_BUILD_TESTS=ON -DOpenPFC_BUILD_APPS=OFF \
+            -DOpenPFC_BUILD_EXAMPLES=OFF -DOpenPFC_BUILD_DOCUMENTATION=OFF
+
+      - name: Compile library and FFT backend test with Clang
+        run: |
+          cmake --build build --target openpfc -j2
+          cmake --build build -j2 --target \
+            tests/CMakeFiles/openpfc-tests.dir/unit/kernel/fft/test_fft_interface_overriders.cpp.o
+
+  # ============================================================================
   # Packaging smoke test (audit 11 / PN): install OpenPFC and build a downstream
   # consumer against it via find_package(OpenPFC). Guards the export set, the
   # OpenPFCConfig transitive dependencies, and the header-only install filter.
@@ -362,7 +411,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [code-quality, build-and-test, packaging-smoke]
+    needs: [code-quality, build-and-test, clang-compile, packaging-smoke]
     runs-on: ubuntu-24.04
     steps:
       - name: Check all jobs status
@@ -373,6 +422,10 @@ jobs:
           fi
           if [[ "${{ needs.build-and-test.result }}" != "success" ]]; then
             echo "❌ Build and test failed"
+            exit 1
+          fi
+          if [[ "${{ needs.clang-compile.result }}" != "success" ]]; then
+            echo "❌ Clang compile check failed"
             exit 1
           fi
           if [[ "${{ needs.packaging-smoke.result }}" != "success" ]]; then
