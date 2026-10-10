@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+### Fixed
+
+- Installed `openpfc/kernel/simulation/simulation_state.hpp` is usable. It
+  includes `simulation_state.ipp`, which the install rule (`*.hpp` only) did
+  not ship, so any installed consumer of `SimulationState` (and therefore of
+  `SpectralETDSystem`) failed to compile.
+
 ## [0.4.0] - 2026-10-10
 
 Source-level additions and one removal since 0.3.0. ABI compatibility is
