@@ -16,6 +16,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `pfc::solvers::FieldOperations` and `FieldVector`: `gmres`, `cg` and `newton`
+  now run directly on blocks of padded Fields, e.g. (eta, theta), on host,
+  CUDA and HIP. Dot products sum owned cells, optionally mask-weighted, with
+  one allreduce. `FieldHalo` gives stencil actions a persistent halo-exchanged
+  scratch block. A block `FieldMultigrid` preconditions them (#471).
+
 - `pfc::solvers::FieldMultigrid`, a matrix-free geometric multigrid V-cycle on
   padded Fields for c u - div(D grad u) with per-face coefficients and pinned
   cells, 2-D and 3-D, distributed and on host, CUDA and HIP. It is symmetric
