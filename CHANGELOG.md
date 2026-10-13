@@ -48,6 +48,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ### Added
 
+- `RuntimeFieldRKStepper` and `create_runtime` advance runtime-sized CPU
+  field groups with the existing RK engine, collective rejection and
+  owned-cell commit. Physical preparation remains application-owned (#515).
+
 - `pfc::sim::allreduce_sum(std::span<double>, MPI_Comm)` sums an array
   element-wise across ranks in place, next to the scalar overload, so
   applications reduce per-bin partial sums without their own
