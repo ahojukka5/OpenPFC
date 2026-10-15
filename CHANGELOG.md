@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Add `pfc::solvers::scalar_root` (`solvers/scalar_root.hpp`): bracketed
+  Newton with bisection fallback for one scalar equation per cell, such as
+  inverting a concentration law for its diffusion potential. Host and device
+  callable, no allocation or exceptions; reports `Converged`,
+  `IterationLimit`, `NoBracket` or `NonFinite` (#560).
 - Add `pfc::solvers::LoadCaseCompliance<Solver>`
   (`solvers/microelasticity/homogenization.hpp`): the stored energy
   `U = 1/2 e:C_H:e` of one imposed mean strain on a SIMP density and its exact
