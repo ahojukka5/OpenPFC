@@ -224,9 +224,7 @@ jobs:
 
       - name: Render the website and native Quarto lessons
         working-directory: pages
-        run: |
-          quarto render --profile examples
-          python3 ../openpfc/scripts/check_example_book.py _site/learn
+        run: quarto render --profile examples
 
       - name: Download the documentation
         uses: actions/download-artifact@v5
@@ -255,8 +253,10 @@ jobs:
             echo "openpfc-pages: $(git -C pages rev-parse HEAD)"
           } > pages/_site/revision.txt
 
-      - name: Check links and resources of the combined site
-        run: python3 pages/tools/check_site.py pages/_site
+      - name: Check teaching chapters and combined-site resources
+        run: |
+          python3 openpfc/scripts/check_example_book.py pages/_site/learn
+          python3 pages/tools/check_site.py pages/_site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
