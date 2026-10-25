@@ -401,6 +401,17 @@
       ]
     },
     {
+      "target": "multigrid_poisson",
+      "source": "elliptic/multigrid/model.cpp",
+      "chapter": "elliptic/multigrid/index.qmd",
+      "capabilities": [
+        "multigrid",
+        "gmres",
+        "finite-differences",
+        "dirichlet"
+      ]
+    },
+    {
       "target": "ns2d_flux_balance",
       "source": "ns2d_vorticity/src/flux_balance.cpp",
       "chapter": null,
@@ -1097,7 +1108,9 @@
         "nodal_multigrid.hpp",
         "nodal_dirichlet_multigrid.hpp"
       ],
-      "chapters": []
+      "chapters": [
+        "elliptic/multigrid/index.qmd"
+      ]
     },
     {
       "name": "microelasticity and homogenization",
