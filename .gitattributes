@@ -1,0 +1,2 @@
+# Figures are derived from native example output; review their rendered form.
+examples/**/figures/*.svg linguist-generated=true
