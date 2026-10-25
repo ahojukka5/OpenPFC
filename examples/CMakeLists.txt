@@ -150,6 +150,24 @@ if(OpenPFC_BUILD_TESTS AND MPIEXEC_EXECUTABLE)
                        "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
 endif()
 
+add_executable(25_halo_bandwidth 25_halo_bandwidth.cpp)
+target_link_libraries(25_halo_bandwidth PRIVATE OpenPFC ${_heffte_tgt})
+if(OpenPFC_ENABLE_CUDA)
+  target_compile_definitions(25_halo_bandwidth PRIVATE OpenPFC_ENABLE_CUDA)
+endif()
+if(OpenPFC_ENABLE_HIP)
+  target_compile_definitions(25_halo_bandwidth PRIVATE OpenPFC_ENABLE_HIP)
+endif()
+if(OpenPFC_BUILD_TESTS AND MPIEXEC_EXECUTABLE)
+  add_test(NAME halo-bandwidth-host-2rank
+           COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+                   $<TARGET_FILE:25_halo_bandwidth> --sizes 32 --iters 2 --warmup 1)
+  set_tests_properties(halo-bandwidth-host-2rank PROPERTIES
+                       PASS_REGULAR_EXPRESSION "Uni_GBps"
+                       ENVIRONMENT
+                       "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
+endif()
+
 # Issue #21 research prototype under examples/, not an apps/ executable.
 add_subdirectory(ns2d_vorticity)
 

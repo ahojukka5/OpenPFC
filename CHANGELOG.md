@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Add `examples/25_halo_bandwidth`, a halo-only throughput table for
+  `HaloExchange` on the host and, in a CUDA or HIP build, on the device.
+  `--axis` selects one face pair. It prints GB/s and whether GPU-aware MPI
+  is on. It does not step a model.
+
 - `openpfc bundle` can build a scratch image when `--base` is omitted. The image
   copies the host dynamic loader, the glibc libraries required by the model and
   by `/bin/sh`, and `/bin/sh` itself. Host MPI and fabric libraries stay outside.
