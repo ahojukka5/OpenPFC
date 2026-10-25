@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `openpfc compile MODEL.cpp` now writes a regular executable in the current
+  directory. Select its path with `-o`/`--output`, then launch it directly or
+  with MPI/Slurm. Starter instructions teach direct execution; recorded
+  execution through `openpfc run` remains optional (#696).
+
 - Export toml++ as a public settings-loader dependency. Fetched toml++ headers,
   license and CMake target are installed as a relocatable dependency package;
   system-provided toml++ remains external. Exercise the loader and TOML parsing
