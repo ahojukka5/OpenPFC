@@ -104,6 +104,7 @@ Narrative companion: [`getting_started/01-basics/README.md`](../getting_started/
 | `23_halo_microtiming` | `23_halo_microtiming.cpp` | Timed `HaloExchange` loop; schema-v2 JSON (`--cuda` / `--hip` / `--full`) |
 | `24_adaptive_etd` | `24_adaptive_etd.cpp` | ETD1 step doubling: a heat mode against `exp(-k²t)`, then `∂t ψ = ∇²ψ − ψ³` with the memoryless controller |
 | `grain_remapping_example` | `grain_remapping.cpp` | Transactional 2-D grain remapping on a small Allen–Cahn-style field; run by CTest `GrainRemappingExample` |
+| `periodic_differentiation` | `differentiation/periodic/model.cpp` | Analytic derivative, second/fourth-order FD, and Fourier convergence |
 
 ## Research prototypes
 
