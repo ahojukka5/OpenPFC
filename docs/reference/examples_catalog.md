@@ -106,6 +106,7 @@ Narrative companion: [`getting_started/01-basics/README.md`](../getting_started/
 | `grain_remapping_example` | `grain_remapping.cpp` | Transactional 2-D grain remapping on a small Allen–Cahn-style field; run by CTest `GrainRemappingExample` |
 | `periodic_differentiation` | `differentiation/periodic/model.cpp` | Analytic derivative, second/fourth-order FD, and Fourier convergence |
 | `heat_exponential` | `heat/exponential/model.cpp` | Exact linear Fourier propagator; compare spatial and temporal error |
+| `cardinal_interpolation` | `interpolation/cardinal/model.cpp` | Trefethen program 3: cardinal sinc reconstruction of three sampled signals |
 
 ## Research prototypes
 
