@@ -11,6 +11,43 @@ endfunction()
 string(RANDOM LENGTH 12 id)
 set(root "${build}/cli-cases-${id}")
 file(MAKE_DIRECTORY "${root}")
+# Locate resources beside the real executable when invoked through a PATH
+# alias outside its prefix, from another working directory.
+set(alias_directory "${root}/PATH with spaces ü")
+file(MAKE_DIRECTORY "${alias_directory}")
+file(CREATE_LINK "${cli}" "${alias_directory}/openpfc-alias" SYMBOLIC)
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+  "PATH=${alias_directory}:$ENV{PATH}" openpfc-alias init
+  "${root}/aliased model" --model=diffusion
+  WORKING_DIRECTORY "${root}"
+  RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT code EQUAL 0 OR NOT EXISTS "${root}/aliased model/model.cpp")
+  message(FATAL_ERROR "PATH alias did not locate starter resources: ${out}\n${err}")
+endif()
+# A relocated executable path longer than the initial dyld buffer must discover
+# its own templates, rather than falling back to the original build prefix.
+set(deep_prefix "${root}")
+foreach(index RANGE 1 7)
+  string(APPEND deep_prefix "/a long installation directory with spaces ${index}")
+endforeach()
+file(MAKE_DIRECTORY "${deep_prefix}/bin" "${deep_prefix}/share/openpfc/templates")
+file(COPY "${cli}" DESTINATION "${deep_prefix}/bin")
+file(COPY "${build}/share/openpfc/templates/diffusion"
+  DESTINATION "${deep_prefix}/share/openpfc/templates")
+file(APPEND "${deep_prefix}/share/openpfc/templates/diffusion/README.md"
+  "\nTemplate from the relocated prefix.\n")
+get_filename_component(cli_name "${cli}" NAME)
+execute_process(COMMAND "${deep_prefix}/bin/${cli_name}" init
+  "${root}/relocated model" --model=diffusion
+  WORKING_DIRECTORY "${root}"
+  RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT code EQUAL 0)
+  message(FATAL_ERROR "Long relocated executable failed: ${out}\n${err}")
+endif()
+file(READ "${root}/relocated model/README.md" relocated_readme)
+if(NOT relocated_readme MATCHES "Template from the relocated prefix")
+  message(FATAL_ERROR "Relocated CLI used templates from another prefix")
+endif()
 call(0 init "${root}/nested/parent/new case")
 call(0 --version)
 if(NOT output MATCHES "OpenPFC [0-9]+\\.[0-9]+\\.[0-9]+")
