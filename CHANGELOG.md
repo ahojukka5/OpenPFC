@@ -7,6 +7,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Add explicit sequential face accumulation on uniform grids so consumers
+  can adopt shared conservative divergence while preserving their existing
+  floating-point evaluation order (#699).
+
 - Keep MPI test case ordering and default random seeds consistent across ranks,
   including application and device test runners, with Catch2 3.16 and older.
 
