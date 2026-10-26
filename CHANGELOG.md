@@ -7,6 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Prepare runtime-sized host/device field sets through the shared stage
+  protocol, with typed integer sparse transport and device wall reflection.
+
 - Add a Q1 finite-element lesson with analytic weak loads, nodal multigrid-CG
   and independent discrete-versus-continuum nodal error checks.
 
