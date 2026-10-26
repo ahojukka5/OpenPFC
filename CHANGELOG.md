@@ -7,6 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Fuse multiple owned-cell GPU expressions into sum/min/max reductions with
+  compact MPI scalar collectives and an all-rank success check.
+
 - Add a Q1 finite-element lesson with analytic weak loads, nodal multigrid-CG
   and independent discrete-versus-continuum nodal error checks.
 
