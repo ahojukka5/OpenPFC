@@ -1,0 +1,8 @@
+// SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#pragma once
+constexpr auto sdk_revision = "@_revision@";
+constexpr auto sdk_state = "@_state@";
+constexpr auto sdk_manifest_sha = "@_manifest_sha@";
+constexpr auto consumer_sha = "@_consumer_sha@";
+constexpr auto compiled_backend = "@backend@";
