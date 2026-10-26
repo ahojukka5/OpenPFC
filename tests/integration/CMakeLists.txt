@@ -83,6 +83,7 @@ if(OpenPFC_ENABLE_CUDA AND OpenPFC_CUDA_AVAILABLE)
   target_sources(openpfc-tests PRIVATE
     scenarios/gpu_validation/test_fd_gradient_device.cu
     scenarios/gpu_validation/test_face_current.cu
+    scenarios/gpu_validation/test_observable_reduce.cu
     scenarios/gpu_validation/test_composite_gradient_pod_size.cu
     scenarios/gpu_validation/test_multi_field_device.cu
   )
@@ -100,6 +101,7 @@ if(OpenPFC_ENABLE_HIP AND OpenPFC_HIP_AVAILABLE)
   target_sources(openpfc-tests PRIVATE
     scenarios/gpu_validation/test_fd_gradient_device_hip.hip
     scenarios/gpu_validation/test_face_current.hip
+    scenarios/gpu_validation/test_observable_reduce.hip
     scenarios/gpu_validation/test_composite_gradient_pod_size_hip.hip
     scenarios/gpu_validation/test_multi_field_device.hip
     scenarios/parallel_scaling/test_padded_device_halo_self_wrap_hip.hip
