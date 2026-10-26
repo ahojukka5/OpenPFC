@@ -7,6 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Add a device-safe padded-field diffusive face flux that composes with
+  conservative face divergence and explicit physical-wall policies.
+
 - Add a Q1 finite-element lesson with analytic weak loads, nodal multigrid-CG
   and independent discrete-versus-continuum nodal error checks.
 
