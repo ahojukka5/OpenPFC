@@ -12,6 +12,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 - Correct FFTW real-transform planning in fetched HeFFTe 2.4.1 and document
   rebuilding installed providers; cover both precisions against a direct DFT.
+- Add explicit sequential face accumulation on uniform grids so consumers
+  can adopt shared conservative divergence while preserving their existing
+  floating-point evaluation order (#699).
 
 - Keep MPI test case ordering and default random seeds consistent across ranks,
   including application and device test runners, with Catch2 3.16 and older.
