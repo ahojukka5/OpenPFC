@@ -514,3 +514,19 @@ theme. A model may share a header such as `flow/ns2d/spectral.hpp` without
 flattening its namespace directory into the lesson folder. Preserve those
 relative paths when downloading sources; use the theme as `--source-root`
 for native source compilation when the model includes sibling headers.
+
+## Vorticity snapshots
+
+`render_flow_vorticity.py` reads the driver's native binary fields and
+compares every node with the exact Taylor–Green mode. CTest invokes this
+entrypoint on fresh serial and two-rank outputs with the existing field
+criterion; the checks need only the Python standard library. To regenerate
+the figure from an actual retained run:
+
+```sh
+uv run --with matplotlib==3.11.2 python examples/render_flow_vorticity.py \
+  --run results/flow/vorticity
+```
+
+The plotted curve is measured binary-field error, not an inferred error
+from the six-digit diagnostics CSV. Commit only the derived SVG.
