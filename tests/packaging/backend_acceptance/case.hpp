@@ -236,11 +236,16 @@ inline void fft_check(const pfc::Domain &domain, int rank, int ranks) {
       fft.forward(original, spectrum);
       fft.backward(spectrum, result);
 #endif
-      bool ok = true;
+      double worst = 0;
       for (std::size_t i = 0; i < result.size(); ++i)
-        ok = ok && std::isfinite(result[i]) &&
-             std::abs(result[i] - original[i]) < fft_tolerance;
-      require(ok, "FFT round trip differs");
+        worst = std::isfinite(result[i])
+                    ? std::max(worst, std::abs(result[i] - original[i]))
+                    : INFINITY;
+      if (!(worst < fft_tolerance))
+        std::cerr << "FFT mismatch rank=" << rank << " axis=" << axis
+                  << " component=" << component << " max_error=" << worst
+                  << std::endl;
+      require(worst < fft_tolerance, "FFT round trip differs");
     }
   }
 }
