@@ -290,7 +290,7 @@ inline bool prepare_device(int rank, int ranks, Json &identity) {
     MPI_Comm_free(&node);
     return false;
   }
-  std::copy_n(reinterpret_cast<unsigned char *>(uuid.bytes), 16, bytes.data());
+  std::copy_n(reinterpret_cast<const unsigned char *>(uuid.bytes), 16, bytes.data());
   std::vector<unsigned char> ids(16 * local_ranks);
   MPI_Allgather(bytes.data(), 16, MPI_BYTE, ids.data(), 16, MPI_BYTE, node);
   for (int a = 0; a < local_ranks; ++a)
