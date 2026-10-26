@@ -269,14 +269,13 @@ inline bool prepare_device(int rank, int ranks, Json &identity) {
     return false;
   }
 #if defined(CHECK_CUDA)
-  cudaUUID_t uuid{};
   cudaDeviceProp properties{};
   int driver = 0, runtime = 0;
   ok = cudaSetDevice(device) == cudaSuccess &&
-       cudaDeviceGetUuid(&uuid, device) == cudaSuccess &&
        cudaGetDeviceProperties(&properties, device) == cudaSuccess &&
        cudaDriverGetVersion(&driver) == cudaSuccess &&
        cudaRuntimeGetVersion(&runtime) == cudaSuccess;
+  const auto uuid = properties.uuid;
 #else
   hipUUID uuid{};
   hipDeviceProp_t properties{};
