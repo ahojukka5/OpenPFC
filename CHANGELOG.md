@@ -8,6 +8,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ## [Unreleased]
 
 - Refactor the Sobel demonstration into a normalized three-dimensional stencil lesson. Explain its factor of 32, transverse smoothing and boundary support, and verify every interior response with affine and polynomial identities.
+- Preserve spaces and shell metacharacters in bundled input filenames when
+  launching a model with its packaged default input (#709).
 
 - Refactor custom-initial-condition diffusion into a periodic Gaussian heat lesson. Preserve its target, expose complete owned fields and mass diagnostics, and verify backward Euler against independent Fourier sums on one and two ranks.
 
