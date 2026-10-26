@@ -7,6 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Check that CUDA/HIP SDK models fail closed under CPU-only bundling; retain
+  the complete successful bundle checks for CPU SDKs.
+
 - Add a Q1 finite-element lesson with analytic weak loads, nodal multigrid-CG
   and independent discrete-versus-continuum nodal error checks.
 
