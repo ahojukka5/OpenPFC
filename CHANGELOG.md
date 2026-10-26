@@ -7,6 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Verify implicitly linked MPI libraries through the SDK probe's loaded symbol,
+  and preserve versioned compiler drivers in Python-free native CLI checks.
+
 - Build the native CLI artifact for mixed C++/Python pull-request checks
   while retaining component-scoped CTest selection.
 

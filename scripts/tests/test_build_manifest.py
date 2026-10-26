@@ -5,6 +5,7 @@
 These compilerless fixtures do not qualify real CUDA/HIP installations; the
 installed consumer CTest covers the actual SDK built by scripts/build.sh.
 """
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -12,6 +13,40 @@ from pathlib import Path
 import pytest
 
 CMAKE = Path(__file__).resolve().parents[2] / "cmake"
+
+
+@pytest.mark.parametrize("links", ["implicit", "explicit", "unresolved"])
+def test_mpi_loaded_library_identity(tmp_path, links):
+    """Implicit wrappers need file evidence; unresolved explicit links still fail."""
+    library = tmp_path / "MPI library with spaces.so"
+    library.write_bytes(b"independent fixture for the resolved MPI file")
+    source = tmp_path / "source"
+    source.mkdir()
+    explicit = ""
+    if links == "explicit":
+        explicit = f'set(MPI_CXX_LIBRARIES "{library}")\n'
+    elif links == "unresolved":
+        explicit = 'set(MPI_CXX_LIBRARIES "missing-mpi-library")\n'
+    (source / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.21)\n"
+        "project(mpi_file_evidence LANGUAGES NONE)\n"
+        "add_library(MPI::MPI_CXX INTERFACE IMPORTED)\n"
+        + explicit
+        + f'include("{CMAKE / "OpenPFCCompatibility.cmake"}")\n'
+        + f'set(probe [==[{json.dumps({"mpi_library_path": str(library)})}]==])\n'
+        + '_openpfc_mpi_library_evidence(evidence "${probe}")\n'
+        + 'file(WRITE "${CMAKE_BINARY_DIR}/evidence.json" "${evidence}")\n'
+    )
+    build = tmp_path / "build"
+    subprocess.run(
+        ["cmake", "-S", str(source), "-B", str(build)],
+        check=True, capture_output=True, text=True,
+    )
+    evidence = json.loads((build / "evidence.json").read_text())
+    hashes = [entry["sha256"] for entry in evidence]
+    assert hashes.count(hashlib.sha256(library.read_bytes()).hexdigest()) == 1
+    assert ("unknown" in hashes) == (links == "unresolved")
+    assert len(evidence) == (2 if links == "unresolved" else 1)
 
 
 @pytest.mark.parametrize("backend", ["cpu", "cuda", "hip"])
