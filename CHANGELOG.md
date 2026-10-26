@@ -8,6 +8,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 ## [Unreleased]
 
 - Refactor the Sobel demonstration into a normalized three-dimensional stencil lesson. Explain its factor of 32, transverse smoothing and boundary support, and verify every interior response with affine and polynomial identities.
+- Propagate externally installed JSON headers to build-tree consumers of the
+  OpenPFC target, including installations outside system include paths (#708).
 
 - Refactor custom-initial-condition diffusion into a periodic Gaussian heat lesson. Preserve its target, expose complete owned fields and mass diagnostics, and verify backward Euler against independent Fourier sums on one and two ranks.
 
