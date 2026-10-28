@@ -7,6 +7,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Accept `float` as well as `double` in the host padded FD services:
+  `BasicFDPaddedCPUStack<T>` (`FDPaddedCPUStack` stays `double`),
+  `FDGradient<G, T>` and `create<G>(Field<T>)`, the span forms of
+  `fill_faces` and `face_divergence`, and `OwnedEulerStepper<Rhs, N, Scalar>`.
+  The `double` path is unchanged.
+
 - Add explicit sequential face accumulation on uniform grids so consumers
   can adopt shared conservative divergence while preserving their existing
   floating-point evaluation order (#699).
