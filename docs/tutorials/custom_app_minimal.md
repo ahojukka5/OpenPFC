@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
 `make_simulation_session` reads domain, time, `method`/`backend`, and
 `plan_options` from the document. `session.run` is `pfc::sim::run` over
 `Time`. For a full spectral implicit-Euler example see
-`examples/04_diffusion_model.cpp`. Production tungsten/aluminum sessions add
+`examples/heat/implicit-euler/model.cpp`. Production tungsten/aluminum sessions add
 ICs, BCs, writers, and `CheckpointService` around the same loop.
 
 ## Add a configuration
@@ -140,6 +140,6 @@ same subtree before construction.
 
 ## Next steps
 
-- Register JSON ICs with a catalog: `examples/10_ui_register_ic.cpp`.
-- Attach writers on the `on_save` hook: `examples/11_write_results.cpp`.
+- Register JSON ICs with a catalog: `examples/initialization/catalog/model.cpp`.
+- Attach writers on the `on_save` hook: `examples/output/vtk-series/model.cpp`.
 - Extension checklist: [`extending_openpfc/README.md`](../extending_openpfc/README.md).

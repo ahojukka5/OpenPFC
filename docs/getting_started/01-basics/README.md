@@ -109,7 +109,7 @@ split across ranks for distributed transforms and communication.
 The maintained example is:
 
 ```text
-examples/02_domain_decomposition.cpp
+examples/geometry/decomposition/model.cpp
 ```
 
 It constructs the objects with the current factories:
@@ -135,7 +135,7 @@ objects and finalize it only after those objects are no longer used.
 The next maintained example is:
 
 ```text
-examples/03_parallel_fft.cpp
+examples/fourier/round-trip/model.cpp
 ```
 
 Its essential construction sequence is:
@@ -181,9 +181,9 @@ contains:
 Do not build that logic from this page alone. Continue with the maintained
 example sequence:
 
-1. `examples/04_diffusion_model.cpp`;
-2. `examples/05_simulator.cpp`;
-3. `examples/12_cahn_hilliard.cpp`.
+1. `examples/heat/implicit-euler/model.cpp`;
+2. `examples/heat/driver-hooks/model.cpp`;
+3. `examples/phase-fields/cahn-hilliard/model.cpp`.
 
 The guided reading is in
 [Spectral examples sequence](../../tutorials/spectral_examples_sequence.md).

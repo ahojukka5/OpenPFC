@@ -1,0 +1,1315 @@
+{
+  "schema": 1,
+  "examples": [
+    {
+      "target": "02_domain_decomposition",
+      "source": "geometry/decomposition/model.cpp",
+      "chapter": "geometry/decomposition/index.qmd",
+      "capabilities": [
+        "domain",
+        "decomposition",
+        "mpi-reductions"
+      ]
+    },
+    {
+      "target": "03_parallel_fft",
+      "source": "fourier/round-trip/model.cpp",
+      "chapter": "fourier/round-trip/index.qmd",
+      "capabilities": [
+        "fft",
+        "fft-normalization",
+        "fourier-outbox",
+        "mpi-reductions"
+      ]
+    },
+    {
+      "target": "04_diffusion_model",
+      "source": "heat/implicit-euler/model.cpp",
+      "chapter": "heat/implicit-euler/index.qmd",
+      "capabilities": [
+        "distributed-fft",
+        "kspace-iteration",
+        "implicit-euler"
+      ]
+    },
+    {
+      "target": "05_simulator",
+      "source": "heat/driver-hooks/model.cpp",
+      "chapter": "heat/driver-hooks/index.qmd",
+      "capabilities": [
+        "simulation-driver",
+        "time-hooks",
+        "partial-final-step",
+        "distributed-fft"
+      ]
+    },
+    {
+      "target": "06_multi_index",
+      "source": "geometry/index-boxes/model.cpp",
+      "chapter": "geometry/index-boxes/index.qmd",
+      "capabilities": [
+        "index-boxes",
+        "iteration",
+        "memory-layout"
+      ]
+    },
+    {
+      "target": "07_array",
+      "source": "geometry/field-storage/model.cpp",
+      "chapter": "geometry/field-storage/index.qmd",
+      "capabilities": [
+        "fields",
+        "coordinates",
+        "padding",
+        "component-fields"
+      ]
+    },
+    {
+      "target": "08_discrete_fields",
+      "source": "geometry/coordinate-fields/model.cpp",
+      "chapter": "geometry/coordinate-fields/index.qmd",
+      "capabilities": [
+        "field-initialization",
+        "coordinates",
+        "mpi-reductions"
+      ]
+    },
+    {
+      "target": "09_parallel_fft_high_level",
+      "source": "fourier/field-layout/model.cpp",
+      "chapter": "fourier/field-layout/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "distributed-fft",
+        "fields",
+        "fft-layout"
+      ]
+    },
+    {
+      "target": "10_ui_register_ic",
+      "source": "initialization/catalog/model.cpp",
+      "chapter": "initialization/catalog/index.qmd",
+      "capabilities": [
+        "field-initialization",
+        "modifier-catalog",
+        "configuration",
+        "dependency-injection"
+      ]
+    },
+    {
+      "target": "11_write_results",
+      "source": "output/vtk-series/model.cpp",
+      "chapter": "output/vtk-series/index.qmd",
+      "capabilities": [
+        "snapshot-series",
+        "vtk-writer",
+        "xdmf-series",
+        "owned-field-packing",
+        "output-metadata"
+      ]
+    },
+    {
+      "target": "12_cahn_hilliard",
+      "source": "phase-fields/cahn-hilliard/model.cpp",
+      "chapter": "phase-fields/cahn-hilliard/index.qmd",
+      "capabilities": [
+        "spectral-etd-system",
+        "etd1",
+        "simulation-state",
+        "nonlinear-symbol",
+        "conserved-phase-field"
+      ]
+    },
+    {
+      "target": "14_custom_field_initializer",
+      "source": "initialization/patterns/model.cpp",
+      "chapter": "initialization/patterns/index.qmd",
+      "capabilities": [
+        "fields",
+        "field-initialization",
+        "coordinates",
+        "callable-patterns"
+      ]
+    },
+    {
+      "target": "15_finite_difference_heat",
+      "source": "heat/separated-halos/model.cpp",
+      "chapter": "heat/separated-halos/index.qmd",
+      "capabilities": [
+        "fields",
+        "finite-differences",
+        "separated-halos",
+        "sparse-exchange",
+        "mpi-reductions"
+      ]
+    },
+    {
+      "target": "16_strong_types_demo",
+      "source": "geometry/strong-arguments/model.cpp",
+      "chapter": "geometry/strong-arguments/index.qmd",
+      "capabilities": [
+        "domain",
+        "strong-types",
+        "coordinates"
+      ]
+    },
+    {
+      "target": "17_custom_coordinate_system",
+      "source": "geometry/polar-patterns/model.cpp",
+      "chapter": "geometry/polar-patterns/index.qmd",
+      "capabilities": [
+        "domain",
+        "coordinate-mapping",
+        "callable-initialization",
+        "distributed-fields",
+        "mpi"
+      ]
+    },
+    {
+      "target": "18_sobel_edge_detection",
+      "source": "18_sobel_edge_detection.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "19_explicit_stepper_fd",
+      "source": "heat/finite-differences/model.cpp",
+      "chapter": "heat/finite-differences/index.qmd",
+      "capabilities": [
+        "fields",
+        "finite-differences",
+        "halo-exchange",
+        "explicit-euler"
+      ]
+    },
+    {
+      "target": "20_explicit_stepper_spectral",
+      "source": "heat/fourier/model.cpp",
+      "chapter": "heat/fourier/index.qmd",
+      "capabilities": [
+        "fields",
+        "fft",
+        "spectral-gradients",
+        "explicit-euler"
+      ]
+    },
+    {
+      "target": "21_adaptive_stepping",
+      "source": "integration/adaptive-rk/model.cpp",
+      "chapter": "integration/adaptive-rk/index.qmd",
+      "capabilities": [
+        "embedded-rk",
+        "adaptive-controller",
+        "attempt-transactions"
+      ]
+    },
+    {
+      "target": "22_external_coupling",
+      "source": "coupling/host-orchestrator/model.cpp",
+      "chapter": "coupling/host-orchestrator/index.qmd",
+      "capabilities": [
+        "field-handle",
+        "communicator-isolation",
+        "simulation-state",
+        "coupling"
+      ]
+    },
+    {
+      "target": "23_halo_microtiming",
+      "source": "23_halo_microtiming.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "24_adaptive_etd",
+      "source": "integration/adaptive-etd/model.cpp",
+      "chapter": "integration/adaptive-etd/index.qmd",
+      "capabilities": [
+        "etd1",
+        "step-doubling",
+        "adaptive-controller",
+        "distributed-fft"
+      ]
+    },
+    {
+      "target": "25_halo_bandwidth",
+      "source": "25_halo_bandwidth.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "airy_eigenproblem",
+      "source": "polynomials/airy/model.cpp",
+      "chapter": "polynomials/airy/index.qmd",
+      "capabilities": [
+        "chebyshev-reference",
+        "generalized-eigenproblem"
+      ]
+    },
+    {
+      "target": "allen_cahn_driven",
+      "source": "polynomials/allen-cahn-driven/model.cpp",
+      "chapter": "polynomials/allen-cahn-driven/index.qmd",
+      "capabilities": [
+        "chebyshev-reference",
+        "explicit-euler",
+        "nonlinear-models",
+        "time-dependent-boundaries"
+      ]
+    },
+    {
+      "target": "allen_cahn_fixed",
+      "source": "polynomials/allen-cahn-fixed/model.cpp",
+      "chapter": "polynomials/allen-cahn-fixed/index.qmd",
+      "capabilities": [
+        "chebyshev-reference",
+        "explicit-euler",
+        "nonlinear-models",
+        "boundary-conditions"
+      ]
+    },
+    {
+      "target": "cardinal_interpolation",
+      "source": "interpolation/cardinal/model.cpp",
+      "chapter": "interpolation/cardinal/index.qmd",
+      "capabilities": [
+        "fields",
+        "nonperiodic-domain",
+        "coordinate-iteration"
+      ]
+    },
+    {
+      "target": "chebyshev_eigenmodes",
+      "source": "polynomials/eigenmodes/model.cpp",
+      "chapter": "polynomials/eigenmodes/index.qmd",
+      "capabilities": [
+        "chebyshev-reference",
+        "boundary-conditions"
+      ]
+    },
+    {
+      "target": "chebyshev_wave_line",
+      "source": "waves/chebyshev-line/model.cpp",
+      "chapter": "waves/chebyshev-line/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "chebyshev-reference",
+        "leapfrog",
+        "boundary-conditions"
+      ]
+    },
+    {
+      "target": "chebyshev_wave_square",
+      "source": "waves/chebyshev-square/model.cpp",
+      "chapter": "waves/chebyshev-square/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "chebyshev-reference",
+        "tensor-operators",
+        "leapfrog"
+      ]
+    },
+    {
+      "target": "checkpoint_restart",
+      "source": "output/checkpoint-restart/model.cpp",
+      "chapter": "output/checkpoint-restart/index.qmd",
+      "capabilities": [
+        "checkpoint-service",
+        "binary-field-io",
+        "simulation-state",
+        "restart"
+      ]
+    },
+    {
+      "target": "clamped_beam",
+      "source": "polynomials/clamped-beam/model.cpp",
+      "chapter": "polynomials/clamped-beam/index.qmd",
+      "capabilities": [
+        "native-chebyshev",
+        "boundary-conditions",
+        "gmres",
+        "biharmonic-reference"
+      ]
+    },
+    {
+      "target": "clamped_plate",
+      "source": "polynomials/clamped-plate/model.cpp",
+      "chapter": "polynomials/clamped-plate/index.qmd",
+      "capabilities": [
+        "native-chebyshev",
+        "tensor-operators",
+        "eigenproblem-reference",
+        "boundary-conditions"
+      ]
+    },
+    {
+      "target": "coupled_fields_example",
+      "source": "coupled_fields/main.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "davies_pseudospectra",
+      "source": "polynomials/pseudospectra/model.cpp",
+      "chapter": "polynomials/pseudospectra/index.qmd",
+      "capabilities": [
+        "native-chebyshev",
+        "complex-arithmetic",
+        "singular-value-reference",
+        "pseudospectra"
+      ]
+    },
+    {
+      "target": "diffusion_model_with_custom_initial_condition",
+      "source": "diffusion_model_with_custom_initial_condition.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "disk_eigenmodes",
+      "source": "polynomials/disk-modes/model.cpp",
+      "chapter": "polynomials/disk-modes/index.qmd",
+      "capabilities": [
+        "native-chebyshev",
+        "local-fft",
+        "polar-operators-reference",
+        "eigenproblem-reference"
+      ]
+    },
+    {
+      "target": "disk_poisson",
+      "source": "polynomials/poisson-disk/model.cpp",
+      "chapter": "polynomials/poisson-disk/index.qmd",
+      "capabilities": [
+        "native-chebyshev",
+        "local-fft",
+        "gmres",
+        "polar-operators-reference",
+        "manufactured-solutions"
+      ]
+    },
+    {
+      "target": "fft_backend_benchmark",
+      "source": "fft_backend_benchmark.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "fft_kspace_helpers_example",
+      "source": "fft_kspace_helpers_example.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "first_domain",
+      "source": "geometry/first-domain/model.cpp",
+      "chapter": "geometry/first-domain/index.qmd",
+      "capabilities": [
+        "domain",
+        "strong-types",
+        "coordinates",
+        "periodicity"
+      ]
+    },
+    {
+      "target": "gamma_contour",
+      "source": "quadrature/complex-contour/model.cpp",
+      "chapter": "quadrature/complex-contour/index.qmd",
+      "capabilities": [
+        "complex-arithmetic",
+        "quadrature-reference"
+      ]
+    },
+    {
+      "target": "grain_remapping_example",
+      "source": "grain_remapping.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "harmonic_oscillator",
+      "source": "fourier/harmonic-oscillator/model.cpp",
+      "chapter": "fourier/harmonic-oscillator/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "fields",
+        "fourier-symbols"
+      ]
+    },
+    {
+      "target": "heat_exponential",
+      "source": "heat/exponential/model.cpp",
+      "chapter": "heat/exponential/index.qmd",
+      "capabilities": [
+        "fft",
+        "fourier-symbols",
+        "exponential-propagation"
+      ]
+    },
+    {
+      "target": "json_read",
+      "source": "configuration/session/model.cpp",
+      "chapter": "configuration/session/index.qmd",
+      "capabilities": [
+        "json-settings",
+        "toml-settings",
+        "simulation-session",
+        "session-selection",
+        "distributed-fft"
+      ]
+    },
+    {
+      "target": "kdv_integrating_factor",
+      "source": "waves/kdv/model.cpp",
+      "chapter": "waves/kdv/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "explicit-rk4",
+        "complex-state",
+        "integrating-factor",
+        "nonlinear-models"
+      ]
+    },
+    {
+      "target": "mathieu_spectrum",
+      "source": "fourier/mathieu/model.cpp",
+      "chapter": "fourier/mathieu/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "fourier-symbols"
+      ]
+    },
+    {
+      "target": "membrane_eigenmodes",
+      "source": "polynomials/membrane/model.cpp",
+      "chapter": "polynomials/membrane/index.qmd",
+      "capabilities": [
+        "chebyshev-reference",
+        "tensor-operators"
+      ]
+    },
+    {
+      "target": "mhd2d",
+      "source": "ns2d_vorticity/src/mhd.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "mixed_wave_tank",
+      "source": "waves/mixed-tank/model.cpp",
+      "chapter": "waves/mixed-tank/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "chebyshev-reference",
+        "mixed-discretization",
+        "neumann-boundaries"
+      ]
+    },
+    {
+      "target": "mpi_timers",
+      "source": "diagnostics/mpi-timing/model.cpp",
+      "chapter": "diagnostics/mpi-timing/index.qmd",
+      "capabilities": [
+        "mpi-timer",
+        "reductions",
+        "diagnostics"
+      ]
+    },
+    {
+      "target": "mpi_worker",
+      "source": "parallel/hello/model.cpp",
+      "chapter": "parallel/hello/index.qmd",
+      "capabilities": [
+        "mpi-environment",
+        "communicator",
+        "reductions"
+      ]
+    },
+    {
+      "target": "mpi_worker_inside_class",
+      "source": "parallel/session/model.cpp",
+      "chapter": "parallel/session/index.qmd",
+      "capabilities": [
+        "mpi-environment",
+        "communicator-isolation",
+        "raii"
+      ]
+    },
+    {
+      "target": "multigrid_poisson",
+      "source": "elliptic/multigrid/model.cpp",
+      "chapter": "elliptic/multigrid/index.qmd",
+      "capabilities": [
+        "multigrid",
+        "gmres",
+        "finite-differences",
+        "dirichlet"
+      ]
+    },
+    {
+      "target": "ns2d_flux_balance",
+      "source": "ns2d_vorticity/src/flux_balance.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "ns2d_spatial_refine",
+      "source": "ns2d_vorticity/src/spatial_refine.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "ns2d_temporal_refine",
+      "source": "ns2d_vorticity/src/temporal_refine.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "ns2d_vorticity",
+      "source": "ns2d_vorticity/src/ns2d.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "orr_sommerfeld",
+      "source": "polynomials/orr-sommerfeld/model.cpp",
+      "chapter": "polynomials/orr-sommerfeld/index.qmd",
+      "capabilities": [
+        "native-chebyshev",
+        "generalized-eigenproblem-reference",
+        "complex-arithmetic",
+        "stability"
+      ]
+    },
+    {
+      "target": "periodic_collocation",
+      "source": "differentiation/collocation/model.cpp",
+      "chapter": "differentiation/collocation/index.qmd",
+      "capabilities": [
+        "spectral-gradients",
+        "fft",
+        "distributed-fields"
+      ]
+    },
+    {
+      "target": "periodic_differentiation",
+      "source": "differentiation/periodic/model.cpp",
+      "chapter": "differentiation/periodic/index.qmd",
+      "capabilities": [
+        "finite-differences",
+        "spectral-gradients",
+        "convergence"
+      ]
+    },
+    {
+      "target": "polynomial_boundary_values",
+      "source": "polynomials/boundary-values/model.cpp",
+      "chapter": "polynomials/boundary-values/index.qmd",
+      "capabilities": [
+        "gmres",
+        "boundary-conditions",
+        "chebyshev-reference"
+      ]
+    },
+    {
+      "target": "polynomial_differentiation",
+      "source": "polynomials/differentiation/model.cpp",
+      "chapter": "polynomials/differentiation/index.qmd",
+      "capabilities": [
+        "local-fft",
+        "chebyshev-reference"
+      ]
+    },
+    {
+      "target": "polynomial_integration",
+      "source": "polynomials/integration/model.cpp",
+      "chapter": "polynomials/integration/index.qmd",
+      "capabilities": [
+        "gmres",
+        "chebyshev-reference"
+      ]
+    },
+    {
+      "target": "polynomial_interpolation",
+      "source": "polynomials/interpolation/model.cpp",
+      "chapter": "polynomials/interpolation/index.qmd",
+      "capabilities": [
+        "polynomial-interpolation"
+      ]
+    },
+    {
+      "target": "polynomial_nodal_polynomials",
+      "source": "polynomials/nodal-polynomials/model.cpp",
+      "chapter": "polynomials/nodal-polynomials/index.qmd",
+      "capabilities": [
+        "complex-arithmetic"
+      ]
+    },
+    {
+      "target": "polynomial_nonlinear_boundary",
+      "source": "polynomials/nonlinear-boundary/model.cpp",
+      "chapter": "polynomials/nonlinear-boundary/index.qmd",
+      "capabilities": [
+        "newton",
+        "gmres",
+        "scalar-root",
+        "boundary-conditions"
+      ]
+    },
+    {
+      "target": "polynomial_regularity",
+      "source": "polynomials/regularity/model.cpp",
+      "chapter": "polynomials/regularity/index.qmd",
+      "capabilities": [
+        "chebyshev-reference",
+        "convergence"
+      ]
+    },
+    {
+      "target": "profiling_timer_report",
+      "source": "diagnostics/profiling/model.cpp",
+      "chapter": "diagnostics/profiling/index.qmd",
+      "capabilities": [
+        "profiling-session",
+        "nested-timers",
+        "profiling-export",
+        "mpi-aggregation"
+      ]
+    },
+    {
+      "target": "runtime_coupled_fields",
+      "source": "coupling/runtime-fields/model.cpp",
+      "chapter": "coupling/runtime-fields/index.qmd",
+      "capabilities": [
+        "runtime-field-rk",
+        "multi-field",
+        "rk4"
+      ]
+    },
+    {
+      "target": "spectral_smoothness",
+      "source": "differentiation/smoothness/model.cpp",
+      "chapter": "differentiation/smoothness/index.qmd",
+      "capabilities": [
+        "spectral-gradients",
+        "fft",
+        "mpi-reductions"
+      ]
+    },
+    {
+      "target": "square_helmholtz",
+      "source": "polynomials/helmholtz-square/model.cpp",
+      "chapter": "polynomials/helmholtz-square/index.qmd",
+      "capabilities": [
+        "gmres",
+        "tensor-operators",
+        "helmholtz"
+      ]
+    },
+    {
+      "target": "square_laplace",
+      "source": "polynomials/laplace-square/model.cpp",
+      "chapter": "polynomials/laplace-square/index.qmd",
+      "capabilities": [
+        "gmres",
+        "boundary-lifting",
+        "tensor-operators"
+      ]
+    },
+    {
+      "target": "square_poisson",
+      "source": "polynomials/poisson-square/model.cpp",
+      "chapter": "polynomials/poisson-square/index.qmd",
+      "capabilities": [
+        "gmres",
+        "tensor-operators",
+        "boundary-conditions"
+      ]
+    },
+    {
+      "target": "stability_regions",
+      "source": "integration/stability/model.cpp",
+      "chapter": "integration/stability/index.qmd",
+      "capabilities": [
+        "butcher-tableaux",
+        "explicit-runge-kutta"
+      ]
+    },
+    {
+      "target": "taylor_green3d",
+      "source": "taylor_green3d/src/taylor_green.cpp",
+      "chapter": null,
+      "capabilities": []
+    },
+    {
+      "target": "time",
+      "source": "integration/output-clock/model.cpp",
+      "chapter": "integration/output-clock/index.qmd",
+      "capabilities": [
+        "time",
+        "output-scheduling",
+        "attempt-transactions"
+      ]
+    },
+    {
+      "target": "variable_transport",
+      "source": "waves/variable-transport/model.cpp",
+      "chapter": "waves/variable-transport/index.qmd",
+      "capabilities": [
+        "spectral-gradients",
+        "fields",
+        "mpi",
+        "variable-coefficients"
+      ]
+    },
+    {
+      "target": "world_helpers_example",
+      "source": "geometry/grid-spacing/model.cpp",
+      "chapter": "geometry/grid-spacing/index.qmd",
+      "capabilities": [
+        "domain",
+        "strong-types",
+        "coordinates"
+      ]
+    },
+    {
+      "target": "world_query_helpers_example",
+      "source": "geometry/domain-queries/model.cpp",
+      "chapter": "geometry/domain-queries/index.qmd",
+      "capabilities": [
+        "domain",
+        "strong-types",
+        "coordinates"
+      ]
+    },
+    {
+      "target": "world_strong_types_example",
+      "source": "geometry/anisotropic-grid/model.cpp",
+      "chapter": "geometry/anisotropic-grid/index.qmd",
+      "capabilities": [
+        "domain",
+        "strong-types",
+        "coordinates"
+      ]
+    },
+    {
+      "target": "write_results",
+      "source": "output/binary-field/model.cpp",
+      "chapter": "output/binary-field/index.qmd",
+      "capabilities": [
+        "binary-writer",
+        "binary-reader",
+        "mpi-io",
+        "field-layout"
+      ]
+    }
+  ],
+  "additional_sources": [
+    {
+      "source": "geometry/first-domain/model.cpp",
+      "chapter": "geometry/first-domain/index.qmd"
+    },
+    {
+      "source": "symbolic_rhs/generate.py",
+      "chapter": null
+    }
+  ],
+  "book": [
+    {
+      "program": 1,
+      "title": "convergence of fourth-order finite differences",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p1.m",
+      "chapter": "differentiation/periodic/index.qmd",
+      "scope": "Original fourth-order finite-difference resolution family, with additional FD2 and FFT comparisons."
+    },
+    {
+      "program": 2,
+      "title": "convergence of periodic spectral method (compare p1.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p2.m",
+      "chapter": "differentiation/smoothness/index.qmd",
+      "scope": "Original even 2..100 collocation matrix sweep; FFT comparison added."
+    },
+    {
+      "program": 3,
+      "title": "band-limited interpolation",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p3.m",
+      "chapter": "interpolation/cardinal/index.qmd",
+      "scope": "All three original sampled profiles and sinc reconstructions; exact nodal limits handled."
+    },
+    {
+      "program": 4,
+      "title": "periodic spectral differentiation",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p4.m",
+      "chapter": "differentiation/collocation/index.qmd",
+      "scope": "Original periodic cotangent differentiation of hat and analytic profiles."
+    },
+    {
+      "program": 5,
+      "title": "repetition of p4.m via FFT",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p5.m",
+      "chapter": "differentiation/collocation/index.qmd",
+      "scope": "FFT version of both program 4 profiles, compared against the matrix action."
+    },
+    {
+      "program": 6,
+      "title": "variable coefficient wave equation",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p6.m",
+      "chapter": "waves/variable-transport/index.qmd",
+      "scope": "Original variable-speed Gaussian experiment and book startup preset, with a consistent Taylor startup and characteristic reference added."
+    },
+    {
+      "program": 7,
+      "title": "accuracy of periodic spectral differentiation",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p7.m",
+      "chapter": "differentiation/smoothness/index.qmd",
+      "scope": "All four original regularity profiles on even 6..50 grids, with matrix and FFT errors."
+    },
+    {
+      "program": 8,
+      "title": "eigenvalues of harmonic oscillator -u\"+x^2 u on R",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p8.m",
+      "chapter": "fourier/harmonic-oscillator/index.qmd",
+      "scope": "Original L=8 and N=6:6:36 harmonic oscillator, with kinetic matrix built using native LocalFFT."
+    },
+    {
+      "program": 9,
+      "title": "polynomial interpolation in equispaced and Chebyshev pts",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p9.m",
+      "chapter": "polynomials/interpolation/index.qmd",
+      "scope": "Original degree-16 node comparison, using barycentric evaluation instead of monomial fitting."
+    },
+    {
+      "program": 10,
+      "title": "polynomials and corresponding equipotential curves",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p10.m",
+      "chapter": "polynomials/nodal-polynomials/index.qmd",
+      "scope": "Original signed nodal products and complex-plane magnitude contours, evaluated directly from their roots."
+    },
+    {
+      "program": 11,
+      "title": "Chebyshev differentation of a smooth function",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p11.m",
+      "chapter": "polynomials/differentiation/index.qmd",
+      "scope": "Original smooth profile at degrees 10 and 20, differentiated with the Chebyshev collocation matrix."
+    },
+    {
+      "program": 12,
+      "title": "accuracy of Chebyshev spectral differentiation",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p12.m",
+      "chapter": "polynomials/regularity/index.qmd",
+      "scope": "All four original profiles and degrees 1..50, with limiting bump values handled explicitly."
+    },
+    {
+      "program": 13,
+      "title": "solve linear BVP u_xx = exp(4x), u(-1)=u(1)=0",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p13.m",
+      "chapter": "polynomials/boundary-values/index.qmd",
+      "scope": "Original degree-16 homogeneous Dirichlet collocation problem, solved with native GMRES."
+    },
+    {
+      "program": 14,
+      "title": "solve nonlinear BVP u_xx = exp(u), u(-1)=u(1)=0",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p14.m",
+      "chapter": "polynomials/nonlinear-boundary/index.qmd",
+      "scope": "Original nonlinear collocation problem, using native Newton–GMRES instead of fixed-point iteration and an analytic reference."
+    },
+    {
+      "program": 15,
+      "title": "solve eigenvalue BVP u_xx = lambda*u, u(-1)=u(1)=0",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p15.m",
+      "chapter": "polynomials/eigenmodes/index.qmd",
+      "scope": "Original degree-36 Dirichlet spectrum and six selected modes, using an example-owned complex QR eigensolver."
+    },
+    {
+      "program": 16,
+      "title": "Poisson eq. on [-1,1]x[-1,1] with u=0 on boundary",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p16.m",
+      "chapter": "polynomials/poisson-square/index.qmd",
+      "scope": "Original degree-24 Chebyshev Poisson problem; native GMRES applies the tensor operator without forming a Kronecker matrix."
+    },
+    {
+      "program": 17,
+      "title": "Helmholtz eq. u_xx + u_yy + (k^2)u = f",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p17.m",
+      "chapter": "polynomials/helmholtz-square/index.qmd",
+      "scope": "Original k=9 degree-24 Helmholtz problem with a native tensor-action GMRES solve."
+    },
+    {
+      "program": 18,
+      "title": "Chebyshev differentiation via FFT (compare p11.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p18.m",
+      "chapter": "polynomials/differentiation/index.qmd",
+      "scope": "Same polynomial derivative via native LocalFFT cosine coefficients, with explicit O(N²) coefficient-sum evaluation and endpoint limits."
+    },
+    {
+      "program": 19,
+      "title": "2nd-order wave eq. on Chebyshev grid (compare p6.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p19.m",
+      "chapter": "waves/chebyshev-line/index.qmd",
+      "scope": "FFT-based Chebyshev wave with the original N=80 Gaussian, leapfrog startup and rounded save schedule; direct chain-rule second derivatives replace two successive chebfft calls. Taylor startup and an exact standing mode are additional checks."
+    },
+    {
+      "program": 20,
+      "title": "2nd-order wave eq. in 2D via FFT (compare p19.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p20.m",
+      "chapter": "waves/chebyshev-square/index.qmd",
+      "scope": "Original N=24 Chebyshev square, Gaussian and leapfrog startup. Native LocalFFT evaluates both tensor derivatives; initial Gaussian boundary tails are retained. Nodal plots replace cubic display interpolation; Taylor startup exposes the initial-velocity error."
+    },
+    {
+      "program": 21,
+      "title": "eigenvalues of Mathieu operator -u_xx + 2qcos(2x)u",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p21.m",
+      "chapter": "fourier/mathieu/index.qmd",
+      "scope": "Original N=42 and q=0:.2:15 Mathieu sweep; native LocalFFT plus example-owned symmetric Jacobi diagonalization."
+    },
+    {
+      "program": 22,
+      "title": "5th eigenvector of Airy equation u_xx = lambda*x*u",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p22.m",
+      "chapter": "polynomials/airy/index.qmd",
+      "scope": "Original four-degree Airy experiment; explicitly eliminate the zero-weight constraint before a finite eigenproblem."
+    },
+    {
+      "program": 23,
+      "title": "eigenvalues of perturbed Laplacian on [-1,1]x[-1,1]",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p23.m",
+      "chapter": "polynomials/membrane/index.qmd",
+      "scope": "Original degree-16 perturbed-square Laplacian and four low modes with example-owned dense QR."
+    },
+    {
+      "program": 24,
+      "title": "pseudospectra of Davies's complex harmonic oscillator",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p24.m",
+      "chapter": "polynomials/pseudospectra/index.qmd",
+      "scope": "Original degree 70, half-length 6, all 69 eigenvalues and 26 by 21 complex grid with increments of two. Native Chebyshev derivatives; one-sided complex Jacobi singular values avoid normal equations. Complete original grid independently qualified."
+    },
+    {
+      "program": 25,
+      "title": "stability regions for ODE formulas",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p25.m",
+      "chapter": "integration/stability/index.qmd",
+      "scope": "Original AB/AM/BDF root-locus families and RK stability boundaries; native RK tableaus plus example-owned multistep references."
+    },
+    {
+      "program": 26,
+      "title": "eigenvalues of 2nd-order Chebyshev diff. matrix",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p26.m",
+      "chapter": "polynomials/eigenmodes/index.qmd",
+      "scope": "Original degree-60 spectrum and grid-scale mode; physical mode labelled and selected consistently as N/4."
+    },
+    {
+      "program": 27,
+      "title": "Solve KdV eq. u_t + uu_x + u_xxx = 0 on [-pi,pi] by",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p27.m",
+      "chapter": "waves/kdv/index.qmd",
+      "scope": "Original N=256 periodic two-pulse KdV experiment, timestep, unfiltered nonlinear product and zero odd Nyquist multipliers. Native complex-state RK4 integrates a global integrating factor, algebraically equivalent to the book's per-step stage formula; complete fields and integral diagnostics are saved."
+    },
+    {
+      "program": 28,
+      "title": "eigenmodes of Laplacian on the disk (compare p22.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p28.m",
+      "chapter": "polynomials/disk-modes/index.qmd",
+      "scope": "Original N25,M20 disk Laplacian, complete 240-mode spectrum with angular multiplicity, selected modes 1,3,6,10 and frequency ratios. Native Chebyshev derivatives and equivalent Fourier radial blocks; Bessel references and full-matrix qualification. Polar fields with nodal lines replace wireframe projection."
+    },
+    {
+      "program": 29,
+      "title": "solve Poisson equation on the unit disk",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p29.m",
+      "chapter": "polynomials/poisson-disk/index.qmd",
+      "scope": "Original N31,M40 forcing and zero-boundary disk solution. Native FFT separation and GMRES solve the equivalent original polar matrix; exact separated and smooth manufactured references, N63 radial refinement and independent full-matrix qualification. Non-smooth pole forcing is explicit."
+    },
+    {
+      "program": 30,
+      "title": "spectral integration, ODE style (compare p12.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p30.m",
+      "chapter": "polynomials/integration/index.qmd",
+      "scope": "Original antiderivative collocation experiment for four profiles and degrees 1..50; native GMRES replaces the explicit inverse."
+    },
+    {
+      "program": 31,
+      "title": "gamma function via complex integral, trapezoid rule",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p31.m",
+      "chapter": "quadrature/complex-contour/index.qmd",
+      "scope": "Original 70-point circular gamma contour and complex rectangle; retain reciprocal estimates and explicitly mark poles."
+    },
+    {
+      "program": 32,
+      "title": "solve u_xx = exp(4x), u(-1)=0, u(1)=1 (compare p13.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p32.m",
+      "chapter": "polynomials/boundary-values/index.qmd",
+      "scope": "Original nonzero Dirichlet problem with an affine lift and native GMRES."
+    },
+    {
+      "program": 33,
+      "title": "solve linear BVP u_xx = exp(4x), u'(-1)=u(1)=0",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p33.m",
+      "chapter": "polynomials/boundary-values/index.qmd",
+      "scope": "Original mixed Neumann/Dirichlet problem with a derivative row and native GMRES."
+    },
+    {
+      "program": 34,
+      "title": "Allen-Cahn eq. u_t = eps*u_xx+u-u^3, u(-1)=-1, u(1)=1",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p34.m",
+      "chapter": "polynomials/allen-cahn-fixed/index.qmd",
+      "scope": "Original degree-20 Allen–Cahn equation, epsilon=.01, fixed endpoints, lifted full Chebyshev D2 and explicit Euler through t=100. Native EulerStepper advances the vector; barycentric interpolation replaces monomial display fitting. An operator-based timestep cap applies to refinements and preserves the original degree-20 default."
+    },
+    {
+      "program": 35,
+      "title": "Allen-Cahn eq. as in p34.m, but with boundary condition",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p35.m",
+      "chapter": "polynomials/allen-cahn-driven/index.qmd",
+      "scope": "Original degree-20 Allen–Cahn equation with u(1,t)=1+sin(t/5)^2, full Chebyshev D2, and explicit endpoint replacement after every Euler step through t=100. Native EulerStepper and barycentric display evaluation preserve the discrete evolution. An operator-based timestep cap applies to refinements and preserves the original degree-20 default."
+    },
+    {
+      "program": 36,
+      "title": "Laplace eq. on [-1,1]x[-1,1] with nonzero BCs",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p36.m",
+      "chapter": "polynomials/laplace-square/index.qmd",
+      "scope": "Original degree-24 nonzero-boundary Laplace problem; equivalent boundary elimination replaces identity boundary rows."
+    },
+    {
+      "program": 37,
+      "title": "2D \"wave tank\" with Neumann BCs for |y|=1",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p37.m",
+      "chapter": "waves/mixed-tank/index.qmd",
+      "scope": "Original A=3, Nx=50, Ny=15 wave tank, Gaussian, nominal-step startup and Neumann reconstruction after each leapfrog update. FFT actions replace equivalent dense Fourier/Chebyshev matrices. Exact standing-mode and Taylor-start presets are additional checks."
+    },
+    {
+      "program": 38,
+      "title": "solve u_xxxx = exp(x), u(-1)=u(1)=u'(-1)=u'(1)=0",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p38.m",
+      "chapter": "polynomials/clamped-beam/index.qmd",
+      "scope": "Original degree-15 clamped fourth-order problem. Native Chebyshev nodes/derivatives construct the weighted operator; native GMRES replaces backslash, and barycentric reconstruction of the auxiliary polynomial preserves zero values and slopes. Complete values and slopes are checked against an independently determined analytic solution."
+    },
+    {
+      "program": 39,
+      "title": "eigenmodes of biharmonic on a square with clamped BCs",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p39.m",
+      "chapter": "polynomials/clamped-plate/index.qmd",
+      "scope": "All 25 degree-17 clamped square-plate modes and relative frequencies; native Chebyshev D4 and the original interior D2 tensor operator. Symmetry blocks preserve repeated modes; constrained barycentric display replaces cubic image interpolation."
+    },
+    {
+      "program": 40,
+      "title": "eigenvalues of Orr-Sommerfeld operator (compare p38.m)",
+      "source": "https://people.maths.ox.ac.uk/trefethen/p40.m",
+      "chapter": "polynomials/orr-sommerfeld/index.qmd",
+      "scope": "Original R=5772 and degrees 40,60,80,100; native Chebyshev D4/D2 construction and complete complex generalized spectra. Pivoted mass solves plus example-owned shifted QR replace a generalized eigensolver; original-pencil residuals and independent qualification are explicit."
+    }
+  ],
+  "capability_families": [
+    {
+      "name": "geometry",
+      "header_search_terms": [
+        "domain.hpp",
+        "strong_types.hpp"
+      ],
+      "chapters": [
+        "geometry/decomposition/index.qmd",
+        "geometry/index-boxes/index.qmd",
+        "geometry/field-storage/index.qmd"
+      ]
+    },
+    {
+      "name": "distributed fields and MPI",
+      "header_search_terms": [
+        "grid_field.hpp",
+        "decomposition.hpp",
+        "comm_halo_exchange.hpp"
+      ],
+      "chapters": [
+        "geometry/coordinate-fields/index.qmd",
+        "heat/finite-differences/index.qmd"
+      ]
+    },
+    {
+      "name": "local and distributed FFT",
+      "header_search_terms": [
+        "local_fft.hpp",
+        "fft_interface.hpp"
+      ],
+      "chapters": [
+        "fourier/round-trip/index.qmd",
+        "fourier/field-layout/index.qmd"
+      ]
+    },
+    {
+      "name": "finite differences and spectral gradients",
+      "header_search_terms": [
+        "fd_gradient.hpp",
+        "spectral_gradient.hpp"
+      ],
+      "chapters": [
+        "differentiation/periodic/index.qmd",
+        "differentiation/smoothness/index.qmd"
+      ]
+    },
+    {
+      "name": "conservative fluxes and nonperiodic boundaries",
+      "header_search_terms": [
+        "face_flux.hpp",
+        "sbp_diffusion.hpp",
+        "reaction_flux.hpp"
+      ],
+      "chapters": []
+    },
+    {
+      "name": "fixed and adaptive integration",
+      "header_search_terms": [
+        "explicit_rk.hpp",
+        "embedded_rk.hpp",
+        "adaptive_controller.hpp"
+      ],
+      "chapters": [
+        "heat/finite-differences/index.qmd",
+        "integration/stability/index.qmd",
+        "integration/adaptive-rk/index.qmd",
+        "integration/output-clock/index.qmd"
+      ]
+    },
+    {
+      "name": "multi-field runtime integration",
+      "header_search_terms": [
+        "runtime_field_rk.hpp",
+        "composite_gradient.hpp",
+        "coupled_spectral_etd2.hpp"
+      ],
+      "chapters": [
+        "coupling/runtime-fields/index.qmd"
+      ]
+    },
+    {
+      "name": "exponential and adaptive ETD",
+      "header_search_terms": [
+        "spectral_etd_system.hpp",
+        "etd_step_doubling.hpp"
+      ],
+      "chapters": [
+        "heat/exponential/index.qmd",
+        "integration/adaptive-etd/index.qmd"
+      ]
+    },
+    {
+      "name": "initial conditions and modifiers",
+      "header_search_terms": [
+        "initial_conditions/fourier_modes.hpp",
+        "indexed_noise.hpp",
+        "field_modifier.hpp"
+      ],
+      "chapters": [
+        "geometry/coordinate-fields/index.qmd",
+        "initialization/patterns/index.qmd",
+        "initialization/catalog/index.qmd"
+      ]
+    },
+    {
+      "name": "JSON/TOML validation and application sessions",
+      "header_search_terms": [
+        "json_session_main.hpp",
+        "parameter_schema.hpp"
+      ],
+      "chapters": [
+        "configuration/session/index.qmd",
+        "initialization/catalog/index.qmd"
+      ]
+    },
+    {
+      "name": "field output and visualization",
+      "header_search_terms": [
+        "results_writer.hpp",
+        "vtk_writer.hpp",
+        "png_writer.hpp"
+      ],
+      "chapters": [
+        "output/binary-field/index.qmd",
+        "output/vtk-series/index.qmd"
+      ]
+    },
+    {
+      "name": "checkpoints and restart",
+      "header_search_terms": [
+        "checkpoint_service.hpp",
+        "binary_reader.hpp"
+      ],
+      "chapters": [
+        "output/checkpoint-restart/index.qmd"
+      ]
+    },
+    {
+      "name": "Krylov and nonlinear solves",
+      "header_search_terms": [
+        "krylov.hpp",
+        "newton.hpp",
+        "scalar_root.hpp"
+      ],
+      "chapters": [
+        "polynomials/integration/index.qmd",
+        "polynomials/boundary-values/index.qmd",
+        "polynomials/nonlinear-boundary/index.qmd"
+      ]
+    },
+    {
+      "name": "geometric multigrid",
+      "header_search_terms": [
+        "multigrid.hpp",
+        "nodal_multigrid.hpp",
+        "nodal_dirichlet_multigrid.hpp"
+      ],
+      "chapters": [
+        "elliptic/multigrid/index.qmd"
+      ]
+    },
+    {
+      "name": "microelasticity and homogenization",
+      "header_search_terms": [
+        "microelasticity.hpp",
+        "homogenization.hpp"
+      ],
+      "chapters": []
+    },
+    {
+      "name": "coupling and transactional attempts",
+      "header_search_terms": [
+        "coupling.hpp",
+        "step_attempt.hpp",
+        "simulation_lifecycle.hpp"
+      ],
+      "chapters": [
+        "coupling/host-orchestrator/index.qmd",
+        "integration/adaptive-rk/index.qmd",
+        "integration/adaptive-etd/index.qmd"
+      ]
+    },
+    {
+      "name": "profiling and communication diagnostics",
+      "header_search_terms": [
+        "kernel/profiling/session.hpp",
+        "mpi/timer.hpp"
+      ],
+      "chapters": [
+        "diagnostics/mpi-timing/index.qmd",
+        "diagnostics/profiling/index.qmd"
+      ]
+    },
+    {
+      "name": "CUDA and HIP execution",
+      "header_search_terms": [
+        "gpu_spectral_stack.hpp",
+        "gpu_field.hpp"
+      ],
+      "chapters": []
+    },
+    {
+      "name": "nonlinear models and incompressible flow",
+      "header_search_terms": [
+        "spectral_flux.hpp",
+        "fourier_vector.hpp"
+      ],
+      "chapters": [
+        "waves/kdv/index.qmd",
+        "polynomials/allen-cahn-fixed/index.qmd",
+        "polynomials/allen-cahn-driven/index.qmd",
+        "phase-fields/cahn-hilliard/index.qmd"
+      ]
+    }
+  ]
+}

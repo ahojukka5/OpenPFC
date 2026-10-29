@@ -455,5 +455,5 @@ python3 out/report/figures/make_figures.py            # needs matplotlib
 
 ## See also
 
-- [`examples/15_finite_difference_heat.cpp`](../../examples/15_finite_difference_heat.cpp) — FD + halos pattern
+- [Separated-halo heat tutorial](../../examples/heat/separated-halos/index.qmd) — FD + halos pattern
 - [`examples/diffusion_model.hpp`](../../examples/diffusion_model.hpp) — spectral diffusion IC and operator

@@ -185,7 +185,7 @@ final check.
 
 ## Complete working examples
 
-See [`../../examples/19_explicit_stepper_fd.cpp`](../../examples/19_explicit_stepper_fd.cpp) for the FD backend and [`../../examples/20_explicit_stepper_spectral.cpp`](../../examples/20_explicit_stepper_spectral.cpp) for the spectral backend. Both solve the same heat equation with identical physics (`HeatModel::rhs`) but different gradient evaluators.
+See [`../../examples/heat/finite-differences/model.cpp`](../../examples/heat/finite-differences/model.cpp) for the FD backend and [`../../examples/heat/fourier/model.cpp`](../../examples/heat/fourier/model.cpp) for the spectral backend. These refactored teaching examples keep the forward-Euler update visible as `u += dt * du`, with identical heat-equation physics and different derivative evaluators. The [Quarto lessons](https://vtt-propertune.github.io/OpenPFC/learn/) derive the methods and check them against an exact solution.
 
 ## Stability considerations
 

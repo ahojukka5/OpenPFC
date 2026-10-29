@@ -140,5 +140,5 @@ mpirun -n 4 ./apps/allen_cahn/allen_cahn 256 256 5000 0.005 8.0 0.75 0.25 initia
 
 ## See also
 
-- [`../../docs/halo_exchange.md`](../../docs/concepts/halo_exchange.md) — halo policies (this demo uses separated layout for FD) 
-- [`../../examples/15_finite_difference_heat.cpp`](../../examples/15_finite_difference_heat.cpp) — related FD + halo pattern in `examples/` 
+- [`../../docs/halo_exchange.md`](../../docs/concepts/halo_exchange.md) — halo policies (this demo uses separated layout for FD)
+- [Separated-halo heat tutorial](../../examples/heat/separated-halos/index.qmd) — related FD + halo pattern in `examples/`

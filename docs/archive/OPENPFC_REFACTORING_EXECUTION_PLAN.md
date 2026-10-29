@@ -134,7 +134,7 @@ Fix every correctness defect identified in Audit §4 and §11 within the *existi
 
 * [x] Add a link test (or rely on the negative-compile harness from PB) demonstrating that calling `UpperBounds3(Size3,…)` / `Spacing3(Size3,…)` fails to link. Superseded: the dead `world_types` layer was deleted in M1; there is nothing left to fail-to-link.
 * [x] Delete the undefined declarations `utils::compute_upper_bounds`/`compute_spacing` (`world_types.hpp:65–77`), the constructors that call them, and the commented-out constructor graveyard in `src/openpfc/kernel/data/world.cpp:59–101`. (Confirmed via `CHANGELOG.md`; `world_types.hpp` itself has since been deleted entirely in M1.)
-* [x] Update `examples/01_hello_world/world.cpp:144–148` to stop demoing the dead layer.
+* [x] Update `examples/geometry/first-domain/model.cpp:144–148` to stop demoing the dead layer.
 
 **PI — HeFFTe rank-to-box ordering assumption (Audit §4.9)**
 
@@ -516,7 +516,7 @@ M2 (Field/SimulationState), M5 (spectral coefficients memory-space-generic).
 * [x] Complex-state ETD: `ETD1Stepper<Rhs, Scalar>` and `MultiETD1Stepper<Rhs, N, Scalar>` (`Scalar = double` or `std::complex<double>`) apply real `exp_Ldt`/`phi1_L` to the field(s). Host tests: stiff linear complex ODE (ETD1 exact when N=0), closed-form N≠0, and a two-field complex bundle. Device-resident combine: `apply_etd1_update` (host) and `apply_etd1_update_{cuda,hip}` (device pointers; real + complex). HIP/CUDA tests compare device vs host.
 * [x] Generalize multi-field arity: `MultiStageFunction<Rhs, N>` (default N=2); `MultiETD1Stepper` over N (`N >= 1`, variadic `attempt`). N=3 covered in `test_etd1.cpp`.
 * [x] Merge duplicates: one `StageContext` (`pfc::sim::StageContext` aliases `pfc::integrator::StageContext`); one workspace (`StageWorkspace<T>` aliases `integrator::Workspace<T>`). **Method enum: `Time` stores `RKIntegratorMethod`; the `time.hpp` `IntegratorMethod` enum is deleted.**
-* [x] Implement `AdaptiveTimeController` (`kernel/simulation/adaptive_controller.hpp`): closes embedded-error → `error_evidence` → `AdaptiveControlConfig` → `Time` attempt transactions; one end-to-end adaptive example (`examples/21_adaptive_stepping.cpp`) and integration test.
+* [x] Implement `AdaptiveTimeController` (`kernel/simulation/adaptive_controller.hpp`): closes embedded-error → `error_evidence` → `AdaptiveControlConfig` → `Time` attempt transactions; one end-to-end adaptive example (`examples/integration/adaptive-rk/model.cpp`) and integration test.
 * [x] Solver contract: `SolveFunction` is descriptor + field-bundle (no matrix type). Non-diagonal dense mock runs under `ImexEulerStepper` (`imex_euler_nondiagonal_dense_solve`). `SpectralDiagonalSolver` already models `SolveFunction` and is used as an injected solver.
 
 ### Required tests
@@ -726,7 +726,7 @@ M10 (driver + services structure).
 * [x] Make publication MPI-collective (fields via kernel `brick_io.hpp` MPI-IO — not frontend `BinaryWriter`, to keep kernel from including frontend), metadata rank-0 + barrier, preserving the atomic stage→rename protocol; multi-rank semantics in `docs/development/checkpoint_publish.md`.
 * [x] Implement `CheckpointService` owned by the driver: JSON keys `checkpoint.every` / `checkpoint.directory` / `restart_from: <dir>`; restart restores fields, `Time` accepted time, result counter, and integrator method identity (mismatch = hard error).
 * [x] Coupling surface (`kernel/simulation/coupling.hpp`): `FieldHandle` export from `SimulationState` (name + `FieldView` + `Box3i` + spacing/origin + memory space, one struct); the driver loop callable step-by-step by an external orchestrator (already a free function per M10); communicator injection documented with the `MPI_Comm_dup` isolation option (M4).
-* [x] Coupling reference example: `examples/22_external_coupling.cpp` — a mock "FEM" side owning the loop, pulling a `FieldHandle`, imposing a time-varying source through a FieldModifier-based adapter, with dt negotiation via `Time::clip_attempt_dt`.
+* [x] Coupling reference example: `examples/coupling/host-orchestrator/model.cpp` — a mock "FEM" side owning the loop, pulling a `FieldHandle`, imposing a time-varying source through a FieldModifier-based adapter, with dt negotiation via `Time::clip_attempt_dt`.
 * [x] Document the coupling contract (`docs/extending_openpfc/external_coupling.md`): what is stable API, what is not, restart coordination.
 
 ### Required tests

@@ -19,12 +19,12 @@ out-of-tree executable, follow the
 
 | Goal | Primary extension point | Starting point |
 |------|-------------------------|----------------|
-| Add a PDE or phase-field model | physics `step(t)` on a stack / `SimulationState` | `examples/04_diffusion_model.cpp`, `examples/12_cahn_hilliard.cpp` |
+| Add a PDE or phase-field model | physics `step(t)` on a stack / `SimulationState` | `examples/heat/implicit-euler/model.cpp`, `examples/phase-fields/cahn-hilliard/model.cpp` |
 | Add a stiff spectral-ETD (PFC) model | `pfc::sim::SpectralETDPhysics` consumed by `SpectralETDSystem` | [Add a spectral-ETD physics](#add-a-spectral-etd-physics), `tests/fixtures/swift_hohenberg.hpp` |
-| Add a config-selected initial or boundary condition | `pfc::FieldModifier` and a modifier catalog | `examples/10_ui_register_ic.cpp`, `examples/14_custom_field_initializer.cpp` |
+| Add a config-selected initial or boundary condition | `pfc::FieldModifier` and a modifier catalog | `examples/initialization/catalog/model.cpp`, `examples/initialization/patterns/model.cpp` |
 | Apply programmatic field operations | Namespace free functions and field iteration helpers | [Functional field operations](../getting_started/functional_field_ops.md) |
-| Add an output format | `pfc::ResultsWriter` or a writer catalog | `examples/11_write_results.cpp` |
-| Add custom spatial interpretation | Domain and coordinate helper functions | `examples/17_custom_coordinate_system.cpp` |
+| Add an output format | `pfc::ResultsWriter` or a writer catalog | `examples/output/vtk-series/model.cpp` |
+| Add custom spatial interpretation | Domain and coordinate helper functions | `examples/geometry/polar-patterns/model.cpp` |
 | Build a JSON/TOML-driven binary | `make_simulation_session` / `pfc::sim::run` | [Minimal custom application](../tutorials/custom_app_minimal.md) |
 | Drive your own stepper with the shared clock, IC/BC, and save hooks | `pfc::sim::SimulationLifecycle` | [Custom stepper lifecycle](../concepts/custom_stepper.md) |
 | Parse `--key=value` in a CLI driver | `pfc::utils::CliOptions` (unknown keys fail closed) | `openpfc/frontend/utils/cli_options.hpp` |
@@ -32,7 +32,7 @@ out-of-tree executable, follow the
 | Apply a user pointwise functor to device buffers | `pfc::core::transform` + `OPENPFC_INSTANTIATE_TRANSFORM` | [Device pointwise functors](#device-pointwise-functors), `openpfc/runtime/gpu/transform_gpu.hpp` |
 | Overlap a GPU interior stencil with Faces MPI | `pfc::comm::GpuHaloOverlap` (`Waitall` / `Testall`) | `openpfc/runtime/gpu/halo_overlap_gpu.hpp` |
 | Add point-wise gradients or finite-difference physics | Field/gradient primitives and halo policies | [Per-point gradients](per_point_grads.md), [Halo exchange](../concepts/halo_exchange.md) |
-| Couple an external solver | `pfc::coupling::FieldHandle` + `Time::clip_attempt_dt` | [External coupling](external_coupling.md), `examples/22_external_coupling.cpp` |
+| Couple an external solver | `pfc::coupling::FieldHandle` + `Time::clip_attempt_dt` | [External coupling](external_coupling.md), `examples/coupling/host-orchestrator/model.cpp` |
 | Restart from a checkpoint bundle | `CheckpointService` / `restart_from` | [Checkpoint publication](../development/checkpoint_publish.md) |
 
 The [Examples catalog](../reference/examples_catalog.md) is the authoritative

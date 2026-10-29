@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Verify the polynomial experiments with analytic and independent basis formulas."""
+from __future__ import annotations
+
+import argparse
+import csv
+import math
+from pathlib import Path
+import tempfile
+
+from check_foundations import run
+
+
+def rows(path):
+    with path.open() as file:
+        data = list(csv.DictReader(file))
+    for row in data:
+        for key, value in row.items():
+            if key not in ("grid", "kind", "boundary"):
+                assert math.isfinite(float(value)), (path, key, value)
+    return data
+
+
+def lagrange(nodes, values, x, derivative=False):
+    """Direct Lagrange basis, independent of barycentric weights and D entries."""
+    total = 0
+    for j, (node, value) in enumerate(zip(nodes, values)):
+        others = [k for k in range(len(nodes)) if k != j]
+        denominator = math.prod(node - nodes[k] for k in others)
+        if derivative:
+            basis = sum(math.prod(x - nodes[k] for k in others if k != m) for m in others)
+        else:
+            basis = math.prod(x - nodes[k] for k in others)
+        total += value * basis / denominator
+    return total
+
+
+def check_interpolation(binary, directory):
+    run(binary, directory)
+    data = rows(directory / "results/interpolation.csv")
+    assert len(data) == 2 * (17 + 405)
+    errors = []
+    for grid in ("equispaced", "chebyshev"):
+        samples = [r for r in data if r["grid"] == grid and r["kind"] == "node"]
+        x = [float(r["x"]) for r in samples]
+        values = [1 / (1 + 16 * p * p) for p in x]
+        error = 0
+        for row in (r for r in data if r["grid"] == grid and r["kind"] == "curve"):
+            point, value = float(row["x"]), float(row["value"])
+            assert abs(value - lagrange(x, values, point)) < 2e-9
+            if abs(point) <= 1:
+                error = max(error, abs(value - 1 / (1 + 16 * point**2)))
+        errors.append(error)
+    assert errors[0] > 1 and errors[1] < .03, errors
+
+
+def check_nodal(binary, directory):
+    run(binary, directory)
+    data = rows(directory / "results/potential.csv")
+    assert len(data) == 2 * 141 * 113
+    for row in data:
+        if row["grid"] != "chebyshev":
+            continue
+        z = complex(float(row["real"]), float(row["imag"]))
+        # U_15 from its three-term recurrence, not a product over the nodes.
+        previous, current = 1, 2 * z
+        for _ in range(2, 16):
+            previous, current = current, 2 * z * current - previous
+        exact = abs(2**-15 * (z*z - 1) * current)
+        assert abs(float(row["magnitude"]) - exact) < 2e-12 * max(1, exact)
+    line = rows(directory / "results/nodal.csv")
+    assert len(line) == 802
+    assert all(abs(float(r["value"])) < 1e-14 for r in line if abs(float(r["x"])) == 1)
+
+
+def check_derivative(binary, directory):
+    run(binary, directory)
+    data = rows(directory / "results/derivatives.csv")
+    assert len(data) == 32
+    errors = []
+    for n in (10, 20):
+        error = 0
+        for row in (r for r in data if int(r["n"]) == n):
+            x = float(row["x"])
+            exact = math.exp(x) * (math.sin(5*x) + 5*math.cos(5*x))
+            dense, fourier = float(row["matrix"]), float(row["fourier"])
+            assert abs(float(row["exact"]) - exact) < 1e-13
+            assert abs(dense - fourier) < 2e-11
+            error = max(error, abs(dense - exact), abs(fourier - exact))
+        errors.append(error)
+    assert errors[1] < 1e-8 and errors[1] < errors[0] / 1000, errors
+
+
+def sample(kind, x):
+    if kind == 0:
+        return abs(x)**3, 3*x*abs(x)
+    if kind == 1:
+        if abs(x) < 1e-14:
+            return 0, 0
+        value = math.exp(-1 / x**2)
+        return value, 2*value / x**3
+    if kind == 2:
+        return 1 / (1+x*x), -2*x / (1+x*x)**2
+    return x**10, 10*x**9
+
+
+def check_regularity(binary, directory):
+    run(binary, directory)
+    data = rows(directory / "results/regularity.csv")
+    assert len(data) == 200
+    for row in data:
+        n, kind, error = int(row["n"]), int(row["profile"]), float(row["error"])
+        if n <= 12:
+            x = [math.cos(math.pi*j/n) for j in range(n+1)]
+            values = [sample(kind, p)[0] for p in x]
+            expected = max(abs(lagrange(x, values, p, derivative=True) - sample(kind, p)[1]) for p in x)
+            assert abs(error - expected) < 2e-10
+        if kind == 3 and n >= 10:
+            assert error < 1e-9
+        if kind == 2 and n == 50:
+            assert error < 1e-10
+
+
+def check_integration(binary, directory):
+    run(binary, directory)
+    data = rows(directory / "results/integrals.csv")
+    assert len(data) == 200
+    exacts = [.5, 2 * (math.exp(-1) - math.sqrt(math.pi)*math.erfc(1)), math.pi/2, 2/11]
+    for row in data:
+        n, kind = int(row["n"]), int(row["profile"])
+        value = float(row["integral"])
+        assert abs(float(row["exact"]) - exacts[kind]) < 1e-14
+        if kind == 3 and n >= 11:
+            assert abs(value - 2/11) < 2e-9
+        if n == 50:
+            assert abs(value - exacts[kind]) < (1e-5 if kind == 0 else 1e-7)
+        if n <= 6:
+            # Integrate the degree-(n-1) polynomial through f at the first n nodes.
+            nodes = [math.cos(math.pi*j/n) for j in range(n)]
+            integral = 0
+            for j, node in enumerate(nodes):
+                coefficients = [1.0]
+                for k, other in enumerate(nodes):
+                    if k == j:
+                        continue
+                    result = [0.0] * (len(coefficients)+1)
+                    for power, coefficient in enumerate(coefficients):
+                        result[power] -= other * coefficient / (node-other)
+                        result[power+1] += coefficient / (node-other)
+                    coefficients = result
+                integral += sample(kind, node)[0] * sum(
+                    2*c/(power+1) for power, c in enumerate(coefficients) if power % 2 == 0)
+            assert abs(value - integral) < 2e-11
+
+
+def check_boundaries(binary, directory):
+    run(binary, directory)
+    data = rows(directory / "results/solutions.csv")
+    assert len(data) == 3*(17+401)
+    for boundary in ("zero", "lifted", "mixed"):
+        for row in (r for r in data if r["boundary"] == boundary):
+            x, value = float(row["x"]), float(row["u"])
+            if boundary == "mixed":
+                exact = (math.exp(4*x) - 4*math.exp(-4)*(x-1) - math.exp(4))/16
+            else:
+                exact = (math.exp(4*x) - x*math.sinh(4) - math.cosh(4))/16
+                if boundary == "lifted":
+                    exact += (x+1)/2
+            assert abs(value - exact) < 1e-8, (boundary, x, value, exact)
+        nodes = [r for r in data if r["boundary"] == boundary and r["kind"] == "node"]
+        assert abs(float(nodes[0]["u"]) - (1 if boundary == "lifted" else 0)) < 1e-12
+        if boundary == "mixed":
+            derivative = lagrange([float(r["x"]) for r in nodes], [float(r["u"]) for r in nodes], -1, derivative=True)
+            assert abs(derivative) < 1e-8
+        else:
+            assert abs(float(nodes[-1]["u"])) < 1e-12
+
+
+def check_nonlinear(binary, directory):
+    run(binary, directory)
+    lo, hi = 0, 1
+    for _ in range(60):
+        a = (lo+hi)/2
+        if math.cos(a) - math.sqrt(2)*a > 0:
+            lo = a
+        else:
+            hi = a
+    a = (lo+hi)/2
+    data = rows(directory / "results/nonlinear.csv")
+    assert len(data) == 17+401
+    for row in data:
+        x = float(row["x"])
+        exact = 2*math.log(math.cos(a)/math.cos(a*x))
+        assert abs(float(row["exact"]) - exact) < 1e-13
+        assert abs(float(row["u"]) - exact) < 2e-9
+    history = rows(directory / "results/newton.csv")
+    residuals = [float(r["residual"]) for r in history]
+    assert len(residuals) >= 2 and residuals[-1] < 1e-10
+    assert all(new < old for old, new in zip(residuals, residuals[1:]))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bin-dir", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+    args.output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="polynomials-", dir=args.output) as name:
+        root = Path(name).resolve()
+        checks = {"interpolation": check_interpolation, "nodal_polynomials": check_nodal,
+                  "differentiation": check_derivative, "regularity": check_regularity,
+                  "integration": check_integration, "boundary_values": check_boundaries,
+                  "nonlinear_boundary": check_nonlinear}
+        for target, check in checks.items():
+            binary = args.bin_dir.resolve() / ("polynomial_" + target)
+            check(binary, root / target)
+            run(binary, root / (target + "-invalid"), parameters={"n": 0, "sizes": [0]}, success=False)
+    print("All seven polynomial experiments passed independent mathematical checks.")
+
+
+if __name__ == "__main__":
+    main()

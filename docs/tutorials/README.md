@@ -5,6 +5,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Tutorials
 
+For mathematical experiments with editable C++ models, start with
+[OpenPFC by example](https://vtt-propertune.github.io/OpenPFC/learn/).
+Its Quarto lessons develop finite differences, Fourier differentiation, and
+heat flow through three time/space discretizations. The teaching sources
+live beside the code under [`examples/`](../../examples/index.qmd).
+
 The tutorials are for moments when you want to do one concrete thing with OpenPFC and understand what just happened. They are not meant to be read alphabetically. If you have not yet built the project, start with [`../start_here_15_minutes.md`](../start_here_15_minutes.md); if you are still deciding which route fits you, use [`../learning_paths.md`](../learning_paths.md).
 
 The most practical first tutorial is [`end_to_end_visualization.md`](end_to_end_visualization.md). It takes you from a built project to files on disk, using either Allen–Cahn for a quick visual run or tungsten for the more realistic application path. If your goal is ParaView, continue with [`vtk_paraview_workflow.md`](vtk_paraview_workflow.md), which uses built-in examples that already write VTK. If your output is raw binary instead, [`../user_guide/postprocess_binary_fields.md`](../user_guide/postprocess_binary_fields.md) explains how to reason about metadata, Fortran order and NumPy-side analysis; the exact binary contract lives in [`../reference/binary_field_io_spec.md`](../reference/binary_field_io_spec.md).

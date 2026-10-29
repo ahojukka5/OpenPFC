@@ -1,0 +1,336 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 VTT Technical Research Centre of Finland Ltd
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Independent eigenproblem, tensor-boundary, contour and multigrid checks."""
+from __future__ import annotations
+
+import argparse
+import cmath
+import csv
+import math
+from pathlib import Path
+import tempfile
+
+from check_foundations import run
+
+
+def rows(path):
+    with path.open() as file:
+        return list(csv.DictReader(file))
+
+
+def factor(matrix):
+    a = [list(row) for row in matrix]
+    pivots = []
+    for k in range(len(a)):
+        p = max(range(k, len(a)), key=lambda i: abs(a[i][k]))
+        assert abs(a[p][k]) > 1e-18
+        pivots.append(p)
+        a[k], a[p] = a[p], a[k]
+        for i in range(k + 1, len(a)):
+            a[i][k] /= a[k][k]
+            for j in range(k + 1, len(a)):
+                a[i][j] -= a[i][k] * a[k][j]
+    return a, pivots
+
+
+def substitute(lu, rhs):
+    a, pivots = lu
+    x = list(rhs)
+    for k, p in enumerate(pivots):
+        x[k], x[p] = x[p], x[k]
+    for i in range(len(x)):
+        x[i] -= sum(a[i][j] * x[j] for j in range(i))
+    for i in reversed(range(len(x))):
+        x[i] = (x[i] - sum(a[i][j] * x[j] for j in range(i + 1, len(x)))) / a[i][i]
+    return x
+
+
+def lowest(matrix, count=1, shift=0):
+    """Inverse iteration and orthogonal deflation, not Jacobi or shifted QR."""
+    n = len(matrix)
+    a = [[v + (shift if i == j else 0) for j, v in enumerate(row)] for i, row in enumerate(matrix)]
+    lu = factor(a)
+    vectors, values = [], []
+    for mode in range(count):
+        v = [math.sin(.73 * (j + 1) * (mode + 1)) + .1 * math.cos(.31*j) for j in range(n)]
+        for _ in range(180):
+            v = substitute(lu, v)
+            for _ in range(2):
+                for previous in vectors:
+                    dot = sum(x*y for x,y in zip(v, previous))
+                    v = [x-dot*y for x,y in zip(v, previous)]
+            norm = math.sqrt(sum(x*x for x in v))
+            v = [x/norm for x in v]
+        values.append(sum(v[i] * sum(matrix[i][j]*v[j] for j in range(n)) for i in range(n)))
+        vectors.append(v)
+    return values
+
+
+def lagrange_second(n):
+    """Differentiate Lagrange products directly; do not square a D matrix."""
+    x = [math.cos(math.pi*j/n) for j in range(n+1)]
+    a = [[0.0]*(n+1) for _ in x]
+    denominator = [math.prod(p-other for k,other in enumerate(x) if k != j) for j,p in enumerate(x)]
+    for i, point in enumerate(x):
+        for j in range(n+1):
+            if i == j:
+                inverses = [1/(point-other) for k,other in enumerate(x) if k != i]
+                a[i][j] = sum(inverses)**2 - sum(v*v for v in inverses)
+            else:
+                others = [other for k,other in enumerate(x) if k not in (i,j)]
+                a[i][j] = 2*math.prod(point-other for other in others)*sum(1/(point-other) for other in others)/denominator[j]
+    return x, a
+
+
+def check_harmonic(binary, directory):
+    run(binary, directory)
+    data = rows(directory/'results/energies.csv')
+    assert len(data) == 24
+    fine = [float(r['eigenvalue']) for r in data if int(r['n']) == 36]
+    assert max(abs(value-(2*j+1)) for j,value in enumerate(fine)) < 1e-9
+    n = 36
+    k = [j if j <= n//2 else j-n for j in range(n)]
+    # Direct DFT sum for -d_xx, independent of FFTW.
+    a = [[sum((math.pi*mode/8)**2*cmath.exp(2j*math.pi*mode*(i-j)/n) for mode in k).real/n
+          for j in range(n)] for i in range(n)]
+    for i in range(n):
+        a[i][i] += (-8+16*(i+1)/n)**2
+    expected = lowest(a, 4)
+    assert max(abs(value-reference) for value,reference in zip(fine,expected)) < 2e-10
+    run(binary, directory.parent/'bad-harmonic', parameters={'sizes':[7]}, success=False)
+
+
+def check_mathieu(binary, directory):
+    run(binary, directory)
+    data = rows(directory/'results/mathieu.csv')
+    assert len(data) == 76*11
+    free = [0,1,1,4,4,9,9,16,16,25,25]
+    for step in range(76):
+        subset = [r for r in data if abs(float(r['q'])-.2*step)<1e-12]
+        values = [float(r['eigenvalue']) for r in subset]
+        assert len(values)==11 and values==sorted(values)
+        assert all(math.isfinite(v) for v in values)
+        assert all(abs(v-base)<=.4*step+1e-10 for v,base in zip(values,free))
+        if step==0: assert max(abs(v-base) for v,base in zip(values,free))<1e-10
+    # Fourier-mode potential couples k to k+-2; solve each parity sector.
+    ground=[]
+    for parity in (0,1):
+        indices=list(range(parity,42,2)); m=len(indices)
+        a=[[0.0]*m for _ in indices]
+        for i,index in enumerate(indices):
+            k=index if index<=21 else index-42
+            a[i][i]=k*k
+            a[i][(i-1)%m]+=15
+            a[i][(i+1)%m]+=15
+        ground.extend(lowest(a, shift=31))
+    native=next(float(r['eigenvalue']) for r in data if float(r['q'])==15 and int(r['mode'])==1)
+    assert abs(native-min(ground))<1e-10
+    run(binary,directory.parent/'bad-mathieu',parameters={'n':11},success=False)
+
+
+def check_eigenmodes(binary, root):
+    maxima=[]
+    for n,modes in ((36,[5,10,15,20,25,30]),(60,[15,59])):
+        directory=root/f'eigen-{n}'
+        run(binary,directory,parameters={'n':n,'modes':modes})
+        data=rows(directory/'results/spectrum.csv')
+        vectors=rows(directory/'results/vectors.csv')
+        assert len(data)==n-1 and len(vectors)==(n-1)*(n+1)
+        x,a=lagrange_second(n)
+        norm_a=math.sqrt(sum(a[i][j]**2 for i in range(1,n) for j in range(1,n)))
+        for row in data:
+            mode=int(row['mode'])
+            eigenvalue=complex(float(row['eigenvalue']),float(row['imag']))
+            v=[complex(float(r['real']),float(r['imag'])) for r in vectors if int(r['mode'])==mode]
+            assert v[0]==v[-1]==0 and all(math.isfinite(abs(value)) for value in v)
+            residual=[-sum(a[i][j]*v[j] for j in range(1,n))-eigenvalue*v[i] for i in range(1,n)]
+            relative=math.sqrt(sum(abs(r)**2 for r in residual)/sum(abs(z)**2 for z in v))/(norm_a+abs(eigenvalue))
+            assert relative<1e-10,(n,mode,relative)
+            if mode<=5: assert abs(eigenvalue-(mode*math.pi/2)**2)<1e-7
+        trace=-sum(a[i][i] for i in range(1,n))
+        assert abs(sum(float(r['eigenvalue']) for r in data)-trace)<2e-10*abs(trace)
+        maxima.append(float(data[-1]['eigenvalue']))
+    assert .9<maxima[1]/maxima[0]/(60/36)**4<1.1
+    run(binary,root/'bad-eigen',parameters={'n':8,'modes':[9]},success=False)
+
+
+def check_airy(binary,directory):
+    run(binary,directory)
+    data=rows(directory/'results/eigenvalues.csv')
+    fields=rows(directory/'results/airy.csv')
+    assert len(data)==4
+    for row in data:
+        n=int(row['n']);lam=float(row['eigenvalue']);x,a=lagrange_second(n)
+        u=[float(r['u']) for r in fields if int(r['n'])==n and r['kind']=='node']
+        assert len(u)==n+1 and u[0]==u[-1]==0
+        assert abs(u[n//2]-.35502805388781723926)<1e-13
+        residual=[sum(a[i][j]*u[j] for j in range(n+1))-lam*x[i]*u[i] for i in range(1,n)]
+        scale=max(abs(a[i][j]) for i in range(1,n) for j in range(n+1))*max(abs(v) for v in u)
+        assert max(abs(r) for r in residual)<1e-9*scale
+    # Independent Airy boundary determinant, verified by the reference job.
+    assert abs(float(data[-1]['eigenvalue'])-501.3483797111)<1e-7
+    assert abs(float(data[0]['eigenvalue'])-501.3483797111)>1
+    run(binary,directory.parent/'bad-airy',parameters={'sizes':[13]},success=False)
+
+
+def check_membrane(binary,directory):
+    run(binary,directory)
+    data=rows(directory/'results/spectrum.csv'); fields=rows(directory/'results/modes.csv')
+    assert len(data)==4 and len(fields)==4*17**2
+    x,a=lagrange_second(16)
+    for row in data:
+        mode=int(row['mode']);lam=float(row['eigenvalue'])
+        u=[[0.0]*17 for _ in x]
+        for r in fields:
+            if int(r['mode'])==mode: u[int(r['j'])][int(r['i'])]=float(r['u'])
+        assert all(u[0][i]==u[-1][i]==u[i][0]==u[i][-1]==0 for i in range(17))
+        error=0
+        for j in range(1,16):
+            for i in range(1,16):
+                value=-sum(a[i][k]*u[j][k]+a[j][k]*u[k][i] for k in range(17))
+                value+=(math.exp(20*(x[j]-x[i]-1))-lam)*u[j][i]
+                error=max(error,abs(value))
+        assert error<1e-7,(mode,error)
+    assert float(data[0]['eigenvalue'])>math.pi**2/2
+    run(binary,directory.parent/'bad-membrane',parameters={'n':21},success=False)
+
+
+def boundary(x,y,manufactured):
+    if manufactured:return x*x-y*y
+    return (math.sin(math.pi*x)**4 if y==1 and x<0 else 0)+(.2*math.sin(3*math.pi*y) if x==1 else 0)
+
+
+def check_square(binary,directory,kind):
+    run(binary,directory,parameters={'n':8})
+    data=rows(directory/'results/solution.csv');x,a=lagrange_second(8);m=7
+    full=[[0.0]*9 for _ in x]; matrix=[[0.0]*(m*m) for _ in range(m*m)];b=[0.0]*(m*m)
+    if kind=='laplace':
+        for j in range(9):
+            for i in range(9):
+                if i in (0,8) or j in (0,8):full[j][i]=boundary(x[i],x[j],False)
+    wave=9 if kind=='helmholtz' else 0
+    for j in range(1,8):
+        for i in range(1,8):
+            row=i-1+m*(j-1)
+            b[row]=10*math.sin(8*x[i]*(x[j]-1)) if kind=='poisson' else math.exp(-10*((x[j]-1)**2+(x[i]-.5)**2)) if kind=='helmholtz' else 0
+            b[row]-=a[i][0]*full[j][0]+a[i][8]*full[j][8]+a[j][0]*full[0][i]+a[j][8]*full[8][i]
+            matrix[row][row]+=wave*wave
+            for k in range(1,8):
+                matrix[row][k-1+m*(j-1)]+=a[i][k]
+                matrix[row][i-1+m*(k-1)]+=a[j][k]
+    solution=substitute(factor(matrix),b)
+    for j in range(1,8):
+        for i in range(1,8):full[j][i]=solution[i-1+m*(j-1)]
+    assert len(data)==81
+    for row in data:assert abs(float(row['u'])-full[int(row['j'])][int(row['i'])])<1e-9
+    manufactured=directory.parent/(kind+'-manufactured')
+    run(binary,manufactured,parameters={'n':24,'manufactured':True})
+    for row in rows(manufactured/'results/solution.csv'):
+        x,y=float(row['x']),float(row['y'])
+        expected=x*x-y*y if kind=='laplace' else (1-x*x)*(1-y*y)
+        assert abs(float(row['u'])-expected)<1e-7
+    run(binary,directory.parent/(kind+'-invalid'),parameters={'n':33},success=False)
+
+
+def check_gamma(binary,directory):
+    run(binary,directory)
+    data=rows(directory/'results/gamma.csv');convergence=rows(directory/'results/convergence.csv')
+    assert len(data)==76*51 and sum(int(r['pole']) for r in data)==4
+    indexed={(round(float(r['real']),8),round(float(r['imag']),8)):r for r in data}
+    for key,row in indexed.items():
+        value=complex(float(row['reciprocal_real']),float(row['reciprocal_imag']))
+        assert math.isfinite(abs(value))
+        if int(row['pole']):assert math.isnan(float(row['gamma_abs']));continue
+        assert math.isfinite(float(row['gamma_abs']))
+        other=indexed[key[0],-key[1]]
+        conjugate=complex(float(other['reciprocal_real']),float(other['reciprocal_imag'])).conjugate()
+        assert abs(value-conjugate)<1e-9*max(1,abs(value))
+        if .5<=key[0]<=3:
+            nextrow=indexed[round(key[0]+1,8),key[1]]
+            nextvalue=complex(float(nextrow['reciprocal_real']),float(nextrow['reciprocal_imag']))
+            assert abs(complex(*key)*nextvalue-value)<1e-8*max(1,abs(value))
+    exact={.5:1/math.sqrt(math.pi),1.:1,1.5:2/math.sqrt(math.pi),2.:1,3.:.5,4.:1/6}
+    for row in convergence:
+        samples=int(row['samples'])
+        if samples>=70:
+            tolerance=1e-9 if samples==70 else 1e-11
+            assert abs(float(row['reciprocal'])-exact[float(row['z'])])<tolerance
+    for z in exact:
+        errors={int(r['samples']):abs(float(r['reciprocal'])-exact[z]) for r in convergence if float(r['z'])==z}
+        assert errors[70]<errors[40]/10000
+    run(binary,directory.parent/'bad-gamma',parameters={'samples':7},success=False)
+
+
+def check_multigrid(binary,directory):
+    run(binary,directory)
+    convergence=rows(directory/'results/convergence.csv');previous=None
+    for row in convergence:
+        n=int(row['n']);h=1/(n-1);data=rows(directory/f'results/field_{n}.csv')
+        assert len(data)==n**3
+        for sample in data:
+            i,j,k=(int(sample[key]) for key in ('i','j','k'))
+            if 0 in (i,j,k) or n-1 in (i,j,k):expected=0
+            else:
+                low=math.sin(math.pi*i*h)*math.sin(math.pi*j*h)*math.sin(math.pi*k*h)
+                high=.2*math.sin(2*math.pi*i*h)*math.sin(3*math.pi*j*h)*math.sin(math.pi*k*h)
+                mu1=12/h**2*math.sin(math.pi*h/2)**2
+                mu2=4/h**2*sum(math.sin(m*math.pi*h/2)**2 for m in (2,3,1))
+                expected=3*math.pi**2/mu1*low+14*math.pi**2/mu2*high
+            assert abs(float(sample['u'])-expected)<1e-8
+        error=float(row['relative_error'])
+        if previous is not None:assert 3.8<previous/error<4.5
+        previous=error
+    run(binary,directory.parent/'bad-mg',parameters={'sizes':[8]},success=False)
+
+
+def check_clamped(binary, root):
+    # Determine the cubic from four endpoint equations, independently of the
+    # model's closed-form hyperbolic-function coefficients.
+    equations = [[1,-1,1,-1], [0,1,-2,3], [1,1,1,1], [0,1,2,3]]
+    coefficients = substitute(factor(equations), [math.exp(-1),math.exp(-1),math.e,math.e])
+    errors = []
+    for n in (6,15):
+        directory = root/f'clamped-{n}'
+        run(binary,directory,parameters={'n':n})
+        data = rows(directory/'results/beam.csv')
+        assert len([r for r in data if r['kind']=='node']) == n+1
+        assert len([r for r in data if r['kind']=='curve']) == 401
+        error = slope_error = 0
+        for row in data:
+            x = float(row['x'])
+            exact = math.exp(x)-sum(c*x**j for j,c in enumerate(coefficients))
+            slope = math.exp(x)-sum(j*coefficients[j]*x**(j-1) for j in range(1,4))
+            assert abs(float(row['exact'])-exact)<2e-15
+            assert abs(float(row['exact_du'])-slope)<2e-15
+            error = max(error,abs(float(row['u'])-exact))
+            slope_error = max(slope_error,abs(float(row['du'])-slope))
+            if abs(x)==1:
+                assert float(row['u'])==0 and float(row['du'])==0
+        if n==15:assert error<5e-11 and slope_error<5e-10,(error,slope_error)
+        errors.append(error)
+    assert errors[0]>1e-9 and errors[1]<errors[0]*1e-4,errors
+    run(binary,root/'bad-clamped',parameters={'n':2},success=False)
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--bin-dir',type=Path,required=True)
+    parser.add_argument('--output',type=Path,required=True)
+    args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=True)
+    binaries=args.bin_dir.resolve()
+    with tempfile.TemporaryDirectory(prefix='spectra-',dir=args.output) as name:
+        root=Path(name).resolve()
+        check_harmonic(binaries/'harmonic_oscillator',root/'harmonic')
+        check_mathieu(binaries/'mathieu_spectrum',root/'mathieu')
+        check_eigenmodes(binaries/'chebyshev_eigenmodes',root)
+        check_airy(binaries/'airy_eigenproblem',root/'airy')
+        check_membrane(binaries/'membrane_eigenmodes',root/'membrane')
+        for kind in ('poisson','helmholtz','laplace'):check_square(binaries/('square_'+kind),root/kind,kind)
+        check_gamma(binaries/'gamma_contour',root/'gamma')
+        check_multigrid(binaries/'multigrid_poisson',root/'multigrid')
+        check_clamped(binaries/'clamped_beam',root)
+    print('All eleven operator, eigenproblem, contour, multigrid and clamped-boundary models passed independent checks.')
+
+
+if __name__=='__main__':main()

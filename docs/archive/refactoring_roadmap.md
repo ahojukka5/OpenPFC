@@ -22,7 +22,7 @@ Done:
 
 - Optional `MPI_Comm mpi_comm = MPI_COMM_WORLD` on `Model`; rank-0 via `mpi_comm_rank_is_zero` (same helper as `SimulationContext`); accessor `Model::mpi_comm()`.
 - `SpectralSimulationSession` constructs `ConcreteModel(fft, world, m_stack.mpi_comm())` so JSON-driven apps align with the simulator communicator.
-- Shipped / example models updated (`Aluminum`, `Tungsten` CPU/CUDA/HIP, `examples/10_ui_register_ic.cpp`).
+- Shipped / example models updated (`Aluminum`, `Tungsten` CPU/CUDA/HIP, `examples/initialization/catalog/model.cpp`).
 - CUDA/HIP Tungsten: HeFFTe GPU FFT and rank/size queries use `Model::mpi_comm()` (no hardcoded `MPI_COMM_WORLD` in `set_cuda_fft` / `set_hip_fft` or constructors).
 - Tungsten CPU/CUDA/HIP: NaN check macros use `CHECK_AND_ABORT_IF_NANS_MPI(..., mpi_comm())` so `MPI_Abort` and rank reporting match the model’s communicator.
 - `CHECK_AND_ABORT_IF_NAN` / `CHECK_AND_ABORT_IF_NANS` use `default_nan_check_mpi_comm()`; JSON session drivers call `set_default_nan_check_mpi_comm` (via `configure_json_driver_hooks`) so the default matches non-world app communicators. `pfc::mpi::get_rank()` / `get_size()` without a communicator are documented as deprecated (world-only).

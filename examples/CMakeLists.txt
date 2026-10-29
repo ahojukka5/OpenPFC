@@ -28,108 +28,144 @@ if(OpenPFC_ENABLE_HIP_SPECTRAL)
   target_compile_definitions(fft_backend_benchmark PRIVATE OpenPFC_ENABLE_HIP_SPECTRAL)
 endif()
 
-# add_executable(01_hello_world 01_hello_world.cpp)
-# target_link_libraries(01_hello_world PRIVATE OpenPFC)
-
-add_executable(02_domain_decomposition 02_domain_decomposition.cpp)
-target_link_libraries(02_domain_decomposition PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(03_parallel_fft 03_parallel_fft.cpp)
-target_link_libraries(03_parallel_fft PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(04_diffusion_model 04_diffusion_model.cpp)
-target_link_libraries(04_diffusion_model PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(05_simulator 05_simulator.cpp)
-target_link_libraries(05_simulator PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(06_multi_index 06_multi_index.cpp)
-target_link_libraries(06_multi_index PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(07_array 07_array.cpp)
-target_link_libraries(07_array PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(08_discrete_fields 08_discrete_fields.cpp)
-target_link_libraries(08_discrete_fields PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(09_parallel_fft_high_level 09_parallel_fft_high_level.cpp)
-target_link_libraries(09_parallel_fft_high_level PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(10_ui_register_ic 10_ui_register_ic.cpp)
-target_link_libraries(10_ui_register_ic PRIVATE OpenPFC nlohmann_json::nlohmann_json ${_heffte_tgt})
-
-add_executable(11_write_results 11_write_results.cpp)
-target_link_libraries(11_write_results PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(12_cahn_hilliard 12_cahn_hilliard.cpp)
-target_link_libraries(12_cahn_hilliard PRIVATE OpenPFC nlohmann_json::nlohmann_json ${_heffte_tgt})
-
 add_executable(fft_kspace_helpers_example fft_kspace_helpers_example.cpp)
 target_link_libraries(fft_kspace_helpers_example PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(mpi_worker mpi_worker.cpp)
-target_link_libraries(mpi_worker PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(mpi_worker_inside_class mpi_worker_inside_class.cpp)
-target_link_libraries(mpi_worker_inside_class PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(mpi_timers mpi_timers.cpp)
-target_link_libraries(mpi_timers PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(profiling_timer_report profiling_timer_report.cpp)
-target_link_libraries(profiling_timer_report PRIVATE OpenPFC nlohmann_json::nlohmann_json ${_heffte_tgt})
-
-add_executable(time time.cpp)
-target_link_libraries(time PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(write_results write_results.cpp)
-target_link_libraries(write_results PRIVATE OpenPFC ${_heffte_tgt})
 
 add_executable(diffusion_model_with_custom_initial_condition diffusion_model_with_custom_initial_condition.cpp)
 target_link_libraries(diffusion_model_with_custom_initial_condition PRIVATE OpenPFC ${_heffte_tgt})
 
-add_executable(json_read json_read.cpp)
-target_link_libraries(json_read PRIVATE nlohmann_json::nlohmann_json)
-
-add_executable(world_helpers_example world_helpers_example.cpp)
-target_link_libraries(world_helpers_example PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(14_custom_field_initializer 14_custom_field_initializer.cpp)
-target_link_libraries(14_custom_field_initializer PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(15_finite_difference_heat 15_finite_difference_heat.cpp)
-target_link_libraries(15_finite_difference_heat PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(16_strong_types_demo 16_strong_types_demo.cpp)
-target_link_libraries(16_strong_types_demo PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(17_custom_coordinate_system 17_custom_coordinate_system.cpp)
-target_link_libraries(17_custom_coordinate_system PRIVATE OpenPFC ${_heffte_tgt})
-
 add_executable(18_sobel_edge_detection 18_sobel_edge_detection.cpp)
 target_link_libraries(18_sobel_edge_detection PRIVATE OpenPFC ${_heffte_tgt})
 
-add_executable(world_strong_types_example world_strong_types_example.cpp)
-target_link_libraries(world_strong_types_example PRIVATE OpenPFC ${_heffte_tgt})
+# Teaching chapters own their implementations; established binary names remain.
+add_subdirectory(geometry)
+add_subdirectory(fourier)
+add_subdirectory(heat)
+add_subdirectory(differentiation)
+add_subdirectory(interpolation)
+add_subdirectory(waves)
+add_subdirectory(integration)
+add_subdirectory(polynomials)
+add_subdirectory(coupling)
+add_subdirectory(parallel)
+add_subdirectory(diagnostics)
+add_subdirectory(output)
+add_subdirectory(quadrature)
+add_subdirectory(elliptic)
+add_subdirectory(initialization)
+add_subdirectory(configuration)
+add_subdirectory(phase-fields)
 
-add_executable(world_query_helpers_example world_query_helpers_example.cpp)
-target_link_libraries(world_query_helpers_example PRIVATE OpenPFC ${_heffte_tgt})
-
-# Explicit Euler stepper examples (FD and spectral backends)
-add_executable(19_explicit_stepper_fd 19_explicit_stepper_fd.cpp)
-target_link_libraries(19_explicit_stepper_fd PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(20_explicit_stepper_spectral 20_explicit_stepper_spectral.cpp)
-target_link_libraries(20_explicit_stepper_spectral PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(21_adaptive_stepping 21_adaptive_stepping.cpp)
-target_link_libraries(21_adaptive_stepping PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(24_adaptive_etd 24_adaptive_etd.cpp)
-target_link_libraries(24_adaptive_etd PRIVATE OpenPFC ${_heffte_tgt})
-
-add_executable(22_external_coupling 22_external_coupling.cpp)
-target_link_libraries(22_external_coupling PRIVATE OpenPFC ${_heffte_tgt})
+if(OpenPFC_BUILD_TESTS)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(_lesson_check
+      "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_lessons.py"
+      --fd $<TARGET_FILE:19_explicit_stepper_fd>
+      --separated $<TARGET_FILE:15_finite_difference_heat>
+      --fourier $<TARGET_FILE:20_explicit_stepper_spectral>
+      --exponential $<TARGET_FILE:heat_exponential>
+      --differentiation $<TARGET_FILE:periodic_differentiation>
+      --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  add_test(NAME example-lessons COMMAND ${_lesson_check})
+  set_tests_properties(example-lessons PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  set(_foundations_check
+      "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_foundations.py"
+      --bin-dir "${CMAKE_BINARY_DIR}/examples"
+      --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  add_test(NAME example-foundations COMMAND ${_foundations_check})
+  set_tests_properties(example-foundations PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  set(_dynamics_check
+      "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_dynamics.py"
+      --bin-dir "${CMAKE_BINARY_DIR}/examples"
+      --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  add_test(NAME example-dynamics COMMAND ${_dynamics_check})
+  set_tests_properties(example-dynamics PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  add_test(NAME example-polynomials
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_polynomials.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-polynomials PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  set(_workflows_check "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_workflows.py"
+                       --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                       --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  add_test(NAME example-workflows COMMAND ${_workflows_check})
+  set_tests_properties(example-workflows PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 300)
+  add_executable(test_example_eigensystem tests/eigensystem.cpp)
+  target_link_libraries(test_example_eigensystem PRIVATE OpenPFC nlohmann_json::nlohmann_json)
+  add_test(NAME example-eigensystem-reference COMMAND test_example_eigensystem)
+  add_test(NAME example-spectra
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_spectra.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-spectra PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 300)
+  add_test(NAME example-clamped
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_clamped.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-clamped PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  add_test(NAME example-orr-sommerfeld
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_orr_sommerfeld.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-orr-sommerfeld PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  add_test(NAME example-pseudospectra
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_pseudospectra.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-pseudospectra PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  add_test(NAME example-disk
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_disk.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-disk PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  set(_coordinates_check "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_coordinates.py"
+                         --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                         --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  add_test(NAME example-coordinates COMMAND ${_coordinates_check})
+  set_tests_properties(example-coordinates PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 120)
+  add_test(NAME example-evolution
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_evolution.py"
+                   --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                   --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  set_tests_properties(example-evolution PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 180)
+  set(_everyday_check "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_everyday.py"
+                      --bin-dir "${CMAKE_BINARY_DIR}/examples"
+                      --output "${PROJECT_SOURCE_DIR}/results/example-checks")
+  add_test(NAME example-everyday COMMAND ${_everyday_check})
+  set_tests_properties(example-everyday PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" TIMEOUT 240)
+  if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE)
+    add_test(NAME example-coordinates-mpi COMMAND ${_coordinates_check}
+             --launcher "${MPIEXEC_EXECUTABLE}" "--rank-flag=${MPIEXEC_NUMPROC_FLAG}" --ranks 2)
+    set_tests_properties(example-coordinates-mpi PROPERTIES
+                         ENVIRONMENT "OMP_NUM_THREADS=1;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+                         PROCESSORS 2 TIMEOUT 180)
+    add_test(NAME example-everyday-mpi COMMAND ${_everyday_check}
+             --launcher "${MPIEXEC_EXECUTABLE}" "--rank-flag=${MPIEXEC_NUMPROC_FLAG}" --ranks 2)
+    set_tests_properties(example-everyday-mpi PROPERTIES
+                         ENVIRONMENT "OMP_NUM_THREADS=1;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+                         PROCESSORS 2 TIMEOUT 300)
+    add_test(NAME example-lessons-mpi COMMAND ${_lesson_check}
+             --launcher "${MPIEXEC_EXECUTABLE}" "--rank-flag=${MPIEXEC_NUMPROC_FLAG}" --ranks 2)
+    set_tests_properties(example-lessons-mpi PROPERTIES
+                         ENVIRONMENT "OMP_NUM_THREADS=1;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+                         PROCESSORS 2 TIMEOUT 240)
+    add_test(NAME example-foundations-mpi COMMAND ${_foundations_check}
+             --launcher "${MPIEXEC_EXECUTABLE}" "--rank-flag=${MPIEXEC_NUMPROC_FLAG}" --ranks 2)
+    set_tests_properties(example-foundations-mpi PROPERTIES
+                         ENVIRONMENT "OMP_NUM_THREADS=1;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+                         PROCESSORS 2 TIMEOUT 240)
+    add_test(NAME example-dynamics-mpi COMMAND ${_dynamics_check}
+             --launcher "${MPIEXEC_EXECUTABLE}" "--rank-flag=${MPIEXEC_NUMPROC_FLAG}" --ranks 2)
+    set_tests_properties(example-dynamics-mpi PROPERTIES
+                         ENVIRONMENT "OMP_NUM_THREADS=1;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+                         PROCESSORS 2 TIMEOUT 240)
+    add_test(NAME example-workflows-mpi COMMAND ${_workflows_check}
+             --launcher "${MPIEXEC_EXECUTABLE}" "--rank-flag=${MPIEXEC_NUMPROC_FLAG}" --ranks 2)
+    set_tests_properties(example-workflows-mpi PROPERTIES
+                         ENVIRONMENT "OMP_NUM_THREADS=1;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+                         PROCESSORS 2 TIMEOUT 360)
+  endif()
+endif()
 
 add_executable(23_halo_microtiming 23_halo_microtiming.cpp)
 target_link_libraries(23_halo_microtiming PRIVATE OpenPFC nlohmann_json::nlohmann_json

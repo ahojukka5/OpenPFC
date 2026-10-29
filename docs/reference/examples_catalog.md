@@ -13,7 +13,7 @@ This page is for lookup and for choosing the next small executable to read. If y
 
 ## Curriculum (suggested order)
 
-Use the first tier on your first day, then branch by topic. The names are numbered because the source files are intended to be read in roughly that order, not because every user must run every target.
+Use the first tier on your first day, then branch by topic. The original numbered examples remain available. The [Quarto lessons](https://vtt-propertune.github.io/OpenPFC/learn/) now provide a thematic mathematical sequence; the heat implementations for targets 19 and 20 live under `examples/heat/`.
 
 ```mermaid
 flowchart LR
@@ -57,7 +57,7 @@ flowchart LR
 
 | Tier | Executables | Focus |
 |------|-------------|-------|
-| **1 — Core stack** | `02_domain_decomposition`, `03_parallel_fft`, `05_simulator`, `12_cahn_hilliard` | `Domain`, HeFFTe FFT, `Simulator`, spectral model |
+| **1 — Core stack** | `02_domain_decomposition`, `03_parallel_fft`, `05_simulator`, `12_cahn_hilliard` | `Domain`, HeFFTe FFT, time-loop hooks, spectral physics |
 | **2 — Wiring** | `10_ui_register_ic`, `11_write_results`, `14_custom_field_initializer`, `diffusion_model_with_custom_initial_condition` | Registration, writers, custom initial conditions |
 | **3 — Fields and space** | `15_finite_difference_heat`, `17_custom_coordinate_system`, `18_sobel_edge_detection` | Halos, coordinate interpretation, stencil-like field operations |
 | **4 — Stepping and tools** | `19_explicit_stepper_fd`, `20_explicit_stepper_spectral`, `21_adaptive_stepping`, `22_external_coupling`, `23_halo_microtiming`, `24_adaptive_etd`, `25_halo_bandwidth`, `fft_backend_benchmark`, `profiling_timer_report` | Explicit/adaptive steppers, external coupling, halo microtiming, ETD step doubling, halo throughput, backend comparison, profiling |
@@ -69,42 +69,81 @@ Narrative companion: [`getting_started/01-basics/README.md`](../getting_started/
 | Executable | Source | What it demonstrates |
 |------------|--------|----------------------|
 | `fft_backend_benchmark` | `fft_backend_benchmark.cpp` | FFT backend benchmarking (FFTW vs CUDA / HIP) |
-| `02_domain_decomposition` | `02_domain_decomposition.cpp` | `Domain`, `Decomposition`, MPI |
-| `03_parallel_fft` | `03_parallel_fft.cpp` | Distributed FFT (HeFFTe) |
-| `04_diffusion_model` | `04_diffusion_model.cpp` | Simple spectral diffusion `Model` |
-| `05_simulator` | `05_simulator.cpp` | `Simulator`, `Time`, `FieldModifier` |
-| `06_multi_index` | `06_multi_index.cpp` | `Box3i` iteration and `to_linear` |
-| `07_array` | `07_array.cpp` | Array helpers |
-| `08_discrete_fields` | `08_discrete_fields.cpp` | `pfc::data::Field` with domain geometry |
-| `09_parallel_fft_high_level` | `09_parallel_fft_high_level.cpp` | Higher-level FFT usage |
-| `10_ui_register_ic` | `10_ui_register_ic.cpp` | UI and field-modifier registration patterns |
-| `11_write_results` | `11_write_results.cpp` | Writing simulation results |
-| `12_cahn_hilliard` | `12_cahn_hilliard.cpp` | Cahn–Hilliard-style spectral workflow |
+| `02_domain_decomposition` | `geometry/decomposition/model.cpp` | `Domain`, `Decomposition`, MPI |
+| `03_parallel_fft` | `fourier/round-trip/model.cpp` | Distributed FFT (HeFFTe) |
+| `04_diffusion_model` | `heat/implicit-euler/model.cpp` | Backward-Euler spectral heat with a complete-field oracle |
+| `05_simulator` | `heat/driver-hooks/model.cpp` | Native time-loop hooks and the actual final clock interval |
+| `06_multi_index` | `geometry/index-boxes/model.cpp` | `Box3i` iteration and `to_linear` |
+| `07_array` | `geometry/field-storage/model.cpp` | Array helpers |
+| `08_discrete_fields` | `geometry/coordinate-fields/model.cpp` | `pfc::data::Field` with domain geometry |
+| `09_parallel_fft_high_level` | `fourier/field-layout/model.cpp` | Higher-level FFT usage |
+| `10_ui_register_ic` | `initialization/catalog/model.cpp` | UI and field-modifier registration patterns |
+| `11_write_results` | `output/vtk-series/model.cpp` | Native VTK/binary snapshot series and metadata |
+| `12_cahn_hilliard` | `phase-fields/cahn-hilliard/model.cpp` | Conserved Cahn–Hilliard physics through native ETD1 |
 | `fft_kspace_helpers_example` | `fft_kspace_helpers_example.cpp` | k-space helper functions |
-| `mpi_worker` | `mpi_worker.cpp` | MPI worker pattern |
-| `mpi_worker_inside_class` | `mpi_worker_inside_class.cpp` | MPI worker encapsulated in a class |
-| `mpi_timers` | `mpi_timers.cpp` | MPI timing |
-| `profiling_timer_report` | `profiling_timer_report.cpp` | Profiling and timer reporting |
-| `time` | `time.cpp` | Time-stepping utilities |
-| `write_results` | `write_results.cpp` | Results I/O variant |
+| `mpi_worker` | `parallel/hello/model.cpp` | MPI worker pattern |
+| `mpi_worker_inside_class` | `parallel/session/model.cpp` | MPI worker encapsulated in a class |
+| `mpi_timers` | `diagnostics/mpi-timing/model.cpp` | MPI timing |
+| `profiling_timer_report` | `diagnostics/profiling/model.cpp` | Profiling and timer reporting |
+| `time` | `integration/output-clock/model.cpp` | Time-stepping utilities |
+| `write_results` | `output/binary-field/model.cpp` | Results I/O variant |
 | `diffusion_model_with_custom_initial_condition` | `diffusion_model_with_custom_initial_condition.cpp` | Diffusion with a custom initial condition |
-| `json_read` | `json_read.cpp` | Standalone nlohmann JSON read; does not link OpenPFC |
-| `world_helpers_example` | `world_helpers_example.cpp` | `Domain` compatibility helpers |
-| `world_query_helpers_example` | `world_query_helpers_example.cpp` | `Domain` query helpers (volume, dimensionality, bounds) |
-| `14_custom_field_initializer` | `14_custom_field_initializer.cpp` | Custom field initializer |
-| `15_finite_difference_heat` | `15_finite_difference_heat.cpp` | Finite-difference heat with separated halos; see [`halo_exchange.md`](../concepts/halo_exchange.md) |
-| `16_strong_types_demo` | `16_strong_types_demo.cpp` | Strongly typed domain inputs |
-| `17_custom_coordinate_system` | `17_custom_coordinate_system.cpp` | Custom coordinate setup |
+| `json_read` | `configuration/session/model.cpp` | Native JSON/TOML settings loader and spectral session factory |
+| `world_helpers_example` | `geometry/grid-spacing/model.cpp` | `Domain` compatibility helpers |
+| `world_query_helpers_example` | `geometry/domain-queries/model.cpp` | `Domain` query helpers (volume, dimensionality, bounds) |
+| `14_custom_field_initializer` | `initialization/patterns/model.cpp` | Custom field initializer |
+| `15_finite_difference_heat` | `heat/separated-halos/model.cpp` | Finite-difference heat with separated halos; see [`halo_exchange.md`](../concepts/halo_exchange.md) |
+| `16_strong_types_demo` | `geometry/strong-arguments/model.cpp` | Strongly typed domain inputs |
+| `17_custom_coordinate_system` | `geometry/polar-patterns/model.cpp` | Polar-defined Cartesian field and smooth origin limits |
 | `18_sobel_edge_detection` | `18_sobel_edge_detection.cpp` | Sobel-style field operations and edge detection |
-| `world_strong_types_example` | `world_strong_types_example.cpp` | Strong types with `Domain` compatibility helpers |
-| `19_explicit_stepper_fd` | `19_explicit_stepper_fd.cpp` | Explicit stepping with finite-difference operators |
-| `20_explicit_stepper_spectral` | `20_explicit_stepper_spectral.cpp` | Explicit stepping with spectral operators |
-| `21_adaptive_stepping` | `21_adaptive_stepping.cpp` | Adaptive Bogacki–Shampine 3(2) with `Time` attempt transactions |
-| `22_external_coupling` | `22_external_coupling.cpp` | Mock FEM loop: `FieldHandle` export, `clip_attempt_dt`, FieldModifier-shaped source |
+| `world_strong_types_example` | `geometry/anisotropic-grid/model.cpp` | Strong types with `Domain` compatibility helpers |
+| `19_explicit_stepper_fd` | `heat/finite-differences/model.cpp` | Explicit stepping with finite-difference operators |
+| `20_explicit_stepper_spectral` | `heat/fourier/model.cpp` | Explicit stepping with spectral operators |
+| `heat_exponential` | `heat/exponential/model.cpp` | Exact linear Fourier propagator; compare spatial and temporal error |
+| `periodic_differentiation` | `differentiation/periodic/model.cpp` | Analytic derivative, second/fourth-order FD, and Fourier convergence |
+| `periodic_collocation` | `differentiation/collocation/model.cpp` | Cotangent collocation matrix versus FFT derivatives of a hat and analytic profile |
+| `spectral_smoothness` | `differentiation/smoothness/model.cpp` | Trefethen programs 2 and 7: regularity, aliasing and matrix/FFT convergence |
+| `cardinal_interpolation` | `interpolation/cardinal/model.cpp` | Trefethen program 3: cardinal sinc reconstruction of three sampled signals |
+| `variable_transport` | `waves/variable-transport/model.cpp` | Trefethen program 6, Fourier/leapfrog transport, startup and exact characteristics |
+| `stability_regions` | `integration/stability/model.cpp` | Trefethen program 25, public RK tableaus and multistep root-locus references |
+| `polynomial_interpolation` | `polynomials/interpolation/model.cpp` | Program 9: Runge interpolation on equally spaced and Chebyshev nodes |
+| `polynomial_nodal_polynomials` | `polynomials/nodal-polynomials/model.cpp` | Program 10: nodal products and complex-plane magnitude contours |
+| `polynomial_differentiation` | `polynomials/differentiation/model.cpp` | Programs 11 and 18: Chebyshev matrix versus public LocalFFT coefficients |
+| `polynomial_regularity` | `polynomials/regularity/model.cpp` | Program 12: four regularity classes on Chebyshev grids |
+| `polynomial_integration` | `polynomials/integration/model.cpp` | Program 30: antiderivative boundary problem with native GMRES |
+| `polynomial_boundary_values` | `polynomials/boundary-values/model.cpp` | Programs 13, 32 and 33: homogeneous, lifted and mixed boundary conditions with GMRES |
+| `polynomial_nonlinear_boundary` | `polynomials/nonlinear-boundary/model.cpp` | Program 14 adapted to native Newton–GMRES, checked by an analytic solution and scalar root |
+| `21_adaptive_stepping` | `integration/adaptive-rk/model.cpp` | Adaptive Bogacki–Shampine 3(2) with `Time` attempt transactions |
+| `22_external_coupling` | `coupling/host-orchestrator/model.cpp` | Mock FEM loop: `FieldHandle` export, `clip_attempt_dt`, FieldModifier-shaped source |
 | `23_halo_microtiming` | `23_halo_microtiming.cpp` | Timed `HaloExchange` loop; schema-v2 JSON (`--cuda` / `--hip` / `--full`) |
-| `24_adaptive_etd` | `24_adaptive_etd.cpp` | ETD1 step doubling: a heat mode against `exp(-k²t)`, then `∂t ψ = ∇²ψ − ψ³` with the memoryless controller |
+| `24_adaptive_etd` | `integration/adaptive-etd/model.cpp` | ETD1 step doubling: a heat mode against `exp(-k²t)`, then `∂t ψ = ∇²ψ − ψ³` with the memoryless controller |
 | `25_halo_bandwidth` | `25_halo_bandwidth.cpp` | Halo-only `HaloExchange` throughput table (`--cuda` / `--hip` / `--faces` / `--axis`); no field update |
 | `grain_remapping_example` | `grain_remapping.cpp` | Transactional 2-D grain remapping on a small Allen–Cahn-style field; run by CTest `GrainRemappingExample` |
+| `runtime_coupled_fields` | `coupling/runtime-fields/model.cpp` | Runtime field RK4 staging, two-field oscillator and exact recurrence |
+| `checkpoint_restart` | `output/checkpoint-restart/model.cpp` | Collective checkpoint publication, fresh-state restart and discrete trajectory equivalence |
+| `harmonic_oscillator` | `fourier/harmonic-oscillator/model.cpp` | Find the energies of a harmonic trap |
+| `mathieu_spectrum` | `fourier/mathieu/model.cpp` | A periodic potential splits eigenvalues |
+| `chebyshev_eigenmodes` | `polynomials/eigenmodes/model.cpp` | A grid has its own spectrum |
+| `airy_eigenproblem` | `polynomials/airy/model.cpp` | A zero weight is a constraint |
+| `membrane_eigenmodes` | `polynomials/membrane/model.cpp` | An asymmetric potential reshapes a membrane mode |
+| `square_poisson` | `polynomials/poisson-square/model.cpp` | Solve a square without a giant Kronecker matrix |
+| `square_helmholtz` | `polynomials/helmholtz-square/model.cpp` | A wave number can make a solve delicate |
+| `square_laplace` | `polynomials/laplace-square/model.cpp` | Let the boundary drive the interior |
+| `gamma_contour` | `quadrature/complex-contour/model.cpp` | A contour turns an integral into a sum |
+| `multigrid_poisson` | `elliptic/multigrid/model.cpp` | Use a hierarchy to correct different scales |
+| `chebyshev_wave_line` | `waves/chebyshev-line/model.cpp` | A pulse meets the end of an interval |
+| `chebyshev_wave_square` | `waves/chebyshev-square/model.cpp` | Let a wave spread across a square |
+| `mixed_wave_tank` | `waves/mixed-tank/model.cpp` | A wave tank has two kinds of edge |
+| `kdv_integrating_factor` | `waves/kdv/model.cpp` | Let dispersion evolve exactly between stages |
+| `allen_cahn_fixed` | `polynomials/allen-cahn-fixed/model.cpp` | Lift the boundary before evolving the interior |
+| `allen_cahn_driven` | `polynomials/allen-cahn-driven/model.cpp` | A changing wall must enter the next derivative |
+| `first_domain` | `geometry/first-domain/model.cpp` | Give the grid a physical meaning |
+| `clamped_beam` | `polynomials/clamped-beam/model.cpp` | Build the clamped ends into the trial function |
+| `clamped_plate` | `polynomials/clamped-plate/model.cpp` | Twenty-five clamped square-plate modes and repeated frequencies |
+| `orr_sommerfeld` | `polynomials/orr-sommerfeld/model.cpp` | Complex generalized Orr–Sommerfeld spectra and near-neutral growth |
+| `davies_pseudospectra` | `polynomials/pseudospectra/model.cpp` | Small singular values reveal spectral sensitivity |
+| `disk_eigenmodes` | `polynomials/disk-modes/model.cpp` | Fourier/Chebyshev disk modes and Bessel frequency checks |
+| `disk_poisson` | `polynomials/poisson-disk/model.cpp` | Polar Poisson, manufactured fields and regularity-limited convergence |
 
 ## Research prototypes
 
@@ -120,7 +159,7 @@ catalog entries.
 
 ## Sources not built by default
 
-`examples/01_hello_world/world.cpp` is used as a tutorial source; the matching `add_executable` in `examples/CMakeLists.txt` is commented out. Other `.cpp` files may exist under `examples/` without a CMake target—check `examples/CMakeLists.txt` for the authoritative list.
+The former `01_hello_world/world.cpp` is now the runnable `first_domain` lesson under `examples/geometry/first-domain/`.
 
 ## See also
 

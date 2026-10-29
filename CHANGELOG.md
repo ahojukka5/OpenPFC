@@ -7,6 +7,73 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Refactor the custom-coordinate wrapper demo into a polar-defined native
+  Cartesian-field lesson, preserving `17_custom_coordinate_system`. Use a
+  small callable with smooth origin limits and verify complete fields on
+  one and two MPI ranks against an independent Cartesian polynomial.
+
+- Add the disk eigenmode and Poisson Quarto chapters for Trefethen programs
+  28 and 29, completing the forty-program mapping. Combine native Chebyshev
+  differentiation, local FFTs and GMRES with signed radial parity. Check the
+  full discrete spectra, Bessel shapes, exact separated Poisson solution,
+  smooth manufactured field and radial refinement.
+
+- Add the complete degree-70 Davies-oscillator pseudospectrum from Trefethen
+  program 24. Use native Chebyshev derivatives and example-owned one-sided
+  complex Jacobi rotations, preserving small singular values without forming
+  normal equations. Include shifted-solve checks and the original-grid figure.
+
+- Add the Orr–Sommerfeld Quarto lesson for all four resolutions in
+  Trefethen program 40, with complex generalized eigenvectors, original-pencil
+  residuals, resolution comparisons and a configurable Reynolds number.
+
+- Add clamped-beam and clamped-square-plate Quarto lessons for Trefethen
+  programs 38 and 39. Compose native Chebyshev differentiation into weighted
+  fourth-order operators, check analytic beam values and slopes, and use
+  symmetry sectors to preserve independent repeated plate modes.
+
+- Refactor eight older initialization, configuration, output, spectral heat
+  and Cahn–Hilliard examples into runnable Quarto chapters; add a built
+  first-domain lesson from the former introductory source. Use the native
+  modifier catalog, JSON/TOML session factory, snapshot series, binary reader
+  and spectral ETD system. Check complete fields and binary/VTK payloads on
+  one and two MPI ranks, and stage TOML inputs with the website.
+
+- Export toml++ as a public settings-loader dependency. Fetched toml++ headers,
+  license and CMake target are installed as a relocatable dependency package;
+  system-provided toml++ remains external. Exercise the loader and TOML parsing
+  in the installed-SDK source-model regression.
+
+- Add Quarto lessons for Fourier and Chebyshev eigenproblems, square boundary
+  problems, complex contour quadrature and native multigrid-preconditioned
+  Poisson. Add Chebyshev waves, a mixed Fourier–Chebyshev Neumann tank, KdV
+  through complex-state RK4 and two Allen–Cahn boundary treatments. Include
+  native-output figures, explicit numerical scope and independent field and
+  convergence checks. Refactor the separated-halo heat example into the same
+  periodic-mode comparison as the padded-field lesson, retaining its binary
+  name and checking complete fields on one and two MPI ranks.
+
+- Refactor adaptive RK, ETD step doubling, time scheduling, host coupling,
+  MPI lifetime and profiling demonstrations into focused Quarto lessons.
+  Add runtime multi-field RK4 and checkpoint/restart models with independent
+  field, transaction and output checks on one and two MPI ranks. Preserve
+  existing executable names and expose capability-family navigation in the
+  example coverage page.
+
+- Extend the Quarto collection with geometry and FFT foundations, periodic
+  interpolation and smoothness, variable-speed transport, timestep stability,
+  and seven polynomial-collocation lessons. Use native LocalFFT, GMRES,
+  Newton and scalar-root solvers with explicit example-local Chebyshev formulas.
+  Preserve refactored executable names and verify the numerical models against
+  independent formulas. Publish a generated inventory of all existing examples
+  and all forty Trefethen programs, keeping unfinished coverage visible.
+
+- Refactor the explicit FD and spectral heat examples into themed Quarto
+  lessons under `examples/heat/`, retaining their executable names. Add
+  Fourier/FD differentiation and exact exponential heat evolution, independent
+  numerical checks, source excerpts, bibliography, figures, and automatic
+  website import at `learn/`.
+
 - Add `examples/25_halo_bandwidth`, a halo-only throughput table for
   `HaloExchange` on the host and, in a CUDA or HIP build, on the device.
   `--axis` selects one face pair. It prints GB/s and whether GPU-aware MPI

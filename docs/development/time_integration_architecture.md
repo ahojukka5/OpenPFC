@@ -392,7 +392,7 @@ memoryless factor. `safety_factor` is applied once, outside the powers.
 `apply` stores the metric only after an accepted PI step; a zero metric
 clears it; a rejection leaves it. `capture_state` / `restore_state` keep
 that metric and the rejection streak. Fixed mode does not read or write the
-metric. Example: `examples/21_adaptive_stepping.cpp`. Coverage:
+metric. Example: `examples/integration/adaptive-rk/model.cpp`. Coverage:
 `tests/unit/kernel/simulation/test_adaptive_controller.cpp`.
 
 `ETD1StepDoubling` (`etd_step_doubling.hpp`) is the spectral estimator.
@@ -410,7 +410,7 @@ both restore the macro-step cache. A rejection restores `psi` and
 stays put. Every rank is given the same `dt`. The difference is scaled
 with `decide_from_embedded_error` (`max(|y_start|, |y_half|)`). A plain
 attempt costs 3 nonlinear evaluations and 9 transforms. Example:
-`examples/24_adaptive_etd.cpp`. Coverage:
+`examples/integration/adaptive-etd/model.cpp`. Coverage:
 `tests/unit/kernel/simulation/test_etd_step_doubling.cpp`.
 
 Prefer this transaction API over rewriting history with `set_dt` +

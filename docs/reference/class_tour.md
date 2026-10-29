@@ -41,17 +41,17 @@ The shortest useful mental model is:
 
 | Type or concept | Responsibility | Primary header | Start with |
 |-----------------|----------------|----------------|------------|
-| `Domain` | Global grid size, spacing, origin, and periodicity | `openpfc/kernel/data/domain.hpp` | `examples/02_domain_decomposition.cpp` |
-| `Box3i` | Inclusive integer bounds for local or transformed regions | `openpfc/kernel/data/box.hpp` | `examples/02_domain_decomposition.cpp` |
-| `Decomposition` | MPI partition and per-rank inbox/outbox geometry | `openpfc/kernel/decomposition/decomposition.hpp` | `examples/03_parallel_fft.cpp` |
-| `IHostFFT` / `CPUFFT` | Distributed host forward/backward transforms through HeFFTe | `openpfc/kernel/fft/fft.hpp` | `examples/03_parallel_fft.cpp` |
-| Physics / `SpectralETDSystem` | Fields, k-space symbols, and a device-capable `pointwise()` nonlinearity; the system owns the ETD update on host or device | `tungsten_physics.hpp`, `aluminum_physics.hpp`, `openpfc/kernel/simulation/spectral_etd_system.hpp` | `tests/fixtures/swift_hohenberg.hpp`, `examples/04_diffusion_model.cpp` |
-| `Time` | Start, stop, step size, current time, and save cadence | `openpfc/kernel/simulation/time.hpp` | `examples/time.cpp` |
-| `pfc::sim::run` / `SimulationDriver` | Time loop over physics `step` plus optional IC/BC/save hooks | `openpfc/kernel/simulation/simulation_driver.hpp` | `examples/05_simulator.cpp` |
-| `FieldModifier` + `apply_field_modifier` | Initial and boundary conditions on a host or device `Field` (JSON catalog or programmatic) | `openpfc/kernel/simulation/field_modifier.hpp`, `apply_field_modifier.hpp` | `examples/10_ui_register_ic.cpp` |
-| `ResultsWriter` | Stable interface for persisted simulation fields | `openpfc/kernel/simulation/results_writer.hpp` | `examples/11_write_results.cpp` |
+| `Domain` | Global grid size, spacing, origin, and periodicity | `openpfc/kernel/data/domain.hpp` | `examples/geometry/decomposition/model.cpp` |
+| `Box3i` | Inclusive integer bounds for local or transformed regions | `openpfc/kernel/data/box.hpp` | `examples/geometry/decomposition/model.cpp` |
+| `Decomposition` | MPI partition and per-rank inbox/outbox geometry | `openpfc/kernel/decomposition/decomposition.hpp` | `examples/fourier/round-trip/model.cpp` |
+| `IHostFFT` / `CPUFFT` | Distributed host forward/backward transforms through HeFFTe | `openpfc/kernel/fft/fft.hpp` | `examples/fourier/round-trip/model.cpp` |
+| Physics / `SpectralETDSystem` | Fields, k-space symbols, and a device-capable `pointwise()` nonlinearity; the system owns the ETD update on host or device | `tungsten_physics.hpp`, `aluminum_physics.hpp`, `openpfc/kernel/simulation/spectral_etd_system.hpp` | `examples/phase-fields/cahn-hilliard/model.cpp`, `tests/fixtures/swift_hohenberg.hpp` |
+| `Time` | Start, stop, step size, current time, and save cadence | `openpfc/kernel/simulation/time.hpp` | `examples/integration/output-clock/model.cpp` |
+| `pfc::sim::run` / `SimulationDriver` | Time loop over physics `step` plus optional IC/BC/save hooks | `openpfc/kernel/simulation/simulation_driver.hpp` | `examples/heat/driver-hooks/model.cpp` |
+| `FieldModifier` + `apply_field_modifier` | Initial and boundary conditions on a host or device `Field` (JSON catalog or programmatic) | `openpfc/kernel/simulation/field_modifier.hpp`, `apply_field_modifier.hpp` | `examples/initialization/catalog/model.cpp` |
+| `ResultsWriter` | Stable interface for persisted simulation fields | `openpfc/kernel/simulation/results_writer.hpp` | `examples/output/vtk-series/model.cpp` |
 | `FileResultsWriter` | File sink with `$ENV` expansion and increment path templating | `openpfc/frontend/io/file_results_writer.hpp` | `BinaryWriter`, `VTKWriter` |
-| `World` | Deprecated A0 adapter around `Domain` | `openpfc/kernel/data/world.hpp` | `examples/world_strong_types_example.cpp` uses `Domain` |
+| `World` | Deprecated A0 adapter around `Domain` | `openpfc/kernel/data/world.hpp` | `examples/geometry/anisotropic-grid/model.cpp` uses `Domain` |
 | `SpectralCPUStack` | Owns the CPU domain, decomposition, FFT, and field stack | `openpfc/kernel/simulation/stacks/spectral_cpu_stack.hpp` | `user_guide/app_pipeline.md` |
 | `GPUSpectralStack` | Device FFT stack; JSON `plan_options` overlay like CPU | `openpfc/runtime/gpu/gpu_spectral_stack.hpp` | `tungsten_cuda`, session-matrix-cuda |
 | `SingleDeviceFFT` | One-rank device FFT: one cuFFT/rocFFT 3D plan, heFFTe boxes and scaling; `GPUSpectralStack(..., DeviceFFTChoice::single_device)` | `openpfc/runtime/gpu/fft_single_device.hpp` | `test_fft_single_device_{cuda,hip}` |
@@ -91,7 +91,7 @@ the data must also remain FFT-compatible.
 | sparse halo exchange | Explicit remote-index lists and structured separated halos |
 | FD gradients and stencils | Per-cell differential operators and reusable coefficients |
 
-Start with `examples/15_finite_difference_heat.cpp` and
+Start with `examples/heat/separated-halos/model.cpp` and
 [`../concepts/halo_exchange.md`](../concepts/halo_exchange.md).
 
 ## Configuration and extension catalogs
@@ -146,7 +146,7 @@ core learning path.
 | inspect a Cahn-Hilliard workflow | `12_cahn_hilliard` |
 | add a custom field initializer | `14_custom_field_initializer` |
 | run finite differences with halos | `15_finite_difference_heat` |
-| add a coordinate system | `17_custom_coordinate_system` |
+| initialize a field through a coordinate mapping | `17_custom_coordinate_system` |
 
 The complete catalog and suggested curriculum are in
 [`examples_catalog.md`](examples_catalog.md).

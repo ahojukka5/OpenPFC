@@ -71,6 +71,7 @@ Documentation is easier to maintain when each fact has one primary home:
 | JSON/TOML configuration keys | [`reference/spectral_app_config_reference.md`](reference/spectral_app_config_reference.md) |
 | Application inventory | [`user_guide/applications.md`](user_guide/applications.md) |
 | Example inventory | [`reference/examples_catalog.md`](reference/examples_catalog.md) |
+| Mathematical tutorials with editable C++ models | [OpenPFC by example](https://vtt-propertune.github.io/OpenPFC/learn/) |
 | Public API signatures | [`api/index.md`](api/index.md) and public headers |
 | Common failures | [`troubleshooting.md`](troubleshooting.md) |
 | Release-visible changes | [CHANGELOG.md](https://github.com/VTT-ProperTune/OpenPFC/blob/master/CHANGELOG.md) |
