@@ -37,7 +37,14 @@ row unqualified. Missing binaries leave that backend's rows unqualified.
 The runner retains launcher logs and `matrix.json`. Exit 0 requires all nine
 rows; 77 denotes a partial matrix, and 1 a failed available case. Machine-specific
 fragments can be reviewed together; a partial fragment is never an overall pass.
-No CI workflow, allocation or timeout is changed by this fixture.
+The existing script suite invokes the runner policy tests. The
+`BackendAcceptance_InstalledCPU` CTest installs and relocates the built SDK,
+builds the independent consumer and requires all three CPU rows to pass,
+while retaining six unqualified GPU rows. It skips qualification for dirty or
+unidentified SDK sources or an unavailable MPI launcher. No CI workflow is changed.
+Every invocation keeps its own receipts. Timeouts retain partial launcher output
+and terminate the invocation's process group. Direct and merged matrices reject
+mixed compiled cases, and each backend must use one provider build across ranks.
 
 ## Fixed case and criteria
 

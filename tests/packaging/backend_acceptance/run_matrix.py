@@ -9,8 +9,10 @@ means a built, available case failed. Raw launcher output is retained.
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 
 
@@ -57,14 +59,62 @@ def validate_receipt(output, backend, ranks):
 
 def execute(command, log, timeout):
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-        output = result.stdout + result.stderr
-        code = result.returncode
-    except subprocess.TimeoutExpired as error:
-        output = "TIMEOUT\n" + str(error)
-        code = 124
+        process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True,
+                                   start_new_session=os.name == "posix")
+    except OSError as error:
+        output = "LAUNCH_ERROR\n" + str(error)
+        code = 127
+    else:
+        try:
+            output, _ = process.communicate(timeout=timeout)
+            code = process.returncode
+        except subprocess.TimeoutExpired:
+            # Give MPI launchers a chance to stop their ranks. The group is
+            # private to this invocation; unrelated jobs are never signaled.
+            if os.name == "posix":
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            else:
+                process.terminate()
+            try:
+                output, _ = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                if os.name == "posix":
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    process.kill()
+                output, _ = process.communicate()
+            output = "TIMEOUT\n" + output
+            code = 124
     log.write_text(output)
     return code, output
+
+
+def validate_builds(rows):
+    """Compare actual passing receipts across rank counts and backends."""
+    consumer_hashes = set()
+    providers = {}
+    for backend in BACKENDS:
+        builds = set()
+        for row in rows:
+            if row["backend"] != backend or row["status"] != "PASS":
+                continue
+            identity = row["identities"][0]
+            consumer_hashes.add(identity["consumer_source_sha256"])
+            builds.add((identity["sdk_revision"], identity["sdk_manifest_sha256"]))
+        if len(builds) > 1:
+            raise ValueError(f"{backend} rows use different provider builds; select matching fragments")
+        if builds:
+            providers[backend] = next(iter(builds))[0]
+    if len(consumer_hashes) > 1:
+        raise ValueError("matrix fragments use different compiled acceptance cases")
+    return providers
 
 
 def run_matrix(binaries, launcher, count_flag, output, timeout):
@@ -109,6 +159,10 @@ def run_matrix(binaries, launcher, count_flag, output, timeout):
     status = "FAIL" if any(r["status"] == "FAIL" for r in rows) else (
         "PASS" if all(r["status"] == "PASS" for r in rows) else "NOT_QUALIFIED")
     report = {"status": status, "rows": rows}
+    try:
+        report["provider_revisions"] = validate_builds(rows)
+    except ValueError as error:
+        report.update(status="FAIL", reason=str(error))
     (output / "matrix.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 
@@ -121,11 +175,13 @@ def merge_reports(paths, output):
         for row in report["rows"]:
             if row["backend"] not in BACKENDS or row["ranks"] not in RANKS or row["status"] not in ("PASS", "FAIL", "NOT_QUALIFIED"):
                 raise ValueError("invalid matrix row")
+            if row["status"] == "PASS":
+                text = "\n".join(
+                    ["IDENTITY " + json.dumps(x) for x in row["identities"]]
+                    + ["RESULT " + json.dumps(x) for x in row["results"]])
+                validate_receipt(text, row["backend"], row["ranks"])
     rows = []
-    consumer_hashes = set()
-    provider_revisions = {}
     for backend in BACKENDS:
-        backend_builds = set()
         for ranks in RANKS:
             row = {"backend": backend, "ranks": ranks, "status": "NOT_QUALIFIED",
                    "reason": "no qualified input row"}
@@ -138,22 +194,14 @@ def merge_reports(paths, output):
                 for path, candidate in candidates:
                     if candidate["status"] != "PASS":
                         continue
-                    text = "\n".join(
-                        ["IDENTITY " + json.dumps(x) for x in candidate["identities"]]
-                        + ["RESULT " + json.dumps(x) for x in candidate["results"]])
-                    validate_receipt(text, backend, ranks)
-                    identities = candidate["identities"]
-                    consumer_hashes.add(identities[0]["consumer_source_sha256"])
-                    backend_builds.add((identities[0]["sdk_revision"], identities[0]["sdk_manifest_sha256"]))
                     if row["status"] != "PASS":
                         row = dict(candidate, input_report=path)
             rows.append(row)
-        if len(backend_builds) > 1:
-            raise ValueError(f"{backend} rows use different provider builds; select matching fragments")
-        if backend_builds:
-            provider_revisions[backend] = next(iter(backend_builds))[0]
-    if len(consumer_hashes) > 1:
-        raise ValueError("matrix fragments use different compiled acceptance cases")
+    # Validate every supplied passing candidate, including duplicates that
+    # were not chosen for the output row. Conflicting evidence cannot hide.
+    passing = [row for _, report in inputs for row in report["rows"]
+               if row["status"] == "PASS"]
+    provider_revisions = validate_builds(passing)
     status = "FAIL" if any(r["status"] == "FAIL" for r in rows) else (
         "PASS" if all(r["status"] == "PASS" for r in rows) else "NOT_QUALIFIED")
     report = {"status": status, "provider_revisions": provider_revisions,

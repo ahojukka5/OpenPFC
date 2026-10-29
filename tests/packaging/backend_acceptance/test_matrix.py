@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -95,3 +96,55 @@ def test_merge_rejects_mixed_case_sources(tmp_path):
 def test_receipt_rejects_weakened_or_nonfinite_results(old, new):
     with pytest.raises(ValueError):
         run_matrix.validate_receipt(receipt().replace(old, new), "cuda", 2)
+
+
+@pytest.mark.parametrize("mixed", ["case", "provider"])
+def test_direct_runner_rejects_mixed_builds(monkeypatch, tmp_path, mixed):
+    def execute(command, log, timeout):
+        backend = command[2]
+        ranks = int(command[1])
+        text = receipt(backend, ranks)
+        if mixed == "case" and backend == "cuda":
+            text = text.replace("c" * 64, "d" * 64)
+        if mixed == "provider" and ranks == 2:
+            text = text.replace("a" * 40, "d" * 40)
+        log.write_text(text)
+        return 0, text
+
+    monkeypatch.setattr(run_matrix, "execute", execute)
+    report = run_matrix.run_matrix(dict(zip(run_matrix.BACKENDS, run_matrix.BACKENDS)),
+                                   [], "-n", tmp_path / "mixed", 1)
+    assert report["status"] == "FAIL"
+    assert "different" in report["reason"]
+    assert all(row["status"] == "PASS" for row in report["rows"])
+
+
+def test_timeout_keeps_partial_launcher_output(tmp_path):
+    script = tmp_path / "launcher.py"
+    script.write_text("import sys, time\nprint('rank stdout', flush=True)\n"
+                      "print('rank stderr', file=sys.stderr, flush=True)\ntime.sleep(60)\n")
+    started = time.monotonic()
+    log = tmp_path / "launcher.log"
+    code, output = run_matrix.execute([sys.executable, str(script)], log, 1)
+    assert code == 124
+    assert "TIMEOUT" in output
+    assert "rank stdout" in output and "rank stderr" in output
+    assert log.read_text() == output
+    assert time.monotonic() - started < 15
+
+
+def test_missing_launcher_is_recorded(tmp_path):
+    log = tmp_path / "launcher.log"
+    code, output = run_matrix.execute([str(tmp_path / "no-launcher")], log, 1)
+    assert code == 127
+    assert "LAUNCH_ERROR" in output
+    assert log.read_text() == output
+
+
+def test_merge_checks_unselected_duplicate_provider(tmp_path):
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    first.write_text(json.dumps(fragment("cpu")))
+    second.write_text(first.read_text().replace("a" * 40, "d" * 40))
+    with pytest.raises(ValueError, match="different provider"):
+        run_matrix.merge_reports([first, second], tmp_path / "mixed")

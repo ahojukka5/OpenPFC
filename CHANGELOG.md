@@ -42,7 +42,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - Add an independent installed CPU/CUDA/HIP acceptance consumer for coupled
   padded fields, full halos, stage preparation, face currents, field reductions,
   finite rejection, restart across decompositions and same-backend FFTs (#542).
-  Its matrix runner reports missing resources as `NOT_QUALIFIED`.
+  Its matrix runner reports missing resources as `NOT_QUALIFIED`, rejects mixed
+  builds and retains timeout output. The existing test suite invokes its runner
+  policies and the installed CPU consumer at 1/2/4 ranks.
 
 - Keep MPI test case ordering and default random seeds consistent across ranks,
   including application and device test runners, with Catch2 3.16 and older.
