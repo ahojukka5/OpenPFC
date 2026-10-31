@@ -87,3 +87,21 @@ if(OpenPFC_BUILD_TESTS)
       -P ${CMAKE_SOURCE_DIR}/tests/packaging/check_sdk_consumer.cmake)
   set_tests_properties(SDK_InstalledCompatibility PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
 endif()
+
+if(OpenPFC_BUILD_TESTS AND OpenPFC_ENABLE_HEFFTE)
+  find_package(Python3 3.8 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    openpfc_installed_consumer_coverage_arguments(_acceptance_coverage)
+    add_test(NAME BackendAcceptance_InstalledCPU
+      COMMAND ${CMAKE_COMMAND} "-Dbuild=${CMAKE_BINARY_DIR}" "-Dsource=${CMAKE_SOURCE_DIR}"
+        "-Dcc=${CMAKE_C_COMPILER}" "-Dcxx=${CMAKE_CXX_COMPILER}"
+        "-Dconfiguration=$<CONFIG>" "${_acceptance_coverage}"
+        "-Dpython=${Python3_EXECUTABLE}" "-Dlauncher=${MPIEXEC_EXECUTABLE}"
+        "-Dcount_flag=${MPIEXEC_NUMPROC_FLAG}" "-Dlauncher_flags=${MPIEXEC_PREFLAGS}"
+        "-DHeffte_DIR=${Heffte_DIR}" "-Dnlohmann_json_DIR=${nlohmann_json_DIR}"
+        "-Dtomlplusplus_DIR=${tomlplusplus_DIR}"
+        -P ${CMAKE_SOURCE_DIR}/tests/packaging/check_backend_acceptance.cmake)
+    set_tests_properties(BackendAcceptance_InstalledCPU PROPERTIES
+      TIMEOUT 300 RUN_SERIAL TRUE SKIP_REGULAR_EXPRESSION "NOT_QUALIFIED:")
+  endif()
+endif()
