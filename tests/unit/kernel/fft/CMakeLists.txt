@@ -6,6 +6,7 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_kspace.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_kspace_iterator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_power_spectrum.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_native_pow2_fft.cpp
 )
 if(OpenPFC_HAS_FFTW3)
   target_sources(openpfc-tests PRIVATE
@@ -48,6 +49,14 @@ if(OpenPFC_ENABLE_HEFFTE)
   )
 endif()
 
+add_test(NAME NativePow2FFT COMMAND openpfc-tests "[native_pow2]~[MPI]")
+if(OpenPFC_ENABLE_HEFFTE AND OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE AND
+   (OpenPFC_MPI_TEST_MAX_WORLD_SIZE EQUAL 0 OR OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER_EQUAL 2))
+  add_test(NAME NativePow2FFT_Reject2Rank
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      $<TARGET_FILE:openpfc-tests> "[native_pow2][MPI]")
+  set_tests_properties(NativePow2FFT_Reject2Rank PROPERTIES PROCESSORS 2 TIMEOUT 120)
+endif()
 if(OpenPFC_HAS_FFTW3)
   add_test(NAME LocalFFT COMMAND openpfc-tests "[local_fft]~[MPI]")
   add_test(NAME ComplexLineFFT COMMAND openpfc-tests "[line_dft]")

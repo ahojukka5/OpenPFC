@@ -48,6 +48,7 @@
 #include <openpfc/kernel/fft/fft.hpp>
 #include <openpfc/kernel/fft/fft_fftw.hpp>
 #include <openpfc/kernel/fft/local_fft.hpp>
+#include <openpfc/kernel/fft/native_pow2_fft.hpp>
 #include <openpfc/kernel/field/field_factory.hpp>
 #include <openpfc/kernel/field/scaled_field.hpp>
 #include <openpfc/kernel/field/spectral_gradient.hpp>
@@ -88,7 +89,7 @@ public:
       : SpectralCPUStack(std::move(domain), rank, nproc, comm,
                          heffte::default_options<heffte::backend::fftw>()) {}
 
-  /// Local execution requires one actual communicator rank owning the domain.
+  /// Local and NativePow2 execution require one rank owning the full domain.
   SpectralCPUStack(pfc::Domain domain, int rank, int nproc, MPI_Comm comm,
                    pfc::fft::Implementation implementation,
                    const heffte::plan_options &options =
@@ -162,7 +163,8 @@ private:
   static pfc::decomposition::Decomposition
   make_decomposition(const pfc::Domain &domain, int rank, int nproc, MPI_Comm comm,
                      pfc::fft::Implementation implementation) {
-    if (implementation == pfc::fft::Implementation::Local) {
+    if (implementation == pfc::fft::Implementation::Local ||
+        implementation == pfc::fft::Implementation::NativePow2) {
       if (comm == MPI_COMM_NULL)
         throw std::invalid_argument(
             "SpectralCPUStack: local FFT needs a valid communicator");
@@ -184,11 +186,14 @@ private:
            const pfc::decomposition::Decomposition &decomp, int rank, MPI_Comm comm,
            pfc::fft::Implementation implementation,
            const heffte::plan_options &options) {
-    if (implementation == pfc::fft::Implementation::Local) {
+    if (implementation == pfc::fft::Implementation::Local ||
+        implementation == pfc::fft::Implementation::NativePow2) {
       if (!(pfc::decomposition::local_box(decomp, rank) ==
             pfc::domain::index_box(domain)))
         throw std::invalid_argument(
             "SpectralCPUStack: local FFT needs the whole domain");
+      if (implementation == pfc::fft::Implementation::NativePow2)
+        return std::make_unique<pfc::fft::NativePow2FFT>(domain.size);
       return std::make_unique<pfc::fft::LocalFFT>(domain.size);
     }
     return std::unique_ptr<pfc::fft::IHostFFT>(

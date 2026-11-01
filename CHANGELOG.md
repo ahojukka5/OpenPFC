@@ -7,6 +7,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Added experimental `NativePow2FFT`, a one-rank CPU real-to-complex 3D
+  FFT restricted to power-of-two extents. It follows the existing
+  `IHostFFT` x-reduced layout, forward/raw and backward/1-N conventions,
+  and preallocates all working buffers. SoA butterflies use a guarded
+  AVX2/FMA path on supported x86 CPUs and a scalar path otherwise.
+  Programmatic `SpectralCPUStack` clients can select
+  `fft::Implementation::NativePow2`; unsupported sizes or multi-rank
+  use fail explicitly, retaining HeFFTe as the separate existing option.
+  The default and GPU backends are unchanged.
+
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans

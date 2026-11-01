@@ -38,6 +38,7 @@ set(_openpfc_kernel_obj_sources
     src/openpfc/kernel/profiling/detail/session_merge_json.cpp
     $<$<BOOL:${OpenPFC_ENABLE_HDF5}>:src/openpfc/kernel/profiling/detail/session_profiling_hdf5.cpp>
     src/openpfc/kernel/profiling/timer_report.cpp
+    src/openpfc/kernel/fft/native_pow2_fft.cpp
     src/openpfc/kernel/utils/logging.cpp
 )
 if(OpenPFC_HAS_FFTW3)
