@@ -11,8 +11,8 @@ namespace pfc::fft {
 
 /// Transform implementation, independently of the hardware backend.
 enum class Implementation {
-  Heffte,  ///< HeFFTe distributed host FFT.
-  Local,   ///< One-rank FFTW r2c/c2r, arbitrary positive extents.
+  Heffte,    ///< HeFFTe distributed host FFT.
+  Local,     ///< One-rank FFTW r2c/c2r, arbitrary positive extents.
   NativePow2 ///< One-rank CPU native r2c/c2r, power-of-two extents only.
 };
 

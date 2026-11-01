@@ -22,8 +22,7 @@
 
 namespace {
 
-[[nodiscard]] std::vector<double>
-make_signal(std::size_t length) {
+[[nodiscard]] std::vector<double> make_signal(std::size_t length) {
   std::vector<double> result(length);
   for (std::size_t i = 0; i < length; ++i)
     result[i] = std::sin(0.237 * static_cast<double>(i)) +
@@ -31,18 +30,19 @@ make_signal(std::size_t length) {
   return result;
 }
 
-[[nodiscard]] std::complex<double>
-direct_dft(const std::vector<double> &data, const std::array<int, 3> &n,
-           int kx, int ky, int kz) {
+[[nodiscard]] std::complex<double> direct_dft(const std::vector<double> &data,
+                                              const std::array<int, 3> &n, int kx,
+                                              int ky, int kz) {
   std::complex<double> result{0.0, 0.0};
   for (int z = 0; z < n[2]; ++z)
     for (int y = 0; y < n[1]; ++y)
       for (int x = 0; x < n[0]; ++x) {
+        const double phase_x = double(kx * x) / n[0];
+        const double phase_y = double(ky * y) / n[1];
+        const double phase_z = double(kz * z) / n[2];
         const double phase = -2.0 * std::numbers::pi *
-          (double(kx * x) / n[0] + double(ky * y) / n[1] +
-           double(kz * z) / n[2]);
-        result += data[(z * n[1] + y) * n[0] + x] *
-                  std::polar(1.0, phase);
+                             (phase_x + phase_y + phase_z);
+        result += data[(z * n[1] + y) * n[0] + x] * std::polar(1.0, phase);
       }
   return result;
 }
@@ -67,10 +67,10 @@ TEST_CASE("NativePow2FFT returns the independent real 3D Fourier spectrum",
       for (int y = 0; y < dims[1]; ++y)
         for (int x = 0; x <= dims[0] / 2; ++x) {
           const auto expected = direct_dft(input, dims, x, y, z);
-          const auto actual =
-              frequency[(z * dims[1] + y) * (dims[0] / 2 + 1) + x];
-          CHECK(std::abs(actual - expected) <
-                1e-11 * (1.0 + std::abs(expected)));
+          const auto actual = frequency[(z * dims[1] + y) *
+                                            (dims[0] / 2 + 1) +
+                                        x];
+          CHECK(std::abs(actual - expected) < 1e-11 * (1.0 + std::abs(expected)));
         }
     const auto saved_spectrum = frequency;
     pfc::fft::RealVector restored(fft.size_inbox());
@@ -87,10 +87,9 @@ TEST_CASE("NativePow2FFT returns the independent real 3D Fourier spectrum",
 TEST_CASE("NativePow2FFT validates its deliberately restricted domain",
           "[native_pow2]") {
   for (const std::array<int, 3> invalid :
-       {std::array<int, 3>{0, 4, 4}, {-2, 8, 8}, {6, 8, 8},
-        {8, 3, 8}, {8, 4, 7}}) {
-    REQUIRE_THROWS_AS((pfc::fft::NativePow2FFT(invalid)),
-                      std::invalid_argument);
+       {std::array<int, 3>{0, 4, 4}, {-2, 8, 8}, {6, 8, 8}, {8, 3, 8},
+        {8, 4, 7}}) {
+    REQUIRE_THROWS_AS((pfc::fft::NativePow2FFT(invalid)), std::invalid_argument);
   }
   pfc::fft::NativePow2FFT fft({8, 4, 2});
   pfc::fft::RealVector real(fft.size_inbox());
@@ -152,8 +151,8 @@ TEST_CASE("NativePow2FFT stack requires one rank and a power-of-two grid",
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   if (world_size > 1)
-    REQUIRE_THROWS_AS((Stack(domain, world_rank, world_size,
-                             MPI_COMM_WORLD, selected)),
-                      std::invalid_argument);
+    REQUIRE_THROWS_AS(
+        (Stack(domain, world_rank, world_size, MPI_COMM_WORLD, selected)),
+        std::invalid_argument);
 }
 #endif

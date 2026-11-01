@@ -16,8 +16,7 @@
 #include <utility>
 #include <vector>
 
-#if (defined(__x86_64__) || defined(_M_X64)) && \
-    (defined(__GNUC__) || defined(__clang__))
+#if (defined(__x86_64__) || defined(_M_X64)) && defined(__GNUC__)
 #include <immintrin.h>
 #define OPENPFC_NATIVE_POW2_AVX2 1
 #else
@@ -28,8 +27,8 @@ namespace pfc::fft {
 namespace {
 
 [[nodiscard]] bool pow2(int n) noexcept {
-  return n > 0 && (static_cast<unsigned>(n) &
-                   (static_cast<unsigned>(n) - 1U)) == 0;
+  const auto value = static_cast<unsigned>(n);
+  return n > 0 && (value & (value - 1U)) == 0;
 }
 
 [[nodiscard]] std::size_t checked_count(const std::array<int, 3> &n) {
@@ -40,9 +39,11 @@ namespace {
           "NativePow2FFT: each grid dimension must be a power of two; "
           "choose HeFFTe for other grid sizes");
     // Two full-volume double-precision SoA arrays are allocated.
-    if (count > std::numeric_limits<std::size_t>::max() /
-                    (2 * sizeof(double)) / static_cast<std::size_t>(v))
-      throw std::invalid_argument("NativePow2FFT: volume exceeds addressable memory");
+    const auto max_count =
+        std::numeric_limits<std::size_t>::max() / (2 * sizeof(double));
+    if (count > max_count / static_cast<std::size_t>(v))
+      throw std::invalid_argument(
+          "NativePow2FFT: volume exceeds addressable memory");
     count *= static_cast<std::size_t>(v);
   }
   return count;
@@ -51,8 +52,8 @@ namespace {
 void check_buffer(std::size_t actual, std::size_t expected, const char *context) {
   if (actual != expected)
     throw std::invalid_argument(std::string("NativePow2FFT: ") + context +
-                                " size " + std::to_string(actual) +
-                                ", expected " + std::to_string(expected));
+                                " size " + std::to_string(actual) + ", expected " +
+                                std::to_string(expected));
 }
 
 struct Axis {
@@ -62,8 +63,8 @@ struct Axis {
   std::vector<double> wr, wi;
 
   Axis(int n, std::size_t step)
-      : length(static_cast<std::size_t>(n)), stride(step),
-        wr(length / 2), wi(length / 2) {
+      : length(static_cast<std::size_t>(n)), stride(step), wr(length / 2),
+        wi(length / 2) {
     std::size_t width = 0;
     for (std::size_t l = length; l > 1; l >>= 1) ++width;
     for (std::size_t i = 0; i < length; ++i) {
@@ -87,9 +88,9 @@ struct Axis {
   }
 };
 
-inline void butterfly_scalar(double *real, double *imag,
-                             std::size_t a, std::size_t b,
-                             std::size_t lanes, double wr, double wi) noexcept {
+inline void butterfly_scalar(double *real, double *imag, std::size_t a,
+                             std::size_t b, std::size_t lanes, double wr,
+                             double wi) noexcept {
   for (std::size_t lane = 0; lane < lanes; ++lane) {
     const double ur = real[a + lane], ui = imag[a + lane];
     const double vr = real[b + lane], vi = imag[b + lane];
@@ -106,10 +107,9 @@ inline void butterfly_scalar(double *real, double *imag,
 // Explicit SIMD across four independent contiguous x-lanes, not four
 // dependent butterflies in one transform. This function is never called
 // unless both AVX2 and FMA were detected on the current CPU.
-__attribute__((target("avx2,fma")))
-void butterfly_avx2(double *real, double *imag,
-                    std::size_t a, std::size_t b,
-                    std::size_t lanes, double wr, double wi) noexcept {
+__attribute__((target("avx2,fma"))) void
+butterfly_avx2(double *real, double *imag, std::size_t a, std::size_t b,
+               std::size_t lanes, double wr, double wi) noexcept {
   const __m256d wre = _mm256_set1_pd(wr);
   const __m256d wim = _mm256_set1_pd(wi);
   std::size_t i = 0;
@@ -125,8 +125,7 @@ void butterfly_avx2(double *real, double *imag,
     _mm256_storeu_pd(real + b + i, _mm256_sub_pd(ur, tr));
     _mm256_storeu_pd(imag + b + i, _mm256_sub_pd(ui, ti));
   }
-  if (i < lanes)
-    butterfly_scalar(real, imag, a + i, b + i, lanes - i, wr, wi);
+  if (i < lanes) butterfly_scalar(real, imag, a + i, b + i, lanes - i, wr, wi);
 }
 
 [[nodiscard]] bool cpu_has_avx2_fma() noexcept {
@@ -186,8 +185,7 @@ struct NativePow2FFT::Impl {
         nc((static_cast<std::size_t>(n[0]) / 2 + 1) *
            static_cast<std::size_t>(n[1]) * static_cast<std::size_t>(n[2])),
         avx2(cpu_has_avx2_fma()), re(nr), im(nr),
-        axes{Axis(n[0], 1),
-             Axis(n[1], static_cast<std::size_t>(n[0])),
+        axes{Axis(n[0], 1), Axis(n[1], static_cast<std::size_t>(n[0])),
              Axis(n[2], static_cast<std::size_t>(n[0]) * n[1])} {}
 
   [[nodiscard]] std::size_t index(std::size_t x, std::size_t y,
@@ -239,8 +237,7 @@ void NativePow2FFT::forward(const RealVector &in, ComplexVector &out) {
     for (int y = 0; y < m_impl->n[1]; ++y) {
       for (std::size_t x = 0; x < nxh; ++x) {
         const auto src = m_impl->index(x, y, z);
-        out[m_impl->half_index(x, y, z)] =
-            {m_impl->re[src], m_impl->im[src]};
+        out[m_impl->half_index(x, y, z)] = {m_impl->re[src], m_impl->im[src]};
       }
     }
   }
@@ -277,8 +274,7 @@ void NativePow2FFT::backward(const ComplexVector &in, RealVector &out) {
   }
   m_impl->fft(true);
   const double scale = 1.0 / static_cast<double>(m_impl->nr);
-  for (std::size_t i = 0; i < m_impl->nr; ++i)
-    out[i] = m_impl->re[i] * scale;
+  for (std::size_t i = 0; i < m_impl->nr; ++i) out[i] = m_impl->re[i] * scale;
   m_impl->time +=
       std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)
           .count();
