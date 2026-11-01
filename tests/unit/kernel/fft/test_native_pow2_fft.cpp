@@ -40,8 +40,8 @@ namespace {
         const double phase_x = double(kx * x) / n[0];
         const double phase_y = double(ky * y) / n[1];
         const double phase_z = double(kz * z) / n[2];
-        const double phase =
-            -2.0 * std::numbers::pi * (phase_x + phase_y + phase_z);
+        const double phase_sum = phase_x + phase_y + phase_z;
+        const double phase = -2.0 * std::numbers::pi * phase_sum;
         result += data[(z * n[1] + y) * n[0] + x] * std::polar(1.0, phase);
       }
   return result;
