@@ -117,7 +117,6 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 [[gnu::target("avx2,fma")]] void butterfly_avx2(
     double *real, double *imag, std::size_t a, std::size_t b,
     std::size_t lanes, double wr, double wi) noexcept {
-// clang-format on
   const __m256d wre = _mm256_set1_pd(wr);
   const __m256d wim = _mm256_set1_pd(wi);
   std::size_t i = 0;
@@ -135,6 +134,7 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
   }
   if (i < lanes) butterfly_scalar(real, imag, a + i, b + i, lanes - i, wr, wi);
 }
+// clang-format on
 
 [[nodiscard]] bool cpu_has_avx2_fma() noexcept {
   __builtin_cpu_init();
