@@ -50,10 +50,15 @@ namespace {
 }
 
 void check_buffer(std::size_t actual, std::size_t expected, const char *context) {
-  if (actual != expected)
-    throw std::invalid_argument(std::string("NativePow2FFT: ") + context +
-                                " size " + std::to_string(actual) + ", expected " +
-                                std::to_string(expected));
+  if (actual != expected) {
+    std::string message = "NativePow2FFT: ";
+    message += context;
+    message += " size ";
+    message += std::to_string(actual);
+    message += ", expected ";
+    message += std::to_string(expected);
+    throw std::invalid_argument(message);
+  }
 }
 
 struct Axis {
@@ -107,9 +112,9 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 // Explicit SIMD across four independent contiguous x-lanes, not four
 // dependent butterflies in one transform. This function is never called
 // unless both AVX2 and FMA were detected on the current CPU.
-__attribute__((target("avx2,fma"))) void
-butterfly_avx2(double *real, double *imag, std::size_t a, std::size_t b,
-               std::size_t lanes, double wr, double wi) noexcept {
+__attribute__((target("avx2,fma"))) void butterfly_avx2(
+    double *real, double *imag, std::size_t a, std::size_t b, std::size_t lanes,
+    double wr, double wi) noexcept {
   const __m256d wre = _mm256_set1_pd(wr);
   const __m256d wim = _mm256_set1_pd(wi);
   std::size_t i = 0;

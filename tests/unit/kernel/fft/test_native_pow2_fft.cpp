@@ -40,8 +40,8 @@ namespace {
         const double phase_x = double(kx * x) / n[0];
         const double phase_y = double(ky * y) / n[1];
         const double phase_z = double(kz * z) / n[2];
-        const double phase = -2.0 * std::numbers::pi *
-                             (phase_x + phase_y + phase_z);
+        const double phase =
+            -2.0 * std::numbers::pi * (phase_x + phase_y + phase_z);
         result += data[(z * n[1] + y) * n[0] + x] * std::polar(1.0, phase);
       }
   return result;
@@ -67,9 +67,8 @@ TEST_CASE("NativePow2FFT returns the independent real 3D Fourier spectrum",
       for (int y = 0; y < dims[1]; ++y)
         for (int x = 0; x <= dims[0] / 2; ++x) {
           const auto expected = direct_dft(input, dims, x, y, z);
-          const auto actual = frequency[(z * dims[1] + y) *
-                                            (dims[0] / 2 + 1) +
-                                        x];
+          const auto packed_index = (z * dims[1] + y) * (dims[0] / 2 + 1) + x;
+          const auto actual = frequency[packed_index];
           CHECK(std::abs(actual - expected) < 1e-11 * (1.0 + std::abs(expected)));
         }
     const auto saved_spectrum = frequency;
@@ -86,11 +85,14 @@ TEST_CASE("NativePow2FFT returns the independent real 3D Fourier spectrum",
 
 TEST_CASE("NativePow2FFT validates its deliberately restricted domain",
           "[native_pow2]") {
-  for (const std::array<int, 3> invalid :
-       {std::array<int, 3>{0, 4, 4}, {-2, 8, 8}, {6, 8, 8}, {8, 3, 8},
-        {8, 4, 7}}) {
-    REQUIRE_THROWS_AS((pfc::fft::NativePow2FFT(invalid)), std::invalid_argument);
-  }
+  auto reject = [](std::array<int, 3> dims) {
+    [[maybe_unused]] pfc::fft::NativePow2FFT candidate(dims);
+  };
+  REQUIRE_THROWS_AS(reject({0, 4, 4}), std::invalid_argument);
+  REQUIRE_THROWS_AS(reject({-2, 8, 8}), std::invalid_argument);
+  REQUIRE_THROWS_AS(reject({6, 8, 8}), std::invalid_argument);
+  REQUIRE_THROWS_AS(reject({8, 3, 8}), std::invalid_argument);
+  REQUIRE_THROWS_AS(reject({8, 4, 7}), std::invalid_argument);
   pfc::fft::NativePow2FFT fft({8, 4, 2});
   pfc::fft::RealVector real(fft.size_inbox());
   pfc::fft::RealVector wrong_real(fft.size_inbox() - 1);
