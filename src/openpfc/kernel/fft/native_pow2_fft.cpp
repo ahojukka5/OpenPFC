@@ -112,9 +112,12 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 // Explicit SIMD across four independent contiguous x-lanes, not four
 // dependent butterflies in one transform. This function is never called
 // unless both AVX2 and FMA were detected on the current CPU.
+// clang-format off
+// Compiler-specific target attribute: keep this declaration together.
 [[gnu::target("avx2,fma")]] void butterfly_avx2(
     double *real, double *imag, std::size_t a, std::size_t b,
     std::size_t lanes, double wr, double wi) noexcept {
+// clang-format on
   const __m256d wre = _mm256_set1_pd(wr);
   const __m256d wim = _mm256_set1_pd(wi);
   std::size_t i = 0;
