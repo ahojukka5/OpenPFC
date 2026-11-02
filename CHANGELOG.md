@@ -7,6 +7,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `DistributedComplexLineFFT` matches `ComplexLineFFT` on a block-distributed
+  line. One rank plans that line with HeFFTe as a complex box whose other
+  two axes have length one. Several ranks gather the line and reuse
+  `ComplexLineFFT`, because HeFFTe refuses a process grid on those unit
+  axes. `distributed_chebyshev_dirichlet_poisson`,
+  `distributed_chebyshev_neumann_poisson`, and
+  `distributed_chebyshev_robin_poisson` return the owned slice of the
+  existing bounded solves. `compare_bounded_axis` records the Lobatto
+  Dirichlet error against uniform differences of order 4 and 8, the line
+  and solve times, and the workspace, communication, and matrix bytes.
+  The smooth exponential prefers Chebyshev. Tungsten and aluminum stay
+  (#141).
 - `FccPoints::borrow_quaternion_fields` evaluates a read-only four-component
   crystal-to-lab quaternion brick in registers. The nine-double
   `set_orientations` path stays. A matching owned box does not gather
