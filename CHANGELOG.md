@@ -7,6 +7,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `AffineMap` is the constant map `x = A ξ + b` from the Cartesian reference
+  cell to physical space. `ξ` is the cell the structured grid and the
+  periodic FFT already index. Gradients and reference wavevectors transform
+  by `A^{-T}`, and the Fourier Laplacian is
+  `-k_ξ^T (A^{-1} A^{-T}) k_ξ`. The integration weight is `|det A|`. An
+  identity Jacobian calls `k_laplacian_value` and does not form a metric.
+  JSON/TOML stores the three columns of `A` and an optional translation.
+  Cartesian solvers are unchanged. A spatially varying map is not this type
+  (#132).
 - `cahn_hilliard_elastic` writes the probed Fourier amplitude, clip count,
   and chemical bulk and gradient energy before and after composition
   projection when `qualification` is present. Without that block the step
