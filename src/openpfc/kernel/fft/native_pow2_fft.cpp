@@ -190,6 +190,8 @@ struct NativePow2FFT::Impl {
   std::array<Axis, 3> axes;
   double time = 0.0;
 
+  // clang-format off
+  // Deliberately one initializer per semantic field; no temporary allocations.
   explicit Impl(const std::array<int, 3> &size)
       : n(size), nr(checked_count(size)),
         nc((static_cast<std::size_t>(n[0]) / 2 + 1) *
@@ -202,11 +204,12 @@ struct NativePow2FFT::Impl {
         x_wi(packed_x + (nx == 1 ? 0 : 1)),
         axes{Axis(nx == 1 ? 1 : n[0] / 2, 1), Axis(n[1], nxh),
              Axis(n[2], nxh * static_cast<std::size_t>(n[1]))} {
+  // clang-format on
     // Frequencies for reconstructing an Nx real transform from Nx/2
     // complex coefficients. These are constant over plan execution.
     for (std::size_t k = 0; k <= packed_x && nx > 1; ++k) {
-      const double angle = -2.0 * std::numbers::pi *
-                           static_cast<double>(k) / static_cast<double>(nx);
+      const double phase = static_cast<double>(k) / static_cast<double>(nx);
+      const double angle = -2.0 * std::numbers::pi * phase;
       x_wr[k] = std::cos(angle);
       x_wi[k] = std::sin(angle);
     }
@@ -301,10 +304,10 @@ struct NativePow2FFT::Impl {
   }
 
   [[nodiscard]] std::size_t allocated_bytes() const noexcept {
-    std::size_t bytes = (re.capacity() + im.capacity() +
-                         packed_re.capacity() + packed_im.capacity() +
-                         x_wr.capacity() + x_wi.capacity()) *
-                        sizeof(double);
+    std::size_t capacity = re.capacity() + im.capacity();
+    capacity += packed_re.capacity() + packed_im.capacity();
+    capacity += x_wr.capacity() + x_wi.capacity();
+    std::size_t bytes = capacity * sizeof(double);
     for (const auto &axis : axes) bytes += axis.allocated_bytes();
     return bytes;
   }
