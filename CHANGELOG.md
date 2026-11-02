@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Crystal-front and grain-orientation observables report a planar RMS
+  front, its sub-cell crossing, and the time-series velocity
+  `(x(t1) - x(t0)) / (t1 - t0)`. A real density wave is reduced by the
+  cosine gauge `k ~ -k`, then by a caller-selected four-fold, six-fold
+  or cubic representative. The tungsten and aluminum tests record that
+  row through `DiagnosticsSeries` instead of a second implementation
+  (#247).
 - `apps/burgers` advances one periodic Burgers problem,
   `u_t + (u^2/2)_x = ν u_xx` with `u(x,0)=sin(x)`, by SSP-RK3.
   The baselines are a 2/3-dealiased Fourier product through
