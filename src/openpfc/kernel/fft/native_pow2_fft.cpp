@@ -197,8 +197,115 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 // clang-format on
 #endif
 
+// The next two radix-2 DIT stages (lengths 2*r and 4*r) share four
+// inputs. Fusing them keeps all intermediate sums in registers and
+// removes the extra full-array read/write pass. This is a local
+// butterfly primitive, not an opaque transform facade.
+void butterfly4_scalar(double *real, double *imag, std::size_t a,
+                       std::size_t b, std::size_t c, std::size_t d,
+                       std::size_t lanes, double w2r, double w2i,
+                       double w4r, double w4i, bool inverse) noexcept {
+  for (std::size_t lane = 0; lane < lanes; ++lane) {
+    const double ar = real[a + lane], ai = imag[a + lane];
+    const double br = real[b + lane], bi = imag[b + lane];
+    const double cr = real[c + lane], ci = imag[c + lane];
+    const double dr = real[d + lane], di = imag[d + lane];
+
+    const double vr = br * w2r - bi * w2i;
+    const double vi = br * w2i + bi * w2r;
+    const double xr = dr * w2r - di * w2i;
+    const double xi = dr * w2i + di * w2r;
+    const double pr = ar + vr, pi = ai + vi;
+    const double qr = ar - vr, qi = ai - vi;
+    const double sr = cr + xr, si = ci + xi;
+    const double tr = cr - xr, ti = ci - xi;
+
+    const double s4r = sr * w4r - si * w4i;
+    const double s4i = sr * w4i + si * w4r;
+    const double t4r = tr * w4r - ti * w4i;
+    const double t4i = tr * w4i + ti * w4r;
+    // W_{4r}^{k+r} = (inverse ? +i : -i) * W_{4r}^{k}.
+    const double twist_r = inverse ? -t4i : t4i;
+    const double twist_i = inverse ? t4r : -t4r;
+
+    real[a + lane] = pr + s4r;
+    imag[a + lane] = pi + s4i;
+    real[c + lane] = pr - s4r;
+    imag[c + lane] = pi - s4i;
+    real[b + lane] = qr + twist_r;
+    imag[b + lane] = qi + twist_i;
+    real[d + lane] = qr - twist_r;
+    imag[d + lane] = qi - twist_i;
+  }
+}
+
+#if OPENPFC_NATIVE_POW2_AVX2
+// clang-format off
+// Target-specific vector code: four *independent* x-frequency lanes.
+[[gnu::target("avx2,fma")]] void butterfly4_avx2(
+    double *real, double *imag, std::size_t a, std::size_t b,
+    std::size_t c, std::size_t d, std::size_t lanes,
+    double w2r, double w2i, double w4r, double w4i, bool inverse) noexcept {
+  const __m256d w2re = _mm256_set1_pd(w2r);
+  const __m256d w2im = _mm256_set1_pd(w2i);
+  const __m256d w4re = _mm256_set1_pd(w4r);
+  const __m256d w4im = _mm256_set1_pd(w4i);
+  std::size_t lane = 0;
+  for (; lane + 4 <= lanes; lane += 4) {
+    const __m256d ar = _mm256_loadu_pd(real + a + lane);
+    const __m256d ai = _mm256_loadu_pd(imag + a + lane);
+    const __m256d br = _mm256_loadu_pd(real + b + lane);
+    const __m256d bi = _mm256_loadu_pd(imag + b + lane);
+    const __m256d cr = _mm256_loadu_pd(real + c + lane);
+    const __m256d ci = _mm256_loadu_pd(imag + c + lane);
+    const __m256d dr = _mm256_loadu_pd(real + d + lane);
+    const __m256d di = _mm256_loadu_pd(imag + d + lane);
+
+    const __m256d vr = _mm256_fmsub_pd(br, w2re, _mm256_mul_pd(bi, w2im));
+    const __m256d vi = _mm256_fmadd_pd(br, w2im, _mm256_mul_pd(bi, w2re));
+    const __m256d xr = _mm256_fmsub_pd(dr, w2re, _mm256_mul_pd(di, w2im));
+    const __m256d xi = _mm256_fmadd_pd(dr, w2im, _mm256_mul_pd(di, w2re));
+    const __m256d pr = _mm256_add_pd(ar, vr);
+    const __m256d pi = _mm256_add_pd(ai, vi);
+    const __m256d qr = _mm256_sub_pd(ar, vr);
+    const __m256d qi = _mm256_sub_pd(ai, vi);
+    const __m256d sr = _mm256_add_pd(cr, xr);
+    const __m256d si = _mm256_add_pd(ci, xi);
+    const __m256d tr = _mm256_sub_pd(cr, xr);
+    const __m256d ti = _mm256_sub_pd(ci, xi);
+
+    const __m256d s4r = _mm256_fmsub_pd(sr, w4re, _mm256_mul_pd(si, w4im));
+    const __m256d s4i = _mm256_fmadd_pd(sr, w4im, _mm256_mul_pd(si, w4re));
+    const __m256d t4r = _mm256_fmsub_pd(tr, w4re, _mm256_mul_pd(ti, w4im));
+    const __m256d t4i = _mm256_fmadd_pd(tr, w4im, _mm256_mul_pd(ti, w4re));
+    const __m256d twist_r = inverse ? _mm256_sub_pd(_mm256_setzero_pd(), t4i) : t4i;
+    const __m256d twist_i = inverse ? t4r : _mm256_sub_pd(_mm256_setzero_pd(), t4r);
+
+    _mm256_storeu_pd(real + a + lane, _mm256_add_pd(pr, s4r));
+    _mm256_storeu_pd(imag + a + lane, _mm256_add_pd(pi, s4i));
+    _mm256_storeu_pd(real + c + lane, _mm256_sub_pd(pr, s4r));
+    _mm256_storeu_pd(imag + c + lane, _mm256_sub_pd(pi, s4i));
+    _mm256_storeu_pd(real + b + lane, _mm256_add_pd(qr, twist_r));
+    _mm256_storeu_pd(imag + b + lane, _mm256_add_pd(qi, twist_i));
+    _mm256_storeu_pd(real + d + lane, _mm256_sub_pd(qr, twist_r));
+    _mm256_storeu_pd(imag + d + lane, _mm256_sub_pd(qi, twist_i));
+  }
+  if (lane < lanes)
+    butterfly4_scalar(real, imag, a + lane, b + lane, c + lane,
+                      d + lane, lanes - lane, w2r, w2i, w4r, w4i, inverse);
+}
+// clang-format on
+#endif
+
+#if defined(OPENPFC_NATIVE_POW2_DISABLE_YZ_FUSION)
+constexpr bool kFuseYZ = false;
+#else
+constexpr bool kFuseYZ = true;
+#endif
+
 void transform_axis(std::vector<double> &re, std::vector<double> &im,
-                    const Axis &axis, bool inverse, bool avx2) {
+                    const Axis &axis, bool inverse, bool avx2,
+                    bool fuse4 = false) {
   const std::size_t n = axis.length, stride = axis.stride;
   if (n == 1) return;
   const std::size_t group = n * stride;
@@ -211,7 +318,37 @@ void transform_axis(std::vector<double> &re, std::vector<double> &im,
         std::swap(im[a + lane], im[b + lane]);
       }
     }
-    for (std::size_t width = 2; width <= n; width *= 2) {
+    // Fuse adjacent radix-2 levels in y/z. The original loop below
+    // also handles any final unmatched radix-2 level.
+    std::size_t radix = 1;
+    if (fuse4 && n >= 4) {
+      while (radix <= n / 4) {
+        const std::size_t step2 = n / (2 * radix);
+        const std::size_t step4 = n / (4 * radix);
+        for (std::size_t start = 0; start < n; start += 4 * radix) {
+          for (std::size_t k = 0; k < radix; ++k) {
+            const auto a = outer + (start + k) * stride;
+            const auto b = a + radix * stride;
+            const auto c = b + radix * stride;
+            const auto d = c + radix * stride;
+            const double w2r = axis.wr[k * step2];
+            const double w2i = inverse ? -axis.wi[k * step2] : axis.wi[k * step2];
+            const double w4r = axis.wr[k * step4];
+            const double w4i = inverse ? -axis.wi[k * step4] : axis.wi[k * step4];
+#if OPENPFC_NATIVE_POW2_AVX2
+            if (avx2 && stride >= 4)
+              butterfly4_avx2(re.data(), im.data(), a, b, c, d,
+                              stride, w2r, w2i, w4r, w4i, inverse);
+            else
+#endif
+              butterfly4_scalar(re.data(), im.data(), a, b, c, d,
+                                stride, w2r, w2i, w4r, w4i, inverse);
+          }
+        }
+        radix *= 4;
+      }
+    }
+    for (std::size_t width = 2 * radix; width <= n; width *= 2) {
       const std::size_t half = width / 2, step = n / width;
       for (std::size_t start = 0; start < n; start += width) {
         for (std::size_t k = 0; k < half; ++k) {
@@ -380,12 +517,12 @@ struct NativePow2FFT::Impl {
   // The x-axis uses four adjacent independent real rows per AVX2 group,
   // with an unmodified scalar fallback for short lines and older CPUs.
   void forward_yz() {
-    transform_axis(re, im, axes[1], false, avx2);
-    transform_axis(re, im, axes[2], false, avx2);
+    transform_axis(re, im, axes[1], false, avx2, kFuseYZ);
+    transform_axis(re, im, axes[2], false, avx2, kFuseYZ);
   }
   void backward_zy() {
-    transform_axis(re, im, axes[2], true, avx2);
-    transform_axis(re, im, axes[1], true, avx2);
+    transform_axis(re, im, axes[2], true, avx2, kFuseYZ);
+    transform_axis(re, im, axes[1], true, avx2, kFuseYZ);
   }
 
   [[nodiscard]] std::size_t allocated_bytes() const noexcept {

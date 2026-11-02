@@ -16,7 +16,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   butterflies use guarded AVX2/FMA on x86 CPUs, scalar otherwise.
   X-axis FFTs additionally batch four independent packed rows into
   contiguous AoSoA SIMD lanes when AVX2/FMA is available; no SIMD
-  features are required on other CPUs.
+  features are required on other CPUs. The y/z transforms fuse pairs
+  of radix-2 levels into radix-4 butterflies, reducing intermediate
+  traffic while preserving the existing x-axis half-spectrum layout.
+  The standalone FFTW A/B experiment retains an explicit no-fusion
+  compilation control, so performance regressions remain visible.
   Programmatic `SpectralCPUStack` clients can select
   `fft::Implementation::NativePow2`; unsupported sizes or multi-rank
   use fail explicitly, retaining HeFFTe as the separate existing option.

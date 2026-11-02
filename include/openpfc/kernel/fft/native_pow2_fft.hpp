@@ -22,6 +22,10 @@ namespace pfc::fft {
  * then only the nx/2+1 nonredundant x-frequencies are transformed along
  * y and z. The inverse reverses those y/z stages and unpacks the
  * Hermitian x-spectrum before an unnormalised nx/2 inverse FFT.
+ * For y and z, consecutive radix-2 levels can be fused into a radix-4
+ * pass which keeps four complex x-frequency lanes in AVX2 registers
+ * until the pair of stages is complete. The last unmatched radix-2
+ * level is retained when the axis log2 length is odd.
  * On AVX2/FMA processors, four independent x-lines use an AoSoA
  * temporary layout and four SIMD lanes per butterfly. Scalar and
  * short-x fallback paths retain row-major packing.
