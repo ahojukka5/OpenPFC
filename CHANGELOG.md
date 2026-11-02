@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `FccPoints::borrow_quaternion_fields` evaluates a read-only four-component
+  crystal-to-lab quaternion brick in registers. The nine-double
+  `set_orientations` path stays. A matching owned box does not gather
+  orientations. A bad layout, a missing owner, or a non-unit quaternion is
+  refused, and a refused step leaves the committed history in place (#585).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
