@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `AmplitudeSpectralETD1` integrates several complex amplitudes with one
+  ETD1 step on a real-to-complex FFT. Each amplitude is a pair of real
+  fields. The two half-spectrum combinations use the caller's symbols
+  `s(q)` and `s(-q)`. The weight is the reference
+  `(exp(s dt) - 1) / s`, with the Taylor branch when `|s dt| < 1e-8`.
+  `AmplitudeSpectralETD1Cuda` runs that update on the device FFT. The
+  one-field `SpectralETDSystem` is unchanged. HIP was not run (#422).
 - `advance_solute_partition` evolves one conserved solute line on a
   non-periodic `DiffusionAxis`. The chemical potential is the composition
   divided by a prescribed positive partition factor. Mobility is constant.
