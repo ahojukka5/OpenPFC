@@ -7,6 +7,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `BinaryWriter::close` and `BinaryReader::close` report `MPI_Type_free`.
+  Their destructors no longer throw: a free failure aborts, matching the
+  MPI cleanup policy. `ResultsWriter::close` is the reporting hook, and
+  the snapshot series calls it before the manifest. `FieldView::span`,
+  `FieldOutput::span`, and CPU `DataBuffer::copy_to_host(std::span)` are
+  the storage views. The language baseline stays C++20 (#171).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
