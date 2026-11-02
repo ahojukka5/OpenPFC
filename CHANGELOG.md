@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Crystal-front and grain-orientation observables report a planar RMS
+  front, its sub-cell crossing, and the time-series velocity
+  `(x(t1) - x(t0)) / (t1 - t0)`. A real density wave is reduced by the
+  cosine gauge `k ~ -k`, then by a caller-selected four-fold, six-fold
+  or cubic representative. The tungsten and aluminum tests record that
+  row through `DiagnosticsSeries` instead of a second implementation
+  (#247).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
