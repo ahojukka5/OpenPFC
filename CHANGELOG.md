@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `advance_bounded_axis` evolves one linear Cahn–Hilliard line on a
+  non-periodic `DiffusionAxis`. The composition gradient uses a zero
+  outward derivative, and the composition flux is `reaction_face` on a
+  `FluxLedger`. A zero sink conserves the weighted inventory. A nonzero
+  sink changes that inventory by the accepted outward flux. One owned
+  split matches the unsplit step. This is not a grain boundary or a
+  free surface. The periodic spectral session is unchanged (#253).
 - `sample_reference` reads a filled cylinder, disk, or ball through the
   series the caller already holds and through one `AffineMap`. There is
   no domain-shape enum. An identity map uses the embedding Laplacian,

@@ -67,6 +67,19 @@ The box must be large compared with the selected wavelength or the statistics
 are meaningless. At `c₀ = 0.5` the model predicts `λ_max ≈ 17.3` code units, so
 512² holds about 30 wavelengths per side.
 
+### One bounded axis
+
+`advance_bounded_axis` is a separate line, not a change to the periodic
+cell above. The samples sit on a non-periodic `DiffusionAxis`. The
+composition gradient is a zero outward derivative, and the composition
+flux is `reaction_face` recorded in a `FluxLedger`. The chemical
+potential on this path is the linear law `α (c − c_eq) − κ Δc` with
+constant mobility. A zero sink keeps the weighted composition while a
+cosine mode decays. A nonzero sink changes that composition by the
+accepted outward flux. One owned split of the nodes matches the unsplit
+step. This is not a grain boundary, not a material free surface, and not
+the Fe–Cr regular solution. `CahnHilliardSession` is unchanged.
+
 ### Physical scales
 
 The solver integrates in code units with `κ = M = 1`. Their physical meaning
