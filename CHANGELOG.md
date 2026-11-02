@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `apply_reflection_ghosts` on one HIP device matches the host fill for
+  float and double. Odd node mirrors, even cell-face mirrors, and linear
+  cell-face walls agree, including the corner samples. `WallPolicy` is
+  unchanged. On g0004, one MI210 (`gfx90a`), `HIP_ReflectionGhosts` passed,
+  11108 assertions (#468).
 - `create_cuda` round-trips one rank of a 12×10×8 field on every reduced
   axis. The HeFFTe plan built by that factory meets the same absolute
   bound, 2e-12. The provider is unchanged. HIP was not run (#762).
