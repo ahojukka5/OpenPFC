@@ -414,9 +414,13 @@ void leaf4_scalar(const double *src_re, const double *src_im, double *dst_re,
 // gathers use reverse_bits(leaf) plus the fixed digit order [0,2,1,3]
 // scaled by the number of leaves. Two later radix-2 levels are thus
 // already complete before the upper transform stages are entered.
-void gather_radix4_leaves(const std::vector<double> &re, const std::vector<double> &im,
-                          std::vector<double> &dst_re, std::vector<double> &dst_im,
+// clang-format off
+void gather_radix4_leaves(const std::vector<double> &re,
+                          const std::vector<double> &im,
+                          std::vector<double> &dst_re,
+                          std::vector<double> &dst_im,
                           const Axis &axis, bool inverse, bool avx2) {
+// clang-format on
   const std::size_t n = axis.length;
   const std::size_t stride = axis.stride;
   const std::size_t step = n / 4;
@@ -433,6 +437,7 @@ void gather_radix4_leaves(const std::vector<double> &re, const std::vector<doubl
       dst[1] = outer + (4 * leaf + 1) * stride;
       dst[2] = outer + (4 * leaf + 2) * stride;
       dst[3] = outer + (4 * leaf + 3) * stride;
+      // clang-format off
 #if OPENPFC_NATIVE_POW2_AVX2
       if (avx2 && stride >= 4)
         leaf4_avx2(re.data(), im.data(), dst_re.data(), dst_im.data(), src,
@@ -441,6 +446,7 @@ void gather_radix4_leaves(const std::vector<double> &re, const std::vector<doubl
 #endif
         leaf4_scalar(re.data(), im.data(), dst_re.data(), dst_im.data(), src,
                      dst, stride, inverse);
+      // clang-format on
     }
   }
 }
@@ -665,8 +671,10 @@ struct NativePow2FFT::Impl {
   // scratch vector; swapping vector handles avoids another copy.
   void transform_yz(const Axis &axis, bool inverse) {
     if (kLeafYZ && axis.length >= 4) {
-      gather_radix4_leaves(re, im, yz_scratch_re, yz_scratch_im, axis,
-                           inverse, avx2);
+      // clang-format off
+      gather_radix4_leaves(re, im, yz_scratch_re, yz_scratch_im,
+                           axis, inverse, avx2);
+      // clang-format on
       re.swap(yz_scratch_re);
       im.swap(yz_scratch_im);
       transform_axis(re, im, axis, inverse, avx2, kFuseYZ, true, 4);
