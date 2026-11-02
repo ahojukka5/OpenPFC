@@ -533,9 +533,14 @@ inline FrontSample planar_front_position(const OwnedDensity &density, MPI_Comm c
     }
     if (a0 < 0.0 && a1 >= 0.0) {
       ++rising;
-      crossing = x0 + (static_cast<double>(s) + a0 / (a0 - a1)) * h;
+      if (options.rising) {
+        crossing = x0 + (static_cast<double>(s) + a0 / (a0 - a1)) * h;
+      }
     } else if (a0 > 0.0 && a1 <= 0.0) {
       ++falling;
+      if (!options.rising) {
+        crossing = x0 + (static_cast<double>(s) + a0 / (a0 - a1)) * h;
+      }
     }
   }
   const int requested = options.rising ? rising : falling;

@@ -42,6 +42,10 @@ OwnedDensity full_density(const std::vector<double> &values,
 
 double envelope(double x, double front) { return 0.5 + (x - front) * 0.4 / 31.0; }
 
+double falling_envelope(double x, double front) {
+  return 0.5 - (x - front) * 0.4 / 31.0;
+}
+
 std::vector<double> crystal_front(double front) {
   constexpr int nx = 32;
   constexpr int ny = 8;
@@ -118,6 +122,44 @@ TEST_CASE("planar crystal front resolves a sub-cell translation",
   const auto broken = pfc::observables::planar_front_position(
       full_density(poisoned, size, MPI_COMM_SELF), MPI_COMM_SELF, options);
   REQUIRE(broken.validity == FrontValidity::nonfinite);
+}
+
+TEST_CASE("planar crystal front records a falling crossing",
+          "[crystal_observables]") {
+  constexpr std::array<int, 3> size{32, 8, 2};
+  constexpr int nx = size[0];
+  constexpr int ny = size[1];
+  constexpr int nz = size[2];
+  std::vector<double> early_values(static_cast<std::size_t>(nx * ny * nz));
+  std::vector<double> later_values(early_values.size());
+  const double scale = std::sqrt(2.0);
+  for (int k = 0; k < nz; ++k) {
+    for (int j = 0; j < ny; ++j) {
+      const double wave =
+          std::cos(2.0 * std::numbers::pi * static_cast<double>(j) / ny);
+      for (int i = 0; i < nx; ++i) {
+        const std::size_t id = static_cast<std::size_t>(i + nx * (j + ny * k));
+        early_values[id] =
+            falling_envelope(static_cast<double>(i), 15.3) * wave * scale;
+        later_values[id] =
+            falling_envelope(static_cast<double>(i), 15.7) * wave * scale;
+      }
+    }
+  }
+  PlanarFrontOptions options;
+  options.rising = false;
+  const auto first = pfc::observables::planar_front_position(
+      full_density(early_values, size, MPI_COMM_SELF), MPI_COMM_SELF, options);
+  const auto second = pfc::observables::planar_front_position(
+      full_density(later_values, size, MPI_COMM_SELF), MPI_COMM_SELF, options);
+  REQUIRE(first.validity == FrontValidity::valid);
+  REQUIRE(second.validity == FrontValidity::valid);
+  REQUIRE(first.crossings == 1);
+  REQUIRE(first.position == Approx(15.3).margin(1e-9));
+  REQUIRE(second.position == Approx(15.7).margin(1e-9));
+  const auto speed = pfc::observables::front_velocity(first, 0.0, second, 2.0);
+  REQUIRE(speed.valid);
+  REQUIRE(speed.velocity == Approx(0.2).margin(1e-9));
 }
 
 TEST_CASE("planar front follows a caller-selected axis", "[crystal_observables]") {

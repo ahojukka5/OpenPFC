@@ -89,17 +89,20 @@ inline constexpr std::array<ModelCoefficient, 19> kModelCoefficients{{
      "reduced temperature", CoefficientStatus::representative, 1280.0, true, false},
     {"T_min", "lower clamp of T_const + T_var", kUncitedSource,
      "reduced temperature", CoefficientStatus::representative, 780.0, true, false},
-    {"G_grid", "imposed temperature slope; shipped presets are isothermal",
-     "Case control. Every shipped preset sets it to zero.",
+    {"G_grid", "imposed temperature slope",
+     "Case control. The isothermal presets set it to zero. "
+     "aluminum_directional.json does not.",
      "reduced temperature per reduced length", CoefficientStatus::numerical, 0.0,
      true, false},
-    {"V_grid", "frame speed; shipped presets do not pull the front",
-     "Case control. Every shipped preset sets it to zero.",
+    {"V_grid", "frame speed of the imposed temperature profile",
+     "Case control. The isothermal presets set it to zero. "
+     "aluminum_directional.json does not.",
      "reduced length per reduced time", CoefficientStatus::numerical, 0.0, true,
      false},
     {"x_initial", "station where the imposed temperature departure is zero",
-     "Case control. The demonstration presets use 130. A seeded preset sets it "
-     "to that seed's X0.",
+     "Case control. The demonstration presets use 130. A seeded isothermal "
+     "preset sets it to that seed's X0. The directional preset puts the zero "
+     "ahead of the seed.",
      "reduced length", CoefficientStatus::numerical, 130.0, false, false},
     {"alpha", "width of the FCC correlation peak", kUncitedSource,
      "reduced wavenumber", CoefficientStatus::representative, 0.20, true, false},

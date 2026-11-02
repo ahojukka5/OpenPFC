@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `aluminum_directional.json` is a periodic FCC seed ahead of a moving
+  vapor/melt reservoir, with imposed `G_grid = 2` and `V_grid = 0.1`.
+  Temperature is that prescribed profile, clamped to `[T_min, T_max]`,
+  not a solved heat equation. The host session measures the initial
+  planar front and the reservoir checkpoint; a zero-pull run and an
+  isothermal run are the controls. Restart keeps the reservoir index.
+  This is not an aluminum casting prediction (#248).
 - `tungsten_resolved_bcc.json` is one periodic BCC cell, 16 points along
   the lattice constant, with the 2/3 dealias mask on. The same model on
   a 32³ grid in that box keeps the density RMS inside 1e-6 relative and

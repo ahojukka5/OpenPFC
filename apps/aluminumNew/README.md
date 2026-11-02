@@ -11,15 +11,17 @@ Production aluminum binary: JSON/TOML → `pfc::ui::SpectralETDSession<AluminumP
 
 The `Problem setup` block the report contract (`#112`) asks every application
 to carry, for the shipped demonstration case
-[`aluminumNew.json`](aluminumNew.json). No shipped input is a verification
-preset: the pinned checksum in the test suite runs a **separate synthetic
-`32^3` configuration built in C++** (`X0 = 8`, radius 4, `rseed = 42`), not any
-of them. `inputs_json/smoke.json` is a `16^3` sanity file that no test or
-CMake rule references, and its initial condition is a *constant* field --
-there is no seed in it and it never develops structure.
+[`aluminumNew.json`](aluminumNew.json). The pinned checksum in the test suite
+runs a **separate synthetic `32^3` configuration built in C++** (`X0 = 8`,
+radius 4, `rseed = 42`), not that demonstration file.
+`inputs_json/smoke.json` is a `16^3` sanity file, and its initial condition is
+a *constant* field -- there is no seed in it and it never develops structure.
 [`inputs_json/fcc_seed_nucleus.json`](inputs_json/fcc_seed_nucleus.json) is a
 `192^3` single-seed case that runs on one core in a few minutes; see "The
 isothermal case is a nucleation threshold, not growth" below.
+[`inputs_json/aluminum_directional.json`](inputs_json/aluminum_directional.json)
+is the maintained preset with a nonzero gradient and a nonzero pull speed.
+ctest `aluminum-directional` runs it through `AluminumSession`.
 `tests/test_aluminum_inputs.cpp` (ctest `aluminum-shipped-inputs`) checks that
 every file under `inputs_json/` still loads through the schema and the
 initial-condition catalog. That is a rot check, not a physics check.
@@ -32,14 +34,14 @@ initial-condition catalog. That is a rot check, not a physics check.
 | **Grid/time** | `t` in `[0, 2000]`, `dt = 1` (2000 steps), field dump every 200 |
 | **Boundary conditions** | Periodic on all three axes (the FFT has no other mode), plus a stationary `fixed` sigmoid density-reservoir band pulling `psi` between `-1.297` and `-0.006` near the high-`x` end -- see "Why periodic" below |
 | **Initial condition** | Uniform `psi = -0.006`, then `seed_grid_fcc`: a `2 x 1` row of FCC seeds of radius 120 at `x = 130`, amplitude 0.4, `rho = -0.036`, each jittered by `+/-0.2 R` and randomly oriented. Each seed is built from four `<111>` wave vectors, unlike tungsten's six `{110}` |
-| **Key physical parameters** | `T_const = 980` clamped into `[T_min, T_max] = [780, 1280]`, `T0 = 89285` (no unit is stated anywhere in this app); `Bx = 0.81790`, `alpha = 0.20`; barred polynomial coefficients. The coexistence densities `-0.036` / `-1.297` live in the `initial_conditions` / `boundary_conditions` blocks, not in `model.params`. **`G_grid = V_grid = 0`, so the shipped run is isothermal** -- the moving-frame machinery is present and tested but no shipped preset exercises it, and the temperature clamp is therefore a no-op on every shipped preset. Reduced PFC units throughout, with no SI mapping in this repository |
+| **Key physical parameters** | `T_const = 980` clamped into `[T_min, T_max] = [780, 1280]`, `T0 = 89285` (no unit is stated anywhere in this app); `Bx = 0.81790`, `alpha = 0.20`; barred polynomial coefficients. The coexistence densities `-0.036` / `-1.297` live in the `initial_conditions` / `boundary_conditions` blocks, not in `model.params`. The demonstration file is isothermal (`G_grid = V_grid = 0`). The directional preset sets both nonzero; its temperature is still the prescribed profile, not a solved heat equation. Reduced PFC units throughout, with no SI mapping in this repository |
 | **Observable** | `SPECTRAL_CHECKSUM` `sum`/`sumsq`/`l2` of `psi`; the summed free energy (`last_free_energy_sum`), which this app computes per cell and `tungsten` does not; binary field dumps |
 | **Model maturity** | numerical verification: **regression** -- the operators, the pointwise nonlinearity and the free-energy density are checked to `1e-14` against an independently written reference formula, and one synthetic case is pinned; there is no closed-form solution of the model. Physical completeness: **extended** -- the tungsten equation of state plus a separate correlation kernel `P(k)` and a travelling temperature field. Calibration: **representative**, with the same caveat as tungsten: no source is cited anywhere in this repository for any aluminium coefficient |
 
 ### The isothermal case is nucleation, not steady growth
 
-Every shipped input sets `G_grid = V_grid = 0`, so the thermal drive is off and
-the run is isothermal. It is tempting to describe what is left as seeded
+The demonstration inputs set `G_grid = V_grid = 0`, so that thermal drive is
+off and the run is isothermal. It is tempting to describe what is left as seeded
 growth. That is not what happens. Measured on
 [`inputs_json/fcc_seed_nucleus.json`](inputs_json/fcc_seed_nucleus.json)
 (`192^3`, one randomly oriented FCC seed, `n0 = -0.006`, `T_const = 980`),
@@ -127,9 +129,46 @@ reduced units long any non-trivial `G_grid` drives it arbitrarily far from
 `T_const`. `clamp_temperature` now holds `T_const + T_var` inside
 `[T_min, T_max]`, and `T_min < T_max` with `T_const` inside the window is
 checked at load time (`validate_temperature_window`) rather than silently
-freezing the domain at one end. **Both shipped presets are isothermal
-(`G_grid = V_grid = 0`), so the clamp is a no-op on them and no pinned
-checksum moved.**
+freezing the domain at one end. The isothermal presets have
+`G_grid = V_grid = 0`, so the clamp is a no-op on them and no pinned
+checksum moved.
+
+## Directional preset
+
+[`inputs_json/aluminum_directional.json`](inputs_json/aluminum_directional.json)
+is one periodic box, `48 x 16 x 16` at the same spacing
+`2*pi*sqrt(3)/8`, with one FCC seed (`X0 = 18`, radius 22, `rseed = 42`)
+and a `moving` reservoir. `G_grid = 2` and `V_grid = 0.1`. `x_initial = 60`
+is the station where the imposed departure is zero, ahead of the seed, so
+the interface sits on the smooth side of the periodic branch cut.
+
+Temperature is prescribed. `temperature_variation(x, t)` returns
+`G_grid * (x_unwrapped - x_initial - V_grid * t)`, then
+`clamp_temperature` holds `T_const + T_var` inside `[T_min, T_max]`.
+Nothing in this preset solves a heat equation. On this box and on
+`t` in `[0, 40]` the profile stays strictly inside the clamp. The same
+coefficients as the isothermal presets are used. There is no SI
+conversion and no claim that the run predicts aluminum casting.
+
+The FFT is periodic on every axis. The reservoir is the app's `moving`
+boundary condition: it tracks the rightmost column whose maximum exceeds
+its threshold and writes the vapor/melt pair (`rho_low = -1.297`,
+`rho_high = -0.006`) in a band of half-width 2 sitting `disp = 8` ahead
+of that column. The index only advances. A retreat of the density does
+not pull the band backward.
+
+`planar_front_position` on the initial field, falling through RMS level
+0.5, is one interface. After the horizon the vapor band and the crystal
+are both high RMS, so the same call reports that the field is no longer
+a single front. The measured response is the reservoir checkpoint
+(`xpos`, `idx`, `first`) together with the threshold column, compared
+with the same preset at `V_grid = 0` and at `G_grid = V_grid = 0`.
+Restart from that checkpoint reproduces the field and the reservoir
+state. The evidence is the host `AluminumSession`, the same constructor
+`aluminumNew` uses. `aluminum_etd_cuda` and `aluminum_etd_hip` read this
+JSON through the device session when those builds are on. A CPU-only
+build does not run them, and this preset's test does not claim a device
+result.
 
 ## Provenance and reduced units
 
