@@ -26,6 +26,9 @@ namespace pfc::fft {
  * pass which keeps four complex x-frequency lanes in AVX2 registers
  * until the pair of stages is complete. The last unmatched radix-2
  * level is retained when the axis log2 length is odd.
+ * An optional radix-4 out-of-place leaf fuses the input permutation
+ * with the initial two butterfly levels. Plan-owned SoA scratch is
+ * reused and swapped, without per-transform allocation.
  * On AVX2/FMA processors, four independent x-lines use an AoSoA
  * temporary layout and four SIMD lanes per butterfly. Scalar and
  * short-x fallback paths retain row-major packing.

@@ -53,12 +53,13 @@ TEST_CASE("NativePow2FFT returns the independent real 3D Fourier spectrum",
           "[native_pow2]") {
   // Covers singleton axes and x-fastest half-complex layout.
   // clang-format off
-  const std::array<std::array<int, 3>, 18> cases{{
+  const std::array<std::array<int, 3>, 22> cases{{
       {1, 1, 1}, {1, 8, 8}, {2, 1, 1}, {2, 8, 4},
       {4, 4, 1}, {4, 1, 4}, {4, 2, 4}, {4, 8, 2},
       {8, 1, 1}, {8, 2, 2}, {8, 4, 2}, {8, 8, 4},
       {16, 8, 4}, {32, 1, 1}, {32, 4, 2},
       {4, 16, 4}, {8, 4, 16}, {4, 4, 16},
+      {4, 32, 2}, {4, 2, 32}, {8, 16, 4}, {16, 4, 8},
   }};
   // clang-format on
   for (const auto &dims : cases) {
@@ -118,11 +119,12 @@ TEST_CASE("NativePow2FFT validates its deliberately restricted domain",
 TEST_CASE("NativePow2FFT matches LocalFFT and HeFFTe-compatible layout",
           "[native_pow2]") {
   // clang-format off
-  const std::array<std::array<int, 3>, 14> cases{{
+  const std::array<std::array<int, 3>, 16> cases{{
       {1, 8, 16}, {2, 16, 8}, {8, 8, 8}, {32, 8, 4},
       {64, 4, 1}, {64, 1, 4}, {64, 16, 8}, {128, 16, 16},
       {128, 32, 4}, {16, 16, 16}, {32, 32, 32},
       {64, 32, 16}, {64, 16, 32}, {128, 32, 16},
+      {4, 32, 8}, {8, 32, 4},
   }};
   // clang-format on
   for (const auto &dims : cases) {
