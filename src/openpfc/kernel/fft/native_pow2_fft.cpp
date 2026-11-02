@@ -206,7 +206,6 @@ void butterfly4_scalar(double *real, double *imag, std::size_t a, std::size_t b,
                        std::size_t c, std::size_t d, std::size_t lanes,
                        double w2r, double w2i, double w4r, double w4i,
                        bool inverse) noexcept {
-// clang-format on
   for (std::size_t lane = 0; lane < lanes; ++lane) {
     const double ar = real[a + lane], ai = imag[a + lane];
     const double br = real[b + lane], bi = imag[b + lane];
@@ -240,6 +239,7 @@ void butterfly4_scalar(double *real, double *imag, std::size_t a, std::size_t b,
     imag[d + lane] = qi - twist_i;
   }
 }
+// clang-format on
 
 #if OPENPFC_NATIVE_POW2_AVX2
 // clang-format off
