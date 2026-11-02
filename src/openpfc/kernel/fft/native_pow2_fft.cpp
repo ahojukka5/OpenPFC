@@ -201,10 +201,12 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 // inputs. Fusing them keeps all intermediate sums in registers and
 // removes the extra full-array read/write pass. This is a local
 // butterfly primitive, not an opaque transform facade.
+// clang-format off
 void butterfly4_scalar(double *real, double *imag, std::size_t a, std::size_t b,
                        std::size_t c, std::size_t d, std::size_t lanes,
                        double w2r, double w2i, double w4r, double w4i,
                        bool inverse) noexcept {
+// clang-format on
   for (std::size_t lane = 0; lane < lanes; ++lane) {
     const double ar = real[a + lane], ai = imag[a + lane];
     const double br = real[b + lane], bi = imag[b + lane];
@@ -334,6 +336,7 @@ void transform_axis(std::vector<double> &re, std::vector<double> &im,
             const double w2i = inverse ? -axis.wi[k * step2] : axis.wi[k * step2];
             const double w4r = axis.wr[k * step4];
             const double w4i = inverse ? -axis.wi[k * step4] : axis.wi[k * step4];
+            // clang-format off
 #if OPENPFC_NATIVE_POW2_AVX2
             if (avx2 && stride >= 4)
               butterfly4_avx2(re.data(), im.data(), a, b, c, d, stride,
@@ -342,6 +345,7 @@ void transform_axis(std::vector<double> &re, std::vector<double> &im,
 #endif
               butterfly4_scalar(re.data(), im.data(), a, b, c, d, stride,
                                 w2r, w2i, w4r, w4i, inverse);
+            // clang-format on
           }
         }
         radix *= 4;
