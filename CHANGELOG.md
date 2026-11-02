@@ -7,6 +7,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Hagen–Poiseuille flow on the filled cylinder is a steady balance in
+  the incompressible-flow application. The axial velocity is a radial
+  series on that domain. The Laplacian, gradient, and flow rate use the
+  cylinder operators, and the no-slip value is the series at `r = R`.
+  A degree-0 series misses the balance. Degrees 1–3 recover the
+  parabola, the flow rate, and the wall shear. Admitted angular and
+  axial modes stay at coefficient zero. This is not a Cartesian mask
+  and not a turbulent pipe (#235).
 - `aluminum_directional.json` is a periodic FCC seed ahead of a moving
   vapor/melt reservoir, with imposed `G_grid = 2` and `V_grid = 0.1`.
   Temperature is that prescribed profile, clamped to `[T_min, T_max]`,
