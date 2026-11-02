@@ -7,6 +7,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `apps/burgers` advances one periodic Burgers problem,
+  `u_t + (u^2/2)_x = ν u_xx` with `u(x,0)=sin(x)`, by SSP-RK3.
+  The baselines are a 2/3-dealiased Fourier product through
+  `ComplexLineFFT`, the conservative FD2 flux from `fd::evaluate<2>`,
+  and a first-order Rusanov finite-volume update. An aliased product
+  and the advective form `-u D_h u` are named diagnostics. The
+  advective form keeps the same discrete mass, because the order-2
+  central stencil is skew, and still separates pointwise from the
+  flux form. Tests compare the characteristic solution, a Cole–Hopf
+  reference and the entropy shock (#369).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
