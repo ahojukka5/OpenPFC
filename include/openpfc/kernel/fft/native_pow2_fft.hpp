@@ -22,6 +22,9 @@ namespace pfc::fft {
  * then only the nx/2+1 nonredundant x-frequencies are transformed along
  * y and z. The inverse reverses those y/z stages and unpacks the
  * Hermitian x-spectrum before an unnormalised nx/2 inverse FFT.
+ * On AVX2/FMA processors, four independent x-lines use an AoSoA
+ * temporary layout and four SIMD lanes per butterfly. Scalar and
+ * short-x fallback paths retain row-major packing.
  *
  * This implementation is intentionally not a general FFT library: for
  * non-power-of-two grids, distributed decompositions, and GPU execution,

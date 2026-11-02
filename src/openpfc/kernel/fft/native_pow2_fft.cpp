@@ -144,6 +144,60 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 [[nodiscard]] bool cpu_has_avx2_fma() noexcept { return false; }
 #endif
 
+
+#if OPENPFC_NATIVE_POW2_AVX2
+// Four independent x-line transforms per 256-bit vector. The packed
+// even/odd samples use [group][frequency][four_rows] SoA order, so every
+// AVX2 load/store is contiguous. This method changes *layout* only for
+// the plan-owned temporary arrays; caller-visible output is unchanged.
+//
+// clang-format off
+[[gnu::target("avx2,fma")]] void transform_x_batch4(
+    std::vector<double> &re, std::vector<double> &im,
+    const Axis &axis, std::size_t groups, bool inverse) {
+  const std::size_t n = axis.length;
+  for (std::size_t group = 0; group < groups; ++group) {
+    const std::size_t base = group * n * 4;
+    for (const auto &[i, j] : axis.bit_swaps) {
+      const auto a = base + i * 4;
+      const auto b = base + j * 4;
+      const __m256d ar = _mm256_loadu_pd(re.data() + a);
+      const __m256d ai = _mm256_loadu_pd(im.data() + a);
+      const __m256d br = _mm256_loadu_pd(re.data() + b);
+      const __m256d bi = _mm256_loadu_pd(im.data() + b);
+      _mm256_storeu_pd(re.data() + a, br);
+      _mm256_storeu_pd(im.data() + a, bi);
+      _mm256_storeu_pd(re.data() + b, ar);
+      _mm256_storeu_pd(im.data() + b, ai);
+    }
+    for (std::size_t width = 2; width <= n; width *= 2) {
+      const std::size_t half = width / 2;
+      const std::size_t step = n / width;
+      for (std::size_t start = 0; start < n; start += width) {
+        for (std::size_t k = 0; k < half; ++k) {
+          const auto a = base + (start + k) * 4;
+          const auto b = a + half * 4;
+          const double sign = inverse ? -1.0 : 1.0;
+          const __m256d wr = _mm256_set1_pd(axis.wr[k * step]);
+          const __m256d wi = _mm256_set1_pd(sign * axis.wi[k * step]);
+          const __m256d ur = _mm256_loadu_pd(re.data() + a);
+          const __m256d ui = _mm256_loadu_pd(im.data() + a);
+          const __m256d vr = _mm256_loadu_pd(re.data() + b);
+          const __m256d vi = _mm256_loadu_pd(im.data() + b);
+          const __m256d tr = _mm256_fmsub_pd(vr, wr, _mm256_mul_pd(vi, wi));
+          const __m256d ti = _mm256_fmadd_pd(vr, wi, _mm256_mul_pd(vi, wr));
+          _mm256_storeu_pd(re.data() + a, _mm256_add_pd(ur, tr));
+          _mm256_storeu_pd(im.data() + a, _mm256_add_pd(ui, ti));
+          _mm256_storeu_pd(re.data() + b, _mm256_sub_pd(ur, tr));
+          _mm256_storeu_pd(im.data() + b, _mm256_sub_pd(ui, ti));
+        }
+      }
+    }
+  }
+}
+// clang-format on
+#endif
+
 void transform_axis(std::vector<double> &re, std::vector<double> &im,
                     const Axis &axis, bool inverse, bool avx2) {
   const std::size_t n = axis.length, stride = axis.stride;
@@ -184,6 +238,7 @@ struct NativePow2FFT::Impl {
   const std::array<int, 3> n;
   const std::size_t nr, nc, nx, nxh, packed_x, rows;
   const bool avx2;
+  const bool batch_x4;
   // Re/imaginary arrays are indexed as [z][y][kx], kx=0..nx/2.
   // Packed arrays store two real x samples per complex number.
   std::vector<double> re, im, packed_re, packed_im, x_wr, x_wi;
@@ -198,7 +253,13 @@ struct NativePow2FFT::Impl {
            static_cast<std::size_t>(n[1]) * static_cast<std::size_t>(n[2])),
         nx(static_cast<std::size_t>(n[0])), nxh(nx / 2 + 1),
         packed_x(nx == 1 ? 0 : nx / 2), rows(nr / nx),
-        avx2(cpu_has_avx2_fma()), re(nc), im(nc),
+        avx2(cpu_has_avx2_fma()),
+#if defined(OPENPFC_NATIVE_POW2_DISABLE_X_BATCH)
+        batch_x4(false),
+#else
+        batch_x4(avx2 && packed_x >= 2 && rows >= 4),
+#endif
+        re(nc), im(nc),
         packed_re(rows * packed_x), packed_im(rows * packed_x),
         x_wr(packed_x + (nx == 1 ? 0 : 1)),
         x_wi(packed_x + (nx == 1 ? 0 : 1)),
@@ -215,6 +276,26 @@ struct NativePow2FFT::Impl {
   }
   // clang-format on
 
+  // Row-major when scalar; AoSoA [group][x_frequency][lane] for
+  // four simultaneously transformed rows on AVX2. The number of
+  // x-lines (ny*nz) is a power of two, so the four-lane case has
+  // no partial group or masked SIMD operation.
+  [[nodiscard]] std::size_t packed_base(std::size_t row) const noexcept {
+    if (batch_x4)
+      return (row / 4) * packed_x * 4 + (row % 4);
+    return row * packed_x;
+  }
+
+  void transform_packed_x(bool inverse) {
+#if OPENPFC_NATIVE_POW2_AVX2
+    if (batch_x4) {
+      transform_x_batch4(packed_re, packed_im, axes[0], rows / 4, inverse);
+      return;
+    }
+#endif
+    transform_axis(packed_re, packed_im, axes[0], inverse, false);
+  }
+
   // Pack even/odd real samples into one half-length complex transform.
   // No full Nx-complex spectrum is ever allocated or transformed.
   void real_x_forward(const RealVector &input) {
@@ -227,23 +308,25 @@ struct NativePow2FFT::Impl {
     }
     for (std::size_t row = 0; row < rows; ++row) {
       const auto real_base = row * nx;
-      const auto complex_base = row * packed_x;
+      const auto complex_base = packed_base(row);
+      const auto stride = batch_x4 ? 4U : 1U;
       for (std::size_t j = 0; j < packed_x; ++j) {
-        packed_re[complex_base + j] = input[real_base + 2 * j];
-        packed_im[complex_base + j] = input[real_base + 2 * j + 1];
+        packed_re[complex_base + j * stride] = input[real_base + 2 * j];
+        packed_im[complex_base + j * stride] = input[real_base + 2 * j + 1];
       }
     }
-    transform_axis(packed_re, packed_im, axes[0], false, false);
+    transform_packed_x(false);
     for (std::size_t row = 0; row < rows; ++row) {
-      const auto packed_base = row * packed_x;
+      const auto base = packed_base(row);
+      const auto stride = batch_x4 ? 4U : 1U;
       const auto spectral_base = row * nxh;
       for (std::size_t k = 0; k <= packed_x; ++k) {
         const std::size_t left = k == packed_x ? 0 : k;
         const std::size_t right = k == 0 ? 0 : packed_x - k;
-        const double ar = packed_re[packed_base + left];
-        const double ai = packed_im[packed_base + left];
-        const double br = packed_re[packed_base + right];
-        const double bi = -packed_im[packed_base + right];
+        const double ar = packed_re[base + left * stride];
+        const double ai = packed_im[base + left * stride];
+        const double br = packed_re[base + right * stride];
+        const double bi = -packed_im[base + right * stride];
         const double dr = ar - br, di = ai - bi;
         const double tr = x_wr[k] * dr - x_wi[k] * di;
         const double ti = x_wi[k] * dr + x_wr[k] * di;
@@ -263,7 +346,8 @@ struct NativePow2FFT::Impl {
       return;
     }
     for (std::size_t row = 0; row < rows; ++row) {
-      const auto packed_base = row * packed_x;
+      const auto base = packed_base(row);
+      const auto stride = batch_x4 ? 4U : 1U;
       const auto spectral_base = row * nxh;
       for (std::size_t k = 0; k < packed_x; ++k) {
         const std::size_t partner = packed_x - k;
@@ -277,23 +361,26 @@ struct NativePow2FFT::Impl {
         // half-size inverse FFT's unnormalised convention.
         const double tr = x_wr[k] * dr + x_wi[k] * di;
         const double ti = -x_wi[k] * dr + x_wr[k] * di;
-        packed_re[packed_base + k] = ar + br - ti;
-        packed_im[packed_base + k] = ai + bi + tr;
+        packed_re[base + k * stride] = ar + br - ti;
+        packed_im[base + k * stride] = ai + bi + tr;
       }
     }
-    transform_axis(packed_re, packed_im, axes[0], true, false);
+    transform_packed_x(true);
     for (std::size_t row = 0; row < rows; ++row) {
       const auto real_base = row * nx;
-      const auto packed_base = row * packed_x;
+      const auto base = packed_base(row);
+      const auto stride = batch_x4 ? 4U : 1U;
       for (std::size_t j = 0; j < packed_x; ++j) {
-        output[real_base + 2 * j] = packed_re[packed_base + j] * scale;
-        output[real_base + 2 * j + 1] = packed_im[packed_base + j] * scale;
+        output[real_base + 2 * j] = packed_re[base + j * stride] * scale;
+        output[real_base + 2 * j + 1] =
+            packed_im[base + j * stride] * scale;
       }
     }
   }
 
-  // Cross-axis SIMD handles only Nx/2+1 complex frequencies. The x
-  // packing/undoing above is scalar until the next codelet experiment.
+  // Cross-axis SIMD still handles only Nx/2+1 complex frequencies.
+  // The x-axis uses four adjacent independent real rows per AVX2 group,
+  // with an unmodified scalar fallback for short lines and older CPUs.
   void forward_yz() {
     transform_axis(re, im, axes[1], false, avx2);
     transform_axis(re, im, axes[2], false, avx2);

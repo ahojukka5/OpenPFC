@@ -14,6 +14,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   x-axis real samples into an nx/2 complex transform and carries only
   nx/2+1 nonredundant frequencies through the y/z stages. SoA
   butterflies use guarded AVX2/FMA on x86 CPUs, scalar otherwise.
+  X-axis FFTs additionally batch four independent packed rows into
+  contiguous AoSoA SIMD lanes when AVX2/FMA is available; no SIMD
+  features are required on other CPUs.
   Programmatic `SpectralCPUStack` clients can select
   `fft::Implementation::NativePow2`; unsupported sizes or multi-rank
   use fail explicitly, retaining HeFFTe as the separate existing option.
