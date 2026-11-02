@@ -7,6 +7,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `PeriodicClusterMap` is a static circle map
+  `x = ξ + (a L / 2π) sin(2π ξ / L)` with `|a| < 1`. Derivatives are
+  Fourier multipliers on the uniform `ξ` line through `ComplexLineFFT`.
+  The identity amplitude recovers the uniform derivative. Packing nodes
+  at the peak lowers the unresolved second-derivative error of
+  `exp(12 cos(2π x))` and raises it once the uniform grid has resolved
+  the bump. The next uniform count already beats the coarse packed grid,
+  so this gate does not change `Domain` or HeFFTe (#210).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
