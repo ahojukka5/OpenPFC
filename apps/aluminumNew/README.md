@@ -131,6 +131,24 @@ freezing the domain at one end. **Both shipped presets are isothermal
 (`G_grid = V_grid = 0`), so the clamp is a no-op on them and no pinned
 checksum moved.**
 
+## Provenance and reduced units
+
+`coefficient_provenance()` in
+[`include/aluminum/coefficient_provenance.hpp`](include/aluminum/coefficient_provenance.hpp)
+classifies every shipped model coefficient, the derived coefficients
+`AluminumParams::recompute_derived` produces, and the densities the initial
+and boundary conditions actually write. Representative numbers are uncited:
+this repository does not name a paper, a fit, or a measurement for them.
+`reduced_unit_convention()` is the reduced-unit convention. Length,
+temperature, time, and amplitude have no SI conversion here. The
+classification is not a material validation.
+
+`x_initial` is a case station. A seeded preset sets it to that seed's `X0`.
+`fcc_seed_nucleus.json` still lists `n0`, `n_sol`, `n_vap`, `alpha_farTol`,
+`alpha_highOrd`, `shift_u`, and `shift_s` under `model.params`. The schema
+does not read those keys. The C++ defaults are the same table, not a second
+set of coefficients.
+
 ## Build
 
 Built with the main OpenPFC tree when `OpenPFC_BUILD_APPS=ON` (default):

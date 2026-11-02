@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Aluminum coefficients are classified by `coefficient_provenance()`.
+  Representative free-energy numbers are uncited. Derived coefficients
+  come from `AluminumParams::recompute_derived`. Length, temperature,
+  time, and amplitude stay in reduced units. This repository does not
+  convert them to SI, and the table is not a material validation (#249).
 - Crystal-front and grain-orientation observables report a planar RMS
   front, its sub-cell crossing, and the time-series velocity
   `(x(t1) - x(t0)) / (t1 - t0)`. A real density wave is reduced by the
