@@ -21,9 +21,6 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   traffic while preserving the existing x-axis half-spectrum layout.
   The standalone FFTW A/B experiment retains an explicit no-fusion
   compilation control, so performance regressions remain visible.
-  An optional out-of-place radix-4 y/z leaf combines the bit-reversal
-  gather with the first two FFT levels; its scratch is plan-owned and
-  a source-matched no-leaf A/B control is retained.
   Programmatic `SpectralCPUStack` clients can select
   `fft::Implementation::NativePow2`; unsupported sizes or multi-rank
   use fail explicitly, retaining HeFFTe as the separate existing option.

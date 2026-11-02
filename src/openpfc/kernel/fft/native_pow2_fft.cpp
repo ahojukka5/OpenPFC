@@ -66,7 +66,6 @@ struct Axis {
   std::size_t stride;
   std::vector<std::pair<std::size_t, std::size_t>> bit_swaps;
   std::vector<double> wr, wi;
-  std::vector<std::size_t> radix4_bases;
 
   Axis(int n, std::size_t step)
       : length(static_cast<std::size_t>(n)), stride(step), wr(length / 2),
@@ -86,27 +85,11 @@ struct Axis {
       wr[k] = std::cos(angle);
       wi[k] = std::sin(angle);
     }
-    // Each contiguous four-output leaf gathers from a bit-reversed
-    // input offset. Compute those offsets only during plan creation.
-    if (length >= 4) {
-      const std::size_t leaves = length / 4;
-      const std::size_t bits = width - 2;
-      radix4_bases.resize(leaves);
-      for (std::size_t i = 0; i < leaves; ++i) {
-        std::size_t value = i, reversed = 0;
-        for (std::size_t bit = 0; bit < bits; ++bit) {
-          reversed = (reversed << 1) | (value & 1);
-          value >>= 1;
-        }
-        radix4_bases[i] = reversed;
-      }
-    }
   }
 
   [[nodiscard]] std::size_t allocated_bytes() const noexcept {
     return bit_swaps.capacity() * sizeof(bit_swaps.front()) +
-           (wr.capacity() + wi.capacity()) * sizeof(double) +
-           radix4_bases.capacity() * sizeof(std::size_t);
+           (wr.capacity() + wi.capacity()) * sizeof(double);
   }
 };
 
@@ -322,155 +305,23 @@ constexpr bool kFuseYZ = false;
 constexpr bool kFuseYZ = true;
 #endif
 
-#if defined(OPENPFC_NATIVE_POW2_DISABLE_YZ_LEAF)
-constexpr bool kLeafYZ = false;
-#else
-constexpr bool kLeafYZ = true;
-#endif
-
-// Direct out-of-place DIT radix-4 leaf, including the otherwise separate
-// input bit reversal. Each leaf first gathers the globally bit-reversed
-// four positions from the source. Four outputs are written in natural order
-// to an independent plan-owned scratch array. No unread input is overwritten.
-using LeafIndices = std::array<std::size_t, 4>;
-
-void leaf4_scalar(const double *src_re, const double *src_im, double *dst_re,
-                  double *dst_im, const LeafIndices &src, const LeafIndices &dst,
-                  std::size_t lanes, bool inverse) noexcept {
-  for (std::size_t lane = 0; lane < lanes; ++lane) {
-    const double x0r = src_re[src[0] + lane], x0i = src_im[src[0] + lane];
-    const double x1r = src_re[src[1] + lane], x1i = src_im[src[1] + lane];
-    const double x2r = src_re[src[2] + lane], x2i = src_im[src[2] + lane];
-    const double x3r = src_re[src[3] + lane], x3i = src_im[src[3] + lane];
-    const double ar = x0r + x1r, ai = x0i + x1i;
-    const double br = x0r - x1r, bi = x0i - x1i;
-    const double cr = x2r + x3r, ci = x2i + x3i;
-    const double dr = x2r - x3r, di = x2i - x3i;
-    // W4^1 = inverse ? +i : -i.
-    const double tr = inverse ? -di : di;
-    const double ti = inverse ? dr : -dr;
-    dst_re[dst[0] + lane] = ar + cr;
-    dst_im[dst[0] + lane] = ai + ci;
-    dst_re[dst[1] + lane] = br + tr;
-    dst_im[dst[1] + lane] = bi + ti;
-    dst_re[dst[2] + lane] = ar - cr;
-    dst_im[dst[2] + lane] = ai - ci;
-    dst_re[dst[3] + lane] = br - tr;
-    dst_im[dst[3] + lane] = bi - ti;
-  }
-}
-
-#if OPENPFC_NATIVE_POW2_AVX2
-// clang-format off
-[[gnu::target("avx2,fma")]] void leaf4_avx2(
-    const double *src_re, const double *src_im,
-    double *dst_re, double *dst_im,
-    const LeafIndices &src, const LeafIndices &dst,
-    std::size_t lanes, bool inverse) noexcept {
-  std::size_t lane = 0;
-  for (; lane + 4 <= lanes; lane += 4) {
-    const __m256d x0r = _mm256_loadu_pd(src_re + src[0] + lane);
-    const __m256d x0i = _mm256_loadu_pd(src_im + src[0] + lane);
-    const __m256d x1r = _mm256_loadu_pd(src_re + src[1] + lane);
-    const __m256d x1i = _mm256_loadu_pd(src_im + src[1] + lane);
-    const __m256d x2r = _mm256_loadu_pd(src_re + src[2] + lane);
-    const __m256d x2i = _mm256_loadu_pd(src_im + src[2] + lane);
-    const __m256d x3r = _mm256_loadu_pd(src_re + src[3] + lane);
-    const __m256d x3i = _mm256_loadu_pd(src_im + src[3] + lane);
-    const __m256d ar = _mm256_add_pd(x0r, x1r);
-    const __m256d ai = _mm256_add_pd(x0i, x1i);
-    const __m256d br = _mm256_sub_pd(x0r, x1r);
-    const __m256d bi = _mm256_sub_pd(x0i, x1i);
-    const __m256d cr = _mm256_add_pd(x2r, x3r);
-    const __m256d ci = _mm256_add_pd(x2i, x3i);
-    const __m256d dr = _mm256_sub_pd(x2r, x3r);
-    const __m256d di = _mm256_sub_pd(x2i, x3i);
-    const __m256d neg = _mm256_set1_pd(-0.0);
-    const __m256d tr = inverse ? _mm256_xor_pd(di, neg) : di;
-    const __m256d ti = inverse ? dr : _mm256_xor_pd(dr, neg);
-    _mm256_storeu_pd(dst_re + dst[0] + lane, _mm256_add_pd(ar, cr));
-    _mm256_storeu_pd(dst_im + dst[0] + lane, _mm256_add_pd(ai, ci));
-    _mm256_storeu_pd(dst_re + dst[1] + lane, _mm256_add_pd(br, tr));
-    _mm256_storeu_pd(dst_im + dst[1] + lane, _mm256_add_pd(bi, ti));
-    _mm256_storeu_pd(dst_re + dst[2] + lane, _mm256_sub_pd(ar, cr));
-    _mm256_storeu_pd(dst_im + dst[2] + lane, _mm256_sub_pd(ai, ci));
-    _mm256_storeu_pd(dst_re + dst[3] + lane, _mm256_sub_pd(br, tr));
-    _mm256_storeu_pd(dst_im + dst[3] + lane, _mm256_sub_pd(bi, ti));
-  }
-  if (lane < lanes) {
-    LeafIndices s = src, d = dst;
-    for (std::size_t k = 0; k < 4; ++k) {
-      s[k] += lane;
-      d[k] += lane;
-    }
-    leaf4_scalar(src_re, src_im, dst_re, dst_im, s, d,
-                 lanes - lane, inverse);
-  }
-}
-// clang-format on
-#endif
-
-// Each leaf visits one contiguous four-output group. Its four input
-// gathers use reverse_bits(leaf) plus the fixed digit order [0,2,1,3]
-// scaled by the number of leaves. Two later radix-2 levels are thus
-// already complete before the upper transform stages are entered.
-// clang-format off
-void gather_radix4_leaves(const std::vector<double> &re,
-                          const std::vector<double> &im,
-                          std::vector<double> &dst_re,
-                          std::vector<double> &dst_im,
-                          const Axis &axis, bool inverse, bool avx2) {
-// clang-format on
-  const std::size_t n = axis.length;
-  const std::size_t stride = axis.stride;
-  const std::size_t step = n / 4;
-  for (std::size_t outer = 0; outer < re.size(); outer += n * stride) {
-    for (std::size_t leaf = 0; leaf < step; ++leaf) {
-      const std::size_t base = axis.radix4_bases[leaf];
-      LeafIndices src{};
-      src[0] = outer + base * stride;
-      src[1] = outer + (base + 2 * step) * stride;
-      src[2] = outer + (base + step) * stride;
-      src[3] = outer + (base + 3 * step) * stride;
-      LeafIndices dst{};
-      dst[0] = outer + (4 * leaf) * stride;
-      dst[1] = outer + (4 * leaf + 1) * stride;
-      dst[2] = outer + (4 * leaf + 2) * stride;
-      dst[3] = outer + (4 * leaf + 3) * stride;
-      // clang-format off
-#if OPENPFC_NATIVE_POW2_AVX2
-      if (avx2 && stride >= 4)
-        leaf4_avx2(re.data(), im.data(), dst_re.data(), dst_im.data(), src,
-                   dst, stride, inverse);
-      else
-#endif
-        leaf4_scalar(re.data(), im.data(), dst_re.data(), dst_im.data(), src,
-                     dst, stride, inverse);
-      // clang-format on
-    }
-  }
-}
-
 void transform_axis(std::vector<double> &re, std::vector<double> &im,
-                    const Axis &axis, bool inverse, bool avx2, bool fuse4,
-                    bool already_permuted = false, std::size_t completed_radix = 1) {
+                    const Axis &axis, bool inverse, bool avx2, bool fuse4) {
   const std::size_t n = axis.length, stride = axis.stride;
   if (n == 1) return;
   const std::size_t group = n * stride;
   for (std::size_t outer = 0; outer < re.size(); outer += group) {
-    if (!already_permuted) {
-      for (const auto &[i, j] : axis.bit_swaps) {
-        const std::size_t a = outer + i * stride;
-        const std::size_t b = outer + j * stride;
-        for (std::size_t lane = 0; lane < stride; ++lane) {
-          std::swap(re[a + lane], re[b + lane]);
-          std::swap(im[a + lane], im[b + lane]);
-        }
+    for (const auto &[i, j] : axis.bit_swaps) {
+      const std::size_t a = outer + i * stride;
+      const std::size_t b = outer + j * stride;
+      for (std::size_t lane = 0; lane < stride; ++lane) {
+        std::swap(re[a + lane], re[b + lane]);
+        std::swap(im[a + lane], im[b + lane]);
       }
     }
     // Fuse adjacent radix-2 levels in y/z. The original loop below
     // also handles any final unmatched radix-2 level.
-    std::size_t radix = completed_radix;
+    std::size_t radix = 1;
     if (fuse4 && n >= 4) {
       while (radix <= n / 4) {
         const std::size_t step2 = n / (2 * radix);
@@ -529,8 +380,7 @@ struct NativePow2FFT::Impl {
   const bool batch_x4;
   // Re/imaginary arrays are indexed as [z][y][kx], kx=0..nx/2.
   // Packed arrays store two real x samples per complex number.
-  std::vector<double> re, im, yz_scratch_re, yz_scratch_im;
-  std::vector<double> packed_re, packed_im, x_wr, x_wi;
+  std::vector<double> re, im, packed_re, packed_im, x_wr, x_wi;
   std::array<Axis, 3> axes;
   double time = 0.0;
 
@@ -548,7 +398,7 @@ struct NativePow2FFT::Impl {
 #else
         batch_x4(avx2 && packed_x >= 2 && rows >= 4),
 #endif
-        re(nc), im(nc), yz_scratch_re(nc), yz_scratch_im(nc),
+        re(nc), im(nc),
         packed_re(rows * packed_x), packed_im(rows * packed_x),
         x_wr(packed_x + (nx == 1 ? 0 : 1)),
         x_wi(packed_x + (nx == 1 ? 0 : 1)),
@@ -666,38 +516,20 @@ struct NativePow2FFT::Impl {
     }
   }
 
-  // The first y/z 4-point codelet integrates the global bit permutation
-  // into the gather. Its separate output lands in an already allocated
-  // scratch vector; swapping vector handles avoids another copy.
-  void transform_yz(const Axis &axis, bool inverse) {
-    if (kLeafYZ && axis.length >= 4) {
-      // clang-format off
-      gather_radix4_leaves(re, im, yz_scratch_re, yz_scratch_im,
-                           axis, inverse, avx2);
-      // clang-format on
-      re.swap(yz_scratch_re);
-      im.swap(yz_scratch_im);
-      transform_axis(re, im, axis, inverse, avx2, kFuseYZ, true, 4);
-    } else {
-      transform_axis(re, im, axis, inverse, avx2, kFuseYZ);
-    }
-  }
-
   // Cross-axis SIMD still handles only Nx/2+1 complex frequencies.
   // The x-axis uses four adjacent independent real rows per AVX2 group,
   // with an unmodified scalar fallback for short lines and older CPUs.
   void forward_yz() {
-    transform_yz(axes[1], false);
-    transform_yz(axes[2], false);
+    transform_axis(re, im, axes[1], false, avx2, kFuseYZ);
+    transform_axis(re, im, axes[2], false, avx2, kFuseYZ);
   }
   void backward_zy() {
-    transform_yz(axes[2], true);
-    transform_yz(axes[1], true);
+    transform_axis(re, im, axes[2], true, avx2, kFuseYZ);
+    transform_axis(re, im, axes[1], true, avx2, kFuseYZ);
   }
 
   [[nodiscard]] std::size_t allocated_bytes() const noexcept {
     std::size_t capacity = re.capacity() + im.capacity();
-    capacity += yz_scratch_re.capacity() + yz_scratch_im.capacity();
     capacity += packed_re.capacity() + packed_im.capacity();
     capacity += x_wr.capacity() + x_wi.capacity();
     std::size_t bytes = capacity * sizeof(double);
