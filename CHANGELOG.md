@@ -7,6 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `create_cuda` round-trips one rank of a 12×10×8 field on every reduced
+  axis. The HeFFTe plan built by that factory meets the same absolute
+  bound, 2e-12. The provider is unchanged. HIP was not run (#762).
 - `build_grain_interface` stores one periodic grain-id field and a narrow
   band of face, triple, and higher junctions. Two nearest-seed maps, the
   27-image search and the min-image formula, share the lower-index tie.
