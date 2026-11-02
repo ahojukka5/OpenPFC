@@ -204,7 +204,6 @@ struct NativePow2FFT::Impl {
         x_wi(packed_x + (nx == 1 ? 0 : 1)),
         axes{Axis(nx == 1 ? 1 : n[0] / 2, 1), Axis(n[1], nxh),
              Axis(n[2], nxh * static_cast<std::size_t>(n[1]))} {
-  // clang-format on
     // Frequencies for reconstructing an Nx real transform from Nx/2
     // complex coefficients. These are constant over plan execution.
     for (std::size_t k = 0; k <= packed_x && nx > 1; ++k) {
@@ -214,6 +213,7 @@ struct NativePow2FFT::Impl {
       x_wi[k] = std::sin(angle);
     }
   }
+  // clang-format on
 
   // Pack even/odd real samples into one half-length complex transform.
   // No full Nx-complex spectrum is ever allocated or transformed.
