@@ -120,6 +120,8 @@ if(TUNGSTEN_ENABLE_TESTS)
     # Run all tungsten tests in a single invocation to avoid per-test MPI overhead
     add_test(NAME tungsten-all-tests COMMAND test_tungsten)
     add_test(NAME tungsten-shipped-inputs COMMAND test_tungsten "[inputs]")
+    add_test(NAME tungsten-resolved-bcc COMMAND test_tungsten "[preset]")
+    set_tests_properties(tungsten-resolved-bcc PROPERTIES TIMEOUT 120)
     add_test(NAME tungsten-cpu-golden COMMAND test_tungsten "[etd_cpu_golden]")
     add_test(NAME tungsten-etd-cpu-golden COMMAND test_tungsten "[etd_cpu_golden]")
     if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE)

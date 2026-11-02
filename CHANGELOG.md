@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `tungsten_resolved_bcc.json` is one periodic BCC cell, 16 points along
+  the lattice constant, with the 2/3 dealias mask on. The same model on
+  a 32³ grid in that box keeps the density RMS inside 1e-6 relative and
+  the density maximum inside 1e-4. The mask changes that maximum by less
+  than 1e-4. The historical spacing, 5.66 points per period, still moves
+  the maximum by about one percent, so it is not the selected preset.
+  This is a numerical resolution gate, not a material calibration (#246).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
