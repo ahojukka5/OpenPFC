@@ -6,17 +6,27 @@
  * @brief The grid criterion behind the dealias question, pinned.
  *
  * `tungsten_dealias_study` takes minutes and is not run by CI. The arithmetic
- * it is built on is instant, so that is checked here: where the harmonics of
- * the crystal fall relative to Nyquist and to the 2/3 cut, and on which side
- * of the threshold the shipped presets sit.
+ * it is built on is instant, so that is checked here, and so is the short
+ * gate that selected `tungsten_resolved_bcc.json`.
  */
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <complex>
+#include <filesystem>
 #include <numbers>
 
+#include <mpi.h>
+#include <nlohmann/json.hpp>
+
+#include <openpfc/frontend/ui/settings_loader.hpp>
+#include <openpfc/kernel/data/domain.hpp>
+#include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <tungsten/resolution.hpp>
+#include <tungsten/tungsten_session.hpp>
 
 using Catch::Matchers::WithinRel;
 namespace res = tungsten::resolution;
@@ -37,13 +47,12 @@ TEST_CASE("Tungsten resolution: the two conditions meet at pi/3",
   CHECK_FALSE(res::mask_spares_second_harmonic(safe * 1.001));
 }
 
-TEST_CASE("Tungsten resolution: the shipped presets sit on the wrong side",
+TEST_CASE("Tungsten resolution: the historical spacing sits on the wrong side",
           "[tungsten][resolution][unit]") {
-  // Every shipped input uses this spacing. It fails both conditions, which is
-  // why the mask cannot simply be switched on: with it off the third harmonic
-  // folds back, with it on the crystal's own second harmonic is deleted.
-  // Measured cost at this spacing is ~1.7% in spectral power; see the
-  // resolution section of the tungsten chapter.
+  // The solidification presets use this spacing. It fails both conditions,
+  // which is why the mask cannot simply be switched on there: with it off the
+  // third harmonic folds back, with it on the crystal's own second harmonic
+  // is deleted. The qualified preset is a different file.
   constexpr double shipped = 1.1107207345395915;
   CHECK_FALSE(res::third_harmonic_resolved(shipped));
   CHECK_FALSE(res::mask_spares_second_harmonic(shipped));
@@ -71,4 +80,180 @@ TEST_CASE("Tungsten resolution: the 1/2 rule needs eight points",
   CHECK(clean < res::dealias_safe_dx());
   CHECK(res::third_harmonic_resolved(clean));
   CHECK(res::mask_spares_second_harmonic(clean));
+}
+
+namespace {
+
+struct DensityMoments {
+  double mean{};
+  double rms{};
+  double lo{};
+  double hi{};
+};
+
+DensityMoments density_moments(tungsten::TungstenSession &session) {
+  double sum = 0.0;
+  double sumsq = 0.0;
+  double count = 0.0;
+  double lo = 1e300;
+  double hi = -1e300;
+  auto &psi = session.psi();
+  psi.for_each_owned([&](int i, int j, int k) {
+    const double value = psi(i, j, k);
+    sum += value;
+    sumsq += value * value;
+    count += 1.0;
+    lo = std::min(lo, value);
+    hi = std::max(hi, value);
+  });
+  double reduced[5]{};
+  double local[5] = {sum, sumsq, count, lo, hi};
+  MPI_Allreduce(local, reduced, 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(local + 3, reduced + 3, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(local + 4, reduced + 4, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  DensityMoments out;
+  out.mean = reduced[0] / reduced[2];
+  out.rms = std::sqrt(reduced[1] / reduced[2]);
+  out.lo = reduced[3];
+  out.hi = reduced[4];
+  return out;
+}
+
+/// Multiplicity-weighted power of modes with `|k| > 2`, the crystal's
+/// second harmonic and everything the cubic term can push above it.
+double high_mode_power(tungsten::TungstenSession &session) {
+  double local = 0.0;
+  auto &hat = session.system().psi_hat();
+  const auto outbox = session.fft().get_outbox_bounds();
+  const auto size = pfc::domain::get_size(session.domain());
+  hat.with_host_view([&](std::complex<double> *values, std::size_t) {
+    pfc::fft::kspace::for_each_kpoint(
+        outbox, session.domain(),
+        [&](std::size_t index, double kx, double ky, double kz, int ix, int, int) {
+          const double wavenumber = std::sqrt(kx * kx + ky * ky + kz * kz);
+          if (wavenumber > 2.0) {
+            local +=
+                pfc::fft::r2c_multiplicity(ix, size[0]) * std::norm(values[index]);
+          }
+        });
+  });
+  double global = 0.0;
+  MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  return global;
+}
+
+struct Evolved {
+  DensityMoments density;
+  double high{};
+  bool dealias{};
+  double dx{};
+};
+
+Evolved evolve(const nlohmann::json &settings) {
+  tungsten::TungstenSession session(settings, 0, 1, MPI_COMM_WORLD);
+  const bool dealias = session.system().options().dealias;
+  const auto &spacing = session.domain().spacing;
+  REQUIRE_THAT(spacing[1], WithinRel(spacing[0], 1e-15));
+  REQUIRE_THAT(spacing[2], WithinRel(spacing[0], 1e-15));
+  const double dx = spacing[0];
+  session.run();
+  return Evolved{density_moments(session), high_mode_power(session), dealias, dx};
+}
+
+double relative_change(double left, double right) {
+  return std::abs(right - left) / std::max(std::abs(left), 1e-30);
+}
+
+} // namespace
+
+TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
+          "[tungsten][resolution][preset]") {
+  int nproc = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+  if (nproc != 1) {
+    return;
+  }
+  tungsten::register_catalog();
+
+  const auto path =
+      std::filesystem::path(TUNGSTEN_INPUTS_JSON_DIR) / "tungsten_resolved_bcc.json";
+  const nlohmann::json preset = pfc::ui::load_settings_file(path);
+  REQUIRE(preset["model"]["dealias"].get<bool>());
+  REQUIRE(preset["domain"]["size"] == nlohmann::json::array({16, 16, 16}));
+  REQUIRE(preset["timestepping"]["t0"].get<double>() == 0.0);
+  REQUIRE(preset["timestepping"]["t1"].get<double>() == 20.0);
+  REQUIRE(preset["timestepping"]["dt"].get<double>() == 1.0);
+
+  // One BCC lattice constant. Sixteen points along that side is 11.31
+  // points per `|k| = 1` period, inside the cubic 1/2 rule.
+  const double bcc_side = 2.0 * std::numbers::pi * std::sqrt(2.0);
+  REQUIRE_THAT(preset["domain"]["upper"][0].get<double>(),
+               WithinRel(bcc_side, 1e-15));
+  REQUIRE_THAT(preset["domain"]["upper"][1].get<double>(),
+               WithinRel(bcc_side, 1e-15));
+  REQUIRE_THAT(preset["domain"]["upper"][2].get<double>(),
+               WithinRel(bcc_side, 1e-15));
+
+  // Declared gate, with margin over a measured 20-step host run.
+  constexpr double rms_tolerance = 1e-6;
+  constexpr double max_tolerance = 1e-4;
+  constexpr double high_tolerance = 1e-4;
+
+  const Evolved selected = evolve(preset);
+  REQUIRE(selected.dealias);
+  REQUIRE_THAT(selected.dx, WithinRel(bcc_side / 16.0, 1e-12));
+  REQUIRE(res::third_harmonic_resolved(selected.dx));
+  REQUIRE(res::mask_spares_second_harmonic(selected.dx));
+  REQUIRE(res::points_per_lattice(selected.dx) >= 8.0);
+  REQUIRE(selected.dx <= res::dealias_clean_dx());
+  REQUIRE(std::isfinite(selected.density.rms));
+  REQUIRE(std::isfinite(selected.density.hi));
+  REQUIRE(selected.density.hi > selected.density.lo);
+
+  nlohmann::json finer = preset;
+  finer["domain"]["size"] = nlohmann::json::array({32, 32, 32});
+  const Evolved control = evolve(finer);
+  REQUIRE(control.dealias);
+  REQUIRE_THAT(control.dx, WithinRel(bcc_side / 32.0, 1e-12));
+  REQUIRE(res::third_harmonic_resolved(control.dx));
+  REQUIRE(relative_change(selected.density.rms, control.density.rms) <
+          rms_tolerance);
+  REQUIRE(relative_change(selected.density.hi, control.density.hi) < max_tolerance);
+  REQUIRE(relative_change(selected.density.mean, control.density.mean) < 1e-8);
+
+  // Same preset, mask off. Retained high-mode contamination of the update.
+  nlohmann::json unmasked = preset;
+  unmasked["model"]["dealias"] = false;
+  const Evolved bare = evolve(unmasked);
+  REQUIRE_FALSE(bare.dealias);
+  REQUIRE(relative_change(selected.density.rms, bare.density.rms) < rms_tolerance);
+  REQUIRE(relative_change(selected.density.hi, bare.density.hi) < max_tolerance);
+  REQUIRE(relative_change(selected.high, bare.high) < high_tolerance);
+
+  // The historical spacing on this same box. The mask moves the field, and
+  // the density maximum leaves the band the finer grid just satisfied.
+  nlohmann::json coarse = preset;
+  coarse["domain"]["size"] = nlohmann::json::array({8, 8, 8});
+  coarse["model"]["dealias"] = false;
+  nlohmann::json coarse_masked = coarse;
+  coarse_masked["model"]["dealias"] = true;
+  const double coarse_dx = bcc_side / 8.0;
+  REQUIRE_THAT(coarse_dx, WithinRel(1.1107207345395915, 1e-12));
+  REQUIRE_FALSE(res::third_harmonic_resolved(coarse_dx));
+  REQUIRE_FALSE(res::mask_spares_second_harmonic(coarse_dx));
+  const Evolved coarse_off = evolve(coarse);
+  const Evolved coarse_on = evolve(coarse_masked);
+  REQUIRE_FALSE(coarse_off.dealias);
+  REQUIRE(coarse_on.dealias);
+  REQUIRE_THAT(coarse_off.dx, WithinRel(coarse_dx, 1e-12));
+  REQUIRE_THAT(coarse_on.dx, WithinRel(coarse_dx, 1e-12));
+  REQUIRE(relative_change(coarse_off.density.hi, coarse_on.density.hi) > 5e-3);
+  REQUIRE(relative_change(coarse_off.high, coarse_on.high) > 0.5);
+  REQUIRE(relative_change(coarse_off.density.hi, selected.density.hi) >
+          max_tolerance);
+
+  nlohmann::json invalid = preset;
+  invalid["model"]["dealias"] = "yes";
+  REQUIRE_THROWS_AS((tungsten::TungstenSession(invalid, 0, 1, MPI_COMM_WORLD)),
+                    std::invalid_argument);
 }
