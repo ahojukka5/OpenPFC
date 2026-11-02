@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `cahn_hilliard_elastic_hip` runs the equal-stiffness coherent
+  Cahn–Hilliard step on `DeviceEigenstrainMicroelasticity::solve_resident`.
+  Strain and the elastic chemical potential stay on the device between
+  steps. `advance_coherent_elastic_host` is the host reference for the
+  same ETD1 update. The periodic representative volume and the
+  equal-stiffness model are unchanged. CUDA is not wired on this path
+  (#252).
 - `SpectralETDSystem::step_n` records one GPU ETD1 step on an explicit
   stream and replays that record. The default remains the legacy stream.
   cuFFT and rocFFT plans are built before capture. Time-dependent
