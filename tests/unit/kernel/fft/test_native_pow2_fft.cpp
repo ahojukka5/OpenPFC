@@ -53,7 +53,8 @@ TEST_CASE("NativePow2FFT returns the independent real 3D Fourier spectrum",
           "[native_pow2]") {
   // Covers singleton axes and x-fastest half-complex layout.
   for (const std::array<int, 3> dims :
-       {std::array<int, 3>{1, 1, 1}, {8, 1, 1}, {4, 2, 4}, {8, 4, 2}}) {
+       {std::array<int, 3>{1, 1, 1}, {1, 8, 8}, {2, 1, 1}, {2, 8, 4},
+        {4, 2, 4}, {8, 1, 1}, {8, 4, 2}, {16, 8, 4}}) {
     INFO("dims=" << dims[0] << "x" << dims[1] << "x" << dims[2]);
     pfc::fft::NativePow2FFT fft(dims);
     auto input = make_signal(fft.size_inbox());
@@ -110,7 +111,8 @@ TEST_CASE("NativePow2FFT validates its deliberately restricted domain",
 TEST_CASE("NativePow2FFT matches LocalFFT and HeFFTe-compatible layout",
           "[native_pow2]") {
   for (const std::array<int, 3> dims :
-       {std::array<int, 3>{8, 8, 8}, {32, 8, 4}, {2, 16, 8}}) {
+       {std::array<int, 3>{1, 8, 16}, {2, 16, 8}, {8, 8, 8},
+        {32, 8, 4}, {64, 16, 8}}) {
     pfc::fft::NativePow2FFT native(dims);
     pfc::fft::LocalFFT local(dims);
     REQUIRE(native.get_inbox_bounds() == local.get_inbox_bounds());

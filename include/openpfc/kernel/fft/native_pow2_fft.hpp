@@ -18,6 +18,11 @@ namespace pfc::fft {
  * preserved, all transform scratch is owned and reused, and no FFTW/HeFFTe
  * planning or communication occurs.
  *
+ * A length-nx real x-line is packed into one nx/2 complex FFT (nx > 1),
+ * then only the nx/2+1 nonredundant x-frequencies are transformed along
+ * y and z. The inverse reverses those y/z stages and unpacks the
+ * Hermitian x-spectrum before an unnormalised nx/2 inverse FFT.
+ *
  * This implementation is intentionally not a general FFT library: for
  * non-power-of-two grids, distributed decompositions, and GPU execution,
  * select HeFFTe instead. The spectral stack enforces one MPI rank for

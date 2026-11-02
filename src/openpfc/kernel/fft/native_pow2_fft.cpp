@@ -38,7 +38,7 @@ namespace {
       throw std::invalid_argument(
           "NativePow2FFT: each grid dimension must be a power of two; "
           "choose HeFFTe for other grid sizes");
-    // Two full-volume double-precision SoA arrays are allocated.
+    // Two reduced half-spectrum and two packed-x SoA arrays are allocated.
     const auto max_count =
         std::numeric_limits<std::size_t>::max() / (2 * sizeof(double));
     if (count > max_count / static_cast<std::size_t>(v))
@@ -182,9 +182,11 @@ void transform_axis(std::vector<double> &re, std::vector<double> &im,
 
 struct NativePow2FFT::Impl {
   const std::array<int, 3> n;
-  const std::size_t nr, nc;
+  const std::size_t nr, nc, nx, nxh, packed_x, rows;
   const bool avx2;
-  std::vector<double> re, im;
+  // Re/imaginary arrays are indexed as [z][y][kx], kx=0..nx/2.
+  // Packed arrays store two real x samples per complex number.
+  std::vector<double> re, im, packed_re, packed_im, x_wr, x_wi;
   std::array<Axis, 3> axes;
   double time = 0.0;
 
@@ -192,36 +194,117 @@ struct NativePow2FFT::Impl {
       : n(size), nr(checked_count(size)),
         nc((static_cast<std::size_t>(n[0]) / 2 + 1) *
            static_cast<std::size_t>(n[1]) * static_cast<std::size_t>(n[2])),
-        avx2(cpu_has_avx2_fma()), re(nr), im(nr),
-        axes{Axis(n[0], 1), Axis(n[1], static_cast<std::size_t>(n[0])),
-             Axis(n[2], static_cast<std::size_t>(n[0]) * n[1])} {}
-
-  [[nodiscard]] std::size_t index(std::size_t x, std::size_t y,
-                                  std::size_t z) const noexcept {
-    return (z * static_cast<std::size_t>(n[1]) + y) * n[0] + x;
-  }
-
-  [[nodiscard]] std::size_t half_index(std::size_t x, std::size_t y,
-                                       std::size_t z) const noexcept {
-    return (z * static_cast<std::size_t>(n[1]) + y) *
-               (static_cast<std::size_t>(n[0]) / 2 + 1) +
-           x;
-  }
-
-  void fft(bool inverse) {
-    if (inverse) {
-      transform_axis(re, im, axes[2], true, avx2);
-      transform_axis(re, im, axes[1], true, avx2);
-      transform_axis(re, im, axes[0], true, avx2);
-    } else {
-      transform_axis(re, im, axes[0], false, avx2);
-      transform_axis(re, im, axes[1], false, avx2);
-      transform_axis(re, im, axes[2], false, avx2);
+        nx(static_cast<std::size_t>(n[0])), nxh(nx / 2 + 1),
+        packed_x(nx == 1 ? 0 : nx / 2), rows(nr / nx),
+        avx2(cpu_has_avx2_fma()), re(nc), im(nc),
+        packed_re(rows * packed_x), packed_im(rows * packed_x),
+        x_wr(packed_x + (nx == 1 ? 0 : 1)),
+        x_wi(packed_x + (nx == 1 ? 0 : 1)),
+        axes{Axis(nx == 1 ? 1 : n[0] / 2, 1), Axis(n[1], nxh),
+             Axis(n[2], nxh * static_cast<std::size_t>(n[1]))} {
+    // Frequencies for reconstructing an Nx real transform from Nx/2
+    // complex coefficients. These are constant over plan execution.
+    for (std::size_t k = 0; k <= packed_x && nx > 1; ++k) {
+      const double angle = -2.0 * std::numbers::pi *
+                           static_cast<double>(k) / static_cast<double>(nx);
+      x_wr[k] = std::cos(angle);
+      x_wi[k] = std::sin(angle);
     }
   }
 
+  // Pack even/odd real samples into one half-length complex transform.
+  // No full Nx-complex spectrum is ever allocated or transformed.
+  void real_x_forward(const RealVector &input) {
+    if (nx == 1) {
+      for (std::size_t i = 0; i < nr; ++i) {
+        re[i] = input[i];
+        im[i] = 0.0;
+      }
+      return;
+    }
+    for (std::size_t row = 0; row < rows; ++row) {
+      const auto real_base = row * nx;
+      const auto complex_base = row * packed_x;
+      for (std::size_t j = 0; j < packed_x; ++j) {
+        packed_re[complex_base + j] = input[real_base + 2 * j];
+        packed_im[complex_base + j] = input[real_base + 2 * j + 1];
+      }
+    }
+    transform_axis(packed_re, packed_im, axes[0], false, false);
+    for (std::size_t row = 0; row < rows; ++row) {
+      const auto packed_base = row * packed_x;
+      const auto spectral_base = row * nxh;
+      for (std::size_t k = 0; k <= packed_x; ++k) {
+        const std::size_t left = k == packed_x ? 0 : k;
+        const std::size_t right = k == 0 ? 0 : packed_x - k;
+        const double ar = packed_re[packed_base + left];
+        const double ai = packed_im[packed_base + left];
+        const double br = packed_re[packed_base + right];
+        const double bi = -packed_im[packed_base + right];
+        const double dr = ar - br, di = ai - bi;
+        const double tr = x_wr[k] * dr - x_wi[k] * di;
+        const double ti = x_wi[k] * dr + x_wr[k] * di;
+        re[spectral_base + k] = 0.5 * (ar + br + ti);
+        im[spectral_base + k] = 0.5 * (ai + bi - tr);
+      }
+    }
+  }
+
+  // Recover the packed even/odd complex sequence from each half-spectrum
+  // AFTER the inverse y/z FFTs. At fixed spatial y/z, the x spectrum
+  // once again obeys one-dimensional Hermitian symmetry.
+  void real_x_backward(RealVector &output) {
+    const double scale = 1.0 / static_cast<double>(nr);
+    if (nx == 1) {
+      for (std::size_t i = 0; i < nr; ++i) output[i] = re[i] * scale;
+      return;
+    }
+    for (std::size_t row = 0; row < rows; ++row) {
+      const auto packed_base = row * packed_x;
+      const auto spectral_base = row * nxh;
+      for (std::size_t k = 0; k < packed_x; ++k) {
+        const std::size_t partner = packed_x - k;
+        const double ar = re[spectral_base + k];
+        const double ai = im[spectral_base + k];
+        const double br = re[spectral_base + partner];
+        const double bi = -im[spectral_base + partner];
+        const double dr = ar - br, di = ai - bi;
+        // Multiply (F[k]-conj(F[m-k])) by conj(W_N^k);
+        // then multiply by i. The factor two compensates the
+        // half-size inverse FFT's unnormalised convention.
+        const double tr = x_wr[k] * dr + x_wi[k] * di;
+        const double ti = -x_wi[k] * dr + x_wr[k] * di;
+        packed_re[packed_base + k] = ar + br - ti;
+        packed_im[packed_base + k] = ai + bi + tr;
+      }
+    }
+    transform_axis(packed_re, packed_im, axes[0], true, false);
+    for (std::size_t row = 0; row < rows; ++row) {
+      const auto real_base = row * nx;
+      const auto packed_base = row * packed_x;
+      for (std::size_t j = 0; j < packed_x; ++j) {
+        output[real_base + 2 * j] = packed_re[packed_base + j] * scale;
+        output[real_base + 2 * j + 1] = packed_im[packed_base + j] * scale;
+      }
+    }
+  }
+
+  // Cross-axis SIMD handles only Nx/2+1 complex frequencies. The x
+  // packing/undoing above is scalar until the next codelet experiment.
+  void forward_yz() {
+    transform_axis(re, im, axes[1], false, avx2);
+    transform_axis(re, im, axes[2], false, avx2);
+  }
+  void backward_zy() {
+    transform_axis(re, im, axes[2], true, avx2);
+    transform_axis(re, im, axes[1], true, avx2);
+  }
+
   [[nodiscard]] std::size_t allocated_bytes() const noexcept {
-    std::size_t bytes = (re.capacity() + im.capacity()) * sizeof(double);
+    std::size_t bytes = (re.capacity() + im.capacity() +
+                         packed_re.capacity() + packed_im.capacity() +
+                         x_wr.capacity() + x_wi.capacity()) *
+                        sizeof(double);
     for (const auto &axis : axes) bytes += axis.allocated_bytes();
     return bytes;
   }
@@ -235,20 +318,10 @@ void NativePow2FFT::forward(const RealVector &in, ComplexVector &out) {
   check_buffer(in.size(), m_impl->nr, "forward real input");
   check_buffer(out.size(), m_impl->nc, "forward complex output");
   const auto begin = std::chrono::steady_clock::now();
-  for (std::size_t i = 0; i < m_impl->nr; ++i) {
-    m_impl->re[i] = in[i];
-    m_impl->im[i] = 0.0;
-  }
-  m_impl->fft(false);
-  const std::size_t nxh = static_cast<std::size_t>(m_impl->n[0]) / 2 + 1;
-  for (int z = 0; z < m_impl->n[2]; ++z) {
-    for (int y = 0; y < m_impl->n[1]; ++y) {
-      for (std::size_t x = 0; x < nxh; ++x) {
-        const auto src = m_impl->index(x, y, z);
-        out[m_impl->half_index(x, y, z)] = {m_impl->re[src], m_impl->im[src]};
-      }
-    }
-  }
+  m_impl->real_x_forward(in);
+  m_impl->forward_yz();
+  for (std::size_t i = 0; i < m_impl->nc; ++i)
+    out[i] = {m_impl->re[i], m_impl->im[i]};
   m_impl->time +=
       std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)
           .count();
@@ -258,31 +331,12 @@ void NativePow2FFT::backward(const ComplexVector &in, RealVector &out) {
   check_buffer(in.size(), m_impl->nc, "backward complex input");
   check_buffer(out.size(), m_impl->nr, "backward real output");
   const auto begin = std::chrono::steady_clock::now();
-  const std::size_t nx = static_cast<std::size_t>(m_impl->n[0]);
-  const std::size_t ny = static_cast<std::size_t>(m_impl->n[1]);
-  const std::size_t nz = static_cast<std::size_t>(m_impl->n[2]);
-  const std::size_t nxh = nx / 2 + 1;
-  for (std::size_t z = 0; z < nz; ++z) {
-    for (std::size_t y = 0; y < ny; ++y) {
-      for (std::size_t x = 0; x < nxh; ++x) {
-        const auto value = in[m_impl->half_index(x, y, z)];
-        const auto dst = m_impl->index(x, y, z);
-        m_impl->re[dst] = value.real();
-        m_impl->im[dst] = value.imag();
-      }
-      for (std::size_t x = nxh; x < nx; ++x) {
-        // Hermitian partner must reflect ALL Fourier axes, not only x.
-        const auto value =
-            in[m_impl->half_index(nx - x, (ny - y) % ny, (nz - z) % nz)];
-        const auto dst = m_impl->index(x, y, z);
-        m_impl->re[dst] = value.real();
-        m_impl->im[dst] = -value.imag();
-      }
-    }
+  for (std::size_t i = 0; i < m_impl->nc; ++i) {
+    m_impl->re[i] = in[i].real();
+    m_impl->im[i] = in[i].imag();
   }
-  m_impl->fft(true);
-  const double scale = 1.0 / static_cast<double>(m_impl->nr);
-  for (std::size_t i = 0; i < m_impl->nr; ++i) out[i] = m_impl->re[i] * scale;
+  m_impl->backward_zy();
+  m_impl->real_x_backward(out);
   m_impl->time +=
       std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)
           .count();
