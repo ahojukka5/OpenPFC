@@ -7,6 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `FilledCylinder` is the reference domain `0 <= r <= R` with `θ` `2π`-periodic.
+  `r = 0` is an axis, not a boundary. Caps exist only for a finite axial
+  policy. Scalar modes are Fourier in `θ` and smooth powers `r^{|m|}(r²)^k`,
+  so the Laplacian does not use `1/(r+ε)`. Periodic `z` is Fourier; finite
+  `z` is verified on monomials. The production radial basis and the finite-z
+  production basis are not selected. `AffineMap` sends the embedding to
+  physical space. The integral weight is `r` (#133).
 - `AffineMap` is the constant map `x = A ξ + b` from the Cartesian reference
   cell to physical space. `ξ` is the cell the structured grid and the
   periodic FFT already index. Gradients and reference wavevectors transform
