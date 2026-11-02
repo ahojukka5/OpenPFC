@@ -144,7 +144,6 @@ inline void butterfly_scalar(double *real, double *imag, std::size_t a,
 [[nodiscard]] bool cpu_has_avx2_fma() noexcept { return false; }
 #endif
 
-
 #if OPENPFC_NATIVE_POW2_AVX2
 // Four independent x-line transforms per 256-bit vector. The packed
 // even/odd samples use [group][frequency][four_rows] SoA order, so every
@@ -281,8 +280,7 @@ struct NativePow2FFT::Impl {
   // x-lines (ny*nz) is a power of two, so the four-lane case has
   // no partial group or masked SIMD operation.
   [[nodiscard]] std::size_t packed_base(std::size_t row) const noexcept {
-    if (batch_x4)
-      return (row / 4) * packed_x * 4 + (row % 4);
+    if (batch_x4) return (row / 4) * packed_x * 4 + (row % 4);
     return row * packed_x;
   }
 
@@ -372,8 +370,8 @@ struct NativePow2FFT::Impl {
       const auto stride = batch_x4 ? 4U : 1U;
       for (std::size_t j = 0; j < packed_x; ++j) {
         output[real_base + 2 * j] = packed_re[base + j * stride] * scale;
-        output[real_base + 2 * j + 1] =
-            packed_im[base + j * stride] * scale;
+        const double odd = packed_im[base + j * stride] * scale;
+        output[real_base + 2 * j + 1] = odd;
       }
     }
   }
