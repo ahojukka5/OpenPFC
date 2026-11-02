@@ -7,6 +7,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `sample_reference` reads a filled cylinder, disk, or ball through the
+  series the caller already holds and through one `AffineMap`. There is
+  no domain-shape enum. An identity map uses the embedding Laplacian,
+  and a uniform scale uses that chart's inverse metric. The periodic
+  Cartesian symbol stays on `laplacian_symbol`. Boundary conditions
+  remain a separate roadmap (#130).
 - Hagen–Poiseuille flow on the filled cylinder is a steady balance in
   the incompressible-flow application. The axial velocity is a radial
   series on that domain. The Laplacian, gradient, and flow rate use the
