@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `HipComplexLineFFT` is the one-rank rocFFT form of the unnormalized
+  complex line DFT. `backward(forward(x))` equals `length * x`, and the
+  spectrum matches `ComplexLineFFT`. The Chebyshev oracle and
+  `CudaComplexLineFFT` are unchanged. A distributed line is not added.
+  #141 stays open.
 - Automatic single-rank FFT selection admits the direct rocFFT plan only
   when one HIP rank owns the whole domain. CPU (FFTW) and CUDA (cuFFT)
   keep HeFFTe. Explicit `"fft": "local"` and `"fft": "heffte"` still
