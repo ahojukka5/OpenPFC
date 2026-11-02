@@ -335,9 +335,8 @@ constexpr bool kLeafYZ = true;
 using LeafIndices = std::array<std::size_t, 4>;
 
 void leaf4_scalar(const double *src_re, const double *src_im, double *dst_re,
-                  double *dst_im, const LeafIndices &src,
-                  const LeafIndices &dst, std::size_t lanes,
-                  bool inverse) noexcept {
+                  double *dst_im, const LeafIndices &src, const LeafIndices &dst,
+                  std::size_t lanes, bool inverse) noexcept {
   for (std::size_t lane = 0; lane < lanes; ++lane) {
     const double x0r = src_re[src[0] + lane], x0i = src_im[src[0] + lane];
     const double x1r = src_re[src[1] + lane], x1i = src_im[src[1] + lane];
@@ -415,43 +414,40 @@ void leaf4_scalar(const double *src_re, const double *src_im, double *dst_re,
 // gathers use reverse_bits(leaf) plus the fixed digit order [0,2,1,3]
 // scaled by the number of leaves. Two later radix-2 levels are thus
 // already complete before the upper transform stages are entered.
-void gather_radix4_leaves(const std::vector<double> &re,
-                          const std::vector<double> &im,
-                          std::vector<double> &dst_re,
-                          std::vector<double> &dst_im, const Axis &axis,
-                          bool inverse, bool avx2) {
+void gather_radix4_leaves(const std::vector<double> &re, const std::vector<double> &im,
+                          std::vector<double> &dst_re, std::vector<double> &dst_im,
+                          const Axis &axis, bool inverse, bool avx2) {
   const std::size_t n = axis.length;
   const std::size_t stride = axis.stride;
   const std::size_t step = n / 4;
   for (std::size_t outer = 0; outer < re.size(); outer += n * stride) {
     for (std::size_t leaf = 0; leaf < step; ++leaf) {
       const std::size_t base = axis.radix4_bases[leaf];
-      const LeafIndices src{
-          outer + base * stride,
-          outer + (base + 2 * step) * stride,
-          outer + (base + step) * stride,
-          outer + (base + 3 * step) * stride};
-      const LeafIndices dst{
-          outer + (4 * leaf) * stride,
-          outer + (4 * leaf + 1) * stride,
-          outer + (4 * leaf + 2) * stride,
-          outer + (4 * leaf + 3) * stride};
+      LeafIndices src{};
+      src[0] = outer + base * stride;
+      src[1] = outer + (base + 2 * step) * stride;
+      src[2] = outer + (base + step) * stride;
+      src[3] = outer + (base + 3 * step) * stride;
+      LeafIndices dst{};
+      dst[0] = outer + (4 * leaf) * stride;
+      dst[1] = outer + (4 * leaf + 1) * stride;
+      dst[2] = outer + (4 * leaf + 2) * stride;
+      dst[3] = outer + (4 * leaf + 3) * stride;
 #if OPENPFC_NATIVE_POW2_AVX2
       if (avx2 && stride >= 4)
-        leaf4_avx2(re.data(), im.data(), dst_re.data(), dst_im.data(),
-                   src, dst, stride, inverse);
+        leaf4_avx2(re.data(), im.data(), dst_re.data(), dst_im.data(), src,
+                   dst, stride, inverse);
       else
 #endif
-        leaf4_scalar(re.data(), im.data(), dst_re.data(), dst_im.data(),
-                     src, dst, stride, inverse);
+        leaf4_scalar(re.data(), im.data(), dst_re.data(), dst_im.data(), src,
+                     dst, stride, inverse);
     }
   }
 }
 
 void transform_axis(std::vector<double> &re, std::vector<double> &im,
                     const Axis &axis, bool inverse, bool avx2, bool fuse4,
-                    bool already_permuted = false,
-                    std::size_t completed_radix = 1) {
+                    bool already_permuted = false, std::size_t completed_radix = 1) {
   const std::size_t n = axis.length, stride = axis.stride;
   if (n == 1) return;
   const std::size_t group = n * stride;
@@ -669,8 +665,8 @@ struct NativePow2FFT::Impl {
   // scratch vector; swapping vector handles avoids another copy.
   void transform_yz(const Axis &axis, bool inverse) {
     if (kLeafYZ && axis.length >= 4) {
-      gather_radix4_leaves(re, im, yz_scratch_re, yz_scratch_im,
-                           axis, inverse, avx2);
+      gather_radix4_leaves(re, im, yz_scratch_re, yz_scratch_im, axis,
+                           inverse, avx2);
       re.swap(yz_scratch_re);
       im.swap(yz_scratch_im);
       transform_axis(re, im, axis, inverse, avx2, kFuseYZ, true, 4);
