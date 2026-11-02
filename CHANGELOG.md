@@ -7,6 +7,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- ERK43ZB Table 10 (arXiv:2303.12139v2) is checked against the
+  Hochbruck–Ostermann stiff-order conditions. The weights are
+  φ-combinations of a 2×2 argument, and the residual is the Frobenius
+  norm of each condition. This does not take a time step. The order-4
+  row meets conditions 1–5 and misses 6–9 when the Jacobian does not
+  commute with the argument. At a zero argument, conditions 1–9 are
+  numerical zeros. The embedded row meets 1–5 at zero and misses
+  condition 6 there, so the estimate does not rise to order 4.
+  Krogstad ERK4K meets 1–5 and 9 and misses 6, 7 and 8 on the same
+  probe. The pair is not implemented. Step doubling stays the
+  baseline (#222).
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
