@@ -17,9 +17,10 @@
 #include <array>
 #include <cmath>
 #include <complex>
+#include <cstdio>
 #include <filesystem>
 #include <numbers>
-#include <cstdio>
+#include <utility>
 #include <vector>
 
 #include <mpi.h>
@@ -158,16 +159,16 @@ struct Evolved {
 
 std::array<std::complex<double>, 6> bcc_shell(tungsten::TungstenSession &session) {
   constexpr double inv_sqrt2 = 0.707106781186547524400844362104849039;
-  const int mode[6][3] = {{1, 1, 0}, {1, 0, 1},  {0, 1, 1},
-                          {1, 0, -1}, {1, -1, 0}, {0, 1, -1}};
+  const std::array<int, 6> mx{1, 1, 0, 1, 1, 0};
+  const std::array<int, 6> my{1, 0, 1, 0, -1, 1};
+  const std::array<int, 6> mz{0, 1, 1, -1, 0, -1};
   std::array<std::complex<double>, 6> local{};
   auto &psi = session.psi();
   std::size_t samples = 0;
   psi.for_each_owned([&](int i, int j, int k) {
     const auto x = psi.coords(i, j, k);
     for (std::size_t m = 0; m < local.size(); ++m) {
-      const double projection =
-          mode[m][0] * x[0] + mode[m][1] * x[1] + mode[m][2] * x[2];
+      const double projection = mx[m] * x[0] + my[m] * x[1] + mz[m] * x[2];
       const double phase = inv_sqrt2 * projection;
       const std::complex<double> weight{std::cos(phase), -std::sin(phase)};
       local[m] += psi(i, j, k) * weight;
@@ -189,8 +190,14 @@ Evolved evolve(const nlohmann::json &settings) {
   const double dx = spacing[0];
   session.run();
   const auto amplitudes = bcc_shell(session);
-  return Evolved{density_moments(session), high_mode_power(session), dealias, dx,
-                 session.psi().vec(), amplitudes};
+  Evolved out;
+  out.density = density_moments(session);
+  out.high = high_mode_power(session);
+  out.dealias = dealias;
+  out.dx = dx;
+  out.state = session.psi().vec();
+  out.bcc_shell = amplitudes;
+  return out;
 }
 
 auto sampled_field_error(const Evolved &coarse, const Evolved &fine) {
@@ -281,13 +288,14 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   const auto [field_l2, field_linf] = sampled_field_error(selected, control);
   double shell_gap = 0.0;
   for (std::size_t mode = 0; mode < selected.bcc_shell.size(); ++mode) {
-    const double gap =
-        std::abs(selected.bcc_shell[mode] - control.bcc_shell[mode]);
+    const auto observed = selected.bcc_shell[mode];
+    const auto expected = control.bcc_shell[mode];
+    const double gap = std::abs(observed - expected);
     shell_gap = std::max(shell_gap, gap);
   }
   std::printf("TUNGSTEN_BCC N=16 reference_N=32 dt=1 steps=20 dealias=1 "
               "rms=%.17g rms32=%.17g peak=%.17g peak32=%.17g "
-              "field_l2=%.17g field_linf=%.17g shell_gap=%.17g\\n",
+              "field_l2=%.17g field_linf=%.17g shell_gap=%.17g\n",
               selected.density.rms, control.density.rms, selected.density.hi,
               control.density.hi, field_l2, field_linf, shell_gap);
   REQUIRE(std::isfinite(field_l2));
