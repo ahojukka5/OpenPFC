@@ -265,8 +265,8 @@ TEST_CASE("Rejected solute update does not publish composition or flux",
   request.mobility = 1.0e308;
   FluxLedger ledger;
   const auto unstable = [&] {
-    (void)coupling::advance_solute_partition(
-        axis, composition, partition, request, 0.0, 1.0, ledger);
+    (void)coupling::advance_solute_partition(axis, composition, partition, request,
+                                             0.0, 1.0, ledger);
   };
   REQUIRE_THROWS(unstable());
   REQUIRE(composition == before);
