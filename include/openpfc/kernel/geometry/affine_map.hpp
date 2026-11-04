@@ -62,8 +62,8 @@ private:
   AffineMap(const double a[9], const double inv[9], Vec3 shift, double det,
             bool is_cartesian)
       : matrix{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]},
-        inverse{inv[0], inv[1], inv[2], inv[3], inv[4], inv[5],
-                inv[6], inv[7], inv[8]},
+        inverse{inv[0], inv[1], inv[2], inv[3], inv[4], inv[5], inv[6], inv[7],
+                inv[8]},
         translation{shift.x, shift.y, shift.z}, determinant(det),
         cartesian(is_cartesian) {}
 
