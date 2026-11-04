@@ -29,8 +29,13 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_float_cpu_services.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fourier_and_noise.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_level_set.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_grain_interface.cpp
 )
 add_test(NAME level-set COMMAND openpfc-tests "[level_set]")
+add_test(NAME grain-interface COMMAND openpfc-tests "[grain_interface]")
+set_tests_properties(grain-interface PROPERTIES
+  ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+  TIMEOUT 180)
 set_tests_properties(level-set PROPERTIES
   ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
   TIMEOUT 180)
