@@ -442,10 +442,11 @@ struct WeakOrder4Residuals {
   for (int i = 0; i < weak.stage_count; ++i) {
     weak.output[i] = at_zero.output[i];
   }
-  const auto at_z = hochbruck_ostermann_residuals(weak, argument, jacobian,
-                                                 mixed_derivative);
-  const auto at_origin = hochbruck_ostermann_residuals(
-      at_zero, Matrix2x2{}, jacobian, mixed_derivative);
+  const auto at_z =
+      hochbruck_ostermann_residuals(weak, argument, jacobian, mixed_derivative);
+  const Matrix2x2 zero{};
+  const auto at_origin =
+      hochbruck_ostermann_residuals(at_zero, zero, jacobian, mixed_derivative);
   return {at_origin.condition[5], at_z.condition[6], at_z.condition[7],
           at_z.condition[8]};
 }
