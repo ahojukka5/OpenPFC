@@ -7,6 +7,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Aluminum provenance: document active case/initial/boundary controls alongside
+  model coefficients, discover shipped presets rather than fixing a four-file
+  test list, and classify G_grid/V_grid as variable case controls.
+- Aluminum coefficients are classified by `coefficient_provenance()`.
+  Representative free-energy numbers are uncited. Derived coefficients
+  come from `AluminumParams::recompute_derived`. Length, temperature,
+  time, and amplitude stay in reduced units. This repository does not
+  convert them to SI, and the table is not a material validation (#249).
+
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
