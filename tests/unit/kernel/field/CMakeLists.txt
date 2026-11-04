@@ -28,7 +28,23 @@ target_sources(openpfc-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test_face_current.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_float_cpu_services.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_fourier_and_noise.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_level_set.cpp
 )
+add_test(NAME level-set COMMAND openpfc-tests "[level_set]")
+set_tests_properties(level-set PROPERTIES
+  ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+  TIMEOUT 180)
+if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE AND
+   (OpenPFC_MPI_TEST_MAX_WORLD_SIZE EQUAL 0 OR
+    OpenPFC_MPI_TEST_MAX_WORLD_SIZE GREATER_EQUAL 2))
+  add_test(NAME level-set_2ranks
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:openpfc-tests> "[level_set][mpi]"
+      ${MPIEXEC_POSTFLAGS})
+  set_tests_properties(level-set_2ranks PROPERTIES
+    TIMEOUT 120 RUN_SERIAL TRUE
+    ENVIRONMENT "OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
+endif()
 if(OpenPFC_ENABLE_HEFFTE)
   target_sources(openpfc-tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/test_field_operations.cpp
