@@ -15,14 +15,14 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/simulation/initial_conditions/constant.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <algorithm>
 #include <sstream>
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -101,8 +101,7 @@ TEST_CASE("aluminum coefficient provenance matches the shipped presets",
   std::string row;
   int registered = 0;
   while (std::getline(documented, row)) {
-    if (row.starts_with("| ") && !row.starts_with("| Name |"))
-      ++registered;
+    if (row.starts_with("| ") && !row.starts_with("| Name |")) ++registered;
   }
   REQUIRE(registered == static_cast<int>(aluminum::coefficient_provenance().size()));
   for (const aluminum::ModelCoefficient &rec : aluminum::coefficient_provenance()) {
@@ -128,8 +127,9 @@ TEST_CASE("aluminum coefficient provenance matches the shipped presets",
   const std::filesystem::path app{ALUMINUM_APP_DIR};
   // Discover every shipped JSON case; a new maintained case must not evade
   // provenance validation by being absent from a hardcoded four-file list.
-  std::vector<std::filesystem::path> presets{app / "aluminumNew.json",
-                                              app / "aluminumNew.toml"};
+  std::vector<std::filesystem::path> presets;
+  presets.push_back(app / "aluminumNew.json");
+  presets.push_back(app / "aluminumNew.toml");
   for (const auto &item : std::filesystem::directory_iterator(app / "inputs_json")) {
     if (item.is_regular_file() && item.path().extension() == ".json")
       presets.push_back(item.path());
