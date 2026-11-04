@@ -15,6 +15,8 @@
 #include <limits>
 #include <numbers>
 #include <sstream>
+#include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -141,6 +143,35 @@ TEST_CASE("planar front follows a caller-selected axis", "[crystal_observables]"
       pfc::observables::planar_front_position(density, MPI_COMM_SELF, options);
   REQUIRE(front.validity == FrontValidity::valid);
   REQUIRE(front.position == Approx(7.3).margin(1e-9));
+}
+
+TEST_CASE("a descending planar RMS front reports its real sub-cell position",
+          "[crystal_observables]") {
+  constexpr int nx = 32, ny = 8, nz = 2;
+  const std::array<int, 3> size{nx, ny, nz};
+  std::vector<double> values(static_cast<std::size_t>(nx * ny * nz));
+  for (int k = 0; k < nz; ++k) {
+    for (int j = 0; j < ny; ++j) {
+      const double wave = std::sqrt(2.0) *
+          std::cos(2.0 * std::numbers::pi * static_cast<double>(j) / ny);
+      for (int i = 0; i < nx; ++i) {
+        const std::size_t idx = static_cast<std::size_t>(i + nx * (j + ny * k));
+        values[idx] = (1.0 - envelope(static_cast<double>(i), 15.3)) * wave;
+      }
+    }
+  }
+  auto input = full_density(values, size, MPI_COMM_SELF);
+  input.origin[0] = 5.0;
+  PlanarFrontOptions options;
+  options.rising = false;
+  const auto falling =
+      pfc::observables::planar_front_position(input, MPI_COMM_SELF, options);
+  REQUIRE(falling.validity == FrontValidity::valid);
+  REQUIRE(falling.crossings == 1);
+  REQUIRE(falling.position == Approx(20.3).margin(1e-9));
+  const auto bad_time = pfc::observables::front_velocity(
+      falling, -std::numeric_limits<double>::infinity(), falling, 2.0);
+  REQUIRE_FALSE(bad_time.valid);
 }
 
 TEST_CASE("crystal symmetry folds equivalent wavevectors", "[crystal_observables]") {
@@ -279,6 +310,34 @@ TEST_CASE("a manufactured density wave recovers its orientation",
   REQUIRE(cubic.wavevector[0] == Approx(0.1).margin(1e-7));
   REQUIRE(cubic.wavevector[1] == Approx(0.2).margin(1e-7));
   REQUIRE(cubic.wavevector[2] == Approx(0.3).margin(1e-7));
+}
+
+TEST_CASE("two simultaneous perpendicular waves are not one grain direction",
+          "[crystal_observables]") {
+  constexpr int nx = 64, ny = 64, nz = 2;
+  const std::array<int, 3> size{nx, ny, nz};
+  std::vector<double> values(static_cast<std::size_t>(nx * ny * nz));
+  for (int k = 0; k < nz; ++k) {
+    for (int j = 0; j < ny; ++j) {
+      for (int i = 0; i < nx; ++i) {
+        const double x = 2.0 * std::numbers::pi * 4.0 * i / nx;
+        const double y = 2.0 * std::numbers::pi * 4.0 * j / ny;
+        const std::size_t idx = static_cast<std::size_t>(i + nx * (j + ny * k));
+        values[idx] = std::cos(x) + std::cos(y);
+      }
+    }
+  }
+  const auto density = full_density(values, size, MPI_COMM_SELF);
+  const IndexWindow window{{0, 0, 0}, {nx - 1, ny - 1, nz - 1}};
+  const auto orientation = pfc::observables::region_orientation(
+      density, MPI_COMM_SELF, window, CrystalSymmetry::four_fold);
+  REQUIRE_FALSE(orientation.valid);
+  const double k = 2.0 * std::numbers::pi * 4.0 / nx;
+  const std::array<std::array<double, 3>, 2> candidates{{{k, 0.0, 0.0},
+                                                         {0.0, k, 0.0}}};
+  const auto grains = pfc::observables::label_grains(
+      density, MPI_COMM_SELF, window, CrystalSymmetry::four_fold, candidates);
+  REQUIRE_FALSE(grains.valid);
 }
 
 TEST_CASE("two orientations separated by a synthetic boundary",
@@ -474,4 +533,18 @@ TEST_CASE("split ranks agree with the one-rank crystal observables",
   REQUIRE(serial_grains.fraction[1] == 1.0);
   REQUIRE(split_grains.counts == serial_grains.counts);
   REQUIRE(split_grains.voting_cells == serial_grains.voting_cells);
+
+  if (size == 2) {
+    // A rank-local malformed owned span must not strand its peer in an
+    // MPI collective; both ranks take the same invalid-input path.
+    OwnedDensity malformed = part;
+    if (rank == 0) {
+      malformed.values =
+          std::span<const double>(local.data(), local.size() - 1);
+    }
+    REQUIRE_THROWS_AS(
+        pfc::observables::planar_front_position(malformed, MPI_COMM_WORLD,
+                                                 options),
+        std::invalid_argument);
+  }
 }
