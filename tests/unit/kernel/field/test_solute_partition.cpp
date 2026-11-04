@@ -250,3 +250,26 @@ TEST_CASE("Uniform solute relaxes to the prescribed partition",
     REQUIRE(std::abs(final_energy - target_energy) < 1.0e-10);
   }
 }
+
+TEST_CASE("Rejected solute update does not publish composition or flux",
+          "[unit][field][solute_partition]") {
+  DiffusionAxis axis(33, 1.0 / 32.0);
+  std::vector<double> composition(33);
+  for (int i = 0; i < 33; ++i) {
+    const double phase = pi() * static_cast<double>(i) / 32.0;
+    composition[static_cast<std::size_t>(i)] = 0.5 + 0.1 * std::cos(phase);
+  }
+  const auto before = composition;
+  const std::vector<double> partition(33, 1.0);
+  coupling::SolutePartitionRequest request;
+  request.mobility = 1.0e308;
+  FluxLedger ledger;
+  const auto unstable = [&] {
+    (void)coupling::advance_solute_partition(
+        axis, composition, partition, request, 0.0, 1.0, ledger);
+  };
+  REQUIRE_THROWS(unstable());
+  REQUIRE(composition == before);
+  REQUIRE_FALSE(ledger.active());
+  REQUIRE(ledger.accepted() == 0.0);
+}
