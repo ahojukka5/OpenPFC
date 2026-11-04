@@ -6,15 +6,13 @@
 
 #include <stdexcept>
 #include <type_traits>
-#include <utility>
 
 TEST_CASE("an affine map is an immutable geometry value independent of FFTW",
           "[geometry][affine_map][analytic]") {
   using pfc::geometry::AffineMap;
   using pfc::geometry::Vec3;
   static_assert(std::is_trivially_copyable_v<AffineMap>);
-  static_assert(!std::is_assignable_v<
-                decltype((std::declval<AffineMap &>().matrix[0])), double>);
+  static_assert(!std::is_copy_assignable_v<AffineMap>);
   const double matrix[9] = {2, 0, 0, 0.5, 1, 0, 0, 0, 3};
   const AffineMap map = pfc::geometry::affine_map_from_matrix(matrix, {1, -2, 4});
   REQUIRE(map.determinant == 6.0);
