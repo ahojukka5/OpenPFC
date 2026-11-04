@@ -7,6 +7,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Hagen–Poiseuille flow on the filled cylinder is a steady balance in
+  the incompressible-flow application. The axial velocity is a radial
+  series on that domain. The Laplacian, gradient, and flow rate use the
+  cylinder operators, and the no-slip value is the series at `r = R`.
+  A degree-0 series misses the balance. Degrees 1–3 recover the
+  parabola, the flow rate, and the wall shear. Admitted angular and
+  axial modes stay at coefficient zero. This is not a Cartesian mask
+  and not a turbulent pipe (#235).
+
 - `sample_reference` reads a filled cylinder, disk, or ball through the
   series the caller already holds and through one `AffineMap`. There is
   no domain-shape enum. An identity map uses the embedding Laplacian,
