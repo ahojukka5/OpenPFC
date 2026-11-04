@@ -7,6 +7,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- ERK43ZB audit now distinguishes strong stiff-order residuals from the
+  Hochbruck–Ostermann *weak* fixed-step fourth-order conditions: psi4(0)
+  and outer b_i(0) with nonzero internal Z. Four noncommuting/nonnormal
+  matrix fixtures and a corrupted-weight control guard this distinction.
+  This is a coefficient audit, not an adaptive time-stepper.
+
 - ERK43ZB Table 10 (arXiv:2303.12139v2) is checked against the
   Hochbruck–Ostermann stiff-order conditions. The weights are
   φ-combinations of a 2×2 argument, and the residual is the Frobenius

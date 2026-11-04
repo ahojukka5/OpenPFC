@@ -16,12 +16,15 @@
 
 #include <cmath>
 #include <initializer_list>
+#include <limits>
+#include <stdexcept>
 
 using Catch::Matchers::WithinAbs;
 using pfc::integrator::evaluate_exponential_rk;
 using pfc::integrator::ExponentialRkEvaluation;
 using pfc::integrator::ExponentialRkMethod;
 using pfc::integrator::hochbruck_ostermann_residuals;
+using pfc::integrator::hochbruck_ostermann_weak_order4_residuals;
 using pfc::integrator::Matrix2x2;
 using pfc::integrator::matrix_phi;
 using pfc::integrator::phi_function;
@@ -167,6 +170,55 @@ TEST_CASE("ERK43ZB embedded row stays below order 4 at a zero argument",
       residuals_of(ExponentialRkMethod::erk43zb_embedded, kArgument);
   require_below(stiff, {1, 2, 3}, 1e-12);
   require_above(stiff, {4, 5, 6}, 1e-3);
+}
+
+TEST_CASE("ERK43ZB satisfies the weak fourth-order fixed-step conditions",
+          "[integrator][erk_stiff_order]") {
+  // Independent Taylor-series evaluation of the same published tableau
+  // at three materially different non-commuting/nonnormal operators was
+  // checked before freezing these tests; do not silently replace Z by 0.
+  const Matrix2x2 alternative{-0.5, 1.2, -0.1, -1.2};
+  const Matrix2x2 defective{0.0, 2.0, 0.0, 0.0};
+  const Matrix2x2 triangular{-2.0, 0.0, 0.6, -0.05};
+  const auto origin =
+      evaluate_exponential_rk(ExponentialRkMethod::erk43zb_order4, kZero);
+  for (const Matrix2x2 &argument :
+       {kArgument, alternative, defective, triangular}) {
+    const auto candidate =
+        evaluate_exponential_rk(ExponentialRkMethod::erk43zb_order4, argument);
+    const auto strong =
+        hochbruck_ostermann_residuals(candidate, argument, kJacobian, kMixed);
+    require_below(strong, {1, 2, 3, 4, 5}, 2e-11);
+    const auto weak = hochbruck_ostermann_weak_order4_residuals(
+        candidate, origin, argument, kJacobian, kMixed);
+    REQUIRE(weak.psi4_at_zero < 2e-11);
+    REQUIRE(weak.condition7 < 2e-11);
+    REQUIRE(weak.condition8 < 2e-11);
+    REQUIRE(weak.condition9 < 2e-11);
+  }
+  // Output weights matter to the theorem; altering the origin values
+  // must be observable by a nonzero-Z weak-order test.
+  auto corrupted = origin;
+  corrupted.output[3] =
+      corrupted.output[3] + Matrix2x2{0.1, 0.0, 0.0, 0.1};
+  const auto candidate =
+      evaluate_exponential_rk(ExponentialRkMethod::erk43zb_order4, kArgument);
+  const auto weak_corrupted = hochbruck_ostermann_weak_order4_residuals(
+      candidate, corrupted, kArgument, kJacobian, kMixed);
+  REQUIRE(weak_corrupted.psi4_at_zero > 1e-4);
+  REQUIRE(weak_corrupted.condition7 > 1e-5);
+}
+
+TEST_CASE("phi-function rejects non-finite and unscalable arguments",
+          "[integrator][erk_stiff_order]") {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  REQUIRE_THROWS_AS(
+      phi_function(Matrix2x2{nan, 0.0, 0.0, 0.0}, 2),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(
+      phi_function(Matrix2x2{std::numeric_limits<double>::max(), 0.0,
+                             0.0, 0.0}, 1),
+      std::out_of_range);
 }
 
 TEST_CASE("changing an ERK output weight breaks stiff condition 1",

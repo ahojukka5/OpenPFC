@@ -21,11 +21,18 @@
  * φ_0(Z) = exp(Z) and φ_{k+1}(Z) = (φ_k(Z) − I/k!) Z^{-1}, with
  * φ_k(0) = I/k!. The argument `Z` is the paper's −hL. Weights are matrix
  * functions of `Z`, so a Jacobian `J` that does not commute with `Z` is
- * visible in conditions 5, 7, 8 and 9. Condition 8 follows Hochbruck &
+ * visible in conditions 5, 7, 8 and 9. Strong order-four conditions 6–9
+ * are stricter than the *weak* fixed-step conditions in Hochbruck–Ostermann
+ * Theorem 4.7: ψ4(0)=0, and conditions 7–9 use b_i(0) only on the
+ * outermost stage factor while all internal stages remain at Z != 0.
+ * Testing every coefficient at Z=0 is NOT this weak-form test.
+ * This reference does not prove uniform order for variable step sizes.
+ * Condition 8 follows Hochbruck &
  * Ostermann: the inner factor is ψ_{2,j}. Table 4 of the preprint writes
  * ψ_{2,i} on that factor; `condition8_repeated_index` records that typesetting.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -45,9 +52,16 @@ namespace pfc::integrator {
   }
   const double nrm = std::max(std::abs(argument.m00) + std::abs(argument.m10),
                               std::abs(argument.m01) + std::abs(argument.m11));
+  if (!std::isfinite(nrm)) {
+    throw std::invalid_argument("phi_function argument must have finite norm");
+  }
   int scales = 0;
   if (nrm > 0.5) {
-    scales = static_cast<int>(std::ceil(std::log2(nrm / 0.5)));
+    const double required = std::ceil(std::log2(nrm) + 1.0);
+    if (required > 1023.0) {
+      throw std::out_of_range("phi_function argument requires excessive scaling");
+    }
+    scales = static_cast<int>(required);
   }
   const Matrix2x2 small = std::ldexp(1.0, -scales) * argument;
   const Matrix2x2 id{1.0, 0.0, 0.0, 1.0};
@@ -396,6 +410,46 @@ hochbruck_ostermann_residuals(const ExponentialRkEvaluation &method,
   out.condition[8] = erk_detail::frobenius(condition9);
   out.condition8_repeated_index = erk_detail::frobenius(repeated);
   return out;
+}
+
+/** Residuals for the *weak*, fixed-step fourth-order sufficient conditions.
+ *
+ * Hochbruck–Ostermann (2005), Theorem 4.7: evaluate psi4 at Z=0
+ * and conditions 7–9 with ONLY the outer b_i(Z) replaced by b_i(0).
+ * The internal a_ij(Z), psi_{p,i}(Z), J and K retain their nonzero argument.
+ * Strong conditions 1–5 must still be checked separately at nonzero Z.
+ * These numerical probes cannot by themselves prove an identity for all
+ * operators or an adaptive variable-step order guarantee.
+ */
+struct WeakOrder4Residuals {
+  double psi4_at_zero{};
+  double condition7{};
+  double condition8{};
+  double condition9{};
+};
+
+[[nodiscard]] inline WeakOrder4Residuals
+hochbruck_ostermann_weak_order4_residuals(
+    const ExponentialRkEvaluation &at_argument,
+    const ExponentialRkEvaluation &at_zero,
+    const Matrix2x2 &argument, const Matrix2x2 &jacobian,
+    const Matrix2x2 &mixed_derivative) {
+  if (at_argument.stage_count != at_zero.stage_count ||
+      at_argument.stage_count < 1 || at_argument.stage_count > 6) {
+    throw std::invalid_argument("weak ERK order: inconsistent stage counts");
+  }
+  // psi_{p,i}(Z) is calculated from the original tableau, including a_ij(Z).
+  // Changing the *outer* output weights alone is precisely the weak condition.
+  ExponentialRkEvaluation weak = at_argument;
+  for (int i = 0; i < weak.stage_count; ++i) {
+    weak.output[i] = at_zero.output[i];
+  }
+  const auto at_z = hochbruck_ostermann_residuals(
+      weak, argument, jacobian, mixed_derivative);
+  const auto at_origin = hochbruck_ostermann_residuals(
+      at_zero, Matrix2x2{}, jacobian, mixed_derivative);
+  return {at_origin.condition[5], at_z.condition[6], at_z.condition[7],
+          at_z.condition[8]};
 }
 
 } // namespace pfc::integrator
