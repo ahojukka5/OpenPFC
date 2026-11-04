@@ -143,7 +143,9 @@ this repository does not name a paper, a fit, or a measurement for them.
 temperature, time, and amplitude have no SI conversion here. The
 classification is not a material validation.
 
-`x_initial` is a case station. A seeded preset sets it to that seed's `X0`.
+`x_initial` is a case station, not intrinsically the same as the seed's
+`X0`. The maintained isothermal seeded cases choose equal values, but a
+future directional case may specify an independent thermal-profile station.
 `fcc_seed_nucleus.json` still lists `n0`, `n_sol`, `n_vap`, `alpha_farTol`,
 `alpha_highOrd`, `shift_u`, and `shift_s` under `model.params`. The schema
 does not read those keys. The C++ defaults are the same table, not a second
