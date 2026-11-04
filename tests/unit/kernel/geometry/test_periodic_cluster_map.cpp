@@ -6,6 +6,7 @@
 
 #include <openpfc/kernel/geometry/periodic_cluster_map.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <vector>
@@ -134,13 +135,23 @@ TEST_CASE("clustering a periodic bump is measured at equal node count",
   const double uniform_32 = bump_second_error(uniform, 32, kappa);
   const double packed_32 = bump_second_error(packed, 32, kappa);
   const double uniform_48 = bump_second_error(uniform, 48, kappa);
+  const double packed_48 = bump_second_error(packed, 48, kappa);
   const double uniform_64 = bump_second_error(uniform, 64, kappa);
   const double packed_64 = bump_second_error(packed, 64, kappa);
   REQUIRE(packed_32 < uniform_32);
   REQUIRE(uniform_32 > 1.0e4);
   REQUIRE(packed_32 > 1.0e3);
   REQUIRE(uniform_48 < packed_32);
+  // The equal-error comparison is the decision gate, not merely same N.
+  // Both N=48 cases reach error < 10; mapping has *no* DOF reduction here.
+  // Uniform N=48 also beats the mapped result at the same N.
+  REQUIRE(uniform_48 < 10.0);
+  REQUIRE(packed_48 < 10.0);
+  REQUIRE(uniform_48 < packed_48);
   REQUIRE(uniform_64 < 1.0e-3);
   REQUIRE(packed_64 < 1.0e-2);
   REQUIRE(uniform_64 < packed_64);
+  // With target 1e-3, both variants need at most N=64, not fewer mapped
+  // DOFs. The map's second derivative also uses two spectral gradients,
+  // each rebuilding a line-FFT plan: there is no demonstrated work saving.
 }
