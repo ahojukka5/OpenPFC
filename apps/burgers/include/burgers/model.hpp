@@ -12,7 +12,9 @@
  * The flux and the Rusanov solver stay in this application.
  */
 
+#ifdef BURGERS_HAS_FFTW3
 #include <openpfc/kernel/fft/complex_line_fft.hpp>
+#endif
 #include <openpfc/kernel/field/central_derivatives.hpp>
 
 #include <algorithm>
@@ -21,6 +23,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <stdexcept>
@@ -113,11 +116,15 @@ public:
           "burgers viscosity must be finite and non-negative");
     }
     if (method_ == Method::spectral || method_ == Method::spectral_aliased) {
+#ifdef BURGERS_HAS_FFTW3
       fft_ = std::make_unique<pfc::fft::ComplexLineFFT>(count);
       field_.resize(static_cast<std::size_t>(count));
       spectrum_.resize(static_cast<std::size_t>(count));
       viscous_.resize(static_cast<std::size_t>(count));
       viscous_back_.resize(static_cast<std::size_t>(count));
+#else
+      throw std::invalid_argument("burgers spectral methods need FFTW3");
+#endif
     }
   }
 
@@ -143,12 +150,42 @@ public:
       throw std::invalid_argument("burgers rate spans must match the grid");
     }
     switch (method_) {
-    case Method::spectral: spectral_rate(in, out, true); break;
-    case Method::spectral_aliased: spectral_rate(in, out, false); break;
+    case Method::spectral:
+    case Method::spectral_aliased:
+#ifdef BURGERS_HAS_FFTW3
+      spectral_rate(in, out, method_ == Method::spectral);
+#else
+      throw std::invalid_argument("burgers spectral methods need FFTW3");
+#endif
+      break;
     case Method::fdm2: fd_rate(in, out, false); break;
     case Method::fdm2_advective: fd_rate(in, out, true); break;
     case Method::fvm: fvm_rate(in, out); break;
     }
+  }
+
+  /// Explicit SSP-RK3 admissible-step screening, conservative for FV/FD2.
+  /// For Fourier methods this is a conservative linearized estimate; it does
+  /// not claim nonlinear post-shock stability for an arbitrary field.
+  [[nodiscard]] double stability_limit() const {
+    const double peak = maximum_abs(state_);
+    if (!std::isfinite(peak)) {
+      throw std::domain_error("burgers nonfinite state");
+    }
+    const double h = spacing_;
+    const bool spectral = method_ == Method::spectral ||
+                          method_ == Method::spectral_aliased;
+    const double convection =
+        spectral ? peak * static_cast<double>(count_) /
+                       (method_ == Method::spectral ? 3.0 : 2.0)
+                 : peak / h;
+    const double diffusion = spectral
+                                 ? viscosity_ * std::numbers::pi *
+                                       std::numbers::pi / (h * h)
+                                 : 2.0 * viscosity_ / (h * h);
+    const double rate = convection + diffusion;
+    if (rate == 0.0) return std::numeric_limits<double>::infinity();
+    return spectral ? 2.35 / rate : 1.0 / rate;
   }
 
   void advance(double dt, int steps) {
@@ -160,13 +197,22 @@ public:
     std::vector<double> u1(static_cast<std::size_t>(count_));
     std::vector<double> u2(static_cast<std::size_t>(count_));
     std::vector<double> stage_rate(static_cast<std::size_t>(count_));
+    std::vector<double> candidate(static_cast<std::size_t>(count_));
     for (int step = 0; step < steps; ++step) {
+      if (dt > stability_limit()) {
+        throw std::invalid_argument("burgers dt exceeds stability limit");
+      }
       u0 = state_;
       rate(u0, stage_rate);
       for (int i = 0; i < count_; ++i) {
         u1[static_cast<std::size_t>(i)] =
             u0[static_cast<std::size_t>(i)] +
             dt * stage_rate[static_cast<std::size_t>(i)];
+      }
+      for (double value : u1) {
+        if (!std::isfinite(value)) {
+          throw std::domain_error("burgers nonfinite RK stage 1");
+        }
       }
       rate(u1, stage_rate);
       for (int i = 0; i < count_; ++i) {
@@ -175,13 +221,24 @@ public:
             0.25 * (u1[static_cast<std::size_t>(i)] +
                     dt * stage_rate[static_cast<std::size_t>(i)]);
       }
+      for (double value : u2) {
+        if (!std::isfinite(value)) {
+          throw std::domain_error("burgers nonfinite RK stage 2");
+        }
+      }
       rate(u2, stage_rate);
       for (int i = 0; i < count_; ++i) {
-        state_[static_cast<std::size_t>(i)] =
+        candidate[static_cast<std::size_t>(i)] =
             (1.0 / 3.0) * u0[static_cast<std::size_t>(i)] +
             (2.0 / 3.0) * (u2[static_cast<std::size_t>(i)] +
                            dt * stage_rate[static_cast<std::size_t>(i)]);
       }
+      for (double value : candidate) {
+        if (!std::isfinite(value)) {
+          throw std::domain_error("burgers nonfinite RK candidate");
+        }
+      }
+      state_.swap(candidate);
     }
   }
 
@@ -193,6 +250,7 @@ public:
   [[nodiscard]] const std::vector<double> &state() const { return state_; }
 
 private:
+#ifdef BURGERS_HAS_FFTW3
   [[nodiscard]] int raw_mode(int bin) const {
     return bin <= count_ / 2 ? bin : bin - count_;
   }
@@ -247,6 +305,8 @@ private:
     }
   }
 
+#endif
+
   void fd_rate(std::span<const double> in, std::span<double> out,
                bool advective) const {
     const double spacing = spacing_;
@@ -298,11 +358,13 @@ private:
   double viscosity_;
   double spacing_;
   std::vector<double> state_;
+#ifdef BURGERS_HAS_FFTW3
   std::unique_ptr<pfc::fft::ComplexLineFFT> fft_;
   std::vector<std::complex<double>> field_;
   std::vector<std::complex<double>> spectrum_;
   std::vector<std::complex<double>> viscous_;
   std::vector<std::complex<double>> viscous_back_;
+#endif
 };
 
 } // namespace burgers

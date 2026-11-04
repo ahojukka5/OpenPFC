@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- The Burgers CPU FDM2/FVM paths and their named tests now build without
+  FFTW3; spectral methods fail explicitly when the backend is absent.
+  The CLI is exercised directly in CTest. SSP-RK3 rejects unsafe steps and
+  nonfinite candidates without partially publishing them.
+
 - `apps/burgers` advances one periodic Burgers problem,
   `u_t + (u^2/2)_x = ν u_xx` with `u(x,0)=sin(x)`, by SSP-RK3.
   The baselines are a 2/3-dealiased Fourier product through

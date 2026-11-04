@@ -8,6 +8,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 One periodic viscous Burgers problem, advanced by three selectable
 methods. The flux and the Riemann solver stay in this application.
 There is no new generic conservation-law framework.
+The CPU FDM2/FVM implementation and its tests remain buildable without
+optional FFTW3. Spectral methods require FFTW3 and otherwise fail explicitly.
 
 ## Contract
 
@@ -77,11 +79,17 @@ conservative update: the two tendencies differ pointwise, and the
 evolved fields separate. Mass is not the witness.
 
 The explicit step has to resolve the method's own stability limit.
-Finite volume needs `Δt ≤ Δx / max|u|`. The dealiased Fourier slope
+Finite volume has a combined viscosity/flow screening criterion
+`dt ≤ 1/(max|u|/dx + 2ν/dx²)`. The code rejects steps above the method's
+current SSP-RK3 screening bound and nonfinite intermediate stages, before
+publishing any candidate field. This is a conservative screening policy,
+not a proof of post-shock spectral stability. The dealiased Fourier slope
 keeps modes out to about `N/3`, so its explicit step is tighter than
 the mesh CFL. An equal `Δt` is used in the tests only where every
 method is inside its limit. The CLI reports `cfl_dt = Δx / max|u|`
-and does not rewrite the requested step.
+and does not rewrite the requested step. It additionally reports the
+initial conservative `stability_limit_initial` and `status=ok`.
+CTest runs the actual CLI for FD2, FVM and (when available) spectral.
 
 Zero-mode conservation does not select the entropy solution after the
 shock. The conservative Fourier product is not the skew-symmetric

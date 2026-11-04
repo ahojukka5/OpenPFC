@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
     burgers::Simulation simulation(burgers::parse_method(method_text), count,
                                    viscosity);
     simulation.set_initial_sine();
+    const double safe_step = simulation.stability_limit();
     simulation.advance(dt, static_cast<int>(steps));
     const double peak = burgers::maximum_abs(simulation.state());
     const double cfl_dt = peak > 0.0 ? simulation.spacing() / peak
@@ -87,7 +88,8 @@ int main(int argc, char **argv) {
               << " nu=" << simulation.viscosity() << " N=" << simulation.count()
               << " dx=" << simulation.spacing() << " dt=" << dt << " time=" << time
               << " steps=" << steps << " cfl_dt=" << cfl_dt
-              << " mass=" << burgers::mass(simulation.spacing(), simulation.state())
+              << " stability_limit_initial=" << safe_step
+              << " status=ok mass=" << burgers::mass(simulation.spacing(), simulation.state())
               << " energy="
               << burgers::energy(simulation.spacing(), simulation.state())
               << " max_abs=" << peak << " checksum=" << std::hex
@@ -95,6 +97,7 @@ int main(int argc, char **argv) {
     if (!outdir.empty()) {
       std::filesystem::create_directories(outdir);
       std::ofstream file(std::filesystem::path(outdir) / "u.dat");
+      if (!file) throw std::runtime_error("burgers could not open u.dat");
       file << std::setprecision(17);
       file << "# x";
       if (simulation.method() == burgers::Method::fvm) file << "_center";
@@ -105,6 +108,8 @@ int main(int argc, char **argv) {
                              : static_cast<double>(i) * simulation.spacing();
         file << x << " " << simulation.state()[static_cast<std::size_t>(i)] << "\n";
       }
+      file.close();
+      if (!file) throw std::runtime_error("burgers could not write u.dat");
     }
   } catch (const std::exception &error) {
     std::cerr << "burgers: " << error.what() << "\n";
