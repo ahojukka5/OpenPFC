@@ -486,3 +486,22 @@ TEST_CASE("Substrate PFC consumes the solved temperature",
                     std::invalid_argument);
   REQUIRE(held_temperature == temperature_before);
 }
+
+TEST_CASE("Rejected solved-heat step preserves thermal field and flux ledger",
+          "[unit][field][thermal_pfc]") {
+  DiffusionAxis axis(33, 1.0 / 32.0);
+  const double h = 1.0 / 32.0;
+  std::vector<double> temperature = cosine_line(33, h, 0.5, 0.25);
+  const auto before = temperature;
+  coupling::SolvedHeatRequest request;
+  request.diffusivity = 1.0e308;
+  FluxLedger ledger;
+  const auto unstable = [&] {
+    (void)coupling::advance_solved_heat(axis, temperature, request, 0.0, 1.0,
+                                        ledger);
+  };
+  REQUIRE_THROWS(unstable());
+  REQUIRE(temperature == before);
+  REQUIRE_FALSE(ledger.active());
+  REQUIRE(ledger.accepted() == 0.0);
+}
