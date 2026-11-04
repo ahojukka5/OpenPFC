@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
     const double safe_step = simulation.stability_limit();
     simulation.advance(dt, static_cast<int>(steps));
     const double peak = burgers::maximum_abs(simulation.state());
+    const double inventory = burgers::mass(simulation.spacing(), simulation.state());
     const double cfl_dt = peak > 0.0 ? simulation.spacing() / peak
                                      : std::numeric_limits<double>::infinity();
     std::cout << std::setprecision(17);
@@ -89,8 +90,7 @@ int main(int argc, char **argv) {
               << " dx=" << simulation.spacing() << " dt=" << dt << " time=" << time
               << " steps=" << steps << " cfl_dt=" << cfl_dt
               << " stability_limit_initial=" << safe_step
-              << " status=ok mass=" << burgers::mass(simulation.spacing(), simulation.state())
-              << " energy="
+              << " status=ok mass=" << inventory << " energy="
               << burgers::energy(simulation.spacing(), simulation.state())
               << " max_abs=" << peak << " checksum=" << std::hex
               << burgers::checksum(simulation.state()) << std::dec << "\n";

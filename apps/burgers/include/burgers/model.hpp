@@ -22,8 +22,8 @@
 #include <complex>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <span>
 #include <stdexcept>
@@ -173,16 +173,16 @@ public:
       throw std::domain_error("burgers nonfinite state");
     }
     const double h = spacing_;
-    const bool spectral = method_ == Method::spectral ||
-                          method_ == Method::spectral_aliased;
-    const double convection =
-        spectral ? peak * static_cast<double>(count_) /
-                       (method_ == Method::spectral ? 3.0 : 2.0)
-                 : peak / h;
-    const double diffusion = spectral
-                                 ? viscosity_ * std::numbers::pi *
-                                       std::numbers::pi / (h * h)
-                                 : 2.0 * viscosity_ / (h * h);
+    const bool spectral = method_ != Method::fvm && method_ != Method::fdm2 &&
+                          method_ != Method::fdm2_advective;
+    double convection = peak / h;
+    double diffusion = 2.0 * viscosity_ / (h * h);
+    if (spectral) {
+      const double divisor = method_ == Method::spectral ? 3.0 : 2.0;
+      convection = peak * static_cast<double>(count_) / divisor;
+      const double nyquist = std::numbers::pi / h;
+      diffusion = viscosity_ * nyquist * nyquist;
+    }
     const double rate = convection + diffusion;
     if (rate == 0.0) return std::numeric_limits<double>::infinity();
     return spectral ? 2.35 / rate : 1.0 / rate;
