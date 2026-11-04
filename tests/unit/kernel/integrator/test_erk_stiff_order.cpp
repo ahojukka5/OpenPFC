@@ -14,6 +14,7 @@
 #include <openpfc/kernel/integrator/matrix_phi_2x2.hpp>
 #include <openpfc/kernel/integrator/spectral_exp_coefficients.hpp>
 
+#include <array>
 #include <cmath>
 #include <initializer_list>
 #include <limits>
@@ -182,8 +183,9 @@ TEST_CASE("ERK43ZB satisfies the weak fourth-order fixed-step conditions",
   const Matrix2x2 triangular{-2.0, 0.0, 0.6, -0.05};
   const auto origin =
       evaluate_exponential_rk(ExponentialRkMethod::erk43zb_order4, kZero);
-  for (const Matrix2x2 &argument :
-       {kArgument, alternative, defective, triangular}) {
+  const std::array<Matrix2x2, 4> examples{kArgument, alternative, defective,
+                                          triangular};
+  for (const auto &argument : examples) {
     const auto candidate =
         evaluate_exponential_rk(ExponentialRkMethod::erk43zb_order4, argument);
     const auto strong =
@@ -199,8 +201,8 @@ TEST_CASE("ERK43ZB satisfies the weak fourth-order fixed-step conditions",
   // Output weights matter to the theorem; altering the origin values
   // must be observable by a nonzero-Z weak-order test.
   auto corrupted = origin;
-  corrupted.output[3] =
-      corrupted.output[3] + Matrix2x2{0.1, 0.0, 0.0, 0.1};
+  const Matrix2x2 corruption{0.1, 0.0, 0.0, 0.1};
+  corrupted.output[3] = corrupted.output[3] + corruption;
   const auto candidate =
       evaluate_exponential_rk(ExponentialRkMethod::erk43zb_order4, kArgument);
   const auto weak_corrupted = hochbruck_ostermann_weak_order4_residuals(
@@ -212,13 +214,10 @@ TEST_CASE("ERK43ZB satisfies the weak fourth-order fixed-step conditions",
 TEST_CASE("phi-function rejects non-finite and unscalable arguments",
           "[integrator][erk_stiff_order]") {
   const double nan = std::numeric_limits<double>::quiet_NaN();
-  REQUIRE_THROWS_AS(
-      phi_function(Matrix2x2{nan, 0.0, 0.0, 0.0}, 2),
-      std::invalid_argument);
-  REQUIRE_THROWS_AS(
-      phi_function(Matrix2x2{std::numeric_limits<double>::max(), 0.0,
-                             0.0, 0.0}, 1),
-      std::out_of_range);
+  const Matrix2x2 bad{nan, 0.0, 0.0, 0.0};
+  REQUIRE_THROWS_AS(phi_function(bad, 2), std::invalid_argument);
+  const Matrix2x2 extreme{std::numeric_limits<double>::max(), 0.0, 0.0, 0.0};
+  REQUIRE_THROWS_AS(phi_function(extreme, 1), std::out_of_range);
 }
 
 TEST_CASE("changing an ERK output weight breaks stiff condition 1",

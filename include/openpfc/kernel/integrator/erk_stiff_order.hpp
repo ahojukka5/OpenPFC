@@ -428,12 +428,10 @@ struct WeakOrder4Residuals {
   double condition9{};
 };
 
-[[nodiscard]] inline WeakOrder4Residuals
-hochbruck_ostermann_weak_order4_residuals(
+[[nodiscard]] inline WeakOrder4Residuals hochbruck_ostermann_weak_order4_residuals(
     const ExponentialRkEvaluation &at_argument,
-    const ExponentialRkEvaluation &at_zero,
-    const Matrix2x2 &argument, const Matrix2x2 &jacobian,
-    const Matrix2x2 &mixed_derivative) {
+    const ExponentialRkEvaluation &at_zero, const Matrix2x2 &argument,
+    const Matrix2x2 &jacobian, const Matrix2x2 &mixed_derivative) {
   if (at_argument.stage_count != at_zero.stage_count ||
       at_argument.stage_count < 1 || at_argument.stage_count > 6) {
     throw std::invalid_argument("weak ERK order: inconsistent stage counts");
@@ -444,8 +442,8 @@ hochbruck_ostermann_weak_order4_residuals(
   for (int i = 0; i < weak.stage_count; ++i) {
     weak.output[i] = at_zero.output[i];
   }
-  const auto at_z = hochbruck_ostermann_residuals(
-      weak, argument, jacobian, mixed_derivative);
+  const auto at_z = hochbruck_ostermann_residuals(weak, argument, jacobian,
+                                                 mixed_derivative);
   const auto at_origin = hochbruck_ostermann_residuals(
       at_zero, Matrix2x2{}, jacobian, mixed_derivative);
   return {at_origin.condition[5], at_z.condition[6], at_z.condition[7],
