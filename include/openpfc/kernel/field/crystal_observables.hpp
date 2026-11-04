@@ -32,6 +32,9 @@
  * The symmetry axis of the cyclic groups is z. Grain labels are votes for
  * the nearest supplied candidate under that same representative. Cells
  * whose stencil crosses a grain boundary are the caller's to exclude.
+ * This is a small-field host reference, not a generic multi-peak grain fit
+ * or scalable global replicated-field diagnostic. Incoherent moments will
+ * be rejected rather than identified as an invented crystal direction.
  * Nothing here reads device memory.
  */
 
@@ -108,6 +111,7 @@ struct GrainStatistics {
   FrontVelocity out;
   if (earlier.validity != FrontValidity::valid ||
       later.validity != FrontValidity::valid || !(t1 > t0) ||
+      !std::isfinite(t0) || !std::isfinite(t1) ||
       !std::isfinite(earlier.position) || !std::isfinite(later.position)) {
     return out;
   }
@@ -208,9 +212,35 @@ inline void require_window(IndexWindow window, const std::array<int, 3> &n) {
   }
 }
 
+// Coordinate rank-local input errors before the first collective. A malformed
+// local field must not strand other MPI ranks inside Allreduce/Allgatherv.
+template <class Check>
+inline void collective_validate(MPI_Comm comm, Check check) {
+  int valid = 1;
+  try {
+    check();
+  } catch (const std::exception &) {
+    valid = 0;
+  }
+  int all_valid = 0;
+  if (MPI_Allreduce(&valid, &all_valid, 1, MPI_INT, MPI_MIN, comm) !=
+      MPI_SUCCESS) {
+    fail("crystal observable: collective validation failed");
+  }
+  if (all_valid == 0) {
+    fail("crystal observable: invalid input on at least one MPI rank");
+  }
+}
+
 inline std::vector<double> replicate(const OwnedDensity &density, MPI_Comm comm) {
   int size = 1;
   MPI_Comm_size(comm, &size);
+  const std::size_t total_cells = grid_count(density.global_size);
+  // This is a bounded reference implementation that replicates the entire
+  // field on every rank; larger fields need a local-halo/reduction design.
+  if (total_cells > (std::size_t{1} << 20)) {
+    fail("crystal observable: reference replication exceeds 2^20 cells");
+  }
   const int local_n = static_cast<int>(density.box.count());
   std::vector<int> counts(static_cast<std::size_t>(size));
   std::vector<int> displs(static_cast<std::size_t>(size));
@@ -465,16 +495,18 @@ inline std::array<double, 3> representative_wavevector(std::array<double, 3> wav
 inline FrontSample planar_front_position(const OwnedDensity &density, MPI_Comm comm,
                                          const PlanarFrontOptions &options) {
   crystal_detail::require_comm(comm);
-  crystal_detail::require_geometry(density);
-  if (options.axis < 0 || options.axis > 2) {
-    crystal_detail::fail("crystal observable: front axis must be 0, 1 or 2");
-  }
-  if (!std::isfinite(options.level)) {
-    crystal_detail::fail("crystal observable: front level must be finite");
-  }
-  if (density.global_size[static_cast<std::size_t>(options.axis)] < 2) {
-    crystal_detail::fail("crystal observable: front axis needs two stations");
-  }
+  crystal_detail::collective_validate(comm, [&] {
+    crystal_detail::require_geometry(density);
+    if (options.axis < 0 || options.axis > 2) {
+      crystal_detail::fail("crystal observable: front axis must be 0, 1 or 2");
+    }
+    if (!std::isfinite(options.level)) {
+      crystal_detail::fail("crystal observable: front level must be finite");
+    }
+    if (density.global_size[static_cast<std::size_t>(options.axis)] < 2) {
+      crystal_detail::fail("crystal observable: front axis needs two stations");
+    }
+  });
   const int axis = options.axis;
   const int stations = density.global_size[static_cast<std::size_t>(axis)];
   std::vector<double> reduced(static_cast<std::size_t>(2 * stations), 0.0);
@@ -536,6 +568,7 @@ inline FrontSample planar_front_position(const OwnedDensity &density, MPI_Comm c
       crossing = x0 + (static_cast<double>(s) + a0 / (a0 - a1)) * h;
     } else if (a0 > 0.0 && a1 <= 0.0) {
       ++falling;
+      crossing = x0 + (static_cast<double>(s) + a0 / (a0 - a1)) * h;
     }
   }
   const int requested = options.rising ? rising : falling;
