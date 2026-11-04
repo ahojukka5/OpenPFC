@@ -110,11 +110,11 @@ struct GrainStatistics {
                                                   double t1) noexcept {
   FrontVelocity out;
   if (earlier.validity != FrontValidity::valid ||
-      later.validity != FrontValidity::valid || !(t1 > t0) ||
-      !std::isfinite(t0) || !std::isfinite(t1) ||
-      !std::isfinite(earlier.position) || !std::isfinite(later.position)) {
+      later.validity != FrontValidity::valid)
     return out;
-  }
+  if (!(t1 > t0) || !std::isfinite(t0) || !std::isfinite(t1)) return out;
+  if (!std::isfinite(earlier.position) || !std::isfinite(later.position))
+    return out;
   out.velocity = (later.position - earlier.position) / (t1 - t0);
   out.valid = std::isfinite(out.velocity);
   if (!out.valid) out.velocity = std::numeric_limits<double>::quiet_NaN();
@@ -214,8 +214,7 @@ inline void require_window(IndexWindow window, const std::array<int, 3> &n) {
 
 // Coordinate rank-local input errors before the first collective. A malformed
 // local field must not strand other MPI ranks inside Allreduce/Allgatherv.
-template <class Check>
-inline void collective_validate(MPI_Comm comm, Check check) {
+template <class Check> inline void collective_validate(MPI_Comm comm, Check check) {
   int valid = 1;
   try {
     check();
@@ -223,8 +222,8 @@ inline void collective_validate(MPI_Comm comm, Check check) {
     valid = 0;
   }
   int all_valid = 0;
-  if (MPI_Allreduce(&valid, &all_valid, 1, MPI_INT, MPI_MIN, comm) !=
-      MPI_SUCCESS) {
+  const int mpi_result = MPI_Allreduce(&valid, &all_valid, 1, MPI_INT, MPI_MIN, comm);
+  if (mpi_result != MPI_SUCCESS) {
     fail("crystal observable: collective validation failed");
   }
   if (all_valid == 0) {
@@ -387,10 +386,10 @@ inline std::array<double, 3> wave_from_moments(double S, double Qxx, double Qyy,
 // For one Fourier cosine, the mixed central differences must match the
 // product of the one-dimensional first-derivative stencil symbols.
 // A sum of independent lattice waves generally violates these identities.
-inline bool coherent_single_mode(
-    double S, double Qxx, double Qyy, double Qzz, double Qxy, double Qxz,
-    double Qyz, const std::array<double, 3> &h,
-    const std::array<double, 3> &wave) {
+inline bool coherent_single_mode(double S, double Qxx, double Qyy, double Qzz,
+                                 double Qxy, double Qxz, double Qyz,
+                                 const std::array<double, 3> &h,
+                                 const std::array<double, 3> &wave) {
   if (!(S > 1.0e-12) || !std::isfinite(S)) return false;
   const double diag[3] = {Qxx / S, Qyy / S, Qzz / S};
   for (double value : diag) {
@@ -403,9 +402,10 @@ inline bool coherent_single_mode(
                             std::sin(wave[1] * h[1]) / h[1],
                             std::sin(wave[2] * h[2]) / h[2]};
   const double observed[3] = {Qxy / S, Qxz / S, Qyz / S};
-  const double predicted[3] = {symbol[0] * symbol[1],
-                               symbol[0] * symbol[2],
-                               symbol[1] * symbol[2]};
+  const double predicted_xy = symbol[0] * symbol[1];
+  const double predicted_xz = symbol[0] * symbol[2];
+  const double predicted_yz = symbol[1] * symbol[2];
+  const double predicted[3] = {predicted_xy, predicted_xz, predicted_yz};
   for (int pair = 0; pair < 3; ++pair) {
     if (!std::isfinite(observed[pair]) ||
         std::abs(observed[pair] - predicted[pair]) > 0.10 * scale + 1.0e-10)
@@ -652,10 +652,10 @@ inline OrientationSample region_orientation(const OwnedDensity &density,
   if (bad || !(S > 0.0) || !std::isfinite(S)) return sample;
   const std::array<double, 3> estimated = crystal_detail::wave_from_moments(
       S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing);
-  if (!crystal_detail::finite_wave(estimated) ||
-      !crystal_detail::coherent_single_mode(
-          S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing, estimated))
-    return sample;
+  if (!crystal_detail::finite_wave(estimated)) return sample;
+  const bool coherent = crystal_detail::coherent_single_mode(
+      S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing, estimated);
+  if (!coherent) return sample;
   sample.wavevector = representative_wavevector(estimated, symmetry);
   sample.angle_xy = crystal_detail::angle_of(sample.wavevector);
   sample.valid = crystal_detail::finite_wave(sample.wavevector) &&
@@ -704,10 +704,10 @@ label_grains(const OwnedDensity &density, MPI_Comm comm, IndexWindow window,
         const double Qxz = -d.u * d.xz, Qyz = -d.u * d.yz;
         const std::array<double, 3> estimated = crystal_detail::wave_from_moments(
             S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing);
-        if (!crystal_detail::finite_wave(estimated) ||
-            !crystal_detail::coherent_single_mode(
-                S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing, estimated))
-          continue;
+        if (!crystal_detail::finite_wave(estimated)) continue;
+        const bool coherent = crystal_detail::coherent_single_mode(
+            S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing, estimated);
+        if (!coherent) continue;
         const std::array<double, 3> got = crystal_detail::unit_wave(
             representative_wavevector(estimated, symmetry));
         std::size_t best = 0;
@@ -729,8 +729,8 @@ label_grains(const OwnedDensity &density, MPI_Comm comm, IndexWindow window,
   }
   // Do not report confident grain fractions when the great majority of
   // points cannot be explained by any one local Fourier wave.
-  if (stats.voting_cells > 0 &&
-      stats.voting_cells * 4 >= eligible_cells * 3) {
+  const bool enough_votes = stats.voting_cells * 4 >= eligible_cells * 3;
+  if (stats.voting_cells > 0 && enough_votes) {
     stats.valid = true;
     for (std::size_t g = 0; g < stats.counts.size(); ++g) {
       stats.fraction[g] = static_cast<double>(stats.counts[g]) /
