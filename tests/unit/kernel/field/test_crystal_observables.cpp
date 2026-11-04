@@ -152,8 +152,7 @@ TEST_CASE("a descending planar RMS front reports its real sub-cell position",
   std::vector<double> values(static_cast<std::size_t>(nx * ny * nz));
   for (int k = 0; k < nz; ++k) {
     for (int j = 0; j < ny; ++j) {
-      const double phase =
-          2.0 * std::numbers::pi * static_cast<double>(j) / ny;
+      const double phase = 2.0 * std::numbers::pi * static_cast<double>(j) / ny;
       const double wave = std::sqrt(2.0) * std::cos(phase);
       for (int i = 0; i < nx; ++i) {
         const std::size_t idx = static_cast<std::size_t>(i + nx * (j + ny * k));

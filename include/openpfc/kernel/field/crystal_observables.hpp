@@ -113,8 +113,7 @@ struct GrainStatistics {
       later.validity != FrontValidity::valid)
     return out;
   if (!(t1 > t0) || !std::isfinite(t0) || !std::isfinite(t1)) return out;
-  if (!std::isfinite(earlier.position) || !std::isfinite(later.position))
-    return out;
+  if (!std::isfinite(earlier.position) || !std::isfinite(later.position)) return out;
   out.velocity = (later.position - earlier.position) / (t1 - t0);
   out.valid = std::isfinite(out.velocity);
   if (!out.valid) out.velocity = std::numeric_limits<double>::quiet_NaN();
@@ -222,7 +221,8 @@ template <class Check> inline void collective_validate(MPI_Comm comm, Check chec
     valid = 0;
   }
   int all_valid = 0;
-  const int mpi_result = MPI_Allreduce(&valid, &all_valid, 1, MPI_INT, MPI_MIN, comm);
+  const int mpi_result =
+      MPI_Allreduce(&valid, &all_valid, 1, MPI_INT, MPI_MIN, comm);
   if (mpi_result != MPI_SUCCESS) {
     fail("crystal observable: collective validation failed");
   }
