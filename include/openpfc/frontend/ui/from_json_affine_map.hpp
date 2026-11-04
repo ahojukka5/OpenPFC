@@ -6,8 +6,9 @@
  * @brief JSON/TOML object for a constant `AffineMap`.
  *
  * @details
- * Columns are the images of the reference basis, in reference coordinates
- * `ξ`, not a row-major physical matrix written by eye:
+ * Columns are the images of the reference basis expressed in physical
+ * Cartesian coordinates `x`, not reference-coordinate components `ξ`
+ * or a row-major physical matrix written by eye:
  * `{"columns": [[2, 0, 0], [0.5, 1, 0], [0, 0, 3]], "translation": [1, -2, 4]}`.
  * `translation` is optional and defaults to zero. A singular or non-finite
  * matrix is rejected. This object does not select a physics model.

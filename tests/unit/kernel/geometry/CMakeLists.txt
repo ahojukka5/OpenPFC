@@ -3,4 +3,9 @@
 
 file(GLOB GEOMETRY_UNIT_TEST_SOURCES CONFIGURE_DEPENDS
      ${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp)
+# The FFT parity fixture constructs LocalFFT, whose implementation is optional
+# when FFTW3 is unavailable. Keep pure geometry tests without FFTW.
+if(NOT OpenPFC_HAS_FFTW3)
+  list(FILTER GEOMETRY_UNIT_TEST_SOURCES EXCLUDE REGEX "/test_affine_map[.]cpp$")
+endif()
 target_sources(openpfc-tests PRIVATE ${GEOMETRY_UNIT_TEST_SOURCES})

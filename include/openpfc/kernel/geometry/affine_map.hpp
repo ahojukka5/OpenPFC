@@ -20,15 +20,16 @@
  *
  * `A` is stored column-major. Column `j` is the image of reference basis
  * vector `e_j`. The volume weight is `|det A|`, so `dV_x = |det A| dV_ξ`.
- * Factories validate on the host. Direct mutation of the stored arrays makes
- * the caller responsible for the inverse, the determinant and the Cartesian
- * flag.
+ * Factories validate on the host. Cached geometry fields are read-only: an
+ * unchecked mutation must not invalidate the inverse, determinant, or
+ * identity fast-path while retained downstream code still reads the cache.
  */
 
 #include <openpfc/kernel/geometry/vec3.hpp>
 
 #include <cmath>
 #include <stdexcept>
+#include <type_traits>
 
 namespace pfc::geometry {
 
@@ -38,17 +39,36 @@ namespace pfc::geometry {
  * Device methods are non-throwing arithmetic. `affine_map_from_matrix`
  * rejects a non-finite or singular matrix on the host.
  */
-struct AffineMap {
+class AffineMap {
+public:
   /// Column-major Jacobian `A = dx/dξ`. Column `j` is `matrix[j * 3 + i]`.
-  double matrix[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-  /// Column-major `A^{-1}`.
-  double inverse[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+  const double matrix[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+  /// Column-major `A^{-1}`; immutable with the Jacobian.
+  const double inverse[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
   /// Translation `b` in physical coordinates.
-  double translation[3] = {0, 0, 0};
+  const double translation[3] = {0, 0, 0};
   /// `det A`. Identity is exactly 1.
-  double determinant = 1;
+  const double determinant = 1;
   /// True only when `A` is exactly `I`. The Laplacian then skips the metric.
-  bool cartesian = true;
+  const bool cartesian = true;
+
+  OPENPFC_HD AffineMap() = default;
+
+private:
+  friend AffineMap affine_map_from_matrix(const double matrix[9],
+                                          Vec3 translation);
+
+  // Host-only validated construction. Raw arrays preserve device-friendly
+  // indexing of the immutable, trivially copyable value object.
+  AffineMap(const double a[9], const double inv[9], Vec3 shift, double det,
+            bool is_cartesian)
+      : matrix{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]},
+        inverse{inv[0], inv[1], inv[2], inv[3], inv[4], inv[5], inv[6],
+                inv[7], inv[8]},
+        translation{shift.x, shift.y, shift.z}, determinant(det),
+        cartesian(is_cartesian) {}
+
+public:
 
   OPENPFC_HD Vec3 column(int j) const noexcept {
     return {matrix[j * 3], matrix[j * 3 + 1], matrix[j * 3 + 2]};
@@ -127,6 +147,8 @@ struct AffineMap {
   }
 };
 
+static_assert(std::is_trivially_copyable_v<AffineMap>);
+
 /// Identity Jacobian and zero translation. Valid on the device.
 OPENPFC_HD inline AffineMap identity_affine_map() noexcept { return {}; }
 
@@ -149,21 +171,13 @@ OPENPFC_HD inline double physical_volume(const AffineMap &map,
     }
   }
 
-  AffineMap map;
   const double eye[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
   bool cartesian = true;
   for (int i = 0; i < 9; ++i) {
-    map.matrix[i] = matrix[i];
     if (matrix[i] != eye[i]) cartesian = false;
   }
-  map.translation[0] = translation.x;
-  map.translation[1] = translation.y;
-  map.translation[2] = translation.z;
   if (cartesian) {
-    for (int i = 0; i < 9; ++i) map.inverse[i] = eye[i];
-    map.determinant = 1;
-    map.cartesian = true;
-    return map;
+    return AffineMap(matrix, eye, translation, 1.0, true);
   }
 
   const double a00 = matrix[0];
@@ -191,11 +205,8 @@ OPENPFC_HD inline double physical_volume(const AffineMap &map,
     if (!std::isfinite(inv[i])) {
       throw std::invalid_argument("affine map matrix is singular");
     }
-    map.inverse[i] = inv[i];
   }
-  map.determinant = det;
-  map.cartesian = false;
-  return map;
+  return AffineMap(matrix, inv, translation, det, false);
 }
 
 [[nodiscard]] inline AffineMap affine_map_from_columns(Vec3 c0, Vec3 c1, Vec3 c2,

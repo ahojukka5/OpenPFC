@@ -7,6 +7,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- The constant AffineMap Jacobian, inverse, determinant, translation and
+  identity fast-path cache are immutable after validated construction.
+  Standalone affine geometry tests remain available without FFTW.
+
 - `AffineMap` is the constant map `x = A ξ + b` from the Cartesian reference
   cell to physical space. `ξ` is the cell the structured grid and the
   periodic FFT already index. Gradients and reference wavevectors transform
