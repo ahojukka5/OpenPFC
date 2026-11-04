@@ -174,7 +174,10 @@ delete the crystal.
 The gate is that file run through `TungstenSession` for $t\in[0,20]$, $dt=1$,
 against the same model, the same box and the same mask on a $32^3$ grid.
 The density RMS stays within $10^{-6}$ relative and the density maximum
-within $10^{-4}$ relative. Turning the mask off on the $16^3$ preset changes
+within $10^{-4}$ relative. The test additionally compares the **full
+coarse-grid field** with the 32³ field at the same physical nodes, and
+the six complex normalized first-shell BCC coefficients; these comparisons
+detect phase or structural disagreements that scalar extrema can hide. Turning the mask off on the $16^3$ preset changes
 the maximum by less than $10^{-4}$, and the power in $|k|>2$ by less than
 $10^{-4}$. The same mask comparison at the historical spacing ($8^3$ on this
 box, $\Delta x=1.11072$, 5.66 points per period) moves the maximum by about
@@ -185,6 +188,18 @@ The cell is bulk crystal. It has no solidification front. `TungstenPhysics`
 does not expose a free-energy density, so the gate uses the density maximum,
 the density RMS and the $|k|>2$ power. Cost is secondary. ctest also runs
 the mask-off twin and the $8^3$ pair, all at 20 steps on one CPU rank.
+`tungsten-resolved-bcc-cli` separately executes the actual `tungsten`
+binary with this maintained JSON and checks the finite-field checksum.
+To capture the numeric acceptance record in a local or source-pinned CI
+log, run `build/apps/tungsten/test_tungsten "[preset]"`; it prints
+`TUNGSTEN_BCC` with field and Fourier-mode errors.
+
+**Limitation:** `high_mode_power` is the *final density tail* for
+`|k|>2`, not a direct estimate of alias energy folded into retained
+low-wavenumber modes of the nonlinear RHS. The declared 2/3 output mask
+is not a generic cubic 1/2-rule de-aliaser. This one-cell 20-step gate
+must not be generalized to all solidification fronts or parameter sets
+without an independent nonlinear-product alias benchmark.
 
 The historical solidification presets stay at $\Delta x=1.1107$ and omit
 `model.dealias`, so their mask stays off. They are demonstration

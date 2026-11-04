@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Tungsten resolved-BCC gate now compares the actual 16³ field sampled
+  against 32³ and all six complex first-shell BCC Fourier coefficients.
+  The real tungsten CLI is also registered as an executable smoke test.
+  High-mode power is labeled as final-density tail, not folded RHS alias.
+
 - `tungsten_resolved_bcc.json` is one periodic BCC cell, 16 points along
   the lattice constant, with the 2/3 dealias mask on. The same model on
   a 32³ grid in that box keeps the density RMS inside 1e-6 relative and

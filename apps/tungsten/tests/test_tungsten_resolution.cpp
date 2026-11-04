@@ -14,9 +14,13 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <filesystem>
+#include <iomanip>
+#include <iostream>
+#include <vector>
 #include <numbers>
 
 #include <mpi.h>
@@ -142,12 +146,41 @@ double high_mode_power(tungsten::TungstenSession &session) {
   return global;
 }
 
+// Exact physical-grid state and the six normalized reciprocal BCC shell modes
+// are retained for direct comparisons across resolutions, not only moments.
 struct Evolved {
   DensityMoments density;
   double high{};
   bool dealias{};
   double dx{};
+  std::vector<double> state;
+  std::array<std::complex<double>, 6> bcc_shell{};
 };
+
+std::array<std::complex<double>, 6>
+bcc_shell(tungsten::TungstenSession &session) {
+  constexpr double inv_sqrt2 = 0.707106781186547524400844362104849039;
+  const std::array<std::array<int, 3>, 6> mode{{
+      {{1, 1, 0}}, {{1, 0, 1}}, {{0, 1, 1}},
+      {{1, 0, -1}}, {{1, -1, 0}}, {{0, 1, -1}}}};
+  std::array<std::complex<double>, 6> local{};
+  auto &psi = session.psi();
+  std::size_t samples = 0;
+  psi.for_each_owned([&](int i, int j, int k) {
+    const auto x = psi.coords(i, j, k);
+    for (std::size_t m = 0; m < mode.size(); ++m) {
+      const double phase = inv_sqrt2 *
+          (mode[m][0] * x[0] + mode[m][1] * x[1] + mode[m][2] * x[2]);
+      local[m] += psi(i, j, k) *
+          std::complex<double>(std::cos(phase), -std::sin(phase));
+    }
+    ++samples;
+  });
+  // This first gate is explicitly a one-rank reference; mode amplitudes are
+  // normalized by sample count so 16³ and 32³ coefficients are comparable.
+  for (auto &value : local) value /= static_cast<double>(samples);
+  return local;
+}
 
 Evolved evolve(const nlohmann::json &settings) {
   tungsten::TungstenSession session(settings, 0, 1, MPI_COMM_WORLD);
@@ -157,7 +190,30 @@ Evolved evolve(const nlohmann::json &settings) {
   REQUIRE_THAT(spacing[2], WithinRel(spacing[0], 1e-15));
   const double dx = spacing[0];
   session.run();
-  return Evolved{density_moments(session), high_mode_power(session), dealias, dx};
+  return Evolved{density_moments(session), high_mode_power(session), dealias, dx,
+                 session.psi().vec(), bcc_shell(session)};
+}
+
+std::pair<double, double> sampled_field_error(const Evolved &coarse,
+                                               const Evolved &fine) {
+  constexpr int n = 16;
+  constexpr int nf = 32;
+  REQUIRE(coarse.state.size() == static_cast<std::size_t>(n * n * n));
+  REQUIRE(fine.state.size() == static_cast<std::size_t>(nf * nf * nf));
+  double peak = 0.0;
+  double sumsq = 0.0;
+  for (int k = 0; k < n; ++k) {
+    for (int j = 0; j < n; ++j) {
+      for (int i = 0; i < n; ++i) {
+        const auto c = static_cast<std::size_t>(i + n * (j + n * k));
+        const auto f = static_cast<std::size_t>(2 * i + nf * (2 * j + nf * 2 * k));
+        const double gap = coarse.state[c] - fine.state[f];
+        peak = std::max(peak, std::abs(gap));
+        sumsq += gap * gap;
+      }
+    }
+  }
+  return {std::sqrt(sumsq / (n * n * n)), peak};
 }
 
 double relative_change(double left, double right) {
@@ -171,7 +227,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   int nproc = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
   if (nproc != 1) {
-    return;
+    SKIP("the resolved BCC gate requires a single CPU rank");
   }
   tungsten::register_catalog();
 
@@ -220,6 +276,32 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
           rms_tolerance);
   REQUIRE(relative_change(selected.density.hi, control.density.hi) < max_tolerance);
   REQUIRE(relative_change(selected.density.mean, control.density.mean) < 1e-8);
+
+  // Unlike scalar RMS/maximum, this compares the actual field on the same
+  // physical sample points and the complex BCC reciprocal modes. A phase
+  // difference is visible rather than disappearing in |hat(k)| or sumsq.
+  const auto [field_l2, field_linf] = sampled_field_error(selected, control);
+  double shell_gap = 0.0;
+  for (std::size_t mode = 0; mode < selected.bcc_shell.size(); ++mode) {
+    shell_gap = std::max(shell_gap,
+                         std::abs(selected.bcc_shell[mode] -
+                                  control.bcc_shell[mode]));
+  }
+  std::cout << std::setprecision(17)
+            << "TUNGSTEN_BCC N=16 reference_N=32 dt=1 steps=20 dealias=1"
+            << " rms=" << selected.density.rms
+            << " rms32=" << control.density.rms
+            << " maximum=" << selected.density.hi
+            << " maximum32=" << control.density.hi
+            << " field_l2=" << field_l2
+            << " field_linf=" << field_linf
+            << " bcc_shell_max_gap=" << shell_gap << '\n';
+  REQUIRE(std::isfinite(field_l2));
+  REQUIRE(std::isfinite(field_linf));
+  REQUIRE(std::isfinite(shell_gap));
+  REQUIRE(field_l2 < 1.0e-3);
+  REQUIRE(field_linf < 4.0e-3);
+  REQUIRE(shell_gap < 1.0e-3);
 
   // Same preset, mask off. Retained high-mode contamination of the update.
   nlohmann::json unmasked = preset;
