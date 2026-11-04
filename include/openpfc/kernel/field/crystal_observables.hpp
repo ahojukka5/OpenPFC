@@ -384,6 +384,36 @@ inline std::array<double, 3> wave_from_moments(double S, double Qxx, double Qyy,
   return wave;
 }
 
+// For one Fourier cosine, the mixed central differences must match the
+// product of the one-dimensional first-derivative stencil symbols.
+// A sum of independent lattice waves generally violates these identities.
+inline bool coherent_single_mode(
+    double S, double Qxx, double Qyy, double Qzz, double Qxy, double Qxz,
+    double Qyz, const std::array<double, 3> &h,
+    const std::array<double, 3> &wave) {
+  if (!(S > 1.0e-12) || !std::isfinite(S)) return false;
+  const double diag[3] = {Qxx / S, Qyy / S, Qzz / S};
+  for (double value : diag) {
+    if (!std::isfinite(value) || value < -1.0e-10) return false;
+  }
+  const double scale =
+      std::max({std::abs(diag[0]), std::abs(diag[1]), std::abs(diag[2])});
+  if (!(scale > 1.0e-12)) return false;
+  const double symbol[3] = {std::sin(wave[0] * h[0]) / h[0],
+                            std::sin(wave[1] * h[1]) / h[1],
+                            std::sin(wave[2] * h[2]) / h[2]};
+  const double observed[3] = {Qxy / S, Qxz / S, Qyz / S};
+  const double predicted[3] = {symbol[0] * symbol[1],
+                               symbol[0] * symbol[2],
+                               symbol[1] * symbol[2]};
+  for (int pair = 0; pair < 3; ++pair) {
+    if (!std::isfinite(observed[pair]) ||
+        std::abs(observed[pair] - predicted[pair]) > 0.10 * scale + 1.0e-10)
+      return false;
+  }
+  return true;
+}
+
 inline bool finite_wave(const std::array<double, 3> &wave) {
   const double n2 = wave[0] * wave[0] + wave[1] * wave[1] + wave[2] * wave[2];
   return std::isfinite(n2) && n2 > 1e-16;
@@ -589,8 +619,10 @@ inline OrientationSample region_orientation(const OwnedDensity &density,
                                             MPI_Comm comm, IndexWindow window,
                                             CrystalSymmetry symmetry) {
   crystal_detail::require_comm(comm);
-  crystal_detail::require_geometry(density);
-  crystal_detail::require_window(window, density.global_size);
+  crystal_detail::collective_validate(comm, [&] {
+    crystal_detail::require_geometry(density);
+    crystal_detail::require_window(window, density.global_size);
+  });
   const std::vector<double> full = crystal_detail::replicate(density, comm);
   double S = 0.0;
   double Qxx = 0.0, Qyy = 0.0, Qzz = 0.0, Qxy = 0.0, Qxz = 0.0, Qyz = 0.0;
@@ -620,7 +652,10 @@ inline OrientationSample region_orientation(const OwnedDensity &density,
   if (bad || !(S > 0.0) || !std::isfinite(S)) return sample;
   const std::array<double, 3> estimated = crystal_detail::wave_from_moments(
       S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing);
-  if (!crystal_detail::finite_wave(estimated)) return sample;
+  if (!crystal_detail::finite_wave(estimated) ||
+      !crystal_detail::coherent_single_mode(
+          S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing, estimated))
+    return sample;
   sample.wavevector = representative_wavevector(estimated, symmetry);
   sample.angle_xy = crystal_detail::angle_of(sample.wavevector);
   sample.valid = crystal_detail::finite_wave(sample.wavevector) &&
@@ -636,11 +671,12 @@ label_grains(const OwnedDensity &density, MPI_Comm comm, IndexWindow window,
              CrystalSymmetry symmetry,
              std::span<const std::array<double, 3>> candidates) {
   crystal_detail::require_comm(comm);
-  crystal_detail::require_geometry(density);
-  crystal_detail::require_window(window, density.global_size);
-  if (candidates.empty()) {
-    crystal_detail::fail("crystal observable: grain labeling needs a candidate");
-  }
+  crystal_detail::collective_validate(comm, [&] {
+    crystal_detail::require_geometry(density);
+    crystal_detail::require_window(window, density.global_size);
+    if (candidates.empty())
+      crystal_detail::fail("crystal observable: grain labeling needs a candidate");
+  });
   const std::vector<double> full = crystal_detail::replicate(density, comm);
   GrainStatistics stats;
   stats.counts.assign(candidates.size(), 0);
@@ -654,17 +690,24 @@ label_grains(const OwnedDensity &density, MPI_Comm comm, IndexWindow window,
       crystal_detail::fail("crystal observable: a grain candidate has no direction");
     }
   }
+  long long eligible_cells = 0;
   for (int k = window.low[2]; k <= window.high[2]; ++k) {
     for (int j = window.low[1]; j <= window.high[1]; ++j) {
       for (int i = window.low[0]; i <= window.high[0]; ++i) {
         const auto d = crystal_detail::differentiate(full, density.global_size,
                                                      density.spacing, i, j, k);
         if (!std::isfinite(d.u) || !(d.u * d.u > 1e-12)) continue;
+        ++eligible_cells;
         const double S = d.u * d.u;
+        const double Qxx = -d.u * d.xx, Qyy = -d.u * d.yy;
+        const double Qzz = -d.u * d.zz, Qxy = -d.u * d.xy;
+        const double Qxz = -d.u * d.xz, Qyz = -d.u * d.yz;
         const std::array<double, 3> estimated = crystal_detail::wave_from_moments(
-            S, -d.u * d.xx, -d.u * d.yy, -d.u * d.zz, -d.u * d.xy, -d.u * d.xz,
-            -d.u * d.yz, density.spacing);
-        if (!crystal_detail::finite_wave(estimated)) continue;
+            S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing);
+        if (!crystal_detail::finite_wave(estimated) ||
+            !crystal_detail::coherent_single_mode(
+                S, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz, density.spacing, estimated))
+          continue;
         const std::array<double, 3> got = crystal_detail::unit_wave(
             representative_wavevector(estimated, symmetry));
         std::size_t best = 0;
@@ -684,7 +727,10 @@ label_grains(const OwnedDensity &density, MPI_Comm comm, IndexWindow window,
       }
     }
   }
-  if (stats.voting_cells > 0) {
+  // Do not report confident grain fractions when the great majority of
+  // points cannot be explained by any one local Fourier wave.
+  if (stats.voting_cells > 0 &&
+      stats.voting_cells * 4 >= eligible_cells * 3) {
     stats.valid = true;
     for (std::size_t g = 0; g < stats.counts.size(); ++g) {
       stats.fraction[g] = static_cast<double>(stats.counts[g]) /
