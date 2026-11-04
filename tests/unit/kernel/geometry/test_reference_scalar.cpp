@@ -121,7 +121,8 @@ TEST_CASE("A reference scalar reads the map without a domain enum",
 
   // Invalid maps cannot be manufactured through the validated public API.
   const double singular[9] = {0, 0, 0, 0, 1, 0, 0, 0, 1};
-  REQUIRE_THROWS_AS(
-      pfc::geometry::affine_map_from_matrix(singular, {0, 0, 0}),
-      std::invalid_argument);
+  const auto invalid = [&] {
+    return pfc::geometry::affine_map_from_matrix(singular, {0, 0, 0});
+  };
+  REQUIRE_THROWS_AS(invalid(), std::invalid_argument);
 }
