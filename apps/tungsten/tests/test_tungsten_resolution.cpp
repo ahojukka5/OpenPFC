@@ -242,10 +242,9 @@ RhsModes nonlinear_rhs_modes(tungsten::TungstenSession &session, double time) {
         [&](std::size_t index, double, double, double, int ix, int iy, int iz) {
           const int my = pfc::fft::kspace::signed_wave_index(iy, size[1]);
           const int mz = pfc::fft::kspace::signed_wave_index(iz, size[2]);
-          if (ix > kRhsLow || std::abs(my) > kRhsLow ||
-              std::abs(mz) > kRhsLow) {
-            return;
-          }
+          const bool outside = ix > kRhsLow || std::abs(my) > kRhsLow ||
+                               std::abs(mz) > kRhsLow;
+          if (outside) return;
           const int y = my + kRhsLow;
           const int z = mz + kRhsLow;
           const auto slot = static_cast<std::size_t>(ix + 5 * (y + 9 * z));
@@ -257,8 +256,7 @@ RhsModes nonlinear_rhs_modes(tungsten::TungstenSession &session, double time) {
   return modes;
 }
 
-std::pair<double, double> rhs_mode_error(const RhsModes &left,
-                                         const RhsModes &right) {
+std::pair<double, double> rhs_gap(const RhsModes &left, const RhsModes &right) {
   double peak = 0.0;
   double sumsq = 0.0;
   for (std::size_t i = 0; i < left.size(); ++i) {
@@ -435,7 +433,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   // Directly measure the actual retained nonlinear RHS coefficients, not
   // only scalar density moments or the final solution's spectral tail.
   const auto [rhs_l2, rhs_linf] =
-      rhs_mode_error(selected.rhs_modes, control.rhs_modes);
+      rhs_gap(selected.rhs_modes, control.rhs_modes);
   std::printf("TUNGSTEN_RHS N=16 reference_N=32 retained_modes=%zu "
               "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, rhs_l2, rhs_linf);
@@ -449,7 +447,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   const Evolved bare = evolve(unmasked);
   REQUIRE_FALSE(bare.dealias);
   const auto [masked_gap, masked_peak] =
-      rhs_mode_error(selected.rhs_modes, bare.rhs_modes);
+      rhs_gap(selected.rhs_modes, bare.rhs_modes);
   std::printf("TUNGSTEN_RHS N=16 mask_on_vs_off retained_modes=%zu "
               "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, masked_gap, masked_peak);
