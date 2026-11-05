@@ -13,12 +13,10 @@ using Catch::Matchers::WithinAbs;
 
 TEST_CASE("Burgers rejects invalid grid sizes before allocating",
           "[burgers][no_fft]") {
-  REQUIRE_THROWS_AS(
-      burgers::Simulation(burgers::Method::fvm, -1, 0.1),
-      std::invalid_argument);
-  REQUIRE_THROWS_AS(
-      burgers::Simulation(burgers::Method::fdm2, 0, 0.1),
-      std::invalid_argument);
+  REQUIRE_THROWS_AS(burgers::Simulation(burgers::Method::fvm, -1, 0.1),
+                    std::invalid_argument);
+  REQUIRE_THROWS_AS(burgers::Simulation(burgers::Method::fdm2, 0, 0.1),
+                    std::invalid_argument);
 }
 
 TEST_CASE("Burgers FD2 and FVM periodic tendencies conserve mass",
