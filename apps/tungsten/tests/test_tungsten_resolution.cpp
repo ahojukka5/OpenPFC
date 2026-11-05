@@ -30,10 +30,45 @@
 #include <openpfc/kernel/data/domain.hpp>
 #include <openpfc/kernel/fft/power_spectrum.hpp>
 #include <tungsten/resolution.hpp>
+#include <tungsten/tungsten_pointwise.hpp>
 #include <tungsten/tungsten_session.hpp>
 
 using Catch::Matchers::WithinRel;
 namespace res = tungsten::resolution;
+
+TEST_CASE("Cubic tungsten nonlinear RHS aliases into a retained low mode",
+          "[tungsten][resolution][unit]") {
+  // A controlled probe of the *shipped pointwise polynomial*, not an
+  // inference from the final solution's high-frequency tail.
+  // cos(5x)^3 = (3 cos(5x) + cos(15x))/4. On 16 samples the 15th
+  // harmonic folds into +/-1, retained by the standard 2/3 output mask.
+  // On 64 samples it is distinguishable from mode 1.
+  tungsten::TungstenPointwise cubic{};
+  cubic.c_psi3 = 1.0;
+  const auto nonlinear_mode = [&](int n, int mode) {
+    std::complex<double> coefficient{};
+    for (int j = 0; j < n; ++j) {
+      const double x = 2.0 * std::numbers::pi * j / n;
+      const double psi = std::cos(5.0 * x);
+      const double rhs =
+          cubic.nonlinearity(pfc::sim::SpectralCell{.psi = psi});
+      const std::complex<double> projector{std::cos(mode * x),
+                                           -std::sin(mode * x)};
+      coefficient += rhs * projector;
+    }
+    return coefficient / static_cast<double>(n);
+  };
+  const auto alias = nonlinear_mode(16, 1);
+  const auto reference = nonlinear_mode(64, 1);
+  REQUIRE(std::abs(alias.real() - 0.125) < 1e-12);
+  REQUIRE(std::abs(alias.imag()) < 1e-12);
+  REQUIRE(std::abs(reference) < 1e-12);
+  REQUIRE(std::abs(nonlinear_mode(64, 15).real() - 0.125) < 1e-12);
+
+  // A retained-mode check makes the rejection of 2/3 as an exact
+  // cubic-dealias rule explicit, without changing any production mask.
+  REQUIRE(1 * 3 < 16);
+}
 
 TEST_CASE("Tungsten resolution: the two conditions meet at pi/3",
           "[tungsten][resolution][unit]") {
