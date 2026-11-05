@@ -211,8 +211,20 @@ auto sampled_field_error(const Evolved &coarse, const Evolved &fine) {
     for (int j = 0; j < n; ++j) {
       for (int i = 0; i < n; ++i) {
         const auto c = static_cast<std::size_t>(i + n * (j + n * k));
-        const auto f = static_cast<std::size_t>(2 * i + nf * (2 * j + nf * 2 * k));
-        const double gap = coarse.state[c] - fine.state[f];
+        // Cell centers differ between 16^3 and 32^3 grids. The physical
+        // coarse center is the midpoint of the eight surrounding fine
+        // centers: a single fine sample at (2i,2j,2k) is NOT coincident.
+        double interpolated = 0.0;
+        for (int dk = 0; dk < 2; ++dk) {
+          for (int dj = 0; dj < 2; ++dj) {
+            for (int di = 0; di < 2; ++di) {
+              const auto f = static_cast<std::size_t>(
+                  2 * i + di + nf * (2 * j + dj + nf * (2 * k + dk)));
+              interpolated += fine.state[f];
+            }
+          }
+        }
+        const double gap = coarse.state[c] - interpolated / 8.0;
         peak = std::max(peak, std::abs(gap));
         sumsq += gap * gap;
       }
