@@ -182,6 +182,12 @@ double high_mode_power(tungsten::TungstenSession &session) {
 
 // Exact physical-grid state and the six normalized reciprocal BCC shell modes
 // are retained for direct comparisons across resolutions, not only moments.
+// Nonlinear N_hat before the 2/3 output mask, restricted to the same
+// 405 retained low Fourier modes on 16^3 and 32^3 one-rank grids.
+constexpr int kRhsLow = 4;
+constexpr std::size_t kRhsCount = 5u * 9u * 9u;
+using RhsModes = std::array<std::complex<double>, kRhsCount>;
+
 struct Evolved {
   DensityMoments density;
   double high{};
@@ -189,6 +195,7 @@ struct Evolved {
   double dx{};
   std::vector<double> state;
   std::array<std::complex<double>, 6> bcc_shell{};
+  RhsModes rhs_modes{};
 };
 
 std::array<std::complex<double>, 6> bcc_shell(tungsten::TungstenSession &session) {
@@ -215,6 +222,53 @@ std::array<std::complex<double>, 6> bcc_shell(tungsten::TungstenSession &session
   return local;
 }
 
+// Evaluate the actual shipped N(psi,psi_mf) at the final evolved field.
+// attempt() writes the *unmasked* N_hat before applying its optional
+// 2/3 output mask. It does not commit a new primary field. The HeFFTe
+// forward transform is unnormalized, so divide by global cell count.
+// The one-rank gate below is necessary to own every requested mode.
+RhsModes nonlinear_rhs_modes(tungsten::TungstenSession &session, double time) {
+  (void)session.system().attempt(time);
+  auto &n_hat = session.state().get_field<std::complex<double>, pfc::HostSpace>(
+      session.system().options().n_hat_name);
+  const auto outbox = session.fft().get_outbox_bounds();
+  const auto size = pfc::domain::get_size(session.domain());
+  const double cells = static_cast<double>(size[0]) * size[1] * size[2];
+  RhsModes modes{};
+  std::array<bool, kRhsCount> seen{};
+  n_hat.with_host_view([&](std::complex<double> *values, std::size_t) {
+    pfc::fft::kspace::for_each_kpoint(
+        outbox, session.domain(),
+        [&](std::size_t index, double, double, double, int ix, int iy, int iz) {
+          const int my = pfc::fft::kspace::signed_wave_index(iy, size[1]);
+          const int mz = pfc::fft::kspace::signed_wave_index(iz, size[2]);
+          if (ix > kRhsLow || std::abs(my) > kRhsLow ||
+              std::abs(mz) > kRhsLow) {
+            return;
+          }
+          const int y = my + kRhsLow;
+          const int z = mz + kRhsLow;
+          const auto slot = static_cast<std::size_t>(ix + 5 * (y + 9 * z));
+          modes[slot] = values[index] / cells;
+          seen[slot] = true;
+        });
+  });
+  for (bool found : seen) REQUIRE(found);
+  return modes;
+}
+
+std::pair<double, double> rhs_mode_error(const RhsModes &left,
+                                         const RhsModes &right) {
+  double peak = 0.0;
+  double sumsq = 0.0;
+  for (std::size_t i = 0; i < left.size(); ++i) {
+    const double gap = std::abs(left[i] - right[i]);
+    peak = std::max(peak, gap);
+    sumsq += gap * gap;
+  }
+  return {std::sqrt(sumsq / left.size()), peak};
+}
+
 Evolved evolve(const nlohmann::json &settings) {
   tungsten::TungstenSession session(settings, 0, 1, MPI_COMM_WORLD);
   const bool dealias = session.system().options().dealias;
@@ -231,6 +285,8 @@ Evolved evolve(const nlohmann::json &settings) {
   out.dx = dx;
   out.state = session.psi().vec();
   out.bcc_shell = amplitudes;
+  const double t1 = settings.at("timestepping").at("t1").get<double>();
+  out.rhs_modes = nonlinear_rhs_modes(session, t1);
   return out;
 }
 
@@ -376,12 +432,29 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   REQUIRE(field_linf < 4.0e-3);
   REQUIRE(shell_gap < 1.0e-3);
 
+  // Directly measure the actual retained nonlinear RHS coefficients, not
+  // only scalar density moments or the final solution's spectral tail.
+  const auto [rhs_l2, rhs_linf] =
+      rhs_mode_error(selected.rhs_modes, control.rhs_modes);
+  std::printf("TUNGSTEN_RHS N=16 reference_N=32 retained_modes=%zu "
+              "rhs_l2=%.17g rhs_linf=%.17g\\n",
+              kRhsCount, rhs_l2, rhs_linf);
+  REQUIRE(std::isfinite(rhs_l2));
+  REQUIRE(std::isfinite(rhs_linf));
+
   // Same preset, mask off: compare final-solution tail power only. This
   // cannot establish low-mode nonlinear aliasing or exact 1/2 dealiasing.
   nlohmann::json unmasked = preset;
   unmasked["model"]["dealias"] = false;
   const Evolved bare = evolve(unmasked);
   REQUIRE_FALSE(bare.dealias);
+  const auto [masked_gap, masked_peak] =
+      rhs_mode_error(selected.rhs_modes, bare.rhs_modes);
+  std::printf("TUNGSTEN_RHS N=16 mask_on_vs_off retained_modes=%zu "
+              "rhs_l2=%.17g rhs_linf=%.17g\\n",
+              kRhsCount, masked_gap, masked_peak);
+  REQUIRE(std::isfinite(masked_gap));
+  REQUIRE(std::isfinite(masked_peak));
   REQUIRE(relative_change(selected.density.rms, bare.density.rms) < rms_tolerance);
   REQUIRE(relative_change(selected.density.hi, bare.density.hi) < max_tolerance);
   REQUIRE(relative_change(selected.high, bare.high) < high_tolerance);
