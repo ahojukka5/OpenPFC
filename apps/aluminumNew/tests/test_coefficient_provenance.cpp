@@ -9,8 +9,8 @@
 #include <aluminum/fixed_bc.hpp>
 
 #include <catch2/catch_approx.hpp>
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_session.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <mpi.h>
 #include <nlohmann/json.hpp>
 #include <openpfc/frontend/ui/settings_loader.hpp>
