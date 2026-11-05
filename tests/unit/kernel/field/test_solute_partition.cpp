@@ -256,7 +256,7 @@ TEST_CASE("Rejected solute update does not publish composition or flux",
   DiffusionAxis axis(33, 1.0 / 32.0);
   std::vector<double> composition(33);
   for (int i = 0; i < 33; ++i) {
-    const double phase = pi() * static_cast<double>(i) / 32.0;
+    const double phase = std::acos(-1.0) * static_cast<double>(i) / 32.0;
     composition[static_cast<std::size_t>(i)] = 0.5 + 0.1 * std::cos(phase);
   }
   const auto before = composition;
