@@ -288,8 +288,10 @@ Evolved evolve(const nlohmann::json &settings) {
   // it cannot hold the full fixed [-4,4]^2 RHS comparison window.
   // Keep that diagnostic for grids able to represent every requested mode.
   const auto size = pfc::domain::get_size(session.domain());
-  if (size[0] > 2 * kRhsLow && size[1] > 2 * kRhsLow &&
-      size[2] > 2 * kRhsLow) {
+  const bool x_complete = size[0] > 2 * kRhsLow;
+  const bool y_complete = size[1] > 2 * kRhsLow;
+  const bool z_complete = size[2] > 2 * kRhsLow;
+  if (x_complete && y_complete && z_complete) {
     const double t1 = settings.at("timestepping").at("t1").get<double>();
     out.rhs = nonlinear_rhs_modes(session, t1);
   }
