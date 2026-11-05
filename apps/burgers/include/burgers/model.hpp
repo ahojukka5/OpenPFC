@@ -104,8 +104,9 @@ enum class Method {
 /** SSP-RK3 advance of one selectable Burgers discretization. Not reentrant. */
 class Simulation {
   static int validated_count(int count) {
-    if (count < 4)
+    if (count < 4) {
       throw std::invalid_argument("burgers needs at least four points");
+    }
     return count;
   }
 
