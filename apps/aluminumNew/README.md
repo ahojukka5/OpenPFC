@@ -26,7 +26,13 @@ temperature station at `x_initial=60`. The field is not a calibrated casting
 model. Its front becomes ambiguous during the short run: the test intentionally
 reports `not_single_front`, so this is NOT a demonstrated sustained physical
 growth-front speed. The moving BC checkpoint/restart parity and zero-pull
-and isothermal controls are the bounded results at this stage.
+and isothermal controls are the bounded results at this stage. The
+periodic-unwrapping seam used by the prescribed temperature field remains
+fixed at the case's initial `x_initial` station, while the temperature
+profile's time dependence uses `V_grid` and the density reservoir tracks its
+own `MovingBC` position. There is no feedback from the measured crystal
+interface or moving density reservoir into that temperature seam. A reservoir
+position must not be interpreted as a physical solidification front.
 
 `tests/test_aluminum_inputs.cpp` (ctest `aluminum-shipped-inputs`) checks that
 every file under `inputs_json/` still loads through the schema and the
@@ -152,8 +158,9 @@ temperature, time, and amplitude have no SI conversion here. The
 classification is not a material validation.
 
 `x_initial` is a case station, not intrinsically the same as the seed's
-`X0`. The maintained isothermal seeded cases choose equal values, but a
-future directional case may specify an independent thermal-profile station.
+`X0`. The maintained isothermal seeded cases choose equal values. The
+shipped `aluminum_directional.json` instead places the prescribed thermal
+station at `x_initial=60` and the FCC seed at `X0=18`, deliberately separate.
 `fcc_seed_nucleus.json` still lists `n0`, `n_sol`, `n_vap`, `alpha_farTol`,
 `alpha_highOrd`, `shift_u`, and `shift_s` under `model.params`. The schema
 does not read those keys. The C++ defaults are the same table, not a second
@@ -179,7 +186,7 @@ into the model-coefficient table as if each preset shared a fixed value.
 | `seed_grid_fcc.radius`, `amplitude`, `rho`, `rseed` | Seed-envelope radius, crystalline-wave amplitude (`SeedFCC` adds `2 amplitude cos(k·x)` per wave), solid reference density and random seed. The large demo uses radius 120, the nucleus study 60, and both use amplitude 0.4. | reduced length, reduced amplitude, reduced amplitude, dimensionless pseudorandom seed; `radius>0` |
 | `fixed.rho_low`, `rho_high` | Density-reservoir values in the fixed boundary; from the case record. | reduced amplitude, uncited representative |
 | `FixedBC::xwidth`, `alpha` | The *currently hardcoded* fixed-reservoir band half-width `20` and sigmoid sharpness `1`; these are not JSON parameters in this implementation. | reduced length, inverse reduced length |
-| `moving.rho_low`, `rho_high`, `width`, `alpha`, `disp`, `xpos` | If a directional case is added, its independently configurable reservoir densities, half-width, sigmoid sharpness, front offset and initial checkpointed position. | reduced amplitude; length; inverse length; length; length |
+| `moving.rho_low`, `rho_high`, `width`, `alpha`, `disp`, `xpos` | Directional preset's separately configured density reservoir, half-width, sigmoid sharpness, tracking offset and checkpointed position; not a measured physical crystal-front position. | reduced amplitude; length; inverse length; length; length |
 | `fields[].name`, `fields[].data`, `checkpoint.*` | Output/restart controls; not physical inputs. | filenames, steps and paths |
 
 No scientifically established range or uncertainty is provided for the
