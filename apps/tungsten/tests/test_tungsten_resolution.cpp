@@ -195,7 +195,7 @@ struct Evolved {
   double dx{};
   std::vector<double> state;
   std::array<std::complex<double>, 6> bcc_shell{};
-  RhsModes rhs_modes{};
+  RhsModes rhs{};
 };
 
 std::array<std::complex<double>, 6> bcc_shell(tungsten::TungstenSession &session) {
@@ -242,9 +242,9 @@ RhsModes nonlinear_rhs_modes(tungsten::TungstenSession &session, double time) {
         [&](std::size_t index, double, double, double, int ix, int iy, int iz) {
           const int my = pfc::fft::kspace::signed_wave_index(iy, size[1]);
           const int mz = pfc::fft::kspace::signed_wave_index(iz, size[2]);
-          const bool outside = ix > kRhsLow || std::abs(my) > kRhsLow ||
-                               std::abs(mz) > kRhsLow;
-          if (outside) return;
+          const bool outside_y = std::abs(my) > kRhsLow;
+          const bool outside_z = std::abs(mz) > kRhsLow;
+          if (ix > kRhsLow || outside_y || outside_z) return;
           const int y = my + kRhsLow;
           const int z = mz + kRhsLow;
           const auto slot = static_cast<std::size_t>(ix + 5 * (y + 9 * z));
@@ -284,7 +284,7 @@ Evolved evolve(const nlohmann::json &settings) {
   out.state = session.psi().vec();
   out.bcc_shell = amplitudes;
   const double t1 = settings.at("timestepping").at("t1").get<double>();
-  out.rhs_modes = nonlinear_rhs_modes(session, t1);
+  out.rhs = nonlinear_rhs_modes(session, t1);
   return out;
 }
 
@@ -432,8 +432,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
 
   // Directly measure the actual retained nonlinear RHS coefficients, not
   // only scalar density moments or the final solution's spectral tail.
-  const auto [rhs_l2, rhs_linf] =
-      rhs_gap(selected.rhs_modes, control.rhs_modes);
+  const auto [rhs_l2, rhs_linf] = rhs_gap(selected.rhs, control.rhs);
   std::printf("TUNGSTEN_RHS N=16 reference_N=32 retained_modes=%zu "
               "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, rhs_l2, rhs_linf);
@@ -446,8 +445,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   unmasked["model"]["dealias"] = false;
   const Evolved bare = evolve(unmasked);
   REQUIRE_FALSE(bare.dealias);
-  const auto [masked_gap, masked_peak] =
-      rhs_gap(selected.rhs_modes, bare.rhs_modes);
+  const auto [masked_gap, masked_peak] = rhs_gap(selected.rhs, bare.rhs);
   std::printf("TUNGSTEN_RHS N=16 mask_on_vs_off retained_modes=%zu "
               "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, masked_gap, masked_peak);
