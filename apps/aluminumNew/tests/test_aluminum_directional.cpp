@@ -220,5 +220,4 @@ TEST_CASE("aluminum directional preset runs a pulled front on the host session",
   REQUIRE(max_abs_diff(session.psi().vec(), tail.psi().vec()) < 1e-12);
   const json resumed_state = reservoir_state(root / "tail", 40);
   REQUIRE(resumed_state == late);
-
 }
