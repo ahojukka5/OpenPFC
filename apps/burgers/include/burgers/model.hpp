@@ -103,14 +103,17 @@ enum class Method {
 
 /** SSP-RK3 advance of one selectable Burgers discretization. Not reentrant. */
 class Simulation {
+  static int validated_count(int count) {
+    if (count < 4)
+      throw std::invalid_argument("burgers needs at least four points");
+    return count;
+  }
+
 public:
   Simulation(Method method, int count, double viscosity)
-      : method_(method), count_(count), viscosity_(viscosity),
-        spacing_(2.0 * std::numbers::pi / static_cast<double>(count)),
-        state_(count, 0.0) {
-    if (count < 4) {
-      throw std::invalid_argument("burgers needs at least four points");
-    }
+      : method_(method), count_(validated_count(count)), viscosity_(viscosity),
+        spacing_(2.0 * std::numbers::pi / static_cast<double>(count_)),
+        state_(static_cast<std::size_t>(count_), 0.0) {
     if (!std::isfinite(viscosity) || viscosity < 0.0) {
       throw std::invalid_argument(
           "burgers viscosity must be finite and non-negative");
