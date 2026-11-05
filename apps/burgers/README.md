@@ -39,7 +39,11 @@ u = -2ν φ_x / φ.
 The smooth energy balance is `dE/dt = -ν ∫ (u_x)² dx` with
 `E = ½ ∫ u² dx`. The test observes `u_x` with `fd::evaluate<2>` on
 the evolved field. It does not ask the stepper to report its own
-residual.
+residual. In the finite-volume representation, the reported discrete
+`E_h = ½ Δx Σ_i (cell_average_i)²` is **not** the exact cell-integrated
+quadratic energy: Jensen's inequality makes it lower already at t=0.
+Do not interpret its offset from nodal energy as physical/numerical
+dissipation without first accounting for the observation map.
 
 ### Representations
 
@@ -90,6 +94,10 @@ method is inside its limit. The CLI reports `cfl_dt = Δx / max|u|`
 and does not rewrite the requested step. It additionally reports the
 initial conservative `stability_limit_initial` and `status=ok`.
 CTest runs the actual CLI for FD2, FVM and (when available) spectral.
+The file-and-failure integration check additionally verifies the 64 data rows,
+cell-centre versus node coordinates, nonfinite values, unstable time-step
+rejection and failed output-directory handling. The program emits `status=ok`
+only after a requested `u.dat` write has succeeded.
 
 Zero-mode conservation does not select the entropy solution after the
 shock. The conservative Fourier product is not the skew-symmetric
