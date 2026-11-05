@@ -241,6 +241,32 @@ double relative_change(double left, double right) {
 
 } // namespace
 
+TEST_CASE("Nested cell-centered BCC grids interpolate the same physical field",
+          "[tungsten][resolution][unit]") {
+  Evolved coarse;
+  Evolved fine;
+  coarse.state.resize(16u * 16u * 16u);
+  fine.state.resize(32u * 32u * 32u);
+  auto fill = [](std::vector<double> &values, int n) {
+    for (int k = 0; k < n; ++k) {
+      for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+          const double x = (i + 0.5) / static_cast<double>(n);
+          const double y = (j + 0.5) / static_cast<double>(n);
+          const double z = (k + 0.5) / static_cast<double>(n);
+          values[static_cast<std::size_t>(i + n * (j + n * k))] =
+              0.3 + 2.0 * x - 0.7 * y + 0.4 * z;
+        }
+      }
+    }
+  };
+  fill(coarse.state, 16);
+  fill(fine.state, 32);
+  const auto [l2, linf] = sampled_field_error(coarse, fine);
+  REQUIRE(l2 < 1e-14);
+  REQUIRE(linf < 1e-14);
+}
+
 TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
           "[tungsten][resolution][preset]") {
   int nproc = 1;
