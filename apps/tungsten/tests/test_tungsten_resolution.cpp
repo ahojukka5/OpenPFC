@@ -50,10 +50,8 @@ TEST_CASE("Cubic tungsten nonlinear RHS aliases into a retained low mode",
     for (int j = 0; j < n; ++j) {
       const double x = 2.0 * std::numbers::pi * j / n;
       const double psi = std::cos(5.0 * x);
-      const double rhs =
-          cubic.nonlinearity(pfc::sim::SpectralCell{.psi = psi});
-      const std::complex<double> projector{std::cos(mode * x),
-                                           -std::sin(mode * x)};
+      const double rhs = cubic.nonlinearity(pfc::sim::SpectralCell{.psi = psi});
+      const std::complex<double> projector{std::cos(mode * x), -std::sin(mode * x)};
       coefficient += rhs * projector;
     }
     return coefficient / static_cast<double>(n);
