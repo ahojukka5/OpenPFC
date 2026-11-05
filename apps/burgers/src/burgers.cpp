@@ -10,6 +10,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -83,8 +84,9 @@ int main(int argc, char **argv) {
     const double inventory = burgers::mass(simulation.spacing(), simulation.state());
     const double cfl_dt = peak > 0.0 ? simulation.spacing() / peak
                                      : std::numeric_limits<double>::infinity();
-    std::cout << std::setprecision(17);
-    std::cout << "method=" << burgers::method_name(simulation.method())
+    std::ostringstream summary;
+    summary << std::setprecision(17);
+    summary << "method=" << burgers::method_name(simulation.method())
               << " scheme=ssp-rk3"
               << " nu=" << simulation.viscosity() << " N=" << simulation.count()
               << " dx=" << simulation.spacing() << " dt=" << dt << " time=" << time
@@ -111,6 +113,8 @@ int main(int argc, char **argv) {
       file.close();
       if (!file) throw std::runtime_error("burgers could not write u.dat");
     }
+    // Publish success only after every requested output has been written.
+    std::cout << summary.str();
   } catch (const std::exception &error) {
     std::cerr << "burgers: " << error.what() << "\n";
     return 1;
