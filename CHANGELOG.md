@@ -7,6 +7,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- Aluminum provenance: document active case/initial/boundary controls alongside
+  model coefficients, discover shipped presets rather than fixing a four-file
+  test list, and classify G_grid/V_grid as variable case controls.
+- Aluminum coefficients are classified by `coefficient_provenance()`.
+  Representative free-energy numbers are uncited. Derived coefficients
+  come from `AluminumParams::recompute_derived`. Length, temperature,
+  time, and amplitude stay in reduced units. This repository does not
+  convert them to SI, and the table is not a material validation (#249).
+
 - An earlier test-author report for `apply_reflection_ghosts` describes
   matching HIP/host float and double odd-node, even-cell-face and linear-wall
   ghost fills, including corners, on g0004 (MI210, `gfx90a`): reportedly
