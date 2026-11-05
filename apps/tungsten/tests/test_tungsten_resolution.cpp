@@ -201,72 +201,24 @@ Evolved evolve(const nlohmann::json &settings) {
   return out;
 }
 
-// The two resolutions have staggered cell centers. Averaging the eight
-// surrounding fine samples is a box *filter*, not an evaluation at the
-// coarse center: it attenuates crystal Fourier peaks. Instead reconstruct
-// the periodic trigonometric interpolant of the 32^3 fine field at each
-// 16^3 coarse cell center. Separable 1-D interpolation is O(N^4), not
-// a repeated O(N^6) 3-D DFT. The even-N Nyquist term uses the real cosine
-// convention of interpolation of real-valued samples.
+// OpenPFC Field::coords(i,j,k) uses x=origin+i*spacing, NOT cell centers.
+// On the same periodic physical box, 16^3 points are exactly a subset
+// of the 32^3 grid, at (2i,2j,2k). Compare equal physical locations,
+// with no averaging/filtering or interpolant phase shift.
 auto sampled_field_error(const Evolved &coarse, const Evolved &fine) {
   constexpr int n = 16;
   constexpr int nf = 32;
   REQUIRE(coarse.state.size() == static_cast<std::size_t>(n * n * n));
   REQUIRE(fine.state.size() == static_cast<std::size_t>(nf * nf * nf));
-
-  std::array<std::array<double, nf>, n> weights{};
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < nf; ++j) {
-      const double offset = static_cast<double>(2 * i) + 0.5 - j;
-      const double theta = (2.0 * std::numbers::pi / nf) * offset;
-      double kernel = 1.0 + std::cos((nf / 2) * theta);
-      for (int m = 1; m < nf / 2; ++m) {
-        kernel += 2.0 * std::cos(m * theta);
-      }
-      weights[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
-          kernel / nf;
-    }
-  }
-
-  auto index = [](int i, int j, int k, int nx, int ny) {
-    return static_cast<std::size_t>(i + nx * (j + ny * k));
-  };
-  std::vector<double> along_x(static_cast<std::size_t>(n * nf * nf));
-  std::vector<double> along_xy(static_cast<std::size_t>(n * n * nf));
-
-  for (int k = 0; k < nf; ++k) {
-    for (int j = 0; j < nf; ++j) {
-      for (int i = 0; i < n; ++i) {
-        double value = 0.0;
-        for (int q = 0; q < nf; ++q) {
-          value += weights[i][q] * fine.state[index(q, j, k, nf, nf)];
-        }
-        along_x[index(i, j, k, n, nf)] = value;
-      }
-    }
-  }
-  for (int k = 0; k < nf; ++k) {
-    for (int j = 0; j < n; ++j) {
-      for (int i = 0; i < n; ++i) {
-        double value = 0.0;
-        for (int q = 0; q < nf; ++q) {
-          value += weights[j][q] * along_x[index(i, q, k, n, nf)];
-        }
-        along_xy[index(i, j, k, n, n)] = value;
-      }
-    }
-  }
-
   double peak = 0.0;
   double sumsq = 0.0;
   for (int k = 0; k < n; ++k) {
     for (int j = 0; j < n; ++j) {
       for (int i = 0; i < n; ++i) {
-        double value = 0.0;
-        for (int q = 0; q < nf; ++q) {
-          value += weights[k][q] * along_xy[index(i, j, q, n, n)];
-        }
-        const double gap = coarse.state[index(i, j, k, n, n)] - value;
+        const auto c = static_cast<std::size_t>(i + n * (j + n * k));
+        const auto f = static_cast<std::size_t>(
+            2 * i + nf * (2 * j + nf * 2 * k));
+        const double gap = coarse.state[c] - fine.state[f];
         peak = std::max(peak, std::abs(gap));
         sumsq += gap * gap;
       }
@@ -281,7 +233,7 @@ double relative_change(double left, double right) {
 
 } // namespace
 
-TEST_CASE("Periodic spectral interpolation matches the same BCC sample points",
+TEST_CASE("Nested OpenPFC nodal grids sample the same physical wave",
           "[tungsten][resolution][unit]") {
   Evolved coarse;
   Evolved fine;
@@ -291,9 +243,10 @@ TEST_CASE("Periodic spectral interpolation matches the same BCC sample points",
     for (int k = 0; k < n; ++k) {
       for (int j = 0; j < n; ++j) {
         for (int i = 0; i < n; ++i) {
-          const double x = (i + 0.5) / static_cast<double>(n);
-          const double y = (j + 0.5) / static_cast<double>(n);
-          const double z = (k + 0.5) / static_cast<double>(n);
+          // These are the actual Field::coords nodal coordinates.
+          const double x = i / static_cast<double>(n);
+          const double y = j / static_cast<double>(n);
+          const double z = k / static_cast<double>(n);
           const double phase = 2.0 * x + 3.0 * y - 5.0 * z;
           const double mixed = 0.15 * std::sin(2.0 * std::numbers::pi * phase);
           values[static_cast<std::size_t>(i + n * (j + n * k))] =
