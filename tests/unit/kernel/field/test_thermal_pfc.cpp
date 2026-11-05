@@ -493,14 +493,15 @@ TEST_CASE("partially overlapping heat and substrate density are rejected",
   DiffusionAxis axis(33, 1.0 / 32.0);
   std::vector<double> storage(34, 1.0);
   const auto before = storage;
-  std::span<double> temperature(storage.data(), 33);
-  std::span<double> density(storage.data() + 1, 33);
-  coupling::SolvedHeatRequest heat;
-  coupling::SubstrateDensityRequest pfc;
+  // T and n are shifted views of the same allocation.
+  std::span<double> t(storage.data(), 33);
+  std::span<double> n(storage.data() + 1, 33);
+  coupling::SolvedHeatRequest h;
+  coupling::SubstrateDensityRequest p;
   FluxLedger ledger;
   const auto advance = [&] {
-    (void)coupling::advance_one_way_substrate(
-        axis, temperature, density, heat, pfc, 0.0, 1.0e-5, ledger);
+    (void)coupling::advance_one_way_substrate(axis, t, n, h, p, 0.0, 1e-5,
+                                             ledger);
   };
   REQUIRE_THROWS_AS(advance(), std::invalid_argument);
   REQUIRE(storage == before);
