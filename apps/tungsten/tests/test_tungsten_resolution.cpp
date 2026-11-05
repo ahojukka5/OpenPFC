@@ -294,11 +294,11 @@ TEST_CASE("Periodic spectral interpolation matches the same BCC sample points",
           const double x = (i + 0.5) / static_cast<double>(n);
           const double y = (j + 0.5) / static_cast<double>(n);
           const double z = (k + 0.5) / static_cast<double>(n);
+          const double phase = 2.0 * x + 3.0 * y - 5.0 * z;
+          const double mixed = 0.15 * std::sin(2.0 * std::numbers::pi * phase);
           values[static_cast<std::size_t>(i + n * (j + n * k))] =
               0.3 + 0.4 * std::sin(2.0 * std::numbers::pi * 3.0 * x) +
-              0.25 * std::cos(2.0 * std::numbers::pi * 4.0 * y) +
-              0.15 * std::sin(2.0 * std::numbers::pi *
-                              (2.0 * x + 3.0 * y - 5.0 * z));
+              0.25 * std::cos(2.0 * std::numbers::pi * 4.0 * y) + mixed;
         }
       }
     }
