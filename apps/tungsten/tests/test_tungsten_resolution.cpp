@@ -201,33 +201,72 @@ Evolved evolve(const nlohmann::json &settings) {
   return out;
 }
 
+// The two resolutions have staggered cell centers. Averaging the eight
+// surrounding fine samples is a box *filter*, not an evaluation at the
+// coarse center: it attenuates crystal Fourier peaks. Instead reconstruct
+// the periodic trigonometric interpolant of the 32^3 fine field at each
+// 16^3 coarse cell center. Separable 1-D interpolation is O(N^4), not
+// a repeated O(N^6) 3-D DFT. The even-N Nyquist term uses the real cosine
+// convention of interpolation of real-valued samples.
 auto sampled_field_error(const Evolved &coarse, const Evolved &fine) {
   constexpr int n = 16;
   constexpr int nf = 32;
   REQUIRE(coarse.state.size() == static_cast<std::size_t>(n * n * n));
   REQUIRE(fine.state.size() == static_cast<std::size_t>(nf * nf * nf));
+
+  std::array<std::array<double, nf>, n> weights{};
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < nf; ++j) {
+      const double offset = static_cast<double>(2 * i) + 0.5 - j;
+      const double theta = (2.0 * std::numbers::pi / nf) * offset;
+      double kernel = 1.0 + std::cos((nf / 2) * theta);
+      for (int m = 1; m < nf / 2; ++m) {
+        kernel += 2.0 * std::cos(m * theta);
+      }
+      weights[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
+          kernel / nf;
+    }
+  }
+
+  auto index = [](int i, int j, int k, int nx, int ny) {
+    return static_cast<std::size_t>(i + nx * (j + ny * k));
+  };
+  std::vector<double> along_x(static_cast<std::size_t>(n * nf * nf));
+  std::vector<double> along_xy(static_cast<std::size_t>(n * n * nf));
+
+  for (int k = 0; k < nf; ++k) {
+    for (int j = 0; j < nf; ++j) {
+      for (int i = 0; i < n; ++i) {
+        double value = 0.0;
+        for (int q = 0; q < nf; ++q) {
+          value += weights[i][q] * fine.state[index(q, j, k, nf, nf)];
+        }
+        along_x[index(i, j, k, n, nf)] = value;
+      }
+    }
+  }
+  for (int k = 0; k < nf; ++k) {
+    for (int j = 0; j < n; ++j) {
+      for (int i = 0; i < n; ++i) {
+        double value = 0.0;
+        for (int q = 0; q < nf; ++q) {
+          value += weights[j][q] * along_x[index(i, q, k, n, nf)];
+        }
+        along_xy[index(i, j, k, n, n)] = value;
+      }
+    }
+  }
+
   double peak = 0.0;
   double sumsq = 0.0;
   for (int k = 0; k < n; ++k) {
     for (int j = 0; j < n; ++j) {
       for (int i = 0; i < n; ++i) {
-        const auto c = static_cast<std::size_t>(i + n * (j + n * k));
-        // Cell centers differ between 16^3 and 32^3 grids. The physical
-        // coarse center is the midpoint of the eight surrounding fine
-        // centers: a single fine sample at (2i,2j,2k) is NOT coincident.
-        double interpolated = 0.0;
-        for (int dk = 0; dk < 2; ++dk) {
-          for (int dj = 0; dj < 2; ++dj) {
-            for (int di = 0; di < 2; ++di) {
-              const int fi = 2 * i + di;
-              const int fj = 2 * j + dj;
-              const int fk = 2 * k + dk;
-              const auto index = static_cast<std::size_t>(fi + nf * (fj + nf * fk));
-              interpolated += fine.state[index];
-            }
-          }
+        double value = 0.0;
+        for (int q = 0; q < nf; ++q) {
+          value += weights[k][q] * along_xy[index(i, j, q, n, n)];
         }
-        const double gap = coarse.state[c] - interpolated / 8.0;
+        const double gap = coarse.state[index(i, j, k, n, n)] - value;
         peak = std::max(peak, std::abs(gap));
         sumsq += gap * gap;
       }
@@ -242,13 +281,13 @@ double relative_change(double left, double right) {
 
 } // namespace
 
-TEST_CASE("Nested cell-centered BCC grids interpolate the same physical field",
+TEST_CASE("Periodic spectral interpolation matches the same BCC sample points",
           "[tungsten][resolution][unit]") {
   Evolved coarse;
   Evolved fine;
   coarse.state.resize(16u * 16u * 16u);
   fine.state.resize(32u * 32u * 32u);
-  auto fill = [](std::vector<double> &values, int n) {
+  const auto fill = [](std::vector<double> &values, int n) {
     for (int k = 0; k < n; ++k) {
       for (int j = 0; j < n; ++j) {
         for (int i = 0; i < n; ++i) {
@@ -256,7 +295,10 @@ TEST_CASE("Nested cell-centered BCC grids interpolate the same physical field",
           const double y = (j + 0.5) / static_cast<double>(n);
           const double z = (k + 0.5) / static_cast<double>(n);
           values[static_cast<std::size_t>(i + n * (j + n * k))] =
-              0.3 + 2.0 * x - 0.7 * y + 0.4 * z;
+              0.3 + 0.4 * std::sin(2.0 * std::numbers::pi * 3.0 * x) +
+              0.25 * std::cos(2.0 * std::numbers::pi * 4.0 * y) +
+              0.15 * std::sin(2.0 * std::numbers::pi *
+                              (2.0 * x + 3.0 * y - 5.0 * z));
         }
       }
     }
@@ -264,8 +306,8 @@ TEST_CASE("Nested cell-centered BCC grids interpolate the same physical field",
   fill(coarse.state, 16);
   fill(fine.state, 32);
   const auto [l2, linf] = sampled_field_error(coarse, fine);
-  REQUIRE(l2 < 1e-14);
-  REQUIRE(linf < 1e-14);
+  REQUIRE(l2 < 1e-12);
+  REQUIRE(linf < 1e-12);
 }
 
 TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
