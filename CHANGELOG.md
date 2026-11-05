@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- The independent installed CPU/CUDA/HIP coupled-field acceptance consumer
+  covers padded fields, full halo corners, stage preparation, face fluxes,
+  collective finite rejection, cross-decomposition restart and FFT round trips
+  (#542). Missing GPU/device resources remain NOT_QUALIFIED, not PASS.
+
 - `CudaComplexLineFFT` is the one-rank cuFFT Z2Z form of the unnormalized
   complex line DFT. It matches `ComplexLineFFT`, including the even
   extension a Chebyshev series feeds that transform. The 3D pencil plans
