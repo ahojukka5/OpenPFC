@@ -487,6 +487,25 @@ TEST_CASE("Substrate PFC consumes the solved temperature",
   REQUIRE(held_temperature == temperature_before);
 }
 
+TEST_CASE("partially overlapping heat and substrate density are rejected",
+          "[unit][field][thermal_pfc]") {
+  DiffusionAxis axis(33, 1.0 / 32.0);
+  std::vector<double> storage(34, 1.0);
+  const auto before = storage;
+  std::span<double> temperature(storage.data(), 33);
+  std::span<double> density(storage.data() + 1, 33);
+  coupling::SolvedHeatRequest heat;
+  coupling::SubstrateDensityRequest pfc;
+  FluxLedger ledger;
+  REQUIRE_THROWS_AS(coupling::advance_one_way_substrate(
+                        axis, temperature, density, heat, pfc, 0.0, 1.0e-5,
+                        ledger),
+                    std::invalid_argument);
+  REQUIRE(storage == before);
+  REQUIRE_FALSE(ledger.active());
+  REQUIRE(ledger.accepted() == 0.0);
+}
+
 TEST_CASE("Rejected solved-heat step preserves thermal field and flux ledger",
           "[unit][field][thermal_pfc]") {
   DiffusionAxis axis(33, 1.0 / 32.0);
