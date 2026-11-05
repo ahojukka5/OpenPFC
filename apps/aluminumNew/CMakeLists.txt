@@ -89,7 +89,7 @@ if(ALUMINUM_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
     aluminum_cpu_executable(test_aluminum_coefficient_provenance
                             tests/test_coefficient_provenance.cpp)
     target_link_libraries(test_aluminum_coefficient_provenance
-                          PRIVATE Catch2::Catch2WithMain)
+                          PRIVATE Catch2::Catch2 MPI::MPI_CXX)
     target_compile_definitions(test_aluminum_coefficient_provenance PRIVATE
       ALUMINUM_APP_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME aluminum-coefficient-provenance

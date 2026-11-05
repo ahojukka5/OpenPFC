@@ -10,6 +10,8 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_session.hpp>
+#include <mpi.h>
 #include <nlohmann/json.hpp>
 #include <openpfc/frontend/ui/settings_loader.hpp>
 #include <openpfc/kernel/data/domain.hpp>
@@ -254,4 +256,13 @@ TEST_CASE("aluminum coefficient provenance matches the shipped presets",
   REQUIRE(seeded >= 1);
   REQUIRE(fixed_bands >= 1);
   REQUIRE(files_with_unread >= 1);
+}
+
+// Some shipped modifiers call MPI_Comm_rank during construction. Use the
+// same explicit MPI lifecycle as aluminumTest and the crystal-observable test.
+int main(int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
+  const int status = Catch::Session().run(argc, argv);
+  MPI_Finalize();
+  return status;
 }
