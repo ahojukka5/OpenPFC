@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -497,10 +498,11 @@ TEST_CASE("partially overlapping heat and substrate density are rejected",
   coupling::SolvedHeatRequest heat;
   coupling::SubstrateDensityRequest pfc;
   FluxLedger ledger;
-  REQUIRE_THROWS_AS(coupling::advance_one_way_substrate(
-                        axis, temperature, density, heat, pfc, 0.0, 1.0e-5,
-                        ledger),
-                    std::invalid_argument);
+  const auto advance = [&] {
+    (void)coupling::advance_one_way_substrate(axis, temperature, density, heat,
+                                             pfc, 0.0, 1.0e-5, ledger);
+  };
+  REQUIRE_THROWS_AS(advance(), std::invalid_argument);
   REQUIRE(storage == before);
   REQUIRE_FALSE(ledger.active());
   REQUIRE(ledger.accepted() == 0.0);
