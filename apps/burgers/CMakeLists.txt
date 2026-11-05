@@ -40,6 +40,17 @@ if(BURGERS_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
         --dt 0.001 --time 0.5)
     set_tests_properties(burgers-cli-fdm2 burgers-cli-fvm PROPERTIES
       PASS_REGULAR_EXPRESSION "status=ok" TIMEOUT 120)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(TARGET Python3::Interpreter)
+      # This checks actual u.dat rows/coordinates and failure status, not just
+      # the executable's success banner. Spectral is optional without FFTW3.
+      add_test(NAME burgers-cli-file-and-failure
+        COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_cli.py
+          $<TARGET_FILE:burgers> $<BOOL:${OpenPFC_HAS_FFTW3}>)
+      set_tests_properties(burgers-cli-file-and-failure PROPERTIES
+        PASS_REGULAR_EXPRESSION "BURGERS_CLI_OUTPUT_OK" TIMEOUT 120)
+    endif()
     if(OpenPFC_HAS_FFTW3)
       add_test(NAME burgers-cli-spectral
         COMMAND $<TARGET_FILE:burgers> --method spectral --N 64 --nu 0
