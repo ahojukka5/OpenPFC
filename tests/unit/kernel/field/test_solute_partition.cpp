@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include <sstream>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -260,10 +261,11 @@ TEST_CASE("solute composition and fixed partition views must not overlap",
   std::span<const double> partition(storage.data() + 1, 33);
   coupling::SolutePartitionRequest request;
   FluxLedger ledger;
-  REQUIRE_THROWS_AS(coupling::advance_solute_partition(
-                        axis, composition, partition, request, 0.0, 1.0e-5,
-                        ledger),
-                    std::invalid_argument);
+  const auto advance = [&] {
+    (void)coupling::advance_solute_partition(
+        axis, composition, partition, request, 0.0, 1.0e-5, ledger);
+  };
+  REQUIRE_THROWS_AS(advance(), std::invalid_argument);
   REQUIRE(storage == before);
   REQUIRE_FALSE(ledger.active());
   REQUIRE(ledger.accepted() == 0.0);
