@@ -123,8 +123,9 @@ DensityMoments density_moments(tungsten::TungstenSession &session) {
   return out;
 }
 
-/// Multiplicity-weighted power of modes with `|k| > 2`, the crystal's
-/// second harmonic and everything the cubic term can push above it.
+/// Multiplicity-weighted final-solution power for |k|>2. This is a
+/// solution-tail diagnostic, NOT a direct nonlinear-RHS aliasing measure:
+/// spurious folded products can contaminate retained low modes.
 double high_mode_power(tungsten::TungstenSession &session) {
   double local = 0.0;
   auto &hat = session.system().psi_hat();
@@ -345,7 +346,8 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   REQUIRE(field_linf < 4.0e-3);
   REQUIRE(shell_gap < 1.0e-3);
 
-  // Same preset, mask off. Retained high-mode contamination of the update.
+  // Same preset, mask off: compare final-solution tail power only. This
+  // cannot establish low-mode nonlinear aliasing or exact 1/2 dealiasing.
   nlohmann::json unmasked = preset;
   unmasked["model"]["dealias"] = false;
   const Evolved bare = evolve(unmasked);
