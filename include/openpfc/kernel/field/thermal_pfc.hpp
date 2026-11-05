@@ -21,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <span>
 #include <stdexcept>
 #include <vector>
@@ -85,6 +86,15 @@ struct OneWayStep {
 }
 
 namespace detail {
+
+/// Two writable coupled fields must not overlap, even by a shifted view.
+inline bool overlapping_heat_density(std::span<const double> a,
+                                     std::span<const double> b) {
+  if (a.empty() || b.empty()) return false;
+  const auto less = std::less<const double *>{};
+  return less(a.data(), b.data() + b.size()) &&
+         less(b.data(), a.data() + a.size());
+}
 
 inline pfc::field::fd::FaceCondition zero_derivative() {
   return {pfc::field::fd::BoundaryQuantity::NormalDerivative,
@@ -347,8 +357,8 @@ advance_substrate_pfc(const pfc::field::fd::DiffusionAxis &axis,
     const SubstrateDensityRequest &density_request, double time, double dt,
     pfc::field::fd::FluxLedger &ledger) {
   if (ledger.active()) throw std::logic_error("heat ledger is already active");
-  if (temperature.data() == density.data())
-    throw std::invalid_argument("temperature and density must be distinct arrays");
+  if (detail::overlapping_heat_density(temperature, density))
+    throw std::invalid_argument("temperature and density views must not overlap");
   detail::validate_solved_heat(axis, temperature, heat_request, time, dt);
   detail::validate_substrate_step(axis, density, temperature, density_request, time,
                                   dt);
