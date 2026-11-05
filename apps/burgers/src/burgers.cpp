@@ -9,8 +9,8 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -87,15 +87,15 @@ int main(int argc, char **argv) {
     std::ostringstream summary;
     summary << std::setprecision(17);
     summary << "method=" << burgers::method_name(simulation.method())
-              << " scheme=ssp-rk3"
-              << " nu=" << simulation.viscosity() << " N=" << simulation.count()
-              << " dx=" << simulation.spacing() << " dt=" << dt << " time=" << time
-              << " steps=" << steps << " cfl_dt=" << cfl_dt
-              << " stability_limit_initial=" << safe_step
-              << " status=ok mass=" << inventory << " energy="
-              << burgers::energy(simulation.spacing(), simulation.state())
-              << " max_abs=" << peak << " checksum=" << std::hex
-              << burgers::checksum(simulation.state()) << std::dec << "\n";
+            << " scheme=ssp-rk3"
+            << " nu=" << simulation.viscosity() << " N=" << simulation.count()
+            << " dx=" << simulation.spacing() << " dt=" << dt << " time=" << time
+            << " steps=" << steps << " cfl_dt=" << cfl_dt
+            << " stability_limit_initial=" << safe_step
+            << " status=ok mass=" << inventory << " energy="
+            << burgers::energy(simulation.spacing(), simulation.state())
+            << " max_abs=" << peak << " checksum=" << std::hex
+            << burgers::checksum(simulation.state()) << std::dec << "\n";
     if (!outdir.empty()) {
       std::filesystem::create_directories(outdir);
       std::ofstream file(std::filesystem::path(outdir) / "u.dat");
