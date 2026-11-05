@@ -55,8 +55,9 @@ inline bool overlapping_solute_partition(std::span<const double> a,
                                          std::span<const double> b) {
   if (a.empty() || b.empty()) return false;
   const auto less = std::less<const double *>{};
-  return less(a.data(), b.data() + b.size()) &&
-         less(b.data(), a.data() + a.size());
+  const bool a_starts_before_b_end = less(a.data(), b.data() + b.size());
+  const bool b_starts_before_a_end = less(b.data(), a.data() + a.size());
+  return a_starts_before_b_end && b_starts_before_a_end;
 }
 
 inline pfc::field::fd::FaceCondition zero_solute_flux() {
