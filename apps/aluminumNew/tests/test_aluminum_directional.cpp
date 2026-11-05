@@ -8,6 +8,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <limits>
@@ -29,6 +30,19 @@ namespace {
 
 constexpr double kLevel = 0.5;
 constexpr double kThreshold = 0.1;
+
+// Remove checkpoint data even if a Catch2 assertion interrupts the case.
+struct TemporaryDirectory {
+  std::filesystem::path root;
+  explicit TemporaryDirectory(const std::filesystem::path &path) : root(path) {
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+  }
+  ~TemporaryDirectory() noexcept {
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+  }
+};
 
 pfc::observables::FrontSample planar_front(aluminum::AluminumSession &session,
                                            bool rising) {
@@ -97,9 +111,7 @@ TEST_CASE("aluminum directional preset runs a pulled front on the host session",
           "[aluminum][directional][preset]") {
   int nproc = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-  if (nproc != 1) {
-    return;
-  }
+  if (nproc != 1) SKIP("aluminum directional preset requires one MPI rank");
 
   aluminum::register_catalog();
   const std::filesystem::path path =
@@ -113,7 +125,7 @@ TEST_CASE("aluminum directional preset runs a pulled front on the host session",
 
   const auto root = std::filesystem::temp_directory_path() /
                     ("openpfc_al_directional_" + std::to_string(getpid()));
-  std::filesystem::remove_all(root);
+  const TemporaryDirectory scratch(root);
   std::filesystem::create_directories(root / "drive");
 
   json drive = settings;
@@ -209,5 +221,4 @@ TEST_CASE("aluminum directional preset runs a pulled front on the host session",
   const json resumed_state = reservoir_state(root / "tail", 40);
   REQUIRE(resumed_state == late);
 
-  std::filesystem::remove_all(root);
 }
