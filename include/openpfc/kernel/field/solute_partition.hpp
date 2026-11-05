@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <span>
 #include <stdexcept>
 #include <vector>
@@ -48,6 +49,15 @@ struct SoluteStep {
 }
 
 namespace detail {
+
+/// A fixed partition factor cannot alias the composition updated in-place.
+inline bool overlapping_solute_partition(std::span<const double> a,
+                                         std::span<const double> b) {
+  if (a.empty() || b.empty()) return false;
+  const auto less = std::less<const double *>{};
+  return less(a.data(), b.data() + b.size()) &&
+         less(b.data(), a.data() + a.size());
+}
 
 inline pfc::field::fd::FaceCondition zero_solute_flux() {
   return {pfc::field::fd::BoundaryQuantity::ConstitutiveFlux,
@@ -114,6 +124,8 @@ solute_partition_rate(const pfc::field::fd::DiffusionAxis &axis, int index,
     const pfc::field::fd::DiffusionAxis &axis, std::span<double> composition,
     std::span<const double> partition, const SolutePartitionRequest &request,
     double time, double dt, pfc::field::fd::FluxLedger &ledger) {
+  if (detail::overlapping_solute_partition(composition, partition))
+    throw std::invalid_argument("composition and fixed partition must not overlap");
   detail::validate_solute_partition(axis, composition, partition, request, time, dt);
   const int n = axis.size();
   const pfc::field::fd::FaceCondition closed = detail::zero_solute_flux();
