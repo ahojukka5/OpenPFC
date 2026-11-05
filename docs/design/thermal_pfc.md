@@ -12,8 +12,10 @@ header does not read that preset.
 ## Ownership, units, and time
 
 The caller owns both arrays. Each node of one non-periodic `DiffusionAxis`
-holds one temperature sample and one density sample. There is no second grid
-and no interpolation. The time step is the same value for heat and density.
+holds one temperature sample and one density sample. The views must be
+nonoverlapping, including shifted subspans of the same backing allocation.
+A partially shared buffer is rejected before either field or the flux ledger
+is changed. There is no second grid and no interpolation. The time step is the same value for heat and density.
 There is no subcycling. `advance_one_way_substrate` advances heat first and
 then reads the resulting temperature. The density step does not write
 temperature.
