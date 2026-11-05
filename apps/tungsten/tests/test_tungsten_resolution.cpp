@@ -216,8 +216,10 @@ auto sampled_field_error(const Evolved &coarse, const Evolved &fine) {
     for (int j = 0; j < n; ++j) {
       for (int i = 0; i < n; ++i) {
         const auto c = static_cast<std::size_t>(i + n * (j + n * k));
-        const auto f = static_cast<std::size_t>(
-            2 * i + nf * (2 * j + nf * 2 * k));
+        const int fi = 2 * i;
+        const int fj = 2 * j;
+        const int fk = 2 * k;
+        const auto f = static_cast<std::size_t>(fi + nf * (fj + nf * fk));
         const double gap = coarse.state[c] - fine.state[f];
         peak = std::max(peak, std::abs(gap));
         sumsq += gap * gap;
