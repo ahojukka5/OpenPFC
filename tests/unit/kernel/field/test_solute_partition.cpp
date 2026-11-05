@@ -259,11 +259,10 @@ TEST_CASE("solute composition and fixed partition views must not overlap",
   const auto before = storage;
   std::span<double> c(storage.data(), 33);
   std::span<const double> k(storage.data() + 1, 33);
-  coupling::SolutePartitionRequest params;
+  coupling::SolutePartitionRequest p;
   FluxLedger ledger;
   const auto advance = [&] {
-    (void)coupling::advance_solute_partition(axis, c, k, params, 0.0, 1.0e-5,
-                                             ledger);
+    (void)coupling::advance_solute_partition(axis, c, k, p, 0.0, 1e-5, ledger);
   };
   REQUIRE_THROWS_AS(advance(), std::invalid_argument);
   REQUIRE(storage == before);
