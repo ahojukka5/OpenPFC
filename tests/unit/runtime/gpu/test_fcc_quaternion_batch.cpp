@@ -31,6 +31,7 @@
 #include <limits>
 #include <memory>
 #include <numbers>
+#include <string>
 #include <vector>
 
 #include <mpi.h>
@@ -54,13 +55,24 @@ namespace {
 using Quat = std::array<double, 4>;
 
 struct GridEnv {
+  std::string previous;
+  bool had_previous = false;
   explicit GridEnv(int nproc) {
+    if (const char *value = std::getenv("OPENPFC_FD_PROC_GRID")) {
+      previous = value;
+      had_previous = true;
+    }
     const char *grid = "1,1,1";
     if (nproc == 2) grid = "1,1,2";
     if (nproc == 4) grid = "1,1,4";
     REQUIRE(setenv("OPENPFC_FD_PROC_GRID", grid, 1) == 0);
   }
-  ~GridEnv() { unsetenv("OPENPFC_FD_PROC_GRID"); }
+  ~GridEnv() {
+    if (had_previous)
+      (void)setenv("OPENPFC_FD_PROC_GRID", previous.c_str(), 1);
+    else
+      (void)unsetenv("OPENPFC_FD_PROC_GRID");
+  }
 };
 
 Quat axis_angle(double x, double y, double z, double angle) {
