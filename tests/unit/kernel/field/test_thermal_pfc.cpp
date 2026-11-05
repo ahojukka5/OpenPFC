@@ -500,8 +500,7 @@ TEST_CASE("partially overlapping heat and substrate density are rejected",
   coupling::SubstrateDensityRequest p;
   FluxLedger ledger;
   const auto advance = [&] {
-    (void)coupling::advance_one_way_substrate(axis, t, n, h, p, 0.0, 1e-5,
-                                             ledger);
+    (void)coupling::advance_one_way_substrate(axis, t, n, h, p, 0.0, 1e-5, ledger);
   };
   REQUIRE_THROWS_AS(advance(), std::invalid_argument);
   REQUIRE(storage == before);
