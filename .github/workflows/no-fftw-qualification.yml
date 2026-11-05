@@ -1,0 +1,61 @@
+# Engineering evidence only: this branch never merges.
+name: Verify no-FFTW Burgers and affine-map paths
+on:
+  push:
+    branches: [ci/no-fftw-burgers-geometry-20261105]
+permissions:
+  contents: read
+jobs:
+  no-fftw:
+    name: GCC13 / HeFFTe OFF / FFTW disabled
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: Set up host dependencies without HeFFTe
+        uses: ./.github/actions/setup-build
+        with:
+          os: ubuntu-24.04
+          compiler-packages: gcc-13 g++-13
+          cc: gcc-13
+          cxx: g++-13
+          build-type: Release
+          heffte: "false"
+      - name: Print pinned component identities
+        run: |
+          echo "Burgers feature #815: 4653078b0781440a85167b44e3a57ea35b1942f8"
+          echo "Affine-map feature #807: 256fb431998a3e5ec556fd05473cd37b1254ff9f"
+          git rev-parse HEAD
+      - name: Configure without either FFT backend
+        run: |
+          cmake -S . -B build-nofft -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOpenPFC_ENABLE_HEFFTE=OFF \
+            -DCMAKE_DISABLE_FIND_PACKAGE_FFTW3=ON \
+            -DOpenPFC_BUILD_TESTS=ON \
+            -DOpenPFC_BUILD_APPS=ON \
+            -DOpenPFC_BUILD_EXAMPLES=OFF \
+            -DOpenPFC_BUILD_DOCUMENTATION=OFF \
+            -DOpenPFC_RUN_MPI_SUITES=OFF
+          grep '^OpenPFC_ENABLE_HEFFTE:BOOL=OFF$' build-nofft/CMakeCache.txt
+          grep -E '^CMAKE_DISABLE_FIND_PACKAGE_FFTW3:[^=]+=ON$' \
+            build-nofft/CMakeCache.txt
+      - name: Build FD/FV and analytic geometry code
+        run: cmake --build build-nofft --target burgers test_burgers openpfc-tests -j2
+      - name: Run real named tests
+        run: |
+          ctest --test-dir build-nofft --output-on-failure -V \
+            -R '^(burgers-all-tests|burgers-cli-fdm2|burgers-cli-fvm|burgers-cli-file-and-failure|openpfc-all-tests)$' \
+            --timeout 240
+      - name: Preserve test evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: no-fftw-test-log
+          path: build-nofft/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
