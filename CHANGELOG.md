@@ -7,6 +7,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- The small aluminum directional preset imposes `G_grid=2` and `V_grid=0.1`
+  with a moving density reservoir. Host tests compare restart/zero-pull and
+  isothermal controls; the late RMS front becomes `not_single_front` and
+  does not constitute a measured sustained growth speed (#248, still open).
+- The one-wave crystal-front and orientation reference from #816 is included
+  as a temporary stacked dependency until the independently validated
+  parent PR is merged. No general multi-peak orientation is claimed.
+
 - Aluminum provenance: document active case/initial/boundary controls alongside
   model coefficients, discover shipped presets rather than fixing a four-file
   test list, and classify G_grid/V_grid as variable case controls.

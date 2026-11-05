@@ -78,7 +78,8 @@ if(ALUMINUM_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
   if(TARGET Catch2::Catch2WithMain)
     aluminum_cpu_executable(aluminumTest aluminumTest.cpp
                                          tests/test_aluminum_physics.cpp
-                                         tests/test_aluminum_inputs.cpp)
+                                         tests/test_aluminum_inputs.cpp
+                                         tests/test_aluminum_directional.cpp)
     target_link_libraries(aluminumTest PRIVATE Catch2::Catch2WithMain)
     # The shipped inputs are part of the product, so a test loads them from the
     # source tree rather than from a copy that could drift.
@@ -96,8 +97,17 @@ if(ALUMINUM_ENABLE_TESTS AND OpenPFC_BUILD_TESTS)
              COMMAND test_aluminum_coefficient_provenance)
     set_tests_properties(aluminum-coefficient-provenance PROPERTIES TIMEOUT 120)
 
+    aluminum_cpu_executable(test_aluminum_crystal_observables
+                            tests/test_crystal_observables.cpp)
+    target_link_libraries(test_aluminum_crystal_observables PRIVATE Catch2::Catch2)
+    add_test(NAME aluminum-crystal-observables
+             COMMAND test_aluminum_crystal_observables)
+    set_tests_properties(aluminum-crystal-observables PROPERTIES TIMEOUT 120)
+
     add_test(NAME aluminum-all-tests COMMAND aluminumTest)
     add_test(NAME aluminum-shipped-inputs COMMAND aluminumTest "[inputs]")
+    add_test(NAME aluminum-directional COMMAND aluminumTest "[directional]")
+    set_tests_properties(aluminum-directional PROPERTIES TIMEOUT 180)
     add_test(NAME aluminum-etd-cpu-golden COMMAND aluminumTest
         "[seed_grid_fcc][session]")
     if(OpenPFC_RUN_MPI_SUITES AND MPIEXEC_EXECUTABLE)
