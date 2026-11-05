@@ -14,7 +14,10 @@ and a moving solidification front are not selected here.
 ## Equation
 
 One non-periodic `DiffusionAxis` holds one composition sample `c` and one
-partition factor `K > 0` at each node. The factor does not move. The chemical
+partition factor `K > 0` at each node. The factor does not move.
+The composition and partition views must not overlap, including partially
+shifted spans of the same allocation; such a write would silently change the
+prescribed factor. Overlap is rejected before the ledger is opened. The chemical
 potential and the balance, in code units, are
 
 μ = c / K,
