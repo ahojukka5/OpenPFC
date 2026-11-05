@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <numbers>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -195,7 +196,7 @@ struct Evolved {
   double dx{};
   std::vector<double> state;
   std::array<std::complex<double>, 6> bcc_shell{};
-  RhsModes rhs{};
+  std::optional<RhsModes> rhs;
 };
 
 std::array<std::complex<double>, 6> bcc_shell(tungsten::TungstenSession &session) {
@@ -283,8 +284,15 @@ Evolved evolve(const nlohmann::json &settings) {
   out.dx = dx;
   out.state = session.psi().vec();
   out.bcc_shell = amplitudes;
-  const double t1 = settings.at("timestepping").at("t1").get<double>();
-  out.rhs = nonlinear_rhs_modes(session, t1);
+  // The 8^3 historical control has Nyquist index +4 but no distinct -4;
+  // it cannot hold the full fixed [-4,4]^2 RHS comparison window.
+  // Keep that diagnostic for grids able to represent every requested mode.
+  const auto size = pfc::domain::get_size(session.domain());
+  if (size[0] > 2 * kRhsLow && size[1] > 2 * kRhsLow &&
+      size[2] > 2 * kRhsLow) {
+    const double t1 = settings.at("timestepping").at("t1").get<double>();
+    out.rhs = nonlinear_rhs_modes(session, t1);
+  }
   return out;
 }
 
@@ -432,7 +440,9 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
 
   // Directly measure the actual retained nonlinear RHS coefficients, not
   // only scalar density moments or the final solution's spectral tail.
-  const auto [rhs_l2, rhs_linf] = rhs_gap(selected.rhs, control.rhs);
+  REQUIRE(selected.rhs.has_value());
+  REQUIRE(control.rhs.has_value());
+  const auto [rhs_l2, rhs_linf] = rhs_gap(*selected.rhs, *control.rhs);
   std::printf("TUNGSTEN_RHS N=16 reference_N=32 retained_modes=%zu "
               "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, rhs_l2, rhs_linf);
@@ -445,7 +455,8 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   unmasked["model"]["dealias"] = false;
   const Evolved bare = evolve(unmasked);
   REQUIRE_FALSE(bare.dealias);
-  const auto [masked_gap, masked_peak] = rhs_gap(selected.rhs, bare.rhs);
+  REQUIRE(bare.rhs.has_value());
+  const auto [masked_gap, masked_peak] = rhs_gap(*selected.rhs, *bare.rhs);
   std::printf("TUNGSTEN_RHS N=16 mask_on_vs_off retained_modes=%zu "
               "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, masked_gap, masked_peak);
@@ -468,6 +479,8 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   REQUIRE_FALSE(res::mask_spares_second_harmonic(coarse_dx));
   const Evolved coarse_off = evolve(coarse);
   const Evolved coarse_on = evolve(coarse_masked);
+  REQUIRE_FALSE(coarse_off.rhs.has_value());
+  REQUIRE_FALSE(coarse_on.rhs.has_value());
   REQUIRE_FALSE(coarse_off.dealias);
   REQUIRE(coarse_on.dealias);
   REQUIRE_THAT(coarse_off.dx, WithinRel(coarse_dx, 1e-12));
