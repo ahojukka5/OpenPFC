@@ -218,9 +218,11 @@ auto sampled_field_error(const Evolved &coarse, const Evolved &fine) {
         for (int dk = 0; dk < 2; ++dk) {
           for (int dj = 0; dj < 2; ++dj) {
             for (int di = 0; di < 2; ++di) {
-              const auto f = static_cast<std::size_t>(
-                  2 * i + di + nf * (2 * j + dj + nf * (2 * k + dk)));
-              interpolated += fine.state[f];
+              const int fi = 2 * i + di;
+              const int fj = 2 * j + dj;
+              const int fk = 2 * k + dk;
+              const auto index = static_cast<std::size_t>(fi + nf * (fj + nf * fk));
+              interpolated += fine.state[index];
             }
           }
         }
