@@ -149,7 +149,13 @@ TEST_CASE("aluminum coefficient provenance matches the shipped presets",
     REQUIRE(std::isfinite(phys.correlation_kernel(-1.0)));
     REQUIRE(phys.correlation_kernel(-1.0) > 0.0);
     REQUIRE(std::isfinite(phys.linear_symbol(-1.0)));
-    REQUIRE(phys.temperature_variation(phys.params.x_initial, 0.0) == 0.0);
+    const double deviation = phys.temperature_variation(phys.params.x_initial, 0.0);
+    REQUIRE(std::isfinite(deviation));
+    REQUIRE(phys.params.T_const + deviation >= phys.params.T_min);
+    REQUIRE(phys.params.T_const + deviation <= phys.params.T_max);
+    // The periodic unwrapping seam can shift a nonisothermal profile even
+    // at x_initial. Only zero-gradient cases must return exactly zero.
+    if (phys.params.G_grid == 0.0) REQUIRE(deviation == 0.0);
 
     for (const aluminum::ModelCoefficient &rec :
          aluminum::coefficient_provenance()) {
