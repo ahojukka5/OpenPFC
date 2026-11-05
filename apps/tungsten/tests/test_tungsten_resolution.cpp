@@ -437,7 +437,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   const auto [rhs_l2, rhs_linf] =
       rhs_mode_error(selected.rhs_modes, control.rhs_modes);
   std::printf("TUNGSTEN_RHS N=16 reference_N=32 retained_modes=%zu "
-              "rhs_l2=%.17g rhs_linf=%.17g\\n",
+              "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, rhs_l2, rhs_linf);
   REQUIRE(std::isfinite(rhs_l2));
   REQUIRE(std::isfinite(rhs_linf));
@@ -451,7 +451,7 @@ TEST_CASE("Tungsten resolved BCC preset passes the finer-grid gate",
   const auto [masked_gap, masked_peak] =
       rhs_mode_error(selected.rhs_modes, bare.rhs_modes);
   std::printf("TUNGSTEN_RHS N=16 mask_on_vs_off retained_modes=%zu "
-              "rhs_l2=%.17g rhs_linf=%.17g\\n",
+              "rhs_l2=%.17g rhs_linf=%.17g\n",
               kRhsCount, masked_gap, masked_peak);
   REQUIRE(std::isfinite(masked_gap));
   REQUIRE(std::isfinite(masked_peak));
