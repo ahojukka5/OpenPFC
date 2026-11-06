@@ -7,6 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## [Unreleased]
 
+- `FccPoints::borrow_quaternion_fields` evaluates a read-only four-component
+  crystal-to-lab quaternion brick in registers. The nine-double
+  `set_orientations` path stays. A matching owned box does not gather
+  orientations. A bad layout, a missing owner, or a non-unit quaternion is
+  refused, and a refused step leaves the committed history in place (#585).
 - `BinaryWriter::close` and `BinaryReader::close` report `MPI_Type_free`.
   Their destructors no longer throw: a free failure aborts, matching the
   MPI cleanup policy. `ResultsWriter::close` is the reporting hook, and
